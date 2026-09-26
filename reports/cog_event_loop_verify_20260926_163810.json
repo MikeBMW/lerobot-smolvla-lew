@@ -1,0 +1,70 @@
+{
+ "ts": "2026-09-26 16:38:10",
+ "seed": 100,
+ "frames": 220,
+ "engine_s": 3.2,
+ "calls": 220,
+ "head": {
+  "source": "engine_v3 (H5:head_H5_engine_v3.pt / H10:head_H10_engine_v3.pt)",
+  "trained": true,
+  "calls": 220,
+  "meta": {
+   "H5": {
+    "ckpt": "head_H5_engine_v3.pt",
+    "hidden": 256,
+    "aug": false,
+    "in_dim": 7,
+    "H": 5,
+    "trained": true,
+    "holdout_mean_auc": 0.9969,
+    "steps": 8000
+   },
+   "H10": {
+    "ckpt": "head_H10_engine_v3.pt",
+    "hidden": 256,
+    "aug": false,
+    "in_dim": 7,
+    "H": 10,
+    "trained": true,
+    "holdout_mean_auc": 0.9963,
+    "steps": 8000
+   }
+  },
+  "keys": [
+   "gc_5",
+   "gc_10",
+   "rz_5",
+   "rz_10",
+   "mh_5",
+   "mh_10"
+  ],
+  "device": "cuda"
+ },
+ "loop_auc": {
+  "gc_H5": {
+   "auc_loop": 1.0,
+   "pos_rate": 0.0233
+  },
+  "gc_H10": {
+   "auc_loop": 1.0,
+   "pos_rate": 0.0476
+  },
+  "mh_H5": {
+   "auc_loop": 0.999,
+   "pos_rate": 0.786
+  },
+  "mh_H10": {
+   "auc_loop": 0.999,
+   "pos_rate": 0.8048
+  },
+  "rz_H5": {
+   "auc_loop": 0.9973,
+   "pos_rate": 0.0512
+  },
+  "rz_H10": {
+   "auc_loop": 0.9994,
+   "pos_rate": 0.0762
+  }
+ },
+ "judges_pass": "7/7"
+}

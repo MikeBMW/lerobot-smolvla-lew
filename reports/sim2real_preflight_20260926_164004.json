@@ -1,0 +1,204 @@
+{
+ "ts": "2026-09-26 16:39:33",
+ "sim": {
+  "engine_moe_bypass": {
+   "rc": 0,
+   "tail": [
+    "Key            | Status     |  | ",
+    "---------------+------------+--+-",
+    "lm_head.weight | UNEXPECTED |  | ",
+    "",
+    "Notes:",
+    "- UNEXPECTED:\tcan be ignored when loading from different task/architecture; not ok if you expect identical arch."
+   ],
+   "sec": 12.3
+  },
+  "engine_l5_vision": {
+   "rc": 0,
+   "tail": [
+    "🧭 L5 定方向: 1 个任务变体",
+    "   维度: goal_dy ±20mm · goal_dz ±10mm · stage_skip · grip_force(30/40/50) · speed(0.8/1.0/1.2)",
+    "   已有 40 帧 → 从变体 1 续",
+    "✅ L5 造数据完成: 40 帧 / 0s → /tmp/l5_smoke.h5",
+    "   变体方向谱: 1 个 (对位偏差 × 阶段 × 力档 × 速度)"
+   ],
+   "sec": 0.9
+  },
+  "policy_rollout_state_space": {
+   "rc": 0,
+   "tail": [
+    "ep0: ❌ 没抬起 最近距离 0.278m",
+    "",
+    "🎯 state_space: 0/1 次插入成功 (0%) | 抬起 0/1 | 最小孔距 0.278m",
+    "WARNING:lerobot.configs.policies:Device 'None' is not available. Switching to 'cuda'."
+   ],
+   "sec": 4.0
+  },
+  "manifold_engine": {
+   "rc": 0,
+   "tail": [
+    "   \"why\": \"未实现 (缺 exp/log 图卡)\"",
+    "  }",
+    " }",
+    "}",
+    "→ /home/ubuntu/zmax_rel/reports/manifold_engine_bench.json",
+    "MANIFOLD_BENCH_DONE"
+   ],
+   "sec": 4.8
+  },
+  "bypass_live_infer": {
+   "infer_count": [
+    1162894,
+    1162953
+   ],
+   "delta_6s": 59
+  }
+ },
+ "real_readonly": {
+  "orin_ping": "rtt min/avg/max/mdev = 0.164/0.213/0.290/0.055 ms",
+  "tap_jsonl": [
+   "-rw-r--r-- 1 root root   58580813 Sep 26 16:40 /home/ubuntu/zmax_ss_remote/proposal_20260925.jsonl",
+   "-rw-r--r-- 1 root root  600002999 Sep 26 16:40 /home/ubuntu/zmax_ss_remote/state_20260925.jsonl"
+  ],
+  "infer_8790": {
+   "online": true,
+   "device": "cuda",
+   "port": 8790,
+   "models": [
+    "l4_mani_predictor_v5",
+    "l4_yaw_head_grasp_dz_v2"
+   ],
+   "load_ms": 139.1,
+   "infer_count": 1162973,
+   "last_ms": 1.52,
+   "started": "2026-09-25 07:41:37",
+   "torch": "2.7.1+cu128",
+   "input_map": "auto"
+  },
+  "ipc_10082_last_result": {
+   "code": 200,
+   "count": 0,
+   "defects": [],
+   "detect_type": "gf",
+   "ms": 1636.5,
+   "n": 245,
+   "origin": "./goldfinger_images\\Finger_Image_W2448_H2048_No_385.png",
+   "saved_incoming": "D:\\AOI_images\\gf\\incoming\\20260926_163932_489.png",
+   "t": 1790411974.3363872,
+   "topview": "./goldfinger_images\\Finger_TopView_W960_H960_No_385.png",
+   "verdict": "OK"
+  },
+  "opt_routes": {
+   "10082/picture": "200",
+   "10083/picture": "404",
+   "10082/crop_info": "200",
+   "10083/crop_info": "404",
+   "10082/region": "200",
+   "10083/region": "404",
+   "10082/last_result": "200",
+   "10083/last_result": "404",
+   "10082/capture_detect": "200",
+   "10083/capture_detect": "200"
+  }
+ },
+ "services": {
+  "ss-local-infer": "active",
+  "ss-bypass": "active",
+  "ss-remote-tap": "active",
+  "ss-yolo-bypass": "active",
+  "zmax-data-mount": "active",
+  "zmax-net-optimize": "active",
+  "aoi-feishu-push": "active",
+  "zmax-web-agent-bridge": "active",
+  "studio": "pid=<无输出>",
+  "l2_daemon": "4826"
+ },
+ "matrix": [
+  {
+   "area": "仿真引擎 (metaworld 真物理 + MOE pipeline)",
+   "sim_ok": true,
+   "real_readonly": true,
+   "evidence": "tools/moe_engine_bypass.py"
+  },
+  {
+   "area": "造数据管线 (引擎+渲染真像素)",
+   "sim_ok": true,
+   "real_readonly": true,
+   "evidence": "tools/l5_plan_and_gen.py --vision 1"
+  },
+  {
+   "area": "状态空间旁路 (真机只读帧→本机推理)",
+   "sim_ok": true,
+   "real_readonly": true,
+   "evidence": "ss-bypass service + 8790 infer_count 增量"
+  },
+  {
+   "area": "流形引擎内核",
+   "sim_ok": true,
+   "real_readonly": false,
+   "evidence": "tools/manifold_engine_bench.py (MANIFOLD_BENCH_DONE)"
+  },
+  {
+   "area": "通用策略 rollout (state_space 权重)",
+   "sim_ok": true,
+   "real_readonly": false,
+   "evidence": "tools/rollout_peg_check.py --policy state_space (链路通; 该权重此口径 0/1 插入, 引擎自口径另计)"
+  },
+  {
+   "area": "L5 Web 智能体桥 (提示词↔只读功能)",
+   "sim_ok": true,
+   "real_readonly": true,
+   "evidence": "tools/verify_web_agent_node.py 27/27"
+  },
+  {
+   "area": "AOI 视觉 (10082 判决/裁减只读)",
+   "sim_ok": true,
+   "real_readonly": true,
+   "evidence": "tools/opt_camera_client.py · verify_opt_camera 40/40"
+  },
+  {
+   "area": "记忆层 (L2/L3/L4 + 总装宏观)",
+   "sim_ok": true,
+   "real_readonly": true,
+   "evidence": "记忆层阶梯哨兵 + 引擎记忆条"
+  }
+ ],
+ "needs_site": [
+  {
+   "item": "任何真机动作授权",
+   "why": "老倪红线: 未授权不下发 (本次全程零下发, 只读)"
+  },
+  {
+   "item": "AOI 首轮标定 (金手指/外观缺陷框选)",
+   "why": "数据集现 0 标注框 (4 张 960×960 图已同源)"
+  },
+  {
+   "item": "10083 表面相机 /picture 路由",
+   "why": "实测仍 404 (补丁 docs/patch/opt_surface_10083_add_picture_route.md 已交现场)"
+  },
+  {
+   "item": "10082 拉长口径 短边×2 + 裁减对齐 score≥0.95",
+   "why": "现场侧服务改造"
+  },
+  {
+   "item": "2D→3D 标定采集 (哨兵 paused)",
+   "why": "需在场摆件; box3d_live_box.json ok=false"
+  },
+  {
+   "item": "T_base_cam / plane_z 现场测量",
+   "why": "真机 3D 最后两环"
+  },
+  {
+   "item": "ring_pose 示教 (L2.pull_module 合爪未夹住)",
+   "why": "09-20 未决"
+  },
+  {
+   "item": "抓取五段计划 S0~S5 批准 + 位姿来源",
+   "why": "需人工决策"
+  }
+ ],
+ "fixed_today": [
+  "tools/rollout_peg_check.py 硬编码 os.chdir('/home/xspace/lerobot-smolvla-lew') (别的机器路径) → 改按本文件推仓库根",
+  "tools/rollout_video.py load_policy 缺 left_right/state_space 分支 → 用 SmolVLALewPolicy 装载左手权重报 TypeError → 补分支 LoadPolicy=LeftRightPolicy"
+ ]
+}

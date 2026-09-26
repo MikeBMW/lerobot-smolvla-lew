@@ -1,0 +1,204 @@
+{
+ "ts": "2026-09-26 11:32:16 CST",
+ "console": {
+  "running": true,
+  "pid": 1136846,
+  "cwd": "",
+  "cpu_pct": "",
+  "rss_mb": "",
+  "version": "5.15.9",
+  "studio_kb": 661,
+  "modules": {
+   "Widget": 3,
+   "Dialog": 0,
+   "Window": 1
+  },
+  "pages": [
+   "",
+   "实时监控",
+   "插拔场景",
+   "数据集管理",
+   "模型引擎",
+   "版本同步",
+   "硬件工具箱",
+   "评估分析",
+   "返回首页",
+   "配置中心"
+  ],
+  "canvas": {
+   "nodes": 88,
+   "links": 167,
+   "rows": 12,
+   "real_nodes": 76
+  }
+ },
+ "pipeline": {
+  "collect_orin_tap": {
+   "file": "state_20260925.jsonl",
+   "mb": 264.7,
+   "age_s": 0.0
+  },
+  "relay_ecs": {
+   "relay": "Z-MAX ECS中转 v1",
+   "uptime": 2790,
+   "packages": 4940,
+   "latest": "pkg_20260926_113216.json",
+   "latest_meta": {
+    "source": "mac_hw",
+    "type": "hw_metrics",
+    "project": "zmax_hw",
+    "role": "mac",
+    "machines": [
+     "mac"
+    ],
+    "time": 1790393533.40544,
+    "received_at": 1790393536.5554028,
+    "relay": "ECS",
+    "frames": "?"
+   }
+  },
+  "relay_latest": "{\"meta\": {\"source\": \"mac_hw\", \"type\": \"hw_metrics\", \"project\": \"zmax_hw\", \"role\": \"mac\", \"machines\": [\"mac\"], \"time\": 1790393533.40544, \"received_at\": 179039353",
+  "datasets": [
+   {
+    "f": "cog_engine_trace_v2.h5",
+    "gb": 0.0,
+    "age_h": 1.1
+   },
+   {
+    "f": "cog_engine_trace_v1.h5",
+    "gb": 0.0,
+    "age_h": 1.1
+   },
+   {
+    "f": "l5_v6_sub10k.h5",
+    "gb": 0.03,
+    "age_h": 22.1
+   },
+   {
+    "f": "l5_gen_v6.h5",
+    "gb": 5.92,
+    "age_h": 22.1
+   },
+   {
+    "f": "l5_gen_v6_probe.h5",
+    "gb": 0.08,
+    "age_h": 22.3
+   }
+  ],
+  "training_running": "",
+  "gpu": "7 %, 640 MiB, 8188 MiB",
+  "checkpoints": [
+   {
+    "f": "cog_event_head/head_H10_engine_v2.pt",
+    "age_h": 1.1
+   },
+   {
+    "f": "cog_event_head/head_H5_engine_v2.pt",
+    "age_h": 1.1
+   },
+   {
+    "f": "cog_event_head/head_H10_aug128.pt",
+    "age_h": 1.3
+   },
+   {
+    "f": "cog_event_head/head_H5_aug128.pt",
+    "age_h": 1.3
+   },
+   {
+    "f": "cog_event_head/head_H10_cap256.pt",
+    "age_h": 1.4
+   }
+  ],
+  "deploy_links": {
+   "/home/ubuntu/zmax_rel/models/lew_mamba_interleave.pt": "lew_mamba_interleave.pt",
+   "/home/ubuntu/zmax_rel/models/l4_yaw_head_grasp_dz_v1.pt": "l4_yaw_head_grasp_dz_v1.pt",
+   "/home/ubuntu/zmax_rel/models/l4_yaw_head_grasp_dz_v2.pt": "l4_yaw_head_grasp_dz_v2.pt",
+   "/home/ubuntu/zmax_rel/models/lew_transformer.pt": "lew_transformer.pt",
+   "/home/ubuntu/zmax_rel/models/l4_mani_predictor_v5.pt": "l4_mani_predictor_v5.pt",
+   "/home/ubuntu/zmax_rel/models/yolo_peg_live.pt": "best.pt",
+   "/home/ubuntu/zmax_rel/models/l4_mani_predictor_v4.pt": "l4_mani_predictor_v4.pt",
+   "/home/ubuntu/zmax_rel/models/l4_mani_predictor_v2.pt": "l4_mani_predictor_v2.pt"
+  }
+ },
+ "resources": {
+  "disk": "/dev/nvme0n1p5  396G  297G   80G  79% /",
+  "mem": "Mem:              31          10           3           1          19          20",
+  "services": {
+   "ss-local-infer": "active",
+   "ss-bypass": "active",
+   "ss-remote-tap": "active",
+   "ss-yolo-bypass": "active",
+   "zmax-dds-ss": "active",
+   "zmax-dds-pub": "active",
+   "zmax-dds-agg": "active",
+   "aoi-feishu-push": "active",
+   "zmax-web-agent-bridge": "active",
+   "zmax-net-optimize": "active"
+  },
+  "cron_count": 10,
+  "infer_health": "{\"online\": true, \"device\": \"cuda\", \"port\": 8790, \"models\": [\"l4_mani_predictor_v5\", \"l4_yaw_head_grasp_dz_v2\"], \"load_ms\": 139.1, \"infer_count\": 982194, \"last_ms\": 0.54, \"started\": \"2026-09-25 07:41:3"
+ },
+ "functions": {
+  "last_level_audit": "canvas_level_audit_20260925_090825.md",
+  "audit_tail": ""
+ },
+ "verification": {
+  "verifiers": [
+   "verify_adaptive_gain.py",
+   "verify_all_orient.py",
+   "verify_annot_labeling.py",
+   "verify_annot_sim.py",
+   "verify_annot_ui_real.py",
+   "verify_aoi_console.py",
+   "verify_aoi_console_real.py",
+   "verify_bypass_viz.py",
+   "verify_canvas_load_fix.py",
+   "verify_canvas_render.py",
+   "verify_capability_stack.py",
+   "verify_clock_skew_guard.py",
+   "verify_cog_event_loop.py",
+   "verify_dr_labels_geometry.py",
+   "verify_engine_live_frame.py",
+   "verify_feishu_button.py",
+   "verify_fiber_zero_regression.py",
+   "verify_full_loop.py",
+   "verify_hil_chain.py",
+   "verify_input_source_follow.py",
+   "verify_intent_pair.py",
+   "verify_l2_compat_checkbox.py",
+   "verify_l3_action.py",
+   "verify_l4_intact_zeroseach.py",
+   "verify_l4_layout.py",
+   "verify_l4_optical_chain.py",
+   "verify_l4_zero_regression.py",
+   "verify_likelihood_head.py",
+   "verify_macro_memory.py",
+   "verify_manifold_layer.py",
+   "verify_memory_potential_fields.py",
+   "verify_moe_stage_coverage.py",
+   "verify_node_code_map.py",
+   "verify_opt_camera.py",
+   "verify_orient.py",
+   "verify_p3_metrics.py",
+   "verify_perception_chain.py",
+   "verify_pipeline_node.py",
+   "verify_predictor_layer.py",
+   "verify_real_frame_provenance.py",
+   "verify_skill_ctx.py",
+   "verify_src_switch.py",
+   "verify_teach_point.py",
+   "verify_usbcam_source.py",
+   "verify_viewer_clamp_live_window.py",
+   "verify_viewer_clamp_multiscreen.py",
+   "verify_viewer_idle_banner.py",
+   "verify_viewer_source_placeholder.py",
+   "verify_vscode_source_loc.py",
+   "verify_web_agent_node.py"
+  ],
+  "n_verifiers": 50,
+  "recent_evidence": [
+   "moe_stage_coverage_verify_6of6.log",
+   "dds_ss_verify_20of20.log"
+  ]
+ }
+}

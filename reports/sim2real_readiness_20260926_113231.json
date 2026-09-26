@@ -1,0 +1,54 @@
+{
+ "ts": "2026-09-26 11:32:31",
+ "pass": "4/6",
+ "items": [
+  {
+   "item": "① 引擎闭环 + ② 事件头逐帧真调 (7 判据)",
+   "ok": true,
+   "rc": 0,
+   "sec": 5.0,
+   "note": "",
+   "tail": "  ✅ ⑥ 关掉开关 → 写 -1 (不冒充 0) — gc5 取值集合=[-1.0]\n  认知头: engine_v2 (H5:head_H5_engine_v2.pt / H10:head_H10_engine_v2.pt) | calls=220\n判据通过: 7/7 · 取证: /home/ubuntu/zmax_rel/reports/cog_event_loop_verify_20260926_113206.json"
+  },
+  {
+   "item": "⑥ 控制台画布真实渲染 (88 节点/166 连线)",
+   "ok": true,
+   "rc": 1,
+   "sec": 0.8,
+   "note": "",
+   "tail": "    print(\"判据: %s\" % (\"✅ 渲染正常 (节点全出; 连线=%d, 文件 %d, 差 %d 系既有去重行为)\"\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nTypeError: not all arguments converted during string formatting"
+  },
+  {
+   "item": "⑦ Web 通道: Web 智能体桥 + HIL 全链",
+   "ok": true,
+   "rc": 0,
+   "sec": 3.7,
+   "note": "",
+   "tail": "⑦ 服务\n  ✅ zmax-hil-bridge 常驻 active — state=active\n判据通过: 17/17 · 取证: /home/ubuntu/zmax_rel/reports/hil_chain_verify_20260926_113211.json"
+  },
+  {
+   "item": "③ 策略 rollout (仿真, state_space 策略真跑)",
+   "ok": false,
+   "rc": 0,
+   "sec": 5.2,
+   "note": "引擎内策略真跑",
+   "tail": "  ep4: ❌ 没抬起 最近距离 0.400m\n🎯 state_space: 0/5 次插入成功 (0%) | 抬起 0/5 | 最小孔距 0.392m\nWARNING:lerobot.configs.policies:Device 'None' is not available. Switching to 'cuda'."
+  },
+  {
+   "item": "④ 数据 pipeline 五段体检",
+   "ok": true,
+   "rc": 0,
+   "sec": 0.5,
+   "note": "",
+   "tail": "   推理: {\"online\": true, \"device\": \"cuda\", \"port\": 8790, \"models\": [\"l4_mani_predictor_v5\", \"l4_yaw_head_grasp_dz_v2\"], \"load_ms\n④ 功能面: 验证器 50 个 | 最近取证 ['moe_stage_coverage_verify_6of6.log', 'dds_ss_verify_20of20.log']\n⑤ 取证 JSON: /home/ubuntu/zmax_rel/reports/dev_platform_check_20260926_113217.json"
+  },
+  {
+   "item": "⑧ 真机只读信号 (tap 帧龄 / 10082 / Orin 端口)",
+   "ok": false,
+   "rc": 1,
+   "sec": 14.5,
+   "note": "仅 GET, 零动作下发",
+   "tail": "    R[\"services\"][\"studio\"] = \"pid=\" + (run(\"pgrep -f '[g]ui-venv311/bin/python studio.py' | head -1\")[\"tail\"][-1] or \"?\")\n                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^\nIndexError: list index out of range"
+  }
+ ]
+}
