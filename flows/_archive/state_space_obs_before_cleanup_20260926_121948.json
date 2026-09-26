@@ -1027,6 +1027,30 @@
    }
   },
   {
+   "type": "model",
+   "icon": "🧩",
+   "color": "#f0a030",
+   "inputs": [
+    "in1",
+    "in2"
+   ],
+   "outputs": [],
+   "actions": [],
+   "w": 280,
+   "h": 110,
+   "y": 6754,
+   "id": "sstest",
+   "x": 16986,
+   "name": "🧪 Test 用例执行",
+   "params": {
+    "state_space": true,
+    "verif_layer": true,
+    "desc": "Test 用例执行: 跑自动化套件 (引擎/六层/感知/规划/元层/画布), PASS/FAIL+数值证据 · 当前 57 条 (自动 47) · 新增 F-B12/F-B13 = 真物理引擎断言 (慢~20s, 单跑 ZMAX_VERIF_ONLY=F-B12); 源码 verification_layer.py VerificationLayer",
+    "source": "src/lerobot/verification/verification_layer.py",
+    "source_symbol": "class VerificationLayer"
+   }
+  },
+  {
    "id": "ssff_hist",
    "type": "model",
    "name": "🧠 前馈激活直方图",
@@ -1568,6 +1592,90 @@
     "in5",
     "in6"
    ]
+  },
+  {
+   "type": "model",
+   "icon": "🅰️",
+   "color": "#f0a020",
+   "inputs": [
+    "in1",
+    "in2"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "w": 280,
+   "h": 110,
+   "x": 11499,
+   "y": 5762,
+   "id": "ssa",
+   "name": "🅰️ 通用算子 A · 参数写入",
+   "params": {
+    "state_space": true,
+    "universal_op": true,
+    "op_tag": "A",
+    "desc": "[基础·通用万能节点] 参数写入 (SET): L4 动态参数 → 目标原子技能 — 把 L4 预测/世界模型算出的参数 (速度/阈值/增益/目标点) 写入被选中的原子技能实例; 万能接口: 任何技能可被写入",
+    "source": "tools/gui/node_logic.py · node_ss_abc",
+    "purpose": "L4 动态参数更新 (通用接口)",
+    "source_symbol": "def node_ss_abc(ctx):"
+   }
+  },
+  {
+   "type": "model",
+   "icon": "🅱️",
+   "color": "#f0a020",
+   "inputs": [
+    "in1",
+    "in2"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "w": 280,
+   "h": 110,
+   "x": 14166,
+   "y": 5266,
+   "id": "ssb",
+   "name": "🅱️ 通用算子 B · 参数微调",
+   "params": {
+    "state_space": true,
+    "universal_op": true,
+    "op_tag": "B",
+    "desc": "[基础·通用万能节点] 参数微调 (Δ-ADJUST): 运行时增量调整 — 遇阻/偏差时按 L4 预测动态 ± 调整技能参数 (如降速/增力/重对准幅度), 不重写整组参数; 万能接口: 任何技能可被微调",
+    "source": "tools/gui/node_logic.py · node_ss_abc",
+    "purpose": "L4 动态参数更新 (通用接口)",
+    "source_symbol": "def node_ss_abc(ctx):"
+   }
+  },
+  {
+   "type": "model",
+   "icon": "🅾️",
+   "color": "#f0a020",
+   "inputs": [
+    "in1",
+    "in2"
+   ],
+   "outputs": [
+    "out1"
+   ],
+   "actions": [],
+   "w": 280,
+   "h": 110,
+   "x": 14666,
+   "y": 5266,
+   "id": "ssc",
+   "name": "🅾️ 通用算子 C · 参数校验",
+   "params": {
+    "state_space": true,
+    "universal_op": true,
+    "op_tag": "C",
+    "desc": "[基础·通用万能节点] 参数校验 (VALIDATE): 安全限值校验 — 写入/微调后的参数须过 🛡 安全类别4栏位红线 (力/速度/位姿限值), 越界拒绝并回退; 万能接口: 任何技能参数统一走此闸",
+    "source": "tools/gui/node_logic.py · node_ss_abc",
+    "purpose": "L4 动态参数更新 (通用接口)",
+    "source_symbol": "def node_ss_abc(ctx):"
+   }
   },
   {
    "id": "n_intent_bundle",
@@ -2431,6 +2539,30 @@
    "label": "阶段切换与动作融合"
   },
   {
+   "id": "lk_abc1",
+   "f": "ssa",
+   "t": "ssb",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "写入后 → 微调"
+  },
+  {
+   "id": "lk_abc2",
+   "f": "ssb",
+   "t": "ssc",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "微调后 → 校验"
+  },
+  {
+   "id": "lk_abc3",
+   "f": "ssc",
+   "t": "sssk1",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "校验通过 → 原子技能参数"
+  },
+  {
    "id": "lkssk09",
    "f": "sssk1",
    "t": "ssact",
@@ -2519,6 +2651,14 @@
    "label": "引擎轨迹 全系统"
   },
   {
+   "id": "lkv2",
+   "f": "ssworld",
+   "t": "sstest",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "引擎轨迹 全系统"
+  },
+  {
    "id": "lkviz1",
    "f": "ssworld",
    "t": "ssvideo",
@@ -2549,6 +2689,22 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "轨迹"
+  },
+  {
+   "id": "lksafe2",
+   "f": "sslimit",
+   "t": "ssb",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "🛡 限幅后控制 → 通用算子 B"
+  },
+  {
+   "id": "lksafe3",
+   "f": "sslimit",
+   "t": "ssc",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "🛡 限幅后控制 → 通用算子 C"
   },
   {
    "id": "lksafe4",
@@ -2855,6 +3011,14 @@
    "label": "43D 状态 → 仿真波形"
   },
   {
+   "id": "lkver_act",
+   "f": "ssact",
+   "t": "sstest",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "执行结果 → 用例执行"
+  },
+  {
    "id": "lkver_mem",
    "f": "ss_mem_share",
    "t": "ssfeat",
@@ -2997,6 +3161,14 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "恢复建议"
+  },
+  {
+   "id": "lkrs_ssmani_exp_ssa",
+   "f": "ssmani_exp",
+   "t": "ssa",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "L4 动态参数 (世界模型预测)"
   },
   {
    "id": "lkrs_ssdec_ssact",
