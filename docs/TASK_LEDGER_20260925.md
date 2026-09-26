@@ -473,3 +473,28 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
   a) 本机 docker 构建 moveit 镜像 + 由 URDF 生成 MoveIt 配置包 (SRDF/kinematics/joint_limits) → 规划在 4060
   b) MoveIt 装在 Orin (已有 ROS2 Humble + URDF), 规划在 Orin, 执行仍走 SDK 桥 (同机无网络跳)
   推荐 b): 同机、少一跳、且 URDF/SRDF 都在 Orin 上现成
+
+
+## 2026-09-26 · 会话十七: MoveIt 装本机(选A) + A5 物理结论
+
+**A · MoveIt 装本机 (绝不动 Orin 环境) —— 已完成并跑通**
+- 镜像 `zmax-moveit:humble` (FROM ros:humble-ros-base + ros-humble-moveit/-py/setup-assistant/rsp/jsp) 构建成功
+- 配置包 `config/moveit_xms5/`: urdf(真 URDF) + srdf(链 base→tool0) + kinematics(kdl) + joint_limits(**限位从 URDF 解析**) + ompl + launch(仅规划)
+- 冒烟: move_group 载入 `Loading robot model 'XMS5-R800-W4G3B4C'` ✓ · 服务 /compute_ik · /plan_kinematic_path 在 ✓
+  **/compute_ik 实测返回有效解** (目标 (0.45,0.15,0.65) @world → 关节 [0.0254,1.8785,1.5102,-0.0521,-5.7555,3.0850], error_code=1=SUCCESS) ✓
+- 安全: launch 里 `allow_trajectory_execution: False` → **MoveIt 只规划, 绝不执行**; 执行仍由 Orin SDK 桥/ROS2 SRV 收口
+- 踩坑: ① 不能把 MoveIt 的 kinematics.yaml 用 `--params-file` 传 (rcl 要求 ros__parameters 结构) → 改字符串/嵌套参数
+        ② SRDF robot name 必须与 URDF 同名 (否则告警) → 已修
+- 待补: URDF 引用的 meshes/ 不在本机 → 碰撞几何缺失 (功能不影响 IK/规划, 但避开碰撞检查会退化; 需拷 mesh 或改原始几何)
+
+**A5 · 2D→3D 标定采集 —— 现场实测得出物理结论: 现行 AOI 相机做不了 (非参数问题)**
+- 三次探针 (位姿 ±10/20/40mm) + 离线分析:
+  · 臂动 20~40mm → **边缘差分"新增边缘 = 0"** ⇒ 画面**结构零变化** ⇒ **臂不在 AOI 相机视野内**
+  · 三帧亮度 134.5/103.8/130.3 · std 79.2/**34.0**/35.2 · 饱和 20.5%/**0%**/0% ⇒ **自动曝光漂移**是"画面全变 85%"的真因
+  · 归一化差分仍 70%+ → 因为差异是全局曝光, 不是结构位移
+- ⇒ (图像, TCP) 配对在这个相机上**物理上不可能**; 继续采 12 位姿只会产出垃圾 (按红线: 宁停不假)
+- 可走的三条路 (待现场选):
+  a) **把臂开进相机视野** (示教器手动或小步下发到相机能看到的区域) → 再做 12 位姿采集 (推荐, 最直接)
+  b) 夹一件模块当标记, 同样要进视野
+  c) 换传感器 (本机现在没有 RealSense; 但有现成 `tools/board_handeye_solve.py` 解算工具)
+- 工具: `tools/a5_handeye_collect.py --probe/--collect` · 离线分析 `tools/a5_offline_analysis.py`
