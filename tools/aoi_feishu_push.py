@@ -236,6 +236,7 @@ if __name__ == "__main__":
     ap.add_argument("--once", action="store_true", help="推当前最新裁减图")
     ap.add_argument("--watch", action="store_true", help="实时: 有新拍照就推")
     ap.add_argument("--ours", action="store_true", help="连我们自裁×2 判据图一起发")
+    ap.add_argument("--file", default="", help="直接推这张图 (控制台「🔔 发飞书」用; 不取工控机最新裁减图)")
     ap.add_argument("--chat", default=DEFAULT_CHAT)
     ap.add_argument("--cam", type=int, default=1)
     ap.add_argument("--interval", type=float, default=8.0)
@@ -243,6 +244,13 @@ if __name__ == "__main__":
     ap.add_argument("--text", default="", help="顺带发一条文本 (自检用)")
     ap.add_argument("--grab", action="store_true", help="先真拍一张再推 (工控机内存空时必须; 真拍产线台)")
     a = ap.parse_args()
+    if a.file:                                   # 2026-09-26: 控制台一键推当前判据图
+        if not os.path.isfile(a.file):
+            print(json.dumps({"ok": False, "err": "文件不存在: %s" % a.file}, ensure_ascii=False))
+            raise SystemExit(2)
+        r = send_image(a.file, chat_id=a.chat, caption=a.text or "")
+        print(json.dumps(r, ensure_ascii=False, indent=1))
+        raise SystemExit(0 if r.get("ok") else 1)
     if a.text:
         print(json.dumps(send_text(a.text, a.chat), ensure_ascii=False)); 
     if a.watch:

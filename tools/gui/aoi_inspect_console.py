@@ -160,6 +160,7 @@ class CopyImageView(YoloLabelWidget):
 
 
 class AoiInspectConsole(QtWidgets.QDialog):
+    _push_done = QtCore.pyqtSignal(str)        # 后台推送线程 → GUI 线程 (2026-09-26)
     """质量检测汇总终端 v2 (简洁版): 三行工具 + 左画面 / 右 Tab + 一行状态。"""
 
     def __init__(self, parent=None, module=None, source: str = "real", head=None):
@@ -196,6 +197,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self._init_data_root()
         self._tp_refresh()
         self._tick()
+        self._push_done.connect(self._on_push_done)   # 🔔 发飞书 后台结果回填 (2026-09-26)
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._timer.start(500)
@@ -260,6 +262,9 @@ class AoiInspectConsole(QtWidgets.QDialog):
                           lambda _=False, k=key: self.run_skill(k))
             r1.addWidget(b)
             self.skill_btns[key] = b
+        # 🔔 2026-09-26 老倪: 窗口内一键把**当前判据图**推飞书 (后台线程推送, 不卡界面)
+        r1.addWidget(self._btn("🔔 发飞书", "把当前判据图推到飞书群 (后台推送, 不阻塞界面)",
+                               self.push_feishu, primary=True))
         r1.addStretch(1)
         self.lbl_chain = self._dim("链路: 取帧中…")
         self.lbl_chain.setMinimumWidth(220)
@@ -614,6 +619,52 @@ class AoiInspectConsole(QtWidgets.QDialog):
         f.setFrameShape(QtWidgets.QFrame.VLine)
         f.setStyleSheet("color:#30363d")
         return f
+
+    def push_feishu(self):
+        """🔔 把**当前判据图**推到飞书 (2026-09-26)
+
+        设计: ① 存当前判据图 PNG → ② 后台线程调 tools/aoi_feishu_push.py --file
+              → ③ 结果(含 message_id)回写日志面板。
+        ⚠️ 用后台线程而非同步调用: 本轮刚修过"GUI 线程做阻塞 I/O → 控制台打开就卡"。
+        """
+        import subprocess as _sp
+        import threading as _th
+        rgb = getattr(self, "_last_rgb", None)
+        if rgb is None:
+            self.log("🔔 发飞书: 当前没有判据图 → 先取帧或圈选后再点")
+            return
+        repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        outdir = os.path.join(repo, "reports", "opt_view")
+        try:
+            import cv2 as _cv
+            os.makedirs(outdir, exist_ok=True)
+            p = os.path.join(outdir, time.strftime("console_push_%Y%m%d_%H%M%S.png"))
+            img = rgb
+            if hasattr(img, "ndim") and img.ndim == 3:      # 判据图是 RGB 数组 → 存盘转 BGR
+                img = _cv.cvtColor(img, _cv.COLOR_RGB2BGR)
+            _cv.imwrite(p, img)
+            if not os.path.isfile(p):
+                raise RuntimeError("imwrite 未落盘")
+        except Exception as e:                                              # noqa: BLE001
+            self.log("🔔 发飞书: 存图失败 %s: %s" % (type(e).__name__, str(e)[:80]))
+            return
+        self.log("🔔 发飞书: 推送 %s …" % os.path.basename(p))
+        pusher = os.path.join(repo, "tools", "aoi_feishu_push.py")
+
+        def _work():
+            try:
+                r = _sp.run([sys.executable, pusher, "--file", p],
+                            capture_output=True, text=True, timeout=60)
+                out = (r.stdout or r.stderr or "").strip().replace("\n", " ")[:220]
+                self._push_done.emit(out or ("rc=%d" % r.returncode))
+            except Exception as e:                                          # noqa: BLE001
+                self._push_done.emit("%s: %s" % (type(e).__name__, str(e)[:120]))
+
+        _th.Thread(target=_work, daemon=True).start()
+
+    def _on_push_done(self, text: str):
+        ok = '"ok": true' in text or '"ok":true' in text
+        self.log(("✅ 发飞书: " if ok else "⚠️ 发飞书: ") + text)
 
     def log(self, s: str):
         try:
