@@ -64,6 +64,12 @@ SYNC_LIST=(
   "devops/web-agent-canvas-bridge"
   "devops/linux-network-perf-boot"
   "devops/systemd-boot-services"
+  # 2026-09-27 补入 (场景叠加/手眼投影 关键路径)
+  # ⚠️ 技能真实目录名是 real-handeye-calibration (不是 real-arm-handeye-calibration),
+  #    写错只会静默"跳过缺失" —— 不会报错, 所以名字必须核验
+  "devops/sim-real-scene-overlay"
+  "devops/real-handeye-calibration"
+  "devops/state-space-canvas-engineering"
 )
 for rel in "${SYNC_LIST[@]}"; do
   src="$SKILLS_SRC/$rel"

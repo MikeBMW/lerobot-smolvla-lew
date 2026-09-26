@@ -43,6 +43,9 @@ html,body { width:100%; height:100%; overflow:hidden; background:#0d1117; color:
 #btnRun { flex:0 0 auto; height:40px; padding:0 12px; border:none; border-radius:20px;
   cursor:pointer; font-size:13px; background:#8957e5; color:#fff; white-space:nowrap; }
 #btnRun:disabled { background:#57606a; color:#8b949e; }
+/* 🧩 场景叠加: 真机视频流 + 仿真/大模型/检测框 (跳到 4060 提供的手机版页面) */
+#btnOv { flex:0 0 auto; height:40px; padding:0 12px; border:none; border-radius:20px;
+  cursor:pointer; font-size:13px; background:#0d9488; color:#fff; white-space:nowrap; }
 #slider { flex:1; height:34px; accent-color:#1f6feb; }
 #info { flex:0 0 auto; font-size:11px; color:#8b949e; text-align:right; line-height:1.3; }
 /* 图层开关 */
@@ -84,6 +87,7 @@ html,body { width:100%; height:100%; overflow:hidden; background:#0d1117; color:
   <div class="row">
     <button id="play" class="paused">▶</button>
     <button id="btnRun" title="请求引擎真实跑一次新仿真">🔄 新仿真</button>
+    <button id="btnOv" title="真机视频流 + 仿真场景/大模型/检测边界框叠加">🧩 场景叠加</button>
     <input type="range" id="slider" min="0" max="100" value="0">
     <div id="info">0/0<br><span style="color:#58a6ff" id="distInfo">—</span></div>
   </div>
@@ -99,6 +103,12 @@ html,body { width:100%; height:100%; overflow:hidden; background:#0d1117; color:
 window.onerror = function(m, src, ln){ showErr("脚本错误: " + m + "\n@" + (src||"").split("/").pop() + ":" + ln); };
 const TRAJ_URL = "ss_traj_full.json";
 const LIVE_URL = "ss3d_live.json";
+// 🧩 场景叠加页: 必须由 4060 自己用 http 提供(与视频流同源), 否则 HTTPS 页面取
+//    http:// 的 MJPEG 会被浏览器当"混合内容"拦死。手机需与 4060 同一局域网。
+//    ⚠️ 换网段/换机器只改这一行 (或打开时带 ?ov=http://新IP:8791/app 覆盖)
+const OVERLAY_URL = new URLSearchParams(location.search).get("ov")
+                 || localStorage.getItem("zmax_overlay_url")
+                 || "http://10.163.146.78:8791/app";
 const DEVICE = new URLSearchParams(location.search).get("device") || "";
 const STAGES = ["接近","对位","下降","抓取","抬起","转移","插入","完成"];
 const STAGE_COLOR = { "接近":"#f0883e","对位":"#e3b341","下降":"#f47067","抓取":"#238636",
@@ -427,13 +437,28 @@ const slider=document.getElementById("slider"), playBtn=document.getElementById(
       errBox=document.getElementById("errBox"), resultChip=document.getElementById("resultChip"),
       btnFollow=document.getElementById("btnFollow");
 
-function showErr(t){ errBox.style.display="block"; errBox.innerHTML = "<b>⚠️ 出错了</b><br>" + t; }
-function setLive(txt,on){ liveChip.classList.toggle("off",!on); liveTxt.textContent=txt; }
+// ★ 防御: showErr / setLive / showResult 会被 window.onerror 在"第 433 行那批 const 之前"
+//   调用(典型: three.js 未加载 ⇒ WebGL 初始化顶层抛错)。若直接引用 errBox/liveChip,
+//   会踩 const 的暂时性死区(TDZ) ⇒ 抛新错把原错误吞掉, 整页脚本静默死且看不到原因。
+//   ⇒ 这三个函数改成就地查 DOM, 不依赖那批 const(正常调用行为完全一致)。
+function showErr(t){
+  var b = document.getElementById("errBox");
+  if(!b){ try{ console.error("[showErr]", t); }catch(e){} return; }
+  b.style.display = "block";
+  b.innerHTML = "<b>⚠️ 出错了</b><br>" + t;
+}
+function setLive(txt,on){
+  var chip = document.getElementById("liveChip"), tx = document.getElementById("liveTxt");
+  if(chip) chip.classList.toggle("off", !on);
+  if(tx) tx.textContent = txt;
+}
 function showResult(ok, dist, extra){
-  resultChip.style.display="block";
-  resultChip.classList.toggle("warn", !ok);
-  resultChip.textContent = (ok?"✅ 插入完成":"⚠️ 未完成") + (dist!=null?" · 终距孔 "+dist.toFixed(3)+"m":"") + (extra?" · "+extra:"");
-  clearTimeout(resultChip._h); resultChip._h = setTimeout(()=>{ resultChip.style.display="none"; }, 10000);
+  var chip = document.getElementById("resultChip");
+  if(!chip) return;
+  chip.style.display = "block";
+  chip.classList.toggle("warn", !ok);
+  chip.textContent = (ok?"✅ 插入完成":"⚠️ 未完成") + (dist!=null?" · 终距孔 "+dist.toFixed(3)+"m":"") + (extra?" · "+extra:"");
+  clearTimeout(chip._h); chip._h = setTimeout(function(){ chip.style.display = "none"; }, 10000);
 }
 
 // ── 镜头跟随 (末端) ──
@@ -472,6 +497,17 @@ btnRun.onclick = async ()=>{
     showErr("无法连接引擎服务: " + e);
   }
 };
+
+// ── 🧩 场景叠加: 一点即跳(不弹窗、不等待) → 4060 上那个 http 手机版页面 ──
+//    跳转是"顶层导航"不受混合内容限制; 页面与 MJPEG 同源(都是 4060:8791)才取得到流
+const btnOv = document.getElementById("btnOv");
+if(btnOv){
+  btnOv.title = "真机视频流 + 仿真/大模型/检测边界框 · " + OVERLAY_URL;
+  btnOv.onclick = ()=>{
+    try{ localStorage.setItem("zmax_overlay_url", OVERLAY_URL); }catch(e){}
+    location.href = OVERLAY_URL;
+  };
+}
 
 // ── 数据装载 ──
 async function fetchJ(u){ const r = await fetch(u, {cache:"no-store"}); if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }

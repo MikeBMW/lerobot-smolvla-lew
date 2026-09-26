@@ -357,6 +357,9 @@ def overlay_worker(src_name: str, fps_cap: float) -> None:
 # ── ④ 规格生成触发器（页面按钮 → 后台跑，不阻塞请求）──────────────
 _GEN_STATE = {"busy": None, "last": None, "ts": 0.0}
 _GEN_KINDS = {"sim": "仿真场景投影", "scene": "场景契约", "vlm": "L5 大模型理解", "det": "真机检测"}
+# 生成卡死上限(秒): VLM 实测 5~120s, 网络最坏 300s(gen_overlay_from_vlm 的 urlopen timeout)
+# ⇒ 留足余量; 超了判卡死并自动解锁, 避免 busy 永久占位把 4 个按钮全变哑巴
+_GEN_STALE_S = 360.0
 
 
 def _gen_worker(kind: str) -> None:
@@ -379,9 +382,22 @@ def _gen_worker(kind: str) -> None:
 
 
 def _spawn_gen(kind: str) -> str:
+    """启动一次生成。
+
+    ★ 卡死自愈: VLM 走网络(DeepSeek), 单次可长达 120~300s; 若网断/进程被卡,
+      busy 标志会永久占位 ⇒ 页面上 4 个按钮全变哑巴(点了没反应)。所以超过
+      上限 + 余量还不回收, 就判为卡死并自动解锁, 同时如实报出"上次占了多久"。
+    """
     with _LOCK:
-        if _GEN_STATE["busy"]:
-            return "已有生成在跑: %s" % _GEN_STATE["busy"]
+        b = _GEN_STATE["busy"]
+        age = time.time() - _GEN_STATE.get("ts", 0)
+        if b and age > _GEN_STALE_S:
+            print("[gen] ⚠ 上一次 %s 已占 %.0fs 未回收(超上限 %.0fs), 判为卡死 → 自动解锁"
+                  % (b, age, _GEN_STALE_S), flush=True)
+            _GEN_STATE.update(last="⚠ 上一次 %s 卡死 %.0fs 已自动解锁" % (b, age))
+            b = None
+        if b:
+            return "已有生成在跑: %s (已 %.0fs, 上限 %.0fs)" % (b, age, _GEN_STALE_S)
         _GEN_STATE.update(busy=kind, ts=time.time())
     threading.Thread(target=_gen_worker, args=(kind,), daemon=True).start()
     return "已启动: %s (%s)" % (_GEN_KINDS.get(kind, kind), kind)
@@ -457,6 +473,29 @@ async function tick(){
 }
 setInterval(tick,700);tick();
 </script></body></html>"""
+
+
+# ══════════════════════════════════════════════════════════════
+# 📱 手机版场景叠加页 (Z-MAX APP 入口的跳转目标)
+#    真源 = 仓库 tools/web/scene-overlay.html —— 改完不用重启(按 mtime 重读)
+#    为什么由 4060 自己提供: 站点是 HTTPS, 页面里再取 http:// 的 MJPEG
+#    属"混合内容"会被浏览器拦死 ⇒ 页面必须跟视频流同源(都是 http, 同一个端口)
+# ══════════════════════════════════════════════════════════════
+_MOBILE_CACHE = {"t": None, "b": b""}
+
+
+def _mobile_page() -> bytes:
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "scene-overlay.html")
+    try:
+        m = os.path.getmtime(p)
+        if _MOBILE_CACHE["t"] != m:
+            with open(p, "rb") as f:
+                _MOBILE_CACHE["b"] = f.read()
+            _MOBILE_CACHE["t"] = m
+        return _MOBILE_CACHE["b"]
+    except Exception as e:
+        return ("<!doctype html><meta charset=utf-8>"
+                "<h2>📱 手机叠加页缺失</h2><p>%s</p><p>期望: %s</p>" % (e, p)).encode("utf-8")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -585,6 +624,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "text/html; charset=utf-8", body)
         elif p in ("/overlay", "/overlay.html", "/scene"):
             self._send(200, "text/html; charset=utf-8", OVERLAY_PAGE.encode("utf-8"))
+        elif p in ("/app", "/app.html", "/m"):
+            # 📱 手机版场景叠加页 (Z-MAX APP 首页「🧩 场景叠加」的跳转目标)
+            self._send(200, "text/html; charset=utf-8", _mobile_page())
         elif p == "/scene.json":
             spec = _SO.load_spec() if _SO else {"error": "scene_overlay 未加载"}
             with _LOCK:

@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Z-MAX · 场景叠加</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;
+       background:#06080d;color:#e6edf3;line-height:1.6;padding-bottom:24px}
+  header{padding:14px 16px 10px;background:#0b111a;border-bottom:1px solid #1b2836;position:sticky;top:0;z-index:20}
+  h1{font-size:22px;font-weight:800;color:#fff;letter-spacing:.5px}
+  h1 em{color:#00d4aa;font-style:normal}
+  .sub{font-size:14px;color:#8b98a5;margin-top:3px}
+  .chip{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12.5px;font-weight:700;
+        border:1px solid #24404f;color:#67c9e0;margin-left:6px;vertical-align:2px}
+  .chip.ok{border-color:#1f7a4d;color:#4ade80}
+  .chip.bad{border-color:#7a2b2b;color:#f87171}
+  .bar{display:flex;gap:8px;padding:10px 12px;background:#0a0f16;border-bottom:1px solid #1b2836;
+       position:sticky;top:64px;z-index:19;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  button{font-family:inherit;font-size:15px;font-weight:700;padding:12px 14px;border-radius:10px;
+         border:1px solid #2b3946;background:#141d27;color:#e6edf3;white-space:nowrap;cursor:pointer}
+  button:active{transform:scale(.97)}
+  button.on{background:#0e4f45;border-color:#00d4aa;color:#9ff5e4}
+  button.go{background:#0f5c37;border-color:#22c55e;color:#d6ffe6}
+  button:disabled{opacity:.55}
+  .wrap{padding:12px}
+  .card{background:#0d141c;border:1px solid #1b2836;border-radius:12px;overflow:hidden;margin-bottom:12px}
+  .card h2{font-size:16px;font-weight:700;padding:11px 14px;background:#0a1017;border-bottom:1px solid #1b2836;
+           display:flex;justify-content:space-between;align-items:center}
+  .card h2 span{font-size:12.5px;color:#8b98a5;font-weight:500}
+  img{display:block;width:100%;height:auto;background:#000;min-height:150px}
+  .pane{padding:14px 16px;font-size:15px}
+  .kv{display:flex;gap:10px;flex-wrap:wrap;margin:5px 0;align-items:baseline}
+  .kv b{color:#7ee787;font-weight:800}
+  .kv .k{color:#8b98a5;font-size:13.5px;min-width:76px}
+  .lg{display:inline-block;width:13px;height:13px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+  .note{font-size:13.5px;color:#8b98a5;margin-top:9px;line-height:1.7}
+  code{background:#111a24;padding:2px 6px;border-radius:5px;color:#7ee787;font-size:13px;word-break:break-all}
+  .warn{background:#2a1c0a;border:1px solid #6b4a12;color:#f0c674;border-radius:9px;padding:11px 13px;
+        font-size:14px;margin:10px 0;line-height:1.7}
+  .toast{position:fixed;left:12px;right:12px;bottom:16px;background:#12202c;border:1px solid #24404f;
+         border-radius:11px;padding:12px 14px;font-size:14.5px;color:#cfe8f5;display:none;z-index:50}
+</style>
+</head>
+<body>
+<header>
+  <h1>🧩 场景叠加 <em>Z-MAX</em><span class="chip" id="link">检测中…</span></h1>
+  <div class="sub">真实视频流 + 仿真场景边界框 · 手机版</div>
+</header>
+
+<div class="bar">
+  <button id="cArm" class="on" onclick="setCam('arm')">🦾 手臂相机</button>
+  <button id="cLocal" onclick="setCam('local')">💻 笔记本</button>
+  <button id="cBoth" onclick="setCam('both')">▣ 双路</button>
+</div>
+<div class="bar" style="top:64px;padding-top:8px;padding-bottom:8px">
+  <button class="go" id="gSim"   onclick="gen('sim')">🎯 仿真投影</button>
+  <button class="go" id="gVlm"   onclick="gen('vlm')">🧠 大模型理解</button>
+  <button id="gScene" onclick="gen('scene')">📋 场景契约</button>
+  <button id="gDet"   onclick="gen('det')">🔍 真机检测</button>
+  <button onclick="reload()">↻ 刷新</button>
+</div>
+
+<div class="wrap">
+  <div class="card">
+    <h2>📷 原始真实画面 <span id="rawT">—</span></h2>
+    <img id="raw" alt="原始画面">
+  </div>
+  <div class="card">
+    <h2>🧩 叠加后（仿真 / 大模型 / 检测） <span id="ovT">—</span></h2>
+    <img id="ov" alt="叠加画面">
+  </div>
+
+  <div class="card">
+    <div class="pane">
+      <div class="kv"><span class="k">规格</span><b id="mode">—</b></div>
+      <div class="kv"><span class="k">框统计</span>
+        <span><span class="lg" style="background:#22c55e"></span>仿真 <b id="nSim">0</b></span>
+        <span><span class="lg" style="background:#00b0ff"></span>大模型 <b id="nVlm">0</b></span>
+        <span><span class="lg" style="background:#eb3c3c"></span>检测 <b id="nDet">0</b></span>
+        <span><span class="lg" style="background:#888"></span>跳过 <b id="nSkip">0</b></span>
+      </div>
+      <div class="kv"><span class="k">帧龄</span><b id="age">—</b></div>
+      <div class="kv"><span class="k">手眼</span><b id="he">—</b></div>
+      <div class="kv"><span class="k">TCP</span><b id="tcp">—</b></div>
+      <div class="kv"><span class="k">跳过原因</span><span id="skip" style="color:#8b98a5;font-size:13.5px">—</span></div>
+      <div class="kv"><span class="k">生成任务</span><span id="genS" style="color:#8b98a5;font-size:13.5px">空闲</span></div>
+      <div class="note">
+        绿色框 = <b>仿真场景投影</b>（物体 3D → 手眼 T_base_cam → 实时 TCP 真值 → 像素，已验 8 位姿 5.2px≈3.1mm）<br>
+        蓝色框 = <b>L5 大模型看图理解</b>　红色框 = <b>真机 YOLO 检测</b><br>
+        三个来源颜色区分、互不覆盖
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="pane">
+      <div class="kv"><span class="k">视频源</span><b id="srcHost">—</b></div>
+      <div class="note" id="hint"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ★ 顶层兜底: 任何未捕获异常立刻写到页面上 —— 否则脚本中途抛错会静默死掉,
+//   表现是"面板永远停在检测中…"而画面正常, 极难查(本项目真踩过: 漏了个 PORT)
+window.addEventListener('error', function(e){
+  var el = document.getElementById('hint');
+  if (el) el.innerHTML = '<div class="warn">⚠ 脚本异常: ' + (e.message || e.type)
+    + '<br>位置: 第 ' + (e.lineno || '?') + ' 行 —— 页面数据可能不刷新</div>';
+});
+// ── 视频源自动判定: 本页由 4060 提供服务 ⇒ 用 location.host 即当前 IP (零硬编码) ──
+//    file:// 打开或换设备时才需要 ?host=<IP>&port=<端口> 覆盖
+const Q = new URLSearchParams(location.search);
+const API = (location.protocol === 'http:' || location.protocol === 'https:')
+  ? `${location.protocol}//${location.host}`
+  : `http://${Q.get('host') || '10.163.146.78'}:${Q.get('port') || '8791'}`;
+const HOST = API.replace(/^https?:\/\//, '');
+let CAM = 'arm', t0 = Date.now();
+
+const $ = id => document.getElementById(id);
+// 帧龄/规格龄说人话 (秒→分→时) —— 规格是"生成那一刻"的, 画面是实时的, 必须分开标
+function fmtAge(s){
+  if(s == null || isNaN(s)) return '—';
+  if(s < 90)    return s.toFixed(1) + 's 前更新';
+  if(s < 5400)  return Math.round(s / 60) + 'min 前更新';
+  return (s / 3600).toFixed(1) + 'h 前更新';
+}
+function toast(msg, ms){
+  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(()=>{ t.style.display='none'; }, ms||4200);
+}
+function setCam(c){
+  CAM = c;
+  $('cArm').className   = c==='arm'   ? 'on' : '';
+  $('cLocal').className = c==='local' ? 'on' : '';
+  $('cBoth').className  = c==='both'  ? 'on' : '';
+  bind();
+}
+function bind(){
+  const arm = (CAM==='arm' || CAM==='both');
+  const loc = (CAM==='local' || CAM==='both');
+  $('raw').src = arm ? `${API}/arm.mjpg?t=${t0}` : (loc ? `${API}/local.mjpg?t=${t0}` : '');
+  $('ov').src  = arm ? `${API}/overlay/arm.mjpg?t=${t0}` : (loc ? `${API}/overlay/local.mjpg?t=${t0}` : '');
+  $('rawT').textContent = arm ? '手臂 D405' : '笔记本';
+  $('ovT').textContent  = arm ? '手臂 D405' : '笔记本';
+  $('srcHost').textContent = HOST;   // HOST 由 API 反推, 不再单留 PORT(删了会静默抛错→脚本死)
+}
+function reload(){ t0 = Date.now(); bind(); toast('已重新连接视频流'); }
+
+async function gen(kind){
+  const btn = {'sim':'gSim','vlm':'gVlm','scene':'gScene','det':'gDet'}[kind];
+  $(btn).disabled = true; $(btn).textContent = '⏳ 生成中…';
+  try{
+    const r = await fetch(`${API}/gen?kind=${kind}`); const j = await r.json();
+    toast(j.msg || '已启动');
+  }catch(e){ toast('❌ 触发失败: 连不上 '+API+'（手机需与 4060 同一局域网）', 7000); }
+  setTimeout(()=>{
+    $(btn).disabled = false;
+    $(btn).textContent = {'sim':'🎯 仿真投影','vlm':'🧠 大模型理解','scene':'📋 场景契约','det':'🔍 真机检测'}[kind];
+    refresh();
+  }, kind==='vlm' ? 9000 : 2500);
+}
+
+async function refresh(){
+  try{
+    const r = await fetch(`${API}/scene.json?t=${Date.now()}`, {cache:'no-store'});
+    const s = await r.json();
+    const inf = (s._overlay_info || {})[CAM] || (s._overlay_info || {})['arm'] || {};
+    const o = inf.origins || {};
+    $('mode').textContent = s.mode || '空';
+    $('nSim').textContent = o.sim || 0;
+    $('nVlm').textContent = o.vlm || 0;
+    $('nDet').textContent = o.det || 0;
+    $('nSkip').textContent = (inf.skipped || []).length;
+    $('age').textContent  = inf.spec_age_s != null ? fmtAge(inf.spec_age_s) : (s.updated_at || '—');
+    $('he').textContent   = inf.tcp_ok ? '已标定 · 实时' : '—';
+    $('tcp').textContent  = inf.tcp_ok ? '实时读取中' : '未读到';
+    $('skip').textContent = (inf.skipped||[]).map(x=>x[0]+'('+x[1]+')').join(' · ') || '—';
+    $('genS').textContent = (s._gen && s._gen.busy) ? ('跑: '+s._gen.busy) : ((s._gen && s._gen.last) || '空闲');
+    $('link').className = 'chip ok'; $('link').textContent = '已连通';
+    $('hint').innerHTML = '';
+  }catch(e){
+    $('link').className = 'chip bad'; $('link').textContent = '未连通';
+    $('hint').innerHTML = '<div class="warn">连不上视频流 <code>'+API+'</code><br>' +
+      '手机需与 4060 电脑在<b>同一局域网</b>（产线 WiFi）。<br>' +
+      '若网段变了，用 <code>?host=&lt;新IP&gt;</code> 打开本页即可。<br>' +
+      '4060 上确认服务在跑：<code>pgrep -f cam_live_stream</code></div>';
+  }
+}
+setCam('arm'); refresh();
+setInterval(refresh, 2500);
+</script>
+</body>
+</html>

@@ -139,3 +139,51 @@ p_cam   --(相机内参 K, 真机 camera_info 实测)-->  (u, v) 像素
   验证到 5.2px，但要求 1~2° 的精密抓取还需补采（yaw=0 附近 + 更充分倾角组合，**需动机器人**）。
 - **`plane_z` 未标定**：反投影回退路径（感知→引擎）暂不可用；正投影（本功能）不需要 plane_z。
 - **笔记本相机无叠加框**：`local` 路当前只有原始流（`/overlay` 页可切换查看，暂无来源生成器）。
+
+---
+
+## 📱 进 Z-MAX APP (2026-09-27 追加)
+
+手机上的两个入口都指向**同一个页面**：`http://<4060-IP>:8791/app`（手机版叠加页）。
+
+### 为什么这个页面由 4060 自己提供，而不是放到站点上
+站点 `datadrive.world` 是 **HTTPS**。页面里再去取 `http://…:8791/…` 的 MJPEG 视频流，
+浏览器内核会按**混合内容 (mixed content)** 直接拦死 —— 页面能开、画面永远是黑的。
+所以叠加页必须与视频流**同源**（都是 4060 的 http:8791）。手机需与 4060 在**同一局域网**。
+
+### 入口一：APK 桌面图标（不依赖站点，装完即可用）
+`~/state3d_app` → `ZMAX-3D-AOI.apk` / `ZMAX-State3D.apk` 同一个包 `com.zmax.state3d.aoi`，
+含**两个 LAUNCHER 入口**：
+
+| 图标 | Activity | 打开 |
+|---|---|---|
+| Z-MAX 3D 全链 | `MainActivity` | `https://datadrive.world/state-3d.html` |
+| **Z-MAX 场景叠加** | `OverlayActivity` | `http://10.163.146.78:8791/app` |
+
+- 换 IP/机器：改 `OverlayActivity.java` 里的 `OVERLAY_URL` 一行 → `bash build_aoi.sh` 重打。
+- 该工程 manifest 已带 `usesCleartextTraffic="true"`（否则 Android 9+ 直接拒 http）。
+
+### 入口二：3D 页工具条按钮（需部署到站点才可见）
+`tools/web/state-3d.html` 工具条、`🔄 新仿真` 右边加了 **`🧩 场景叠加`**，点击**顶层跳转**
+到 4060 的叠加页（跳转属顶层导航，不受混合内容限制）。
+顶部常量 `OVERLAY_URL` 是唯一要改的地方，也支持 `?ov=http://新IP:8791/app` 覆盖。
+
+部署（需要 ECS 密码，仅老倪现场能提供，刻意不入库）：
+```bash
+export ZMAX_ECS_PW='***'
+sshpass -p "$ZMAX_ECS_PW" scp tools/web/state-3d.html root@39.102.211.79:/www/wwwroot/datadrive.world/
+sshpass -p "$ZMAX_ECS_PW" ssh root@39.102.211.79 'chmod 644 /www/wwwroot/datadrive.world/state-3d.html'
+```
+
+### 踩过的坑
+1. **404 的 lib 会连锁打死整页** —— `state-3d.html` 从站点 `/lib/three/three.min.js` 取 three.js；
+   取不到 ⇒ `new THREE.WebGLRenderer` 顶层抛错 ⇒ `window.onerror` → `showErr()`。
+2. **`showErr` 自己有 TDZ 隐患** —— 它引用的 `errBox` 是**第 437 行那批 `const`** 声明的；
+   在声明前调用会抛 `Cannot access 'errBox' before initialization`，**把原错误吞掉**，
+   整页脚本静默死（`btnRun`/`traj` 全未定义、按钮点了没反应）。已把 `showErr/setLive/showResult`
+   改成**就地查 DOM**，不再依赖那批 const（行为不变）。
+3. **叠加页脚本中途抛错会静默死** —— 面板永远停在"检测中…"而画面正常。
+   已加 `window.addEventListener('error')` 把异常直接显示到页面上。
+   （真踩过：重构时删了 `PORT` 常量，`bind()` 里还在用 ⇒ `setCam()` 抛错、脚本死。）
+4. **`/gen` 卡死会让 4 个按钮全变哑巴** —— VLM 走网络最坏 300s，`busy` 标志永久占位。
+   已加 `_GEN_STALE_S=360s`：超时判卡死、自动解锁并如实报出"上次占了多久"。

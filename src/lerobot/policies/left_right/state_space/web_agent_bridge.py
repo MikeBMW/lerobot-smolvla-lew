@@ -150,7 +150,7 @@ class WebAgentBridge:
                 "count_all": _sh("ls reports/ | wc -l", 8).strip()}
 
     def f_memory(self, arg: str = "") -> dict:
-        """记忆层: Hermes 记忆/用户档 + 工程记忆(md) 条数与最新时间"""
+        """记忆层: Hermes 记忆/用户档 + 工程记忆(md) 条数与最新时间 + 共享快照要点"""
         mem = os.path.expanduser("~/.hermes/memories")
         md = sorted([f for f in os.listdir(os.path.join(REPO, "docs", "memory"))
                      if f.endswith(".md")]) if os.path.isdir(os.path.join(REPO, "docs", "memory")) else []
@@ -161,6 +161,58 @@ class WebAgentBridge:
             out["memory_chars"] = len(open(p, encoding="utf-8").read())
         except Exception:
             pass
+        # 机器人分层记忆 (data/memory_layers.json) —— @xspace 势场侧消费的真源
+        try:
+            ml = json.load(open(os.path.join(REPO, "data", "memory_layers.json"), encoding="utf-8"))
+            out["robot_memory_layers"] = {k: (v.get("count") if isinstance(v, dict) else v)
+                                          for k, v in ml.items()}
+            out["robot_memory_updated"] = ml.get("updated")
+        except Exception:
+            pass
+        # 共享快照要点: 供 web/xspace 直接读, 不必去翻 77 个 md
+        try:
+            p = os.path.join(REPO, "docs", "memory", "hermes-jingjing-memory-latest.md")
+            txt = open(p, encoding="utf-8").read()
+            out["shared_snapshot_chars"] = len(txt)
+            out["shared_snapshot_head"] = txt[:420]
+        except Exception:
+            pass
+        return out
+
+    def f_overlay(self, arg: str = "") -> dict:
+        """场景叠加 (只读): 真实视频流上仿真/大模型/检测框的当前规格与链路健康"""
+        out = {"readonly": True, "actuation": "无 (纯读状态)"}
+        try:
+            s = json.load(open(os.path.join(REPO, "data", "scene", "overlay_spec.json"),
+                               encoding="utf-8"))
+            cams = s.get("cameras") or {}
+            out["mode"] = s.get("mode")
+            out["updated_at"] = s.get("updated_at")
+            out["by_camera"] = {c: {"boxes": len((v or {}).get("boxes") or []),
+                                    "by_origin": (v or {}).get("by_origin")}
+                                for c, v in cams.items()}
+            out["sources"] = s.get("sources")
+        except Exception as e:                                   # noqa: BLE001
+            out["spec"] = f"未生成 ({type(e).__name__})"
+        try:
+            o = json.load(open(os.path.join(REPO, "data", "scene", "objects3d.json"),
+                               encoding="utf-8"))
+            out["objects3d"] = [{"name": x.get("name"),
+                                 "base_mm": [round(v * 1000, 1) for v in x.get("center", [])],
+                                 "src": (x.get("source") or "")[:44]}
+                                for x in (o.get("objects") or [])][:8]
+            out["objects3d_coord"] = o.get("coord")
+        except Exception:
+            pass
+        try:
+            st = _sh("curl -s -m 6 http://127.0.0.1:8791/stats", 12)
+            j = json.loads(st)
+            out["stream_fps"] = {k: v.get("fps") for k, v in j.items()}
+            out["stream_age_s"] = {k: v.get("age_s") for k, v in j.items()}
+        except Exception:
+            out["stream"] = "视频流未就绪"
+        out["note"] = ("投影链 = 物体3D(base) → 手眼 T_base_cam → 实时 TCP 真值 → 像素; "
+                       "三来源 sim/vlm/det 颜色区分不覆盖; 已验 8 位姿 5.2px≈3.1mm")
         return out
 
     def f_skills(self, arg: str = "") -> dict:
@@ -212,7 +264,8 @@ class WebAgentBridge:
     def f_help(self, arg: str = "") -> dict:
         """能力清单: 远程可调功能 + 用法"""
         return {"functions": {k: (self.FUNCS[k][1].__doc__ or "").strip().splitlines()[0] for k in self.FUNCS},
-                "usage": "提示词里带功能名或关键词即可, 例: '状态' / '画布节点数' / '仿真 60' / 'AOI 判决' / '推飞书: 现场已就绪'"}
+                "usage": "提示词里带功能名或关键词即可, 例: '状态' / '画布节点数' / '仿真 60' / "
+                         "'AOI 判决' / '场景叠加' / '记忆' / '推飞书: 现场已就绪'"}
 
     # key → (匹配关键词, 函数)
     FUNCS: dict = {}
@@ -287,8 +340,10 @@ WebAgentBridge.FUNCS = {
     "status":       (["状态", "健康", "服务", "链路", "status"], WebAgentBridge.f_status),
     "canvas":       (["画布", "节点", "连线", "构图", "canvas"], WebAgentBridge.f_canvas),
     "reports":      (["报告", "台账", "最近产物", "reports"], WebAgentBridge.f_reports),
-    "memory":       (["记忆", "memory", "工程记忆"], WebAgentBridge.f_memory),
+    "memory":       (["记忆", "memory", "工程记忆", "分层记忆"], WebAgentBridge.f_memory),
     "skills":       (["技能", "skill", "技能库"], WebAgentBridge.f_skills),
+    "overlay":      (["场景叠加", "叠加", "overlay", "仿真框", "边界框", "深度地图", "投影"],
+                     WebAgentBridge.f_overlay),
     "sim":          (["仿真", "sim", "rollout", "自检"], WebAgentBridge.f_sim),
     "net":          (["网络", "带宽", "dns", "延迟"], WebAgentBridge.f_net),
     "aoi":          (["aoi", "外观", "金手指", "判决", "裁减"], WebAgentBridge.f_aoi),
