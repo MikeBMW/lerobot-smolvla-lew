@@ -259,3 +259,23 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
 - 高风险 A8(真机试抓取 S0~S5) A9(6N 力控插入) → 先批计划再单独授权
 
 **新发现的真缺口 (如实)**: state_space 策略在仿真 0/5 插入成功 → 训练侧待排查 (非管线 0%)
+
+## 2026-09-26 · 会话十: state_space 0% 根因 = **评测口径假0%** (非策略能力结论)
+
+**链路 (逐层排除, 每步有实证)**:
+| 步 | 检查 | 结果 |
+|---|---|---|
+| 1 | 产物是否存在 | `outputs/train/state_space_mw5w/checkpoints/030000` 在 (last→030000) · 两棵树都有 → **非缺产物** |
+| 2 | 装载 | `load_policy("state_space")` → LeftRightPolicy 成功 → **非装载失败** |
+| 3 | 配置真源 | `type=left_right` · `input_features=observation.state[39]` · `output=action[4]` · **无图像** · `normalization_mapping=None` |
+| 4 | 引擎真跑 | min 孔距 0.351/0.359/0.418m, 未抬起 → 表面 0/3 |
+| 5 | **口径对照 (决定性)** | 引擎 L3 路径 (state_space_sim_real.py:1249-1272) 用的是 **`visual39`(引擎自建) + `self._l3_pre(batch)` 预处理器 + 128×128 图 + task 串**; 而 `rollout_peg_check.py:65-79` 只喂 **裸 env obs + 无预处理** |
+| 6 | 失败指纹 | 直接喂裸 39D → 模型首层收到 **43 维 (mat1 64x43 vs mat2 39x512)** → 口径不同源被实证 |
+
+**结论**: 评测 harness 与训练口径不同源 (缺 `_l3_pre` 预处理 + visual39 构造 + 图像尺寸/task 串约定)
+⇒ **0% 是假0%, 不能作为"策略弱"的结论**; 策略的真实能力**尚未被测**。
+
+**正确的修法 (下一步)**: `rollout_peg_check.py` 复用引擎 L3 的 batch 构造 (visual39 + `_l3_pre` + 128×128 + task 串),
+或直接以引擎闭环 (`RealStateSpaceSim` 的 L3 路径) 为评测口径 → 再报成功率。
+**教训 (与既有铁律一致)**: 口径必须训练同源零回退 —— 评测脚本自己拼 batch = 必然不同源。
+工具: `tools/diag_state_space_rollout.py` · `tools/diag_policy_scale.py` (尺度/相关/形状三重对照)
