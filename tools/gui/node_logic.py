@@ -3445,6 +3445,43 @@ def node_dsvl(ctx):
         return False
 
 
+def node_hil(ctx):
+    """🙋 HIL 人机在环 · 状态↔指示 — 状态空间状态发 ECS web, 并取回人的指示 (2026-09-26)
+
+    真源: src/lerobot/policies/left_right/state_space/hil_bridge.py
+    通道: /api/relay/hil/state (上行) + /agent/{prompt,reply} (下行, from=hil_web/hil_bridge)
+    红线: 动作类指示一律拒答并记为待授权; 本节点不下发任何真机动作
+    网页: https://datadrive.world/hil.html (hermes 形式聊天界面)
+    """
+    log = ctx.get("log")
+    try:
+        import json as _j
+        import sys as _s
+        import urllib.request as _u
+        for _x in (_SS_DIR, os.path.abspath(os.path.join(_SS_DIR, "..", "..", "..", ".."))):
+            if _x not in _s.path:
+                _s.path.insert(0, _x)
+        from lerobot.policies.left_right.state_space.hil_bridge import build_snapshot, poll_instructions
+        snap = build_snapshot()
+        req = _u.Request("https://datadrive.world/api/relay/hil/state", data=_j.dumps(snap).encode(),
+                         headers={"Content-Type": "application/json"}, method="POST")
+        with _u.urlopen(req, timeout=15) as r:
+            pub = _j.loads(r.read().decode() or "{}")
+        inst = poll_instructions()
+        if log:
+            s2 = snap["snapshot"]
+            log("🙋 HIL 人机在环: 状态已上报(ok=%s) · 阶段=%s 帧龄=%ss · 事件头 %s"
+                % (pub.get("ok"), s2.get("stage"), s2.get("frame_age_s"),
+                   {k: v for k, v in (s2.get("events") or {}).items() if not k.startswith("_")}))
+            log("   ← 人的指示: 处理 %d 条 %s" % (inst.get("handled", 0), inst.get("items") or ""))
+            log("   网页 https://datadrive.world/hil.html (只读状态+软先验指示; 动作类拒答)")
+        return True
+    except Exception as e:
+        if log:
+            log("❌ HIL 桥执行失败: %s: %s" % (type(e).__name__, str(e)[:120]))
+        return False
+
+
 def node_web_agent(ctx):
     """🌐 Web 智能体桥 · 远程提示词 — 拉取 web agent 提示词 → **只读功能白名单**派发 → 回执
 
@@ -3680,6 +3717,11 @@ _reg("n_dsvl", ["DeepSeek", "视觉语言", "VLM 判读"], "🧿 DeepSeek-V4-Fla
 _EXTERNAL_LOC["n_web_agent"] = (os.path.join(_SS_DIR, "web_agent_bridge.py"), 1, "class WebAgentBridge")
 _reg("n_web_agent", ["Web 智能体桥", "远程提示词", "web agent", "web_agent", "网页智能体"],
      "🌐 Web 智能体桥 · 远程提示词 — web agent 提示词 → 只读功能派发(状态/画布/报告/记忆/技能/仿真/网络/AOI/真机只读/飞书) → 回执到 web; 动作类提示词一律拒答 (源码 web_agent_bridge.py)", node_web_agent)
+# 🙋 2026-09-26 老倪: L5「HIL 人机在环」— 状态空间状态 ↔ 浏览器里的指示 (hermes 形式界面)
+_EXTERNAL_LOC["n_hil"] = (os.path.join(_SS_DIR, "hil_bridge.py"), 1, "build_snapshot")
+_reg("n_hil", ["HIL", "人机在环", "human in the loop", "hil", "在环"],
+     "🙋 HIL 人机在环 · 状态↔指示 — 状态→ECS web(hil.html) + 收人的指示; 动作类拒答 (源码 hil_bridge.py)",
+     node_hil)
 _reg("ss_llm",   ["长程序列规划器", "任务规划器"], "🧠 任务规划器 — 指令→技能Token序列 (242条原子技能, 规则校验) → 状态机; 双击=规划演示 (源码 planner.py TaskPlanner)", node_ss_llm)
 _reg("ss_reason", ["异常推理器"], "🔍 异常推理器 — 连续否决/阶段卡死→异常分类+恢复建议; 双击=诊断演示 (源码 planner.py ExceptionReasoner)", node_ss_reason)
 _reg("ss_skill", ["技能序列编排", "技能编排器"], "🛠 技能编排器 — 新型号规格→新技能序列+力阈值/节拍; 双击=编排演示 (源码 planner.py SkillComposer)", node_ss_skill)

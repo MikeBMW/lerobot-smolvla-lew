@@ -171,7 +171,15 @@ CAPABILITY_LEVELS = {
              "真源 src/lerobot/policies/left_right/state_space/web_agent_bridge.py · "
              "画布节点 🌐 Web 智能体桥 · 远程提示词 (L5, DeepSeek 左侧) · "
              "取证 tools/verify_web_agent_node.py", "groups": []},
-        ],
+
+        {
+            "fid": "L5-C02",
+            "name": "HIL 人机在环 (状态→web↔指示)",
+            "desc": "把状态空间状态(分层/阶段/事件预测/资源)发 ECS web(hil.html, hermes 形式), "
+                    "并把人在浏览器给的指示取回工程; 通道 /api/relay/hil/state + /agent/*; "
+                    "红线: 动作类指示一律拒答并记待授权; 取证 verify_hil_chain 17/17",
+            "groups": [],
+        },        ],
     },
 }
 

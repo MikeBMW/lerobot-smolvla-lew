@@ -190,3 +190,21 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
 1. **训练口径必须与运行流同源**: 造数据管线(l5_gen_v6)训的头在引擎闭环里 AUC 0.238 (低于随机); 换成引擎 tr 同源训的头 → 闭环 AUC 0.997~1.000。**同一颗头, 只换训练数据来源, 差 4 倍**。
 2. **跨域不可假定**: 同源头在 l5_gen_v5 上 0/6 (跨域列全 ❌) —— 两个生成分布互不可迁移, 与"每个域各自训"结论一致 (前一版 v6→v5 能迁移是因为两者同属造数据管线)。
 工具: `collect_cog_engine_trace.py` · `samesource_loop_pipeline.sh` (采集→CV→落 ckpt→闭环复验, 一条命令)
+
+## 2026-09-26 · 会话八: 画布新增「🙋 HIL 人机在环」节点 → ECS web 对话界面 (老倪指派)
+
+**需求**: 「在状态空间工程增加 HIL Human in the loop 节点, 向 ECS web 发送状态空间状态; 我在 ECS 的浏览器上能给出要求; 就用 hermes 的标准浏览器的形式」
+
+| 层 | 交付 | 取证 |
+|---|---|---|
+| 画布 | **n_hil** `🙋 HIL 人机在环 · 状态↔指示` @ (2171,554) 230×68, L5 行带 DeepSeek 右侧空位; 入线 1 (DeepSeek→HIL 展示) 出线 1 (HIL→L3 规划); 画布 88 节点/167 连线 | 六条硬断言构图 (`canvas_add_hil_node.py`) + `verify_hil_chain` ① |
+| 运行时 | `src/.../state_space/hil_bridge.py`: 上行=真值快照(真机 tap 的 obs7/帧龄 + **真调事件头 engine_v2 出 6 概率** + 四层健康 + 资源 + 画布 + 取证); 下行=轮询 `/agent/prompt` 只认 `from=hil_web` → 指示映射 (解释/状态/阶段=/暂停/恢复/待办) → 回 `/agent/reply`; **动作类红线拒答 + 审计** | `verify_hil_chain` ③④⑤ |
+| 通道 | ECS 中转**纯追加** `/hil/state` (POST 上报 append-only + GET 回读, `?history=N`); 并修 `/agent/reply` **保留客户端 from/action**(原来写死 "L5 状态空间节点" → HIL 网页看不到自己的回执) | 回归: 既有 status/orin/agent/packages 全 200 |
+| 网页 | `https://datadrive.world/hil.html` (8.2KB, hermes 形式: 左侧=状态空间核心思想(L2→L5 分层灯/阶段/6 事件概率条/资源/取证), 右侧=对话区(我↔工程), 输入框+快捷"解释") | `verify_hil_chain` ⑥ |
+| 接线 | node_logic `_reg("n_hil",...)` + `_EXTERNAL_LOC` → hil_bridge.py + `node_hil(ctx)` 真执行函数; 能力清单 **L5-C02** | `verify_hil_chain` ② |
+| 常驻 | `zmax-hil-bridge.service` (enabled+active, 每 5s 上报 + 收指示) | `verify_hil_chain` ⑦ |
+
+**全链取证 17/17** (画布4 · 接线2 · 上行4 · 下行2 · 红线2 · 网页2 · 服务1) — `reports/hil_chain_verify_20260926_104846.json`
+**防串台**: 既有 web 智能体桥也加了 `from=hil_web` 跳过, 避免同一条指示被两处回答 (实测修前两条都答)。
+
+**新坑记录**: ① 远端 `pkill -f zmax_relay.py` 会匹配到**自己的 ssh 命令行**→ 自杀且真进程没死 → 改**按端口占用 PID** 精确重启 (`ss -lntp | awk ':39053'`) ② 中转把客户端 `from` 写死 → 多消费者场景必须保留来源字段, 否则前端无法区分回执归属。

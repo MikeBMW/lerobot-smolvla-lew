@@ -2128,6 +2128,45 @@
    "y": 554,
    "w": 230,
    "h": 68
+  },
+  {
+   "id": "n_hil",
+   "type": "node",
+   "name": "🙋 HIL 人机在环 · 状态↔指示",
+   "x": 2171,
+   "y": 554,
+   "w": 230,
+   "h": 68,
+   "icon": "🙋",
+   "color": "#39d353",
+   "inputs": [
+    {
+     "id": "in1",
+     "name": "L5 判读/建议"
+    },
+    {
+     "id": "in2",
+     "name": "工程状态"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "name": "人工指示 → 规划"
+    }
+   ],
+   "params": {
+    "state_space": true,
+    "hil": true,
+    "web": true,
+    "transport": "ECS 中转 /api/relay/{hil/state, agent/prompt, agent/reply}",
+    "push_s": 5,
+    "readonly": true,
+    "web_page": "https://datadrive.world/hil.html",
+    "source": "src/lerobot/policies/left_right/state_space/hil_bridge.py",
+    "source_symbol": "class HilBridge",
+    "desc": "状态空间状态→ECS web(浏览器, hermes 形式)展示核心思想; 人的指示经浏览器回灌工程; 红线: 不下发真机动作"
+   }
   }
  ],
  "links": [
@@ -3450,6 +3489,22 @@
    "f_port": "out1",
    "t_port": "in3",
    "label": "远程提示词意图 → L5 场景理解"
+  },
+  {
+   "id": "lkhil_dsvl",
+   "f": "n_dsvl",
+   "t": "n_hil",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "L5 判读/建议 → 人机在环展示"
+  },
+  {
+   "id": "lkhil_ssllm",
+   "f": "n_hil",
+   "t": "ssllm",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "人工指示 → L3 规划/编排"
   }
  ],
  "params_note": ""

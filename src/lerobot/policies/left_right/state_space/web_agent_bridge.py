@@ -244,6 +244,8 @@ class WebAgentBridge:
     def poll_once(self, timeout: float = 12.0) -> dict:
         got = _get(f"/agent/prompt?after={self.cursor}", timeout)
         items = got.get("prompts", []) or []
+        # 🐛 2026-09-26: 跳过 HIL 网页专属指示 (from=hil_web) → 由 n_hil/hil_bridge 处理, 避免同一个问题两处回答
+        items = [x for x in items if str((x or {}).get("from") or "") != "hil_web"]
         done = []
         for it in items:
             r = self.dispatch(it.get("text", ""))

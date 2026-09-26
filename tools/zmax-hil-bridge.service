@@ -1,0 +1,17 @@
+[Unit]
+Description=Z-MAX HIL 人机在环桥 (状态空间状态 → ECS web hil.html; 收人的指示)
+Documentation=https://datadrive.world/hil.html
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zmax_rel
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/zmax_rel/gui-venv311/bin/python /home/ubuntu/zmax_rel/tools/hil_bridge.py --watch --interval 5
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

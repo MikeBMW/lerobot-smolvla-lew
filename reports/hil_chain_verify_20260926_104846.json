@@ -1,0 +1,29 @@
+{
+ "ts": "2026-09-26 10:48:46",
+ "judges_pass": "17/17",
+ "snapshot_keys": [
+  "canvas",
+  "events",
+  "evidence",
+  "frame_age_s",
+  "idea",
+  "layers",
+  "obs7",
+  "obs_ts",
+  "resources",
+  "stage"
+ ],
+ "events": {
+  "gc_5": 0.0,
+  "rz_5": 0.9309,
+  "mh_5": 1.0,
+  "gc_10": 0.0,
+  "rz_10": 1.0,
+  "mh_10": 1.0
+ },
+ "pub": {
+  "ok": true,
+  "seq": 24,
+  "bytes": 2114
+ }
+}
