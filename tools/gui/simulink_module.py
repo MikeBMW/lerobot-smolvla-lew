@@ -1105,11 +1105,34 @@ except Exception:
 
 # 🧮 状态空间模型组件区 (2026-08-18 老倪: 画布全部节点 → 库中一一对应,
 #   数据源唯一 = flows/state_space_obs.json — 改画布即同步库, 杜绝手抄漂移)
+def _flows_path(name):
+    """flows/ 真源多候选定位 —— 修「状态空间模型画布加载失败」(2026-09-26 老倪报)
+
+    根因: 画布/库加载原来只拼 `_repo_root_path()/flows/<name>`。仓库被并行线切到别的分支时
+    (实测 /home/ubuntu/lerobot-smolvla-lew 在 mac-hw 分支) 那个检出**没有 flows/ 目录**
+    → 状态空间画布 load_flow_file 直接失败 → 弹「状态空间模型画布加载失败」(用户看不到画布)。
+    修法: 环境变量 > 本检出 > main worktree > 默认检出 > 打包 _MEIPASS, 命中即用 (找不到仍返回原路径, 零回退)。
+    """
+    if getattr(sys, "frozen", False):
+        _mp = getattr(sys, "_MEIPASS", "") or ""
+        cands = [os.path.join(_mp, "flows", name)]
+    else:
+        cands = [os.path.join(_repo_root_path(), "flows", name),
+                 os.path.join("/home/ubuntu/zmax_rel", "flows", name),
+                 os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", "flows", name)]
+    env = os.environ.get("ZMAX_FLOWS_DIR") or os.environ.get("ZMAX_FLOWS")
+    if env:
+        cands.insert(0, os.path.join(env, name))
+    for c in cands:
+        if c and os.path.isfile(c):
+            return c
+    return cands[0]
+
+
 def _load_state_space_library_group():
     """状态空间画布 14 节点 → LIBRARY 一组 (与画布 JSON 同一数据源)"""
     import os as _os, json as _j
-    p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))),
-                      "flows", "state_space_obs.json")
+    p = _flows_path("state_space_obs.json")
     try:
         data = _j.load(open(p, encoding="utf-8"))
         nodes = data.get("nodes", [])
@@ -11628,7 +11651,7 @@ class SimulinkModule(QWidget):
         执行层: 机器人执行器 → 物理世界 → 卡尔曼反馈闭环 (z_k → 状态校正)
         """
         self.clear()
-        flow = os.path.join(self._repo_root(), "flows", "state_space_obs.json")
+        flow = _flows_path("state_space_obs.json")          # v5.15.8: 多候选定位 (修"画布加载失败")
         if not os.path.exists(flow) or not self.load_flow_file(flow, confirm=False):
             self._qmsg_info("🧮 状态空间", "状态空间模型画布加载失败")
             return
