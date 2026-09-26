@@ -1,0 +1,22 @@
+[Unit]
+Description=Z-MAX Orin read-only telemetry uplink (A1, 2026-09-26 authorized)
+Documentation=https://datadrive.world/hil.html
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tashan
+WorkingDirectory=/home/tashan
+Environment=PYTHONUNBUFFERED=1
+# 只读遥测: 5s 心跳; 机器人状态(只读订阅)每 30s 采一次
+ExecStart=/usr/bin/python3 /home/tashan/zmax_orin_uplink.py --watch --interval 5 --robot-interval 30
+Restart=always
+RestartSec=10
+# 资源护栏: 别影响产线 (CPU 上限 15%, 内存 200M, 低优先级)
+CPUQuota=15%
+MemoryMax=200M
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
