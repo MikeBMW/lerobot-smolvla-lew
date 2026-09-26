@@ -321,19 +321,32 @@
     "w_ff": 0.3,
     "desc": "[基础·分段小模型] 前馈加速器 (原左脑 MLP): 快路径 — obs→建议动作 u_ff (权重 30%)",
     "source": "src/lerobot/policies/left_right/state_space/parallel.py",
-    "source_symbol": "class FeedforwardAccelerator",
-    "_port_labels": {
-     "out1": "out1"
-    }
+    "source_symbol": "class FeedforwardAccelerator"
    },
    "inputs": [
-    "in1",
-    "in2",
-    "in3",
+    {
+     "id": "in1",
+     "label": "DiT action",
+     "dtype": "any"
+    },
+    {
+     "id": "in2",
+     "label": "标杆 u_ff",
+     "dtype": "any"
+    },
+    {
+     "id": "in3",
+     "label": "obs 43D (前馈主输入)",
+     "dtype": "any"
+    },
     "in1"
    ],
    "outputs": [
-    "out1"
+    {
+     "id": "out1",
+     "label": "out1",
+     "dtype": "any"
+    }
    ],
    "actions": []
   },
@@ -420,8 +433,8 @@
    "id": "sssched",
    "type": "system",
    "name": "🧭 动作调制器",
-   "x": 8900,
-   "y": 5020,
+   "x": 13166,
+   "y": 4832,
    "w": 280,
    "icon": "🧭",
    "color": "#FF6B6B",
@@ -431,25 +444,58 @@
     "action_modulator": true,
     "desc": "[基础·分段小模型] 动作调制器 (原状态机, 握有否决权): 6阶段状态机 + 否决权 + 按阶段动作融合 (力控插入)",
     "source": "src/lerobot/policies/left_right/state_space/cognition.py",
-    "source_symbol": "def decide",
-    "_port_labels": {
-     "out1": "out1"
-    }
+    "source_symbol": "def decide"
    },
    "inputs": [
-    "in1",
-    "in2",
-    "in3",
-    "in4",
-    "in5",
-    "in6",
-    "in7",
-    "in8",
+    {
+     "id": "in1",
+     "label": "任务Token序列 (LLM)",
+     "dtype": "any"
+    },
+    {
+     "id": "in2",
+     "label": "恢复建议 (异常推理)",
+     "dtype": "any"
+    },
+    {
+     "id": "in3",
+     "label": "工作空间势场 (总装记忆)",
+     "dtype": "any"
+    },
+    {
+     "id": "in4",
+     "label": "流程势场 (L3记忆)",
+     "dtype": "any"
+    },
+    {
+     "id": "in5",
+     "label": "标杆直通建议 (L2记忆)",
+     "dtype": "any"
+    },
+    {
+     "id": "in6",
+     "label": "质量门 (AOI)",
+     "dtype": "any"
+    },
+    {
+     "id": "in7",
+     "label": "u_ff 前馈建议",
+     "dtype": "any"
+    },
+    {
+     "id": "in8",
+     "label": "contact+残差 (状态校正器)",
+     "dtype": "any"
+    },
     "in6",
     "in7"
    ],
    "outputs": [
-    "out1"
+    {
+     "id": "out1",
+     "label": "out1",
+     "dtype": "any"
+    }
    ],
    "actions": []
   },
@@ -457,8 +503,8 @@
    "id": "sslimit",
    "type": "system",
    "name": "🛡 安全执行边界 (饱和限幅)",
-   "x": 9250,
-   "y": 5142,
+   "x": 13666,
+   "y": 4832,
    "w": 280,
    "icon": "🛡",
    "color": "#d29922",
@@ -1071,8 +1117,8 @@
    "actions": [],
    "w": 280,
    "h": 110,
-   "x": 9889,
-   "y": 5142,
+   "x": 15166,
+   "y": 5266,
    "id": "sssk1",
    "name": "① 接近 · SK01",
    "params": {
@@ -1326,20 +1372,37 @@
     "decoder": true,
     "state_space": true,
     "source": "src/lerobot/policies/smolvla_lew/action_head.py",
-    "source_symbol": "class SmolVLALewActionHead",
-    "_port_labels": {
-     "out1": "out1"
-    }
+    "source_symbol": "class SmolVLALewActionHead"
    },
    "inputs": [
-    "in1",
-    "in2",
-    "in3",
-    "in4",
+    {
+     "id": "in1",
+     "label": "潜空间 z (VLM)",
+     "dtype": "any"
+    },
+    {
+     "id": "in2",
+     "label": "L4 条件 (INTACT 解码器)",
+     "dtype": "any"
+    },
+    {
+     "id": "in3",
+     "label": "接触流形坐标",
+     "dtype": "any"
+    },
+    {
+     "id": "in4",
+     "label": "性能流形代价",
+     "dtype": "any"
+    },
     "in2"
    ],
    "outputs": [
-    "out1"
+    {
+     "id": "out1",
+     "label": "out1",
+     "dtype": "any"
+    }
    ]
   },
   {
@@ -2001,8 +2064,8 @@
    "id": "n_moveit",
    "type": "model",
    "name": "🧭 MoveIt 运动规划 · SDK 直驱桥(Orin)",
-   "x": 12819,
-   "y": 5926,
+   "x": 13986,
+   "y": 4832,
    "w": 230,
    "h": 68,
    "desc": "MoveIt2 规划 (IK/碰撞/轨迹) + 双执行后端: ① Orin SDK 桥 (xCoreSDK 直连控制器 192.168.23.160, 不依赖 ROS2 栈, 实测 3~7ms/次) ② 兼容现有 ROS2 SRV (/move_pose 等)。安全闸在 L2 收口: Δ守卫/向下限幅/dry-run 默认。源码 src/lerobot/arm/arm_control.py · 桥: Orin zmax-arm-sdk-bridge.service",
@@ -2396,6 +2459,70 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "阶段切换与动作融合"
+  },
+  {
+   "id": "lkssk09",
+   "f": "sssk1",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
+  },
+  {
+   "id": "lkssk10",
+   "f": "sssk2",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
+  },
+  {
+   "id": "lkssk11",
+   "f": "sssk3",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
+  },
+  {
+   "id": "lkssk12",
+   "f": "sssk4",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
+  },
+  {
+   "id": "lkssk13",
+   "f": "sssk5",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
+  },
+  {
+   "id": "lkssk14",
+   "f": "sssk6",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
+  },
+  {
+   "id": "lkssk15",
+   "f": "sssk7",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
+  },
+  {
+   "id": "lkssk16",
+   "f": "sssk8",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "技能执行指令"
   },
   {
    "id": "lks11",
@@ -2902,6 +3029,14 @@
    "label": "恢复建议"
   },
   {
+   "id": "lkrs_ssdec_ssact",
+   "f": "ssdec",
+   "t": "ssact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "action 直通执行端 (端到端快路径)"
+  },
+  {
    "id": "lkrs_ssinnov_sssched",
    "f": "ssinnov",
    "t": "sssched",
@@ -3230,123 +3365,18 @@
    "label": "人工指示 → L3 规划/编排"
   },
   {
+   "f": "sslimit",
+   "t": "n_moveit",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "限幅后目标 → 规划"
+  },
+  {
    "f": "n_moveit",
    "t": "ssact",
    "f_port": "out1",
    "t_port": "in1",
    "label": "轨迹 → 执行 (SDK桥 / ROS2 SRV)"
-  },
-  {
-   "f": "sssk1",
-   "t": "n_moveit",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "技能轨迹 → MoveIt 规划/执行"
-  },
-  {
-   "f": "sssk2",
-   "t": "n_moveit",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "技能轨迹 → MoveIt 规划/执行"
-  },
-  {
-   "f": "sssk3",
-   "t": "n_moveit",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "技能轨迹 → MoveIt 规划/执行"
-  },
-  {
-   "f": "sssk4",
-   "t": "n_moveit",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "技能轨迹 → MoveIt 规划/执行"
-  },
-  {
-   "f": "sssk5",
-   "t": "n_moveit",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "技能轨迹 → MoveIt 规划/执行"
-  },
-  {
-   "f": "sssk6",
-   "t": "n_moveit",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "技能轨迹 → MoveIt 规划/执行"
-  },
-  {
-   "f": "sssk7",
-   "t": "n_moveit",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "技能轨迹 → MoveIt 规划/执行"
-  },
-  {
-   "f": "sssk8",
-   "t": "n_moveit",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "技能轨迹 → MoveIt 规划/执行"
-  },
-  {
-   "f": "sslimit",
-   "t": "sssk2",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ② 对位 · SK0"
-  },
-  {
-   "f": "sslimit",
-   "t": "sssk3",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ③ 下降 · SK0"
-  },
-  {
-   "f": "sslimit",
-   "t": "sssk4",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ④ 抓取 · SK0"
-  },
-  {
-   "f": "sslimit",
-   "t": "sssk5",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ⑤ 抬起 · SK0"
-  },
-  {
-   "f": "sslimit",
-   "t": "sssk6",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ⑥ 转移 · SK0"
-  },
-  {
-   "f": "sslimit",
-   "t": "sssk7",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ⑦ 插入 · SK0"
-  },
-  {
-   "f": "sslimit",
-   "t": "sssk8",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "🛡 限幅后控制 → ⑧ 完成 · SK0"
-  },
-  {
-   "f": "ssdec",
-   "t": "n_moveit",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "action 直通 → MoveIt (原端到端快路径改为经 MoveIt)"
   }
  ],
  "params_note": ""
