@@ -1129,58 +1129,81 @@ STATION_PAGE = r"""<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Z-MAX 工位总览 · 6 路同屏 + 手动控制</title>
 <style>
-:root{--bg:#0e1116;--card:#161b22;--line:#2a3340;--txt:#e6edf3;--dim:#8b98a5;
-      --grn:#3fb950;--red:#f85149;--yel:#d29922;--blu:#58a6ff}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.45 system-ui,"Noto Sans CJK SC",sans-serif}
-header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);
-       position:sticky;top:0;background:#0e1116ee;z-index:9;backdrop-filter:blur(4px)}
-header h1{font-size:20px;margin:0;font-weight:600}
-header .sp{flex:1}
-header .clk{color:var(--dim);font-variant-numeric:tabular-nums}
-main{display:flex;gap:12px;padding:12px;align-items:flex-start}
-.grid{flex:1;display:grid;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr))}
-@media(max-width:1100px){.grid{grid-template-columns:1fr}}
-.panel{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;position:relative}
-.panel .cap{display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line)}
-.panel .ttl{font-size:16px;font-weight:600}
-.panel .meta{margin-left:auto;color:var(--dim);font-size:13px;font-variant-numeric:tabular-nums;text-align:right}
-.panel img{display:block;width:100%;background:#000;min-height:120px}
-.panel .note{padding:26px 14px;color:var(--yel);font-size:15px;line-height:1.7;background:#1a1d14}
-.panel .note b{color:#ffd866}
-.panel .badge{position:absolute;left:8px;bottom:8px;background:#000a;border:1px solid var(--line);
-              border-radius:6px;padding:2px 8px;font-size:13px;color:#cfe3ff}
-aside{width:372px;flex:0 0 372px;display:flex;flex-direction:column;gap:10px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
-.card h2{font-size:16px;margin:0 0 8px;font-weight:600;color:#cfe3ff}
-.row{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}
-.axis{font-size:16px;font-weight:600;width:210px}
-button{font:600 17px/1 system-ui,"Noto Sans CJK SC",sans-serif;color:#e6edf3;background:#21262d;
-       border:1px solid #3d444d;border-radius:8px;padding:12px 10px;min-height:46px;cursor:pointer;flex:1}
-button:hover{background:#2b323b}
-button:active{transform:translateY(1px)}
-button.on{border-color:var(--blu);background:#173a5e}
-button.warn{border-color:#7a4b00;background:#3a2a08}
-button.cap{font-size:15px;min-height:38px;padding:8px;flex:0 0 auto;min-width:104px}
-.seg{display:flex;gap:6px}
-.seg button{padding:8px 12px;min-height:38px;font-size:15px}
-.k{color:var(--dim)}
-.big{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
-.ok{color:var(--grn)}.bad{color:var(--red)}.wa{color:var(--yel)}
-pre{margin:6px 0 0;background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:8px;
-    font:13px/1.5 ui-monospace,Menlo,monospace;color:#c9d1d9;white-space:pre-wrap;word-break:break-all;
-    max-height:190px;overflow:auto;user-select:text}
-.hint{color:var(--dim);font-size:13px;line-height:1.6}
-.warnbar{color:#ffd866;background:#3a2a08;border:1px solid #7a4b00;border-radius:8px;padding:6px 10px;font-size:14px}
-label.arm{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:600;
-          background:#3a1d1d;border:1px solid #7a3030;border-radius:8px;padding:10px;cursor:pointer}
-label.arm input{width:22px;height:22px}
-input.num{width:74px;font:600 17px system-ui;padding:8px;border-radius:8px;border:1px solid #3d444d;
-          background:#0b0f14;color:var(--txt);text-align:center}
+html,body{margin:0;height:100%;background:#0d1117;color:#e6edf3;
+  font:16px/1.45 system-ui,"Noto Sans CJK SC","Microsoft YaHei",sans-serif}
+header{display:flex;align-items:center;gap:14px;padding:10px 16px;background:#161b22;
+  border-bottom:1px solid #30363d;position:sticky;top:0;z-index:9}
+h1{font-size:24px;margin:0;letter-spacing:.5px}
+.hint{color:#8b949e;font-size:15px}
+.sp{flex:1}
+.clk{font-variant-numeric:tabular-nums;color:#8b949e;font-size:17px}
+.warnbar{background:#4b2b1a;border:1px solid #d29922;color:#f0c674;padding:5px 10px;
+  border-radius:8px;font-size:15px;max-width:60vw}
+main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12px;
+  height:calc(100% - 62px)}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-content:start;
+  overflow:auto;min-height:0}
+.panel{background:#161b22;border:1px solid #30363d;border-radius:12px;overflow:hidden;
+  display:flex;flex-direction:column;min-height:0}
+.cap{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:7px 10px;
+  border-bottom:1px solid #21262d}
+.ttl{font-size:18px;font-weight:600}
+.meta{font-size:14px;color:#8b949e;font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.panel img{width:100%;display:block;background:#010409;aspect-ratio:4/3;object-fit:contain}
+.note{padding:8px 10px;font-size:15px;color:#f0c674;background:#2a2012;
+  border-top:1px solid #4b3a1a;line-height:1.5}
+.note b{color:#ffd479}
+.dim{color:#8b949e}
+.ok{color:#3fb950}.wa{color:#d29922}.bad{color:#f85149}
+/* ── 右侧控制台 ── */
+aside{display:flex;flex-direction:column;gap:10px;overflow:auto;min-height:0;padding-right:2px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:10px 12px}
+.card h2{font-size:18px;margin:0 0 8px;color:#c9d1d9;letter-spacing:.3px}
+.big{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.25}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row+.row{margin-top:8px}
+.k{font-size:15px;color:#8b949e}
+button{background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:10px;
+  font-size:20px;padding:12px 10px;cursor:pointer;font-family:inherit;touch-action:manipulation}
+button:hover:not(:disabled){background:#2d333b;border-color:#8b949e}
+button:disabled{opacity:.4;cursor:not-allowed}
+.seg button{padding:10px 12px;font-size:19px;min-width:56px}
+.seg button.on{background:#1f6feb;border-color:#1f6feb;color:#fff;font-weight:700}
+#armbar{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;
+  border:1px solid #d29922;background:#2a2012;font-size:20px;font-weight:700;color:#f0c674;
+  width:100%;text-align:left}
+#armbar.on{border-color:#3fb950;background:#0f2b17;color:#7ee787}
+#armbar .st{font-size:22px}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.pad button{height:92px;font-size:24px;font-weight:600}
+.pad .mid{background:#0d1117;border-style:dashed;font-size:19px;color:#8b949e;cursor:default;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.pad .mid b{font-size:30px;color:#e6edf3}
+.rot{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;margin-top:8px}
+.rot button{font-size:21px;padding:14px 12px;min-width:104px}
+.rot .lbl{font-size:17px;color:#c9d1d9}
+.flash{animation:fl .9s ease-out}
+@keyframes fl{0%{background:#1f6feb;border-color:#58a6ff}100%{background:#21262d}}
+#msg{font-size:22px;font-weight:700;margin:2px 0 6px;word-break:break-all}
+#lines{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:8px;margin:0;
+  font:14px/1.5 ui-monospace,Consolas,monospace;color:#9fb0c0;white-space:pre-wrap;
+  max-height:190px;overflow:auto}
+label.arm{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+input[type=checkbox]{width:22px;height:22px;margin-top:2px}
+input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8px;
+  color:#e6edf3;font-size:20px;padding:8px;font-family:inherit}
+@media (max-width:1500px){
+  main{grid-template-columns:minmax(0,1fr);height:auto}
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  aside{overflow:visible}
+}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
 </style></head><body>
 <header>
   <h1>🛰 工位总览</h1>
-  <span class="hint">6 路同屏 · 手动控制机器人 (X Y Z 平动 / A B C 绕轴旋转)</span>
+  <span class="hint">6 路同屏 · 右侧手动控制 (X Y Z 平动 / A B C 绕轴旋转)</span>
   <span class="sp"></span>
   <span class="warnbar" id="warn" style="display:none"></span>
   <span class="clk" id="clk"></span>
@@ -1203,85 +1226,102 @@ input.num{width:74px;font:600 17px system-ui;padding:8px;border-radius:8px;borde
       <span class="meta" id="m_aoi_gold">…</span></div>
       <img id="i_aoi_gold" data-mode="snap" data-src="/snapshot/aoi_gold.jpg" data-every="2000">
       <div class="row" style="padding:6px 10px 2px"><span class="seg" id="gview">
-        <button data-src="/snapshot/aoi_gold.jpg" class="on">判据图(一条区域)</button>
+        <button data-src="/snapshot/aoi_gold.jpg" class="on">判据图</button>
         <button data-src="/snapshot/aoi_gold_raw.jpg">整板原图</button></span></div>
       <div class="note" id="n_aoi_gold" style="display:none"></div>
       <div class="row" style="padding:4px 10px 2px">
-        <button class="cap warn" onclick="shot(10082)">📸 拍一帧 (工控机现拍一张)</button></div>
-      <div class="row" style="padding:2px 10px 10px">
-        <label class="arm"><input type="checkbox" id="auto82" checked>
-          <span>自动取景：工控机内存里没照片时，每 ≥30s 自动现拍一张</span></label></div></div>
+        <button onclick="shot(10082)">📸 拍一帧</button>
+        <label class="arm" style="font-size:15px;color:#8b949e">
+          <input type="checkbox" id="auto82" style="width:18px;height:18px" checked>
+          <span>自动取景(没照片时现拍一张)</span></label></div></div>
     <div class="panel"><div class="cap"><span class="ttl">🔍 表面检测 (工控机 10083)</span>
       <span class="meta" id="m_aoi_surface">…</span></div>
       <img id="i_aoi_surface" data-mode="snap" data-src="/snapshot/aoi_surface.jpg" data-every="4000">
       <div class="note" id="n_aoi_surface"></div>
-      <div class="row" style="padding:8px 10px 10px">
-        <button class="cap warn" onclick="shot(10083)">📸 拍帧 (触发一次拍照检测)</button></div></div>
+      <div class="row" style="padding:4px 10px 10px">
+        <button onclick="shot(10083)">📸 拍帧 (真拍一次)</button></div></div>
   </section>
   <aside>
     <div class="card">
-      <h2>🩺 机器人三查</h2>
-      <div class="big" id="robot">读取中…</div>
+      <h2>🕹 手动控制台</h2>
+      <button id="armbar" onclick="toggleArm()"><span class="st" id="armtxt">⛔ 演练模式</span>
+        <span class="hint" id="armhint">点这里启用「真动」；不启用时按钮只算目标、不动机械臂</span></button>
+      <div class="row" style="margin-top:10px">
+        <span class="big" id="robot" style="font-size:20px">读取中…</span></div>
       <div class="hint" id="robot2"></div>
-    </div>
-    <div class="card">
-      <h2>📍 末端位姿 TCP (base_link)</h2>
-      <div class="big" id="tcp">读取中…</div>
+      <div class="big" id="tcp" style="margin-top:8px">X — Y — Z —</div>
       <div class="hint" id="tcp2"></div>
     </div>
     <div class="card">
-      <h2>🕹 手动控制 · 平动 (走 /move_line)</h2>
-      <div class="row"><span class="axis">X 前后 步长</span>
+      <h2>⏩ 平动 (走 /move_line)</h2>
+      <div class="row"><span class="k">步长</span>
         <span class="seg" id="sX"><button data-v="5">5</button><button data-v="10" class="on">10</button>
         <button data-v="20">20</button><button data-v="50">50</button><button data-v="100">100</button></span>
         <span class="k">mm</span></div>
-      <div class="row"><button data-skill="L2.forward" data-p="d_mm">⏩ 前进 +X</button>
-        <button data-skill="L2.backward" data-p="d_mm">⏪ 后退 −X</button></div>
-      <div class="row"><button data-skill="L2.left" data-p="d_mm">⬅️ 向左 +Y</button>
-        <button data-skill="L2.right" data-p="d_mm">➡️ 向右 −Y</button></div>
-      <div class="row"><button data-skill="L2.lift" data-p="d_mm">⬆️ 抬升 +Z</button>
-        <button data-skill="L2.lower" data-p="d_mm">⬇️ 下降 −Z</button></div>
+      <div class="pad">
+        <span class="mid"></span>
+        <button data-skill="L2.forward" data-p="d_mm">⏩ 前进<br><span class="hint">+X</span></button>
+        <span class="mid"></span>
+        <button data-skill="L2.left" data-p="d_mm">⬅️ 左移<br><span class="hint">+Y</span></button>
+        <span class="mid">步长<b id="stepshow">10</b>mm</span>
+        <button data-skill="L2.right" data-p="d_mm">➡️ 右移<br><span class="hint">−Y</span></button>
+        <span class="mid"></span>
+        <button data-skill="L2.backward" data-p="d_mm">⏪ 后退<br><span class="hint">−X</span></button>
+        <span class="mid"></span>
+        <button data-skill="L2.lift" data-p="d_mm">⬆️ 抬升<br><span class="hint">+Z</span></button>
+        <span class="mid"></span>
+        <button data-skill="L2.lower" data-p="d_mm">⬇️ 下降<br><span class="hint">−Z</span></button>
+        <span class="mid"></span>
+      </div>
+      <div class="hint" style="margin-top:8px">键盘: ↑↓←→ = 前后左右 · PgUp/PgDn = 升降 (真动时同样受执行器 1.5s 间隔限制)</div>
     </div>
     <div class="card">
-      <h2>🔄 手动控制 · 绕轴旋转 (走 /move_pose)</h2>
-      <div class="row"><span class="axis">旋转角度 步长</span>
+      <h2>🔄 绕轴旋转 (走 /move_pose, 位置不动)</h2>
+      <div class="row"><span class="k">角度</span>
         <span class="seg" id="sA"><button data-v="1">1</button><button data-v="5" class="on">5</button>
         <button data-v="10">10</button><button data-v="20">20</button></span>
         <span class="k">°</span></div>
-      <div class="row"><span class="axis">A 绕工具X轴 俯仰</span>
-        <button data-skill="L2.rot_a_neg" data-p="deg">↻ −A</button>
-        <button data-skill="L2.rot_a_pos" data-p="deg">↺ +A</button></div>
-      <div class="row"><span class="axis">B 绕工具Y轴 倾侧</span>
-        <button data-skill="L2.rot_b_neg" data-p="deg">↻ −B</button>
-        <button data-skill="L2.rot_b_pos" data-p="deg">↺ +B</button></div>
-      <div class="row"><span class="axis">C 绕工具Z轴 自转</span>
-        <button data-skill="L2.rot_c_neg" data-p="deg">↻ −C</button>
-        <button data-skill="L2.rot_c_pos" data-p="deg">↺ +C</button></div>
-      <div class="row"><span class="k">速度(1~30, 默认 8 慢速)</span>
+      <div class="rot"><span class="lbl">A 绕工具X轴 · 俯仰</span>
+        <button data-skill="L2.rot_a_neg" data-p="deg">↻ −A <span class="hint">5°</span></button>
+        <button data-skill="L2.rot_a_pos" data-p="deg">↺ +A <span class="hint">5°</span></button></div>
+      <div class="rot"><span class="lbl">B 绕工具Y轴 · 倾侧</span>
+        <button data-skill="L2.rot_b_neg" data-p="deg">↻ −B <span class="hint">5°</span></button>
+        <button data-skill="L2.rot_b_pos" data-p="deg">↺ +B <span class="hint">5°</span></button></div>
+      <div class="rot"><span class="lbl">C 绕工具Z轴 · 自转</span>
+        <button data-skill="L2.rot_c_neg" data-p="deg">↻ −C <span class="hint">5°</span></button>
+        <button data-skill="L2.rot_c_pos" data-p="deg">↺ +C <span class="hint">5°</span></button></div>
+      <div class="row" style="margin-top:8px"><span class="k">速度(相对量, 1~30+)</span>
+        <span class="seg" id="sSpd"><button data-v="8" class="on">8 慢·默认</button>
+        <button data-v="20">20</button><button data-v="40">40</button><button data-v="60">60 快</button></span>
         <input class="num" id="spd" value="8"></div>
-      <div class="hint">旋转 = <b>位置不动、只改姿态</b>；单次 ≤30°(执行层守卫)，要更大角度分次转。</div>
+      <div class="hint" style="margin-top:6px">速度是相对量: <b>8 很慢</b>(一次动作可能十几~几十秒才停, 停下前
+        驱动可能报一次 wait_until_idle 超时 —— **那是超时标记不是失败**, 看 TCP 有没有变就知道动没动);
+        想快用 40/60。键盘: A/B/C 加 Shift = 反向; 单次 ≤30°(执行层守卫)</div>
     </div>
     <div class="card">
-      <h2>🛡 下发闸门</h2>
-      <label class="arm"><input type="checkbox" id="armed">
-        <span>授权真动 (不勾 = 演练 dry-run，只算目标不下发)</span></label>
+      <h2>📋 最近一次动作 (可复制)</h2>
+      <div id="msg">—</div>
+      <div class="row"><button id="copyb" onclick="copylog()">📄 复制原始日志</button></div>
+      <pre id="lines">(点上面的按钮，这里出执行器的原始回执)</pre>
+    </div>
+    <div class="card">
+      <h2>🛡 安全</h2>
       <div class="hint" id="armstate"></div>
-      <div class="hint">急停请用示教器/现场急停按钮 —— 本页**没有**软急停，也不提供未验证的停止指令。</div>
-    </div>
-    <div class="card">
-      <h2>📋 点击结果 (可复制)</h2>
-      <div class="big" id="msg">—</div>
-      <pre id="lines">(点上面的按钮，这里出执行器的原始回执行)</pre>
+      <div class="hint">急停请用示教器 / 现场急停按钮 —— 本页<b>没有</b>软急停，也不提供未验证的停止指令。
+        真动前三查应: 上电 on · 无急停 · 无碰撞。</div>
     </div>
   </aside>
 </main>
 <script>
 const $=(s)=>document.querySelector(s);
-let STEP_MM=10, STEP_DEG=5;
+let STEP_MM=10, STEP_DEG=5, ARMED=false;
 function seg(id,cb){document.querySelectorAll('#'+id+' button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#'+id+' button').forEach(x=>x.classList.remove('on'));
-  b.classList.add('on'); cb(parseFloat(b.dataset.v));});}
-seg('sX',v=>STEP_MM=v); seg('sA',v=>STEP_DEG=v);
+  b.classList.add('on'); cb(b.dataset.v);});}
+seg('sX',v=>{STEP_MM=parseFloat(v); $('#stepshow').textContent=STEP_MM;
+  document.querySelectorAll('.pad button[data-p=d_mm] .hint').forEach(h=>h.textContent=STEP_MM+'mm');});
+seg('sA',v=>{STEP_DEG=parseFloat(v); document.querySelectorAll('.rot .hint').forEach(h=>h.textContent=STEP_DEG+'°');});
+seg('sSpd',v=>{ $('#spd').value=v; });
 function hhmmss(a){const d=new Date(Date.now()-a*1000);const p=n=>String(n).padStart(2,'0');
   return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}
 function fmt(x,n){return (x===null||x===undefined)?'—':Number(x).toFixed(n);}
@@ -1301,32 +1341,53 @@ async function getj(url,ms){
   } finally { clearTimeout(t); }
 }
 function _btns(on){document.querySelectorAll('button[data-skill]').forEach(b=>b.disabled=!on);}
+function toggleArm(){
+  ARMED=!ARMED;
+  const b=$('#armbar');
+  b.classList.toggle('on',ARMED);
+  $('#armtxt').textContent=ARMED?'✅ 真动已启用':'⛔ 演练模式';
+  $('#armhint').textContent=ARMED
+    ? '点这里关掉。启用后每次点击都会真下发(执行器侧 1.5s 间隔限制)'
+    : '点这里启用「真动」；不启用时按钮只算目标、不动机械臂';
+  try{localStorage.setItem('zmax_armed',ARMED?'1':'0');}catch(e){}
+  const srv=$('#armstate');
+  if(srv) srv.innerHTML+='';
+  $('#msg').textContent=ARMED?'真动已启用 —— 点方向键会真的动机械臂':'已切回演练模式(只算目标不下发)';
+  $('#msg').className=(ARMED?'bad':'wa');
+}
+function flash(btn){try{btn.classList.remove('flash');void btn.offsetWidth;btn.classList.add('flash');}catch(e){}}
 async function move(btn){
   const skill=btn.dataset.skill, p=btn.dataset.p;
   const v=(p==='deg')?STEP_DEG:STEP_MM;
-  const arm=$('#armed').checked?1:0;
-  _btns(false);
-  // 兜底: 万一请求被浏览器排队/卡死, 15s 后也必须把按钮放开(否则看起来"按钮坏了点不动")
-  const unlock=setTimeout(()=>_btns(true),15000);
-  $('#msg').textContent='下发中… (最多等 15s)'; $('#msg').className='big wa';
+  _btns(false); flash(btn);
+  const unlock=setTimeout(()=>_btns(true),15000);   // 兜底: 请求卡住也必须把按钮放开
+  $('#msg').textContent='下发中… (最多等 15s)'; $('#msg').className='wa';
   try{
-    const j=await post('/ctl/move',{skill:skill,[p]:v,speed:parseFloat($('#spd').value||'8'),arm:arm},18000);
-    $('#msg').textContent=(j.ok? (j.dry?'🧪 ':'✅ ')+j.msg : '⛔ '+j.msg);
-    $('#msg').className='big '+(j.ok?(j.dry?'wa':'ok'):'bad');
-    $('#lines').textContent=(j.lines&&j.lines.length?j.lines.join('\n'):'(执行器还没有回执行)');
+    const j=await post('/ctl/move',{skill:skill,[p]:v,speed:parseFloat($('#spd').value||'8'),
+      arm:ARMED?1:0},18000);
+    const _el=(typeof j.elapsed_s==='number')?(' · 用时 '+j.elapsed_s.toFixed(1)+'s'):'';
+    $('#msg').textContent=(j.ok?(j.dry?'🧪 ':'✅ ')+j.msg+_el:'⛔ '+j.msg+_el)
+      +'  (对上 X/Y/Z 看有没有变就知道动没动)';
+    $('#msg').className=(j.ok?(j.dry?'wa':'ok'):'bad');
+    $('#lines').textContent=(j.lines&&j.lines.length?j.lines.join('\n'):'(执行器还没有回执)');
   }catch(e){
-    $('#msg').textContent='请求没发出去/超时: '+e+' —— 若反复如此, 请关掉其它 8791 页面(浏览器对同一主机只有 6 条连接)';
-    $('#msg').className='big bad';
+    $('#msg').textContent='请求没发出去/超时: '+e+' —— 若反复如此, 请关掉其它本机页面(浏览器对同一端口只有 6 条连接)';
+    $('#msg').className='bad';
   }
   clearTimeout(unlock); _btns(true);
   poll();
 }
 document.querySelectorAll('button[data-skill]').forEach(b=>b.onclick=()=>move(b));
+function copylog(){
+  const t=$('#lines').textContent+'\n'+$('#msg').textContent;
+  navigator.clipboard.writeText(t).then(()=>{$('#msg').textContent='✅ 已复制到剪贴板';
+    $('#msg').className='ok';},()=>{$('#msg').textContent='复制失败, 请手动选择文本';$('#msg').className='bad';});
+}
 async function shot(port){
-  $('#msg').textContent='拍帧中(工控机要真拍一张并跑检测，可能要几十秒)…'; $('#msg').className='big wa';
+  $('#msg').textContent='拍帧中(工控机要真拍一张并跑检测，可能要几十秒)…'; $('#msg').className='wa';
   try{const j=await post('/api/aoi/capture?port='+port,{},100000);
-    $('#msg').textContent=(j.ok?'✅ ':'⛔ ')+('HTTP '+j.http+' '+(j.msg||''))+(j.got_image?' · 已取到图并显示':'');
-    $('#msg').className='big '+(j.ok?'ok':'bad');
+    $('#msg').textContent=(j.ok?'✅ ':'⛔ ')+('HTTP '+j.http+' '+(j.msg||'')+(j.got_image?' · 已取到图并显示':''));
+    $('#msg').className=(j.ok?'ok':'bad');
     $('#lines').textContent=JSON.stringify(j,null,1);}catch(e){$('#msg').textContent='失败: '+e;}
   poll();
 }
@@ -1334,32 +1395,31 @@ function panel(id,st,label){
   const m=$('#m_'+id); if(!m) return;
   if(!st){m.textContent='未接'; return;}
   if(!st.online){m.textContent=(label||'')+' 无帧'; return;}
-  m.textContent=(label?label+' · ':'')+'帧龄 '+fmt(st.age_s,2)+'s · 拍照 '+hhmmss(st.age_s)+' · '+fmt(st.fps,1)+'fps · '+fmt(st.kb_per_frame,0)+'KB';
+  m.textContent=(label?label+' · ':'')+'帧龄 '+fmt(st.age_s,2)+'s · 拍照 '+hhmmss(st.age_s)
+    +' · '+fmt(st.fps,1)+'fps · '+fmt(st.kb_per_frame,0)+'KB';
 }
 let _pollBusy=false, _okAt=Date.now(), _pollAt=0;
 async function poll(){
   if(_pollBusy) return; _pollBusy=true; _pollAt=Date.now();
   let s=null, aoi=null, st=null;
-  try{                                  // 一条请求拿全部状态 (见下面调度注释里的连接数坑)
+  try{
     const j=await getj('/station/status?t='+Date.now(),6000);
     s=j.ctl; aoi=j.aoi; st=j.stats; _okAt=Date.now();
-    const a82=$('#auto82');                       // 自动取景开关: 以服务端为准(防两个页面不同步)
+    const a82=$('#auto82');
     if(a82){const want=((j.aoi_auto||{})['10082']!==false); if(a82.checked!==want) a82.checked=want;}
   }catch(e){}
   try{
     if(!s) throw 0;
     const r=s.robot||{}, tp=s.tcp||{};
-    const onoff=(v)=>v?'<span class="ok">是</span>':'<span class="dim">否</span>';
-    $('#robot').innerHTML='上电 '+(r.power==='on'?'<span class="ok">on</span>':'<span class="bad">'+(r.power||'?')+'</span>')
+    $('#robot').innerHTML=(r.operation&&r.operation!=='idle'
+        ?'<span class="wa">🔄 移动中 </span>':'')
+      +'上电 '+(r.power==='on'?'<span class="ok">on</span>':'<span class="bad">'+(r.power||'?')+'</span>')
       +' · 运行 <span class="'+(r.operation==='idle'?'ok':'wa')+'">'+(r.operation||'?')+'</span>'
       +' · 报警 '+(r.has_error?'<span class="bad">有 '+(r.error_code||'')+'</span>':'<span class="ok">无</span>');
-    // 报警要分清**来源**: 控制器自己没报警(controller_error_logs 空)而 error_context=wait_until_idle
-    // 时, 那是**我们桥的标记**(等机械臂 30s 没回 idle 就记一笔), 不是产线控制器故障。
-    // 老倪会照着字面理解, 这里必须写清, 否则他会以为臂坏了。
     const _ce=r.controller_error_logs||[];
     if(r.has_error){
       const _bridge=(!(_ce.length)&&(r.error_context||'')==='wait_until_idle');
-      $('#robot').innerHTML+='<div class="dim" style="font-size:13px;margin-top:4px">'
+      $('#robot').innerHTML+='<div class="hint" style="margin-top:4px">'
         +(_bridge
           ? '⚠ 这是<b>我们桥自己记的超时标记</b>(等机械臂 30s 没回 idle), 控制器侧无报警; '
             +'按现场规矩<b>不要重发同一条指令</b>, 手动点一下别的轴或重新上电即可清除。'
@@ -1367,14 +1427,14 @@ async function poll(){
         +'<br>'+(r.error_reason||'')+'</div>';
     }
     $('#robot2').textContent='急停 '+(r.estop?'有':'无')+' · 碰撞 '+(r.collision?'有':'无')
-      +' · 状态帧龄 '+fmt(r.age_s,2)+'s ('+(s.motion_armed?'服务已授权真动':'服务未授权=只能演练')+')';
-    if(tp.xyz){$('#tcp').textContent='X '+fmt(tp.xyz[0],4)+'  Y '+fmt(tp.xyz[1],4)+'  Z '+fmt(tp.xyz[2],4);}
+      +' · 状态帧龄 '+fmt(r.age_s,2)+'s ('+(s.motion_armed?'服务侧已授权真动':'服务侧未授权=只能演练')+')';
+    if(tp.xyz){$('#tcp').textContent='X '+fmt(tp.xyz[0],4)+'   Y '+fmt(tp.xyz[1],4)+'   Z '+fmt(tp.xyz[2],4);}
     else{$('#tcp').textContent='读不到位姿';}
-    $('#tcp2').textContent=(tp.frame_id||'')+' · 位姿帧龄 '+fmt(tp.age_s,2)+'s'
-      +' · 四元数 '+((tp.quat||[]).map(v=>fmt(v,3)).join(', ')||'—');
+    $('#tcp2').textContent=(tp.frame_id||'')+' · 帧龄 '+fmt(tp.age_s,2)+'s · 四元数 '
+      +((tp.quat||[]).map(v=>fmt(v,3)).join(', ')||'—');
     $('#armstate').innerHTML=s.motion_armed
-      ? '服务侧 <span class="ok">已开 --ctl-motion</span>：勾上「授权真动」后按钮真的会动臂。'
-      : '服务侧 <span class="bad">未开 --ctl-motion</span>：无论勾不勾，指令只演练不下发。';
+      ? '服务侧 <span class="ok">已开 --ctl-motion</span>：启用上面的「真动」后按钮真的会动臂。'
+      : '服务侧 <span class="bad">未开 --ctl-motion</span>：无论怎么点都只演练不下发。';
     const d=s.depth||{};
     $('#m_depth').textContent='帧龄 '+fmt(d.age_s,2)+'s · 拍照 '+hhmmss(d.age_s)+' · 中位 '+fmt(d.median_m,3)
       +'m · 有效 '+fmt(d.valid_pct,1)+'%';
@@ -1410,16 +1470,19 @@ async function poll(){
     }
     if(sf.ok===false){
       $('#n_aoi_surface').style.display='block';
-      $('#n_aoi_surface').innerHTML='<b>该路没有取图路由</b> —— 工控机 10083 只开了 POST /capture_detect，'
-        +'没有 GET 取图接口，所以这里没有实时画面。<br>'
-        +'请点下面「📸 拍帧」：会真触发一次拍照检测，回执里带图就直接显示在这一格。<br>'
-        +'要真正的实时画面，需在工控机侧加一条取图路由（补丁已写好：docs/patch/opt_surface_10083_add_picture_route.md）。';
+      $('#n_aoi_surface').innerHTML='<b>这一格没有实时画面 —— 工控机那台程序没开取图口</b><br>'
+        +'本机用 OPTIONS 把 10083 上 50+ 条候选路径全探了一遍(零副作用), 只有 POST /capture_detect; '
+        +'工控机上也没有第二个 HTTP 服务能取表面相机的图。<br>'
+        +'修法在工控机侧: 粘 30 行加一条 /picture 路由 → <b>docs/patch/opt_surface_10083_add_picture_route.md</b>'
+        +'(含 4 步上线自测)。补丁一上, 本页**不用改一行**就会自动出图(这一格一直在轮询取图)。<br>'
+        +'现在能做的: 点「📸 拍帧」真拍一次(它会把图存到工控机 ./surface_images/, 但取不回来)。';
       const lc=sf.last_capture;
-      if(lc) $('#n_aoi_surface').innerHTML+='<br>上次拍帧: HTTP '+lc.http+' '+(lc.msg||'')+(lc.got_image?' · 已取到图':'');
+      if(lc) $('#n_aoi_surface').innerHTML+='<br>上次拍帧: HTTP '+lc.http+' '+(lc.msg||'')
+        +(lc.got_image?' · 已取到图':(lc.how?' · '+lc.how:''));
     } else { $('#n_aoi_surface').style.display='none'; }
   }
   $('#clk').textContent=new Date().toLocaleTimeString();
-  const lag=(Date.now()-_okAt)/1000;              // 自诊断: 状态卡住 = 很可能连接被占满
+  const lag=(Date.now()-_okAt)/1000;
   const w=$('#warn');
   if(lag>7){ w.style.display=''; w.textContent='⚠ 状态已 '+lag.toFixed(0)
       +'s 没更新 —— 浏览器对同一主机(端口)只有 6 条连接, 可能被别的页面占满了。'
@@ -1427,34 +1490,27 @@ async function poll(){
   else { w.style.display='none'; }
   _pollBusy=false;
 }
-// 看门狗: 请求被浏览器排队时 _pollBusy 会一直挂着 ⇒ 8s 后强制放行, 否则页面永远不再刷新
 setInterval(()=>{ if(_pollBusy && Date.now()-_pollAt>8000){ _pollBusy=false; } }, 2000);
-/* ── 取图调度 (踩过的真坑, 别退回 MJPEG) ────────────────────────────────
-   HTTP/1.1 对同一主机只有 **6 条并发连接**。6 格若用 MJPEG(长连接) 会把 6 条占满 ——
-   实测: 老倪那个浏览器窗口里「笔记本/MAXHUB」两格有画面, 其余 4 格空着、
-   右侧状态永远"读取中…"、按钮点了没反应(请求全排在队里进不来)。
-   所以本页 **一格 MJPEG 都不用**: 6 格全走单帧快照 + **全局串行**(同一时刻只发一条),
-   常年只占 1 条连接(+ 状态 1 条) ⇒ 即使同一个浏览器里还开着别的大流量页面也不会饿死。
-   代价: 刷新率上限 ~2.5fps/格(实测够目检和手动控制用); 要真正流畅的 MJPEG 请用「场景叠加」页。
-   面板上的"拍照 hh:mm:ss"取的是**源帧时间戳**(src_ts), 不是图片加载时刻。*/
+/* ── 取图调度: 本页**一格 MJPEG 都不用**(HTTP/1.1 对同一 host:port 只有 6 条连接, 长连接会把
+      状态/按钮请求全饿死) —— 6 格全走单帧快照且全局串行, 常占 1 条连接。 */
 const _q=[]; let _busy=false;
 function _pump(){ if(_busy||!_q.length) return; _busy=true;
   const f=_q.shift(); f(()=>{_busy=false;_pump();}); }
 function _enq(f){_q.push(f);_pump();}
 const SNAPS=[...document.querySelectorAll('img[data-mode=snap]')].map(im=>({
   im:im, url:im.dataset.src, every:parseInt(im.dataset.every||'2000'), due:0, miss:0}));
-document.querySelectorAll('#gview button').forEach(b=>b.onclick=()=>{   // 判据图 ⇄ 整板原图
+document.querySelectorAll('#gview button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#gview button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on');
   const p=SNAPS.find(x=>x.im.id==='i_aoi_gold');
   if(p){ p.url=b.dataset.src; p.every=(b.dataset.src.indexOf('raw')>=0)?3000:2000; p.due=0; }
 });
-const _a82=$('#auto82');                                              // 🔁 自动取景开关
+const _a82=$('#auto82');
 if(_a82) _a82.onchange=async()=>{
-  $('#msg').textContent='切换自动取景…'; $('#msg').className='big wa';
+  $('#msg').textContent='切换自动取景…'; $('#msg').className='wa';
   try{const j=await post('/api/aoi/auto?port=10082&on='+(_a82.checked?1:0),{},8000);
-    $('#msg').textContent=(j.ok?'✅ ':'⛔ ')+(j.note||''); $('#msg').className='big '+(j.ok?'ok':'bad');
-  }catch(e){$('#msg').textContent='切换失败: '+e; $('#msg').className='big bad';}
+    $('#msg').textContent=(j.ok?'✅ ':'⛔ ')+(j.note||''); $('#msg').className=(j.ok?'ok':'bad');
+  }catch(e){$('#msg').textContent='切换失败: '+e; $('#msg').className='bad';}
 };
 setInterval(()=>{
   const t=Date.now();
@@ -1462,14 +1518,31 @@ setInterval(()=>{
   if(!p) return;
   _enq(done=>{
     const u=p.url+'?t='+Date.now();
-    const pre=new Image();                 // 先预载, 成功才换帧(失败保留上一帧, 不闪黑)
+    const pre=new Image();
     pre.onload=()=>{ p.im.src=u; p.due=Date.now()+p.every; p.miss=0; done(); };
     pre.onerror=()=>{ p.due=Date.now()+Math.max(3000,p.every); p.miss++; done(); };
     pre.src=u;
   });
 }, 250);
+/* 键盘: 方向键 = X/Y 点动, PgUp/PgDn = Z, A/B/C(+Shift 反向) = 绕轴旋转 */
+const KEYS={'ArrowUp':'L2.forward','ArrowDown':'L2.backward','ArrowLeft':'L2.left',
+  'ArrowRight':'L2.right','PageUp':'L2.lift','PageDown':'L2.lower'};
+addEventListener('keydown',(e)=>{
+  const t=e.target.tagName;
+  if(t==='INPUT'||t==='TEXTAREA') return;
+  let skill=KEYS[e.key];
+  if(!skill && /^[abcABC]$/.test(e.key)){
+    const ax=e.key.toLowerCase();
+    skill='L2.rot_'+ax+(e.shiftKey?'_neg':'_pos');
+  }
+  if(!skill) return;
+  const b=document.querySelector('button[data-skill="'+skill+'"]');
+  if(b && !b.disabled){ e.preventDefault(); move(b); }
+});
+try{ if(localStorage.getItem('zmax_armed')==='1') toggleArm(); }catch(e){}
 poll(); setInterval(poll,1500);
 </script></body></html>
+
 """
 
 
