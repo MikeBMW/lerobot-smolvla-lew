@@ -695,7 +695,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.15.22")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.15.23")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10813,7 +10813,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.22 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.23 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10821,9 +10821,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.22 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.23 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.15.23: v5.15.23 — 10083 表面程序按房内命名规范改成 cam_surface_10083_work_v5.py 并重上线 (老倪: 「cam_surface_10083_work_v2.py 10083也要升级到v5; 你自己更新」)  - 现状纠正: 10083 早就是 v5 (v2 没有 /storage 与 grab=1 路由, 实测都有 ⇒ 跑的是 v5);   本轮把文件名统一成与 v2/v4 同族: D:\xspace\ultralytics_AOI\cam_surface_10083_work_v5.py (27013B, SHA256 940449BA..4B6A8BD4) - 进程证据: 10082 pid :: python.exe cam_finger_10082_work_v5.py · 10083 pid :: python.exe cam_surface_10083_work_v5.py - 保活脚本与自主更新器同步改名 (zmax_keepalive.ps1 / tools/aoi_remote_deploy.py 的 FILENAME_10083 + 启动行);   旧的 surface_10083_work_v5.py 已删, 目录不再有两个同名不同文件名 - v2 原封不动 (老倪铁律「不改 v2」): cam_surface_10083_work_v2.py 仍是 14097B / 09-19 20:34 - 重上线验收: aoi_remote_deploy 一轮 6/6 全过 (10082 gf ms≈1.5s · 10083 housing · grab 408012B/242383B · files_total 4→4 与 2→2 不增)
         # v5.15.22: v5.15.22 — 工控机自治 + 自主更新器 (老倪: 你是主节点要完全控制工控机和Orin; 禁用10084/10085, 只用10082/10083)  A) 工控机自愈/自治 (两个 SYSTEM 计划任务, 不再依赖老倪那个窗口):    · ZMAX_Agent (/sc onstart) 跑 zmax_agent_loop.ps1 → 反向通道轮询, 崩了 10s 自拉起 ⇒ 我随时能驱动那台机器    · ZMAX_AOI_KeepAlive (/sc minute /mo 1) 跑 zmax_keepalive.ps1 → 10082/10083 哪个没在听就拉起 (平时不打日志)    · 实测自愈: kill 表面 v5 (pid 21764) → 25s 内 10083 自行恢复, 日志 09:57:38 started: surface      ⇒ 相机 SDK 在 session 0(SYSTEM) 能开相机, 开机/无人登录也能起服务 B) 自主更新器 tools/aoi_remote_deploy.py (只用 10082/10083, 不碰 10084/10085):    ①拷进 8794 静态目录 ②工控机 iwr 下载 + Get-FileHash 与本地 SHA256 逐位核对(不一致即中止)    ③现役备份 .bak ④停旧起新(分离启动) ⑤验收 ⑥失败自动 .bak 回滚 + 复验    验收项: /storage 200 · capture_detect 回执 code=200 · /last_result 判决通道 · grab=1 出图>0 · grab 前后 files_total 不增    实测(幂等重发 v5, 10:02): 两路 6/6 全过 — 10082 ms≈1557 / 10083 ms≈8.9s, grab 389377B/273297B, files_total 4→4 与 2→2 不增    坑: /last_result 刚拍完会 404「尚无检测结果」(表面推理~8.9s) → 断言须轮询最多 45s 并接受两种合法形态 (第一版固定等 6s 假失败并触发回滚)
         # v5.15.21: v5.15.21 — v5 正式上线工控机 10082/10083 (通道未变) + 反向通道 tools/agent_hub.py + 群消息降噪 + 磁盘回收  A) 反向通道: 工控机(192.168.23.23) 无登录口 ⇒ 4060:8794 命令队列 + Windows 端 12 行纯 ASCII PS 脚本;    15 条命令往返成功(真拍/真检测/起停服务); 踩坑: PS5.1 irm 需 -UseBasicParsing, Write-Host 不被管道捕获。 B) v5 部署: 两路文件 SHA256 核对一致, venv py3.10.1 依赖齐, py_compile 过;    试跑 10084/10085 → grab=1 有图且磁盘不增; 正式口 10082/10083 起 v5 (分离启动, 不受窗口关闭影响);    /last_result 两路 200 (gf 1.6s / housing 8.9s), capture_detect 回执语义未变, 10083 落盘 1→2,    grab=1 385/261KB 且 files_total 不变, 总览两格 MJPEG 有流; 10081 原服务未动。 C) 降噪: 链路巡检/磁盘红线 正常静默(0 字节) + 磁盘同状态 6h 只报一次 + L4 进度任务改 [SILENT] + 停 aoi_feishu_push --watch。 D) 磁盘: 306G→283G (回红线内), 明细见 docs/STATION_6PANEL_20260927.md §0.9。
         # v5.15.20: 修: 页面「授权真动」按现场安全重做 —— 默认未授权 + 两步授权 + 5分钟自动失效 + 服务端强制403  老倪: 「页面的『授权真动』，现场安全，授权」  方向纠回: 上一轮为了让"点了不动作"不再发生把页面改成默认真动 → 本轮按现场安全纠回: 默认**必须未授权**, 真动要**显式授权**; 但"点了必有结果"这条不丢。  A) 页面授权流程(两段式, 不记忆)    · 默认未授权(琥珀条「⛔ 未授权 · 点方向键只会算目标, 机械臂不会动」); 刷新/换人/重连一律回到未授权(去掉 localStorage)    · 授权 = 两步: 「🔓 授权真动」→「⚠️ 再点一次: 现场确认无人」(6s 内) → 成立(绿条+倒计时+授权IP)    · 授权 300s 自动失效(--ctl-auth-window); 到期提示「⌛ 授权已到期」; 「🔒 立即撤销」永远可用(撤销不需要授权)    · 未授权点方向键照样出结果: 「🧪 演练(未下发): 未授权真动(只算目标,不下发) · 用时 1.6s」+ 执行器原始行      + 旁边一个「🔓 授权真动」入口按钮(不是绕闸门按钮); 未授权时方向键调淡(仍可点)  B) 闸门服务端强制(页面只是镜像) + 全链路实测    · POST /ctl/arm {on:true|false}: 记 IP+时刻+note 进 /tmp/zmax_ctl.log(与动作同一时间线, 可审计)    · POST /ctl/move + arm=1 无授权/过期 → **HTTP 403** {"ok":false,"denied":true} 且 TCP 一字不动(实测 X=0.3910 不变)    · 页面两步授权 → armed=true ip=127.0.0.1 剩300s → 页面点前进 → ✅已下发1.2s → TCP X 0.3910→0.4010(+10.0mm)      → 页面点后退 → ✅已下发 → TCP 0.4010→0.3910(回原位) → 撤销后再点 → HTTP 403    · 审计日志样例: 09:18:55 auth=False 页面撤销 · 09:18:59 auth=True 页面两步确认(现场安全)      09:19:03 动作 L2.forward dry=False · 09:19:38 auth=False 页面撤销    · _send 改为真发 out["code"] 的状态码(原来 403 只写进 JSON 却发 HTTP 200)    · 本仓除本页无其它自动调用 /ctl/move(已 grep) ⇒ 收紧不影响既有链路  新增启动参数: --ctl-auth-window(秒, 默认 300) 文档: docs/STATION_6PANEL_20260927.md §0.8 第六轮; 技能 real-arm-motion-control 已同步(默认未授权必须服务端强制)

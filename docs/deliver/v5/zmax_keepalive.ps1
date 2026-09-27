@@ -16,7 +16,7 @@ if ($need.Count -gt 0) {
     $sh.Run($cmd, 0, $false) | Out-Null
   }
   if ($need -contains 'surface') {
-    $cmd = 'cmd /c cd /d ' + $dir + ' && ' + $py + ' surface_10083_work_v5.py > ' + $dir + '\v5s.log 2>&1'
+    $cmd = 'cmd /c cd /d ' + $dir + ' && ' + $py + ' cam_surface_10083_work_v5.py > ' + $dir + '\v5s.log 2>&1'
     $sh.Run($cmd, 0, $false) | Out-Null
   }
   $line = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + ' started: ' + ($need -join ',')

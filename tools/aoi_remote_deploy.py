@@ -33,7 +33,7 @@ OUT_DIR = "/tmp/zmax_agent_out"
 HOST = "192.168.23.50"
 ILO = "192.168.23.23"
 FILENAME_10082 = "cam_finger_10082_work_v5.py"
-FILENAME_10083 = "surface_10083_work_v5.py"
+FILENAME_10083 = "cam_surface_10083_work_v5.py"
 
 
 def log(msg):
@@ -145,7 +145,7 @@ def start_pair(restart=True):
         'if($c){ Stop-Process -Id $c.OwningProcess -Force } }; Start-Sleep 4; '
         '$sh=New-Object -ComObject WScript.Shell; '
         '$sh.Run("cmd /c cd /d %s && %s cam_finger_10082_work_v5.py > %s\\v5f.log 2>&1",0,$false) | Out-Null; '
-        '$sh.Run("cmd /c cd /d %s && %s surface_10083_work_v5.py > %s\\v5s.log 2>&1",0,$false) | Out-Null; '
+        '$sh.Run("cmd /c cd /d %s && %s cam_surface_10083_work_v5.py > %s\\v5s.log 2>&1",0,$false) | Out-Null; '
         'Start-Sleep -Seconds 40; '
         'foreach($p in 10082,10083){ $c=Get-NetTCPConnection -LocalPort $p -State Listen -EA SilentlyContinue; '
         '"$p -> " + $(if($c){"up pid " + $c.OwningProcess}else{"DOWN"}) }'
@@ -162,7 +162,7 @@ def stop_pair():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--finger", default=os.path.expanduser("~/aoi_v4/cam_finger_10082_work_v5.py"))
-    ap.add_argument("--surface", default=os.path.expanduser("~/aoi_v4/surface_10083_work_v5.py"))
+    ap.add_argument("--surface", default=os.path.expanduser("~/aoi_v4/cam_surface_10083_work_v5.py"))
     ap.add_argument("--pubdir", default="/home/ubuntu/aoi_v4/deliver/v5")
     ap.add_argument("--no-restart", action="store_true", help="只推文件+核对, 不动服务")
     ap.add_argument("--dry", action="store_true", help="只推文件+核对, 不重启不验收")
