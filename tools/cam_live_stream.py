@@ -373,6 +373,40 @@ _DEPTH_INFO = {}
 _CTL = {"motion": False, "min_gap": 1.5, "last_real": 0.0,
         "last": {"t": 0.0, "skill": "", "dry": True, "ok": False, "msg": "", "lines": []}}
 _CTL_LOG = "/tmp/zmax_ctl.log"
+# 🔐 真动授权 (2026-09-27 老倪: 「页面的授权真动 / 现场安全 / 授权」)
+#   设计原则: **默认未授权**(现场有人时最安全), 真动必须由人**显式两步确认**授权;
+#   授权**有时限**(默认 5 分钟, 到期自动失效, 不需要记得撤); 每次授权/撤销都记 IP+时刻(审计)。
+#   ⚠️ 这个闸门在**服务端**强制, 不是页面上的样子货 —— 别的程序直接 POST {"arm":1} 一样被拒(403)。
+_CTL_AUTH = {"until": 0.0, "since": 0.0, "ip": "", "window": 300.0, "events": []}
+
+
+def _auth_info() -> dict:
+    left = max(0.0, float(_CTL_AUTH["until"]) - time.time())
+    return {"armed": left > 0.0, "left_s": round(left, 1),
+            "window_s": round(float(_CTL_AUTH["window"]), 1),
+            "ip": _CTL_AUTH["ip"], "since": _CTL_AUTH["since"],
+            "events": _CTL_AUTH["events"][-6:]}
+
+
+def _auth_set(on: bool, ip: str = "", note: str = "") -> dict:
+    """授权/撤销真动。on=True 重新计时; on=False 立刻失效(并留审计)。"""
+    t = time.time()
+    if on:
+        _CTL_AUTH.update({"until": t + float(_CTL_AUTH["window"]), "since": t, "ip": ip})
+    else:
+        _CTL_AUTH["until"] = 0.0
+    _CTL_AUTH["events"].append({"t": t, "on": bool(on), "ip": ip, "note": note})
+    del _CTL_AUTH["events"][:-40]
+    print("[授权] %s %s ip=%s %s" % ("🔓 真动已授权" if on else "🔒 真动已撤销",
+          time.strftime("%H:%M:%S", time.localtime(t)), ip, note), flush=True)
+    try:
+        with open(_CTL_LOG, "a", encoding="utf-8") as f:      # 审计: 与动作日志同一条时间线
+            f.write(json.dumps({"t": t, "auth": bool(on), "ip": ip, "note": note},
+                               ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+    return _auth_info()
+
 _L2_FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
 # 允许的指令白名单: 技能 → (参数名, 最小, 最大)。**只认这些**, 别的技能(含点位/多阶段技能)
 # 一律拒绝 —— 手动控制区是给"点动"用的, 不是通用技能下发口。
@@ -704,10 +738,16 @@ def _ctl_move(req: dict) -> dict:
         speed = 8.0
     speed = max(1.0, min(60.0, speed))            # 手动控制速度上限 60(与页面档位一致); 默认 8 很慢
     want_real = bool(req.get("arm")) and bool(_CTL["motion"])
+    if want_real and not _auth_info()["armed"]:
+        # 🔐 现场安全: 真动必须由人显式授权(且授权未过期)。拒绝时**明确告诉怎么授权**, 不给含糊的失败。
+        _win = float(_CTL_AUTH["window"]) / 60.0
+        return {"ok": False, "denied": True, "code": 403, "auth": _auth_info(),
+                "msg": "未授权真动(现场安全): 先点页面上『🔓 授权真动』并二次确认(现场确认无人), "
+                       "再操作; 授权 %.0f 分钟后自动失效" % _win}
     cmd = {"skill": sid, pname: val, "speed": speed}
     if not want_real:
         cmd["dry"] = True
-        why = "服务未授权真动(--ctl-motion)" if not _CTL["motion"] else "页面未勾「授权真动」"
+        why = "服务未授权真动(--ctl-motion)" if not _CTL["motion"] else "未授权真动(只算目标, 不下发)"
     else:
         why = ""
         gap = time.time() - float(_CTL["last_real"])
@@ -776,6 +816,7 @@ def _ctl_status() -> dict:
         "tcp": {"xyz": tp.get("xyz"), "quat": tp.get("quat"), "age_s": _age(tp.get("t")),
                 "frame_id": tp.get("frame_id", "")},
         "motion": _motion_state(),
+        "auth": _auth_info(),        # 🔐 真动授权状态(页面横幅/倒计时靠它)
         "depth": dict(depth, age_s=_age(depth.get("t"))),
         "aoi": aoi,
         "last_cmd": dict(_CTL["last"], age_s=_age(_CTL["last"].get("t"))),
@@ -1220,6 +1261,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .rot button{font-size:21px;padding:14px 12px;min-width:104px}
 .rot .lbl{font-size:17px;color:#c9d1d9}
 .flash{animation:fl .9s ease-out}
+body.locked .pad button[data-skill],body.locked .rot button[data-skill]{opacity:.55}
 @keyframes fl{0%{background:#1f6feb;border-color:#58a6ff}100%{background:#21262d}}
 #msg{font-size:22px;font-weight:700;margin:2px 0 6px;word-break:break-all}
 #lines{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:8px;margin:0;
@@ -1279,8 +1321,13 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
   <aside>
     <div class="card">
       <h2>🕹 手动控制台</h2>
-      <button id="armbar" class="on" onclick="toggleArm()"><span class="st" id="armtxt">✅ 真动已启用</span>
-        <span class="hint" id="armhint">每点一次方向键, 机械臂就真的动一次(步长/速度按下面选的); 不想真动就点这里切演练</span></button>
+      <div id="armbar">
+        <button id="armbtn" onclick="armClick()" style="font-size:19px;padding:14px 16px;min-width:230px"
+          title="现场安全: 真动必须先显式授权"><span id="armtxt">🔓 授权真动</span></button>
+        <div style="flex:1">
+          <div id="armstate2" style="font-size:19px">⛔ <b>未授权</b> · 点方向键只会算目标, <b>机械臂不会动</b></div>
+          <span class="hint" id="armhint">现场安全: 只让守在机器旁的人授权 —— 先点「🔓 授权真动」, 再点一次「⚠️ 现场确认无人」。授权 5 分钟自动失效; 刷新页面也回到未授权(不记忆)。</span></div>
+      </div>
       <div class="row" style="margin-top:10px">
         <span class="big" id="robot" style="font-size:20px">读取中…</span></div>
       <div class="hint" id="robot2"></div>
@@ -1337,7 +1384,7 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       <h2>📋 最近一次动作 (可复制)</h2>
       <div id="msg">—</div>
       <div class="row"><button id="copyb" onclick="copylog()">📄 复制原始日志</button>
-        <button id="mq" onclick="moveReal()" style="display:none">▶ 立刻真动执行一次</button></div>
+        <button id="mq" onclick="moveReal()" style="display:none">🔓 授权真动(现场确认无人)</button></div>
       <pre id="lines">(点上面的按钮，这里出执行器的原始回执)</pre>
     </div>
     <div class="card">
@@ -1350,7 +1397,10 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
 </main>
 <script>
 const $=(s)=>document.querySelector(s);
-let STEP_MM=10, STEP_DEG=5, ARMED=true;   // 默认就是「真动」: 老倪两次反馈"点了不动作"= 开关没开(实测日志里是 DRY-RUN)
+let STEP_MM=10, STEP_DEG=5;
+/* 🔐 ARMED 不再写死: 由**服务端授权状态**决定(默认 false=未授权), 见 applyAuth()。
+   老倪 2026-09-27: 「页面的授权真动 / 现场安全 / 授权」 —— 默认必须是未授权, 真动要人显式两步确认。 */
+let ARMED=false, AUTH_LEFT=0, ARMWIN=300, AUTH_IP='', AUTH_PENDING=0;
 function seg(id,cb){document.querySelectorAll('#'+id+' button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#'+id+' button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on'); cb(b.dataset.v);});}
@@ -1377,27 +1427,59 @@ async function getj(url,ms){
   } finally { clearTimeout(t); }
 }
 function _btns(on){document.querySelectorAll('button[data-skill]').forEach(b=>b.disabled=!on);}
-function setArm(v){
-  ARMED=!!v;
-  const b=$('#armbar');
-  b.classList.toggle('on',ARMED);
-  $('#armtxt').textContent=ARMED?'✅ 真动已启用':'⛔ 演练模式(不下发)';
-  $('#armhint').textContent=ARMED
-    ? '每点一次方向键, 机械臂就真的动一次(速度靠右下选的档位, 执行器侧 1.5s 间隔); 点这里切演练'
-    : '现在是演练: 点了只算目标不动臂。点这里切回「真动」';
-  try{localStorage.setItem('zmax_armed',ARMED?'1':'0');}catch(e){}
-  $('#msg').textContent=ARMED?'✅ 真动已启用 —— 点方向键 / 按方向键就真的动机械臂':'⛔ 已切回演练(只算目标, 不下发)';
-  $('#msg').className=(ARMED?'ok':'wa');
+function paintArm(){
+  const b=$('#armbar'), on=ARMED;
+  b.classList.toggle('on',on);
+  $('#armtxt').textContent = on ? '🔒 立即撤销授权'
+                                : (AUTH_PENDING?'⚠️ 再点一次: 现场确认无人':'🔓 授权真动');
+  $('#armstate2').innerHTML = on
+    ? ('✅ <b>真动已授权</b> · 剩 <b>'+Math.floor(AUTH_LEFT/60)+'分'
+       +String(Math.max(0,Math.floor(AUTH_LEFT%60))).padStart(2,'0')+'秒</b>后自动失效 · 授权IP '+(AUTH_IP||'本机'))
+    : '⛔ <b>未授权</b> · 点方向键只会算目标, <b>机械臂不会动</b>';
+  $('#armhint').textContent = on
+    ? '现场安全: 授权期内每点一次方向键, 机械臂就真的动一次(速度按下面档位, 执行器 1.5s 间隔); 人离开前点左边「🔒 立即撤销授权」。'
+    : '现场安全: 只让守在机器旁的人授权 —— 点「🔓 授权真动」→ 再点一次「⚠️ 现场确认无人」。授权 '
+      +Math.round(ARMWIN/60)+' 分钟自动失效; 刷新页面也回到未授权(不记忆)。';
+  document.body.classList.toggle('locked',!on);
 }
-function toggleArm(){ setArm(!ARMED); }
-try{ setArm(localStorage.getItem('zmax_armed')!=='0'); }catch(e){ setArm(true); }
+async function armClick(){
+  if(ARMED){                                   // 撤销
+    const j=await post('/ctl/arm',{on:false},8000);
+    ARMED=false; AUTH_LEFT=0; paintArm();
+    $('#msg').textContent=(j.msg||'🔒 已撤销授权: 现在点方向键不会动臂'); $('#msg').className='wa';
+    return;
+  }
+  if(!AUTH_PENDING){                           // 第 1 步: 进入待确认(6s 内必须再点一次)
+    AUTH_PENDING=Date.now(); paintArm();
+    $('#msg').textContent='⚠️ 已按第 1 步 —— 确认机器旁没人、手不在臂内, 再点一次按钮上的「⚠️ 再点一次: 现场确认无人」才真正授权';
+    $('#msg').className='wa';
+    setTimeout(()=>{ if(AUTH_PENDING && Date.now()-AUTH_PENDING>6000){AUTH_PENDING=0;paintArm();} },6500);
+    return;
+  }
+  AUTH_PENDING=0;                              // 第 2 步: 真授权
+  const j=await post('/ctl/arm',{on:true,note:'页面两步确认(现场安全)'},8000);
+  ARMED=!!j.armed; AUTH_LEFT=j.left_s||0; ARMWIN=j.window_s||ARMWIN; AUTH_IP=j.ip||'';
+  paintArm();
+  $('#msg').textContent=(j.msg||'✅ 真动已授权'); $('#msg').className='ok';
+}
+function applyAuth(a){                          // 服务端状态是唯一真相(到期/别人撤销都会同步过来)
+  if(!a) return;
+  const was=ARMED;
+  ARMED=!!a.armed; AUTH_LEFT=a.left_s||0; ARMWIN=a.window_s||ARMWIN; AUTH_IP=a.ip||'';
+  if(was&&!ARMED){
+    $('#msg').textContent='⌛ 授权已到期(或已被撤销) —— 自动回到未授权(现场安全)。要继续操作就先重新授权';
+    $('#msg').className='wa';
+  }
+  paintArm();
+}
+function moveReal(){ armClick(); }              // 兼容旧按钮名
 function flash(btn){try{btn.classList.remove('flash');void btn.offsetWidth;btn.classList.add('flash');}catch(e){}}
 async function move(btn,force){
   const skill=btn.dataset.skill, p=btn.dataset.p;
   const v=(p==='deg')?STEP_DEG:STEP_MM;
   const spd=parseFloat($('#spd').value||'8');
   _lastMove={skill:skill,p:p,v:v};
-  const real=!!force||ARMED;
+  const real=ARMED;   // 🔐 只有已授权才真下发(服务端还会再拦一次); 未授权一律 dry-run 演练
   _btns(false); flash(btn);
   const unlock=setTimeout(()=>_btns(true),15000);   // 兜底: 请求卡住也必须把按钮放开
   $('#msg').textContent='下发中… (最多等 15s)'; $('#msg').className='wa';
@@ -1409,9 +1491,9 @@ async function move(btn,force){
       +'  (对上 X/Y/Z 看有没有变就知道动没动)';
     $('#msg').className=(j.ok?(j.dry?'wa':'ok'):'bad');
     $('#lines').textContent=(j.lines&&j.lines.length?j.lines.join('\n'):'(执行器还没有回执)');
-    if(j.ok&&j.dry){                       // 演练模式点了 → 给一个一键真动, 免得"点了没反应"
+    if(j.denied||(j.ok&&j.dry)){           // 未授权点了 → 给**授权入口**(不绕闸门), 绝不"点了没反应"
       $('#mq').style.display='';
-      $('#mq').textContent='▶ 立刻真动执行一次 ('+(p==='deg'?(v+'°'):(v+'mm'))+')';
+      $('#mq').textContent='🔓 授权真动(现场确认无人) —— 授权完再点一次刚才那个方向键';
     }
   }catch(e){
     $('#msg').textContent='请求没发出去/超时: '+e+' —— 若反复如此, 请关掉其它本机页面(浏览器对同一端口只有 6 条连接)';
@@ -1479,9 +1561,15 @@ async function poll(){
     else{$('#tcp').textContent='读不到位姿';}
     $('#tcp2').textContent=(tp.frame_id||'')+' · 帧龄 '+fmt(tp.age_s,2)+'s · 四元数 '
       +((tp.quat||[]).map(v=>fmt(v,3)).join(', ')||'—');
-    $('#armstate').innerHTML=s.motion_armed
-      ? '服务侧 <span class="ok">已开 --ctl-motion</span>：启用上面的「真动」后按钮真的会动臂。'
-      : '服务侧 <span class="bad">未开 --ctl-motion</span>：无论怎么点都只演练不下发。';
+    $('#armstate').innerHTML=(s.motion_armed
+      ? '服务侧 <span class="ok">已开 --ctl-motion</span>：授权后才真的动臂。'
+      : '服务侧 <span class="bad">未开 --ctl-motion</span>：无论怎么点都只演练不下发。')
+      +'<br>🔐 真动授权: '+(s.auth&&s.auth.armed
+        ? '<span class="ok">已授权 · 剩 '+Math.floor((s.auth.left_s||0)/60)+'分'
+          +String(Math.max(0,Math.floor((s.auth.left_s||0)%60))).padStart(2,'0')+'秒</span> · 授权IP '
+          +(s.auth.ip||'—')+' · 授权时刻 '+hhmmss(Math.max(0,(s.server_time||0)-(s.auth.since||0)))
+        : '<span class="bad">未授权</span> · 默认就是未授权, 要动臂先在上面授权(两步确认)');
+    applyAuth(s.auth);
     const d=s.depth||{};
     $('#m_depth').textContent='帧龄 '+fmt(d.age_s,2)+'s · 拍照 '+hhmmss(d.age_s)+' · 中位 '+fmt(d.median_m,3)
       +'m · 有效 '+fmt(d.valid_pct,1)+'%';
@@ -1730,7 +1818,15 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.loads(self.rfile.read(n).decode("utf-8", "ignore"))
             except Exception:                                                     # noqa: BLE001
                 body = {}
-        if p in ("/ctl/move", "/api/ctl/move"):
+        if p in ("/ctl/arm", "/api/ctl/arm"):
+            # 🔐 授权真动 / 撤销(只有 POST 能改, 且记 IP+时刻审计)
+            on = bool((body or {}).get("on"))
+            out = _auth_set(on, str(self.client_address[0]),
+                            str((body or {}).get("note") or ("页面授权" if on else "页面撤销")))
+            out.update({"ok": True, "code": 200,
+                        "msg": ("✅ 真动已授权: %.0f 分钟内可直接操作, 到期自动失效" % (out["left_s"] / 60.0))
+                        if on else "🔒 已撤销授权: 现在点方向键只算目标, 机械臂不会动"})
+        elif p in ("/ctl/move", "/api/ctl/move"):
             out = _ctl_move(body if isinstance(body, dict) else {})
         elif p in ("/api/aoi/capture", "/aoi/capture"):
             port = 10083
@@ -1761,7 +1857,8 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send(404, "text/plain", b"not found")
             return
-        self._send(200, "application/json; charset=utf-8",
+        self._send(int(out.get("code") or 200) if isinstance(out, dict) else 200,
+                   "application/json; charset=utf-8",
                    json.dumps(out, ensure_ascii=False).encode("utf-8"))
 
     def _send(self, code: int, ctype: str, body: bytes):
@@ -1900,6 +1997,8 @@ def main():
     ap.add_argument("--no-aoi", action="store_true", help="不起工控机金手指/表面检测源")
     ap.add_argument("--ctl-motion", action="store_true",
                     help="⚠️ 允许页面「授权真动」真的下发运动 (不加则一律 dry-run 演练)")
+    ap.add_argument("--ctl-auth-window", type=float, default=300.0,
+                    help="🔐 真动授权有效期(秒, 默认 300); 页面每次授权后这么久内有效, 到期自动失效")
     args = ap.parse_args()
 
     print(f"🎥 Z-MAX 实时视频流（压缩）· JPEG q{args.quality} · 推流 ≤{args.fps}fps",
@@ -1989,7 +2088,9 @@ def main():
               f"· 两路都推 MJPEG: /aoi_gold.mjpg · /aoi_surface.mjpg", flush=True)
     # ── 🕹 手动控制闸门 (双重: 这里 + 页面勾选) ──
     _CTL["motion"] = bool(args.ctl_motion)
-    print("   🕹 手动控制: %s" % ("⚠️ 已授权真动 (页面还需勾「授权真动」)"
+    _CTL_AUTH["window"] = max(30.0, float(args.ctl_auth_window))
+    print("   🕹 手动控制: %s" % ("服务侧允许真动; 🔐 页面还需显式授权(默认未授权, 授权 %.0f 分钟自动失效)"
+                                 % (_CTL_AUTH["window"] / 60.0)
                                  if args.ctl_motion else
                                  "仅演练(dry-run) —— 要真动加 --ctl-motion 重启本服务"), flush=True)
 
