@@ -4,77 +4,120 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Z-MAX · 场景叠加</title>
+<title>Z-MAX · 现场实况</title>
 <style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
   body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;
-       background:#06080d;color:#e6edf3;line-height:1.6;padding-bottom:24px}
-  header{padding:14px 16px 10px;background:#0b111a;border-bottom:1px solid #1b2836;position:sticky;top:0;z-index:20}
-  h1{font-size:22px;font-weight:800;color:#fff;letter-spacing:.5px}
+       background:#06080d;color:#e6edf3;line-height:1.55;padding-bottom:26px}
+  header{padding:13px 16px 9px;background:#0b111a;border-bottom:1px solid #1b2836;position:sticky;top:0;z-index:20}
+  h1{font-size:21px;font-weight:800;color:#fff;letter-spacing:.4px}
   h1 em{color:#00d4aa;font-style:normal}
-  .sub{font-size:14px;color:#8b98a5;margin-top:3px}
+  .sub{font-size:13.5px;color:#8b98a5;margin-top:3px}
   .chip{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12.5px;font-weight:700;
         border:1px solid #24404f;color:#67c9e0;margin-left:6px;vertical-align:2px}
   .chip.ok{border-color:#1f7a4d;color:#4ade80}
   .chip.bad{border-color:#7a2b2b;color:#f87171}
-  .bar{display:flex;gap:8px;padding:10px 12px;background:#0a0f16;border-bottom:1px solid #1b2836;
-       position:sticky;top:64px;z-index:19;overflow-x:auto;-webkit-overflow-scrolling:touch}
-  button{font-family:inherit;font-size:15px;font-weight:700;padding:12px 14px;border-radius:10px;
+  .bar{display:flex;gap:8px;padding:9px 12px;background:#0a0f16;border-bottom:1px solid #1b2836;
+       position:sticky;top:57px;z-index:19;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  button{font-family:inherit;font-size:14.5px;font-weight:700;padding:11px 13px;border-radius:10px;
          border:1px solid #2b3946;background:#141d27;color:#e6edf3;white-space:nowrap;cursor:pointer}
   button:active{transform:scale(.97)}
   button.on{background:#0e4f45;border-color:#00d4aa;color:#9ff5e4}
   button.go{background:#0f5c37;border-color:#22c55e;color:#d6ffe6}
-  button:disabled{opacity:.55}
-  .wrap{padding:12px}
-  .card{background:#0d141c;border:1px solid #1b2836;border-radius:12px;overflow:hidden;margin-bottom:12px}
-  .card h2{font-size:16px;font-weight:700;padding:11px 14px;background:#0a1017;border-bottom:1px solid #1b2836;
-           display:flex;justify-content:space-between;align-items:center}
+  button:disabled{opacity:.5}
+  button.sm{font-size:13.5px;padding:8px 10px}
+  .wrap{padding:11px}
+  .card{background:#0d141c;border:1px solid #1b2836;border-radius:12px;overflow:hidden;margin-bottom:11px}
+  .card h2{font-size:15.5px;font-weight:700;padding:10px 13px;background:#0a1017;border-bottom:1px solid #1b2836;
+           display:flex;justify-content:space-between;align-items:center;gap:8px}
   .card h2 span{font-size:12.5px;color:#8b98a5;font-weight:500}
-  img{display:block;width:100%;height:auto;background:#000;min-height:150px}
-  .pane{padding:14px 16px;font-size:15px}
-  .kv{display:flex;gap:10px;flex-wrap:wrap;margin:5px 0;align-items:baseline}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:9px}
+  .tile{background:#080d13;border:1px solid #1b2836;border-radius:9px;overflow:hidden}
+  .tile .tl{font-size:12.5px;font-weight:700;color:#cfe8f5;padding:6px 8px 4px;
+            display:flex;justify-content:space-between;gap:6px;align-items:baseline}
+  .tile .tl .bd{font-size:11px;font-weight:800;color:#00d4aa;border:1px solid #1f7a4d;border-radius:20px;padding:0 6px}
+  .tile img{display:block;width:100%;height:auto;background:#000;min-height:86px}
+  .tile .tm{font-size:11.5px;color:#8b98a5;padding:5px 8px 7px;line-height:1.5}
+  .pane{padding:13px 15px;font-size:14.5px}
+  .kv{display:flex;gap:9px;flex-wrap:wrap;margin:5px 0;align-items:baseline}
   .kv b{color:#7ee787;font-weight:800}
-  .kv .k{color:#8b98a5;font-size:13.5px;min-width:76px}
-  .lg{display:inline-block;width:13px;height:13px;border-radius:3px;margin-right:6px;vertical-align:-1px}
-  .note{font-size:13.5px;color:#8b98a5;margin-top:9px;line-height:1.7}
-  code{background:#111a24;padding:2px 6px;border-radius:5px;color:#7ee787;font-size:13px;word-break:break-all}
-  .warn{background:#2a1c0a;border:1px solid #6b4a12;color:#f0c674;border-radius:9px;padding:11px 13px;
-        font-size:14px;margin:10px 0;line-height:1.7}
+  .kv .k{color:#8b98a5;font-size:13px;min-width:70px}
+  .lg{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .note{font-size:13px;color:#8b98a5;margin-top:8px;line-height:1.65}
+  code{background:#111a24;padding:2px 6px;border-radius:5px;color:#7ee787;font-size:12.5px;word-break:break-all}
+  .warn{background:#2a1c0a;border:1px solid #6b4a12;color:#f0c674;border-radius:9px;padding:10px 12px;
+        font-size:13.5px;margin:9px 0;line-height:1.65}
+  .ok{background:#0c2318;border:1px solid #1f7a4d;color:#9ff5e4;border-radius:9px;padding:10px 12px;
+      font-size:13.5px;margin:9px 0;line-height:1.65}
+  .steps{font-size:13.5px;color:#cfe8f5;line-height:1.9}
+  .steps i{color:#8b98a5;font-style:normal}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+  #big{display:block;width:100%;height:auto;background:#000;min-height:170px}
   .toast{position:fixed;left:12px;right:12px;bottom:16px;background:#12202c;border:1px solid #24404f;
-         border-radius:11px;padding:12px 14px;font-size:14.5px;color:#cfe8f5;display:none;z-index:50}
+         border-radius:11px;padding:11px 13px;font-size:14px;color:#cfe8f5;display:none;z-index:50}
+  a.dl{display:block;text-align:center;text-decoration:none;background:#0f5c37;border:1px solid #22c55e;
+       color:#d6ffe6;font-weight:800;font-size:16px;padding:14px;border-radius:11px}
 </style>
 </head>
 <body>
 <header>
-  <h1>🧩 场景叠加 <em>Z-MAX</em><span class="chip" id="link">检测中…</span></h1>
-  <div class="sub">真实视频流 + 仿真场景边界框 · 手机版</div>
+  <h1>🧩 现场实况 <em>Z-MAX</em><span class="chip" id="link">检测中…</span></h1>
+  <div class="sub" id="sub">所有活着的视频流 + 仿真/检测叠加 · 手机版</div>
 </header>
 
 <div class="bar">
-  <button id="cArm" class="on" onclick="setCam('arm')">🦾 臂上相机</button>
-  <button id="cLocal" onclick="setCam('local')">💻 笔记本内置</button>
-  <button id="cMax" onclick="setCam('local2')">📺 MAXHUB 顶摄</button>
-  <button id="cBoth" onclick="setCam('both')">▣ 双路</button>
+  <button id="mAll" class="on" onclick="setMode('all')">▦ 全看</button>
+  <button id="mOne" onclick="setMode('one')">🔍 单看</button>
+  <button onclick="refresh(1)">↻ 刷新</button>
+  <button onclick="apkToggle()">📲 装 APP</button>
 </div>
-<div class="bar" style="top:64px;padding-top:8px;padding-bottom:8px">
-  <button class="go" id="gSim"   onclick="gen('sim')">🎯 仿真投影</button>
-  <button class="go" id="gVlm"   onclick="gen('vlm')">🧠 大模型理解</button>
-  <button id="gScene" onclick="gen('scene')">📋 场景契约</button>
-  <button id="gDet"   onclick="gen('det')">🔍 真机检测</button>
-  <button onclick="reload()">↻ 刷新</button>
+
+<div class="wrap" id="apkCard" style="display:none">
+  <div class="card">
+    <h2>📲 手机 APP（安卓） <span id="apkSize">24.8KB</span></h2>
+    <div class="pane">
+      <a class="dl" href="/dl/ZMAX-Live.apk">⬇ 下载 ZMAX-Live.apk</a>
+      <div class="note">装完桌面出现「Z-MAX 实况」图标，打开即本页（顶层直连工位机 http，不越混合内容红线）。</div>
+      <div class="kv" style="margin-top:10px"><span class="k">sha256</span>
+        <code id="apkSha">57328c2628ca4f2736e5c12935949d0ab0263c1e404abdb11346c9a94fd6844d</code></div>
+      <div class="row"><button class="sm" onclick="copyText($('apkSha').textContent,'sha256 已复制')">📋 复制校验串</button></div>
+      <div class="steps" style="margin-top:11px">
+        ① 设置 → 安全 → 更多安全设置 → <b>关闭「纯净模式」</b><br>
+        ② 同页「安装外部来源应用」→ 给浏览器/文件管理 <b>允许</b><br>
+        ③ 提示风险 → 选 <b>继续安装</b>
+      </div>
+      <div class="warn">
+        装不上看报错原文：<br>
+        <b>应用未安装</b> = 同包名残留 → 先卸载旧版再装<br>
+        <b>解析包错误</b> = 没下完 → 重下，用上面 sha256 核对<br>
+        <b>已阻止安装</b> = 纯净模式没关 → 回到第 ① 步
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="wrap">
-  <div class="card">
-    <h2>📷 原始真实画面 <span id="rawT">—</span></h2>
-    <img id="raw" alt="原始画面">
+  <div class="card" id="cardAll">
+    <h2>📷 活着的视频流 <span id="tAll">—</span></h2>
+    <div class="grid" id="grid"></div>
+    <div class="pane" id="hint" style="padding-top:0"></div>
   </div>
-  <div class="card">
-    <h2>🧩 叠加后（仿真 / 大模型 / 检测） <span id="ovT">—</span></h2>
-    <img id="ov" alt="叠加画面">
+
+  <div class="card" id="cardOne" style="display:none">
+    <h2>🔍 单看 <span id="tOne">—</span></h2>
+    <div class="pane" style="padding-top:10px;padding-bottom:0">
+      <div class="row" id="oneBar"></div>
+    </div>
+    <img id="big" alt="单路画面">
+    <div class="pane" style="padding-top:9px">
+      <div class="kv"><span class="k">帧龄</span><b id="oneAge">—</b></div>
+      <div class="kv"><span class="k">拍照时间</span><b id="oneShot">—</b></div>
+      <div class="note">单看只开 <b>1 条 MJPEG</b> 常连；全看是 <b>1 条串行轮询快照</b>（手机只有 6 条 HTTP 连接，多路 MJPEG 会把连接吃干、整页卡死）。</div>
+    </div>
   </div>
 
   <div class="card">
+    <h2>🧩 叠加来源 <span id="ovWho">—</span></h2>
     <div class="pane">
       <div class="kv"><span class="k">规格</span><b id="mode">—</b></div>
       <div class="kv"><span class="k">框统计</span>
@@ -83,23 +126,41 @@
         <span><span class="lg" style="background:#eb3c3c"></span>检测 <b id="nDet">0</b></span>
         <span><span class="lg" style="background:#888"></span>跳过 <b id="nSkip">0</b></span>
       </div>
-      <div class="kv"><span class="k">帧龄</span><b id="age">—</b></div>
+      <div class="kv"><span class="k">规格帧龄</span><b id="age">—</b></div>
       <div class="kv"><span class="k">手眼</span><b id="he">—</b></div>
-      <div class="kv"><span class="k">TCP</span><b id="tcp">—</b></div>
-      <div class="kv"><span class="k">跳过原因</span><span id="skip" style="color:#8b98a5;font-size:13.5px">—</span></div>
-      <div class="kv"><span class="k">生成任务</span><span id="genS" style="color:#8b98a5;font-size:13.5px">空闲</span></div>
-      <div class="note">
-        绿色框 = <b>仿真场景投影</b>（物体 3D → 手眼 T_base_cam → 实时 TCP 真值 → 像素，已验 8 位姿 5.2px≈3.1mm）<br>
-        蓝色框 = <b>L5 大模型看图理解</b>　红色框 = <b>真机 YOLO 检测</b><br>
-        三个来源颜色区分、互不覆盖
+      <div class="kv"><span class="k">跳过原因</span><span id="skip" style="color:#8b98a5;font-size:13px">—</span></div>
+      <div class="kv"><span class="k">生成任务</span><span id="genS" style="color:#8b98a5;font-size:13px">空闲</span></div>
+      <div class="row">
+        <button class="go sm" id="gSim"  onclick="gen('sim')">🎯 仿真投影</button>
+        <button class="go sm" id="gVlm"  onclick="gen('vlm')">🧠 大模型理解</button>
+        <button class="sm" id="gScene" onclick="gen('scene')">📋 场景契约</button>
+        <button class="sm" id="gDet"  onclick="gen('det')">🔍 真机检测</button>
       </div>
+      <div class="kv" style="margin-top:8px"><span class="k">结果</span><span id="genMsg" style="color:#8b98a5;font-size:13px">—</span></div>
+      <div class="note">
+        绿框 = 仿真场景投影（物体 3D → 手眼 T_base_cam → 实时 TCP 真值 → 像素，已验 8 位姿 5.2px≈3.1mm）<br>
+        蓝框 = L5 大模型看图理解　红框 = 真机 YOLO 检测　三源颜色区分、互不覆盖<br>
+        ⚠️ 仿真/场景契约只对<b>臂上相机</b>有效（只有它有手眼标定）；该路当前未上线时按钮会如实返回失败。
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>📤 导出 <span>可复制可导出</span></h2>
+    <div class="pane">
+      <div class="row">
+        <button class="sm" onclick="copyJson()">📋 复制状态 JSON</button>
+        <button class="sm" onclick="exportCsv()">⬇ 导出 CSV</button>
+        <button class="sm" onclick="copyUrls()">🔗 复制全部流地址</button>
+      </div>
+      <div class="note">CSV/JSON 含每路 <b>帧龄</b> 与 <b>拍照时间</b>，导出即当次快照（可存档做取证）。</div>
     </div>
   </div>
 
   <div class="card">
     <div class="pane">
       <div class="kv"><span class="k">视频源</span><b id="srcHost">—</b></div>
-      <div class="note" id="hint"></div>
+      <div class="note">本页由工位机 <code id="hostCode">—</code> 自己用 http 提供（与视频流同源）；站点是 https，页面里嵌 http MJPEG 会被内核按混合内容拦死。</div>
     </div>
   </div>
 </div>
@@ -107,96 +168,358 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// ★ 顶层兜底: 任何未捕获异常立刻写到页面上 —— 否则脚本中途抛错会静默死掉,
-//   表现是"面板永远停在检测中…"而画面正常, 极难查(本项目真踩过: 漏了个 PORT)
+// ★ 顶层兜底: 任何未捕获异常写到页面上 —— 否则脚本中途抛错会静默死, 表现为"面板永远停检测中"而画面正常
 window.addEventListener('error', function(e){
   var el = document.getElementById('hint');
   if (el) el.innerHTML = '<div class="warn">⚠ 脚本异常: ' + (e.message || e.type)
-    + '<br>位置: 第 ' + (e.lineno || '?') + ' 行 —— 页面数据可能不刷新</div>';
+    + '（第 ' + (e.lineno || '?') + ' 行）—— 数据可能不刷新</div>';
 });
-// ── 视频源自动判定: 本页由 4060 提供服务 ⇒ 用 location.host 即当前 IP (零硬编码) ──
-//    file:// 打开或换设备时才需要 ?host=<IP>&port=<端口> 覆盖
-const Q = new URLSearchParams(location.search);
-const API = (location.protocol === 'http:' || location.protocol === 'https:')
-  ? `${location.protocol}//${location.host}`
-  : `http://${Q.get('host') || '10.163.146.78'}:${Q.get('port') || '8791'}`;
-const HOST = API.replace(/^https?:\/\//, '');
-let CAM = 'arm', t0 = Date.now();
 
-const $ = id => document.getElementById(id);
-// 帧龄/规格龄说人话 (秒→分→时) —— 规格是"生成那一刻"的, 画面是实时的, 必须分开标
+// ── 视频源自动判定: 本页由工位机自己服务 ⇒ 用 location.host (零硬编码) ──
+//    file:// 打开或换设备时才需要 ?host=<IP>&port=<端口> 覆盖
+var Q = new URLSearchParams(location.search);
+var API = (location.protocol === 'http:' || location.protocol === 'https:')
+  ? (location.protocol + '//' + location.host)
+  : ('http://' + (Q.get('host') || '192.168.23.50') + ':' + (Q.get('port') || '8791'));
+
+var $ = function(id){ return document.getElementById(id); };
+var MODE = 'all';          // all=全看(串行快照) · one=单看(1 条 MJPEG)
+var STATS = {}, STATS_TS = 0, SPEC = {};
+var TILES = [], TILEI = 0, TILE_SIG = '';
+var LIVE = [], CUR = '';   // 当前单看的流 key
+var MJPEG_ON = false;
+var BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+
+function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+function hhmmss(ms){ var d = new Date(ms); return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+':'+('0'+d.getSeconds()).slice(-2); }
 function fmtAge(s){
-  if(s == null || isNaN(s)) return '—';
-  if(s < 90)    return s.toFixed(1) + 's 前更新';
-  if(s < 5400)  return Math.round(s / 60) + 'min 前更新';
+  if (s == null || isNaN(s)) return '—';
+  if (s < 90) return s.toFixed(1) + 's 前更新';
+  if (s < 5400) return Math.round(s / 60) + 'min 前更新';
   return (s / 3600).toFixed(1) + 'h 前更新';
 }
 function toast(msg, ms){
-  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
-  clearTimeout(t._h); t._h = setTimeout(()=>{ t.style.display='none'; }, ms||4200);
+  var t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.display = 'none'; }, ms || 3800);
 }
-function setCam(c){
-  CAM = c;
-  $('cArm').className   = c==='arm'    ? 'on' : '';
-  $('cLocal').className = c==='local'  ? 'on' : '';
-  $('cMax').className   = c==='local2' ? 'on' : '';
-  $('cBoth').className  = c==='both'   ? 'on' : '';
-  bind();
-}
-function bind(){
-  // 🎥 2026-09-27 三相机: arm=机器人臂上(Orin, 真几何投影) · local=笔记本内置 · local2=MAXHUB 电视顶摄
-  const cam = (CAM==='both') ? 'arm' : CAM;
-  const lbl = {'arm':'臂上 D405','local':'笔记本内置','local2':'MAXHUB 顶摄'}[cam] || cam;
-  $('raw').src = `${API}/${cam}.mjpg?t=${t0}`;
-  $('ov').src  = `${API}/overlay/${cam}.mjpg?t=${t0}`;
-  $('rawT').textContent = lbl;
-  $('ovT').textContent  = lbl + (cam==='arm' ? '' : ' · 无手眼(仅2D框)');
-  $('srcHost').textContent = HOST;   // HOST 由 API 反推, 不再单留 PORT(删了会静默抛错→脚本死)
-}
-function reload(){ t0 = Date.now(); bind(); toast('已重新连接视频流'); }
-
-async function gen(kind){
-  const btn = {'sim':'gSim','vlm':'gVlm','scene':'gScene','det':'gDet'}[kind];
-  $(btn).disabled = true; $(btn).textContent = '⏳ 生成中…';
-  try{
-    const r = await fetch(`${API}/gen?kind=${kind}&cam=${CAM==='both'?'arm':CAM}`); const j = await r.json();
-    toast(j.msg || '已启动');
-  }catch(e){ toast('❌ 触发失败: 连不上 '+API+'（手机需与 4060 同一局域网）', 7000); }
-  setTimeout(()=>{
-    $(btn).disabled = false;
-    $(btn).textContent = {'sim':'🎯 仿真投影','vlm':'🧠 大模型理解','scene':'📋 场景契约','det':'🔍 真机检测'}[kind];
-    refresh();
-  }, kind==='vlm' ? 9000 : 2500);
+function copyText(s, ok){
+  try {
+    if (navigator.clipboard) { navigator.clipboard.writeText(s); toast(ok, 2600); return; }
+  } catch (e) {}
+  var a = document.createElement('textarea'); a.value = s; document.body.appendChild(a);
+  a.select(); try { document.execCommand('copy'); toast(ok, 2600); } catch (e2) { toast('复制失败，请长按选择'); }
+  document.body.removeChild(a);
 }
 
-async function refresh(){
-  try{
-    const r = await fetch(`${API}/scene.json?t=${Date.now()}`, {cache:'no-store'});
-    const s = await r.json();
-    const inf = (s._overlay_info || {})[CAM] || (s._overlay_info || {})['arm'] || {};
-    const o = inf.origins || {};
-    $('mode').textContent = s.mode || '空';
-    $('nSim').textContent = o.sim || 0;
-    $('nVlm').textContent = o.vlm || 0;
-    $('nDet').textContent = o.det || 0;
-    $('nSkip').textContent = (inf.skipped || []).length;
-    $('age').textContent  = inf.spec_age_s != null ? fmtAge(inf.spec_age_s) : (s.updated_at || '—');
-    $('he').textContent   = inf.tcp_ok ? '已标定 · 实时' : '—';
-    $('tcp').textContent  = inf.tcp_ok ? '实时读取中' : '未读到';
-    $('skip').textContent = (inf.skipped||[]).map(x=>x[0]+'('+x[1]+')').join(' · ') || '—';
-    $('genS').textContent = (s._gen && s._gen.busy) ? ('跑: '+s._gen.busy) : ((s._gen && s._gen.last) || '空闲');
-    $('link').className = 'chip ok'; $('link').textContent = '已连通';
-    $('hint').innerHTML = '';
-  }catch(e){
-    $('link').className = 'chip bad'; $('link').textContent = '未连通';
-    $('hint').innerHTML = '<div class="warn">连不上视频流 <code>'+API+'</code><br>' +
-      '手机需与 4060 电脑在<b>同一局域网</b>（产线 WiFi）。<br>' +
-      '若网段变了，用 <code>?host=&lt;新IP&gt;</code> 打开本页即可。<br>' +
-      '4060 上确认服务在跑：<code>pgrep -f cam_live_stream</code></div>';
+// ── 显示名: 短名(字少不截断), 完整驱动名留在 title/导出里 ──
+var SHORT = { arm: '🦾 臂上 D405', depth: '🌈 深度图', local: '💻 笔记本内置',
+  local2: '📺 MAXHUB 顶摄', aoi_gold: '🔍 金手指判据', aoi_gold_raw: '🔍 金手指整板',
+  aoi_surface: '🔍 表面检测' };
+function shortLabel(name){
+  var base = (name.indexOf('ov_') === 0) ? name.slice(3) : name;
+  var s = SHORT[base] || (STATS[name] && STATS[name].label) || name;
+  return (name.indexOf('ov_') === 0) ? (s + ' · 叠加') : s;
+}
+function shortBase(name){
+  var base = (name.indexOf('ov_') === 0) ? name.slice(3) : name;
+  return SHORT[base] || (STATS[name] && STATS[name].label) || base;
+}
+function fullLabel(name){
+  var base = (name.indexOf('ov_') === 0) ? name.slice(3) : name;
+  return ((STATS[base] && STATS[base].label) || base) + (name.indexOf('ov_') === 0 ? ' · 叠加流' : '');
+}
+
+// ── 在线判据: 源侧上报 fps>0.1 (arm/depth 实测 fps=0, age 上万秒 ⇒ 判未上线, 不冒充活的) ──
+function online(s){ return !!s && Number(s.fps) > 0.1; }
+
+function liveList(){
+  var raw = [], ov = [], dead = [], k;
+  for (k in STATS){
+    var s = STATS[k] || {};
+    if (k.indexOf('ov_') === 0){
+      if (online(s)) ov.push(k);
+    } else {
+      if (online(s)) raw.push(k); else dead.push(k);
+    }
+  }
+  raw.sort(); ov.sort(); dead.sort();
+  return { raw: raw, ov: ov, dead: dead };
+}
+
+// ── 帧龄/拍照时间: 帧龄是源侧上报, 拍照时间 = 本机时钟 - 帧龄 (说清楚口径) ──
+function ageNow(name){
+  var s = STATS[name];
+  if (!s || s.age_s == null) return null;
+  return Number(s.age_s) + (Date.now() - STATS_TS) / 1000;
+}
+function metaLine(name, kb){
+  var s = STATS[name] || {};
+  var a = ageNow(name);
+  var shot = (a == null) ? '—' : hhmmss(Date.now() - a * 1000);
+  return '帧龄 ' + (a == null ? '—' : a.toFixed(1) + 's') + ' · 拍照 ' + shot
+       + ' · ' + (s.fps ? Number(s.fps).toFixed(1) : '0.0') + 'fps'
+       + (kb ? ' · ' + kb + 'KB' : '');
+}
+
+function buildGrid(){
+  var L = liveList();
+  var sig = L.raw.join(',') + '|' + L.ov.join(',') + '|' + L.dead.join(',');
+  if (sig !== TILE_SIG){
+    TILE_SIG = sig;
+    TILES = []; TILEI = 0;
+    var g = $('grid'); g.innerHTML = '';
+    var mk = function(name, url, kind, src){
+      var d = document.createElement('div'); d.className = 'tile';
+      var tl = document.createElement('div'); tl.className = 'tl';
+      tl.innerHTML = '<span>' + shortBase(name) + '</span>'
+        + (kind === 'ov' ? '<span class="bd">叠加</span>' : '');
+      var im = document.createElement('img'); im.alt = shortBase(name);
+      var tm = document.createElement('div'); tm.className = 'tm';
+      tm.textContent = '等待取帧…';
+      d.appendChild(tl); d.appendChild(im); d.appendChild(tm); g.appendChild(d);
+      TILES.push({ name: name, url: url, img: im, meta: tm, obj: null });
+    };
+    L.ov.forEach(function(k){ mk(k, '/snapshot/overlay_' + k.slice(3) + '.jpg', 'ov', k.slice(3)); });
+    L.raw.forEach(function(k){ mk(k, '/snapshot/' + k + '.jpg', 'raw', k); });
+    $('tAll').textContent = L.raw.length + ' 路在线 · ' + L.ov.length + ' 路叠加';
+  }
+  // ⚠ "未上线"提示必须**每次**渲染 —— 之前只在瓦片重建时写, 而 poll() 每 2s 清空 #hint,
+  //    结果深度图这种一直掉线的路, 重启服务后提示就被擦掉再没出现(实测踩到)。
+  $('hint').innerHTML = L.dead.length
+    ? '<div class="warn">未上线（不上屏、不当活的用）：' + L.dead.map(function(k){
+        return shortBase(k) + '（fps=0）'; }).join(' · ') + '</div>'
+    : '';
+  TILES.forEach(function(t){
+    t.meta.textContent = metaLine(t.name);
+    t.img.alt = shortBase(t.name);
+    t.img.title = fullLabel(t.name);
+  });
+}
+
+// ── 全看: 全局串行, 一条连接一条连接地取单帧(永不并发多路 MJPEG) ──
+async function loop(){
+  for (;;){
+    if (MODE !== 'all' || !TILES.length){ await sleep(350); continue; }
+    var t = TILES[TILEI % TILES.length]; TILEI++;
+    var t0 = Date.now();
+    try {
+      var r = await fetch(API + t.url + '?t=' + t0, { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      var b = await r.blob();
+      if (t.obj) URL.revokeObjectURL(t.obj);
+      t.obj = URL.createObjectURL(b);
+      t.img.src = t.obj;
+      t.meta.textContent = metaLine(t.name, Math.round(b.size / 1024));
+    } catch (e) {
+      t.meta.textContent = '取帧失败: ' + e.message;
+    }
+    await sleep(280);
   }
 }
-setCam('arm'); refresh();
-setInterval(refresh, 2500);
+
+// ── 单看: 1 条 MJPEG (原图 或 叠加) ──
+function oneOptions(){
+  var L = liveList(), o = [];
+  L.raw.forEach(function(k){ o.push({ key: k, url: '/' + k + '.mjpg' }); });
+  L.ov.forEach(function(k){ o.push({ key: k, url: '/overlay/' + k.slice(3) + '.mjpg' }); });
+  return o;
+}
+function buildOneBar(){
+  var o = oneOptions(), bar = $('oneBar'); bar.innerHTML = '';
+  o.forEach(function(x){
+    var b = document.createElement('button');
+    b.className = 'sm' + (x.key === CUR ? ' on' : '');
+    b.textContent = shortLabel(x.key);
+    b.onclick = function(){ playOne(x); };
+    bar.appendChild(b);
+  });
+  if (!CUR && o.length) playOne(o[0]);
+}
+function playOne(x){
+  CUR = x.key;
+  MJPEG_ON = true;
+  $('big').src = API + x.url + '?t=' + Date.now();
+  $('tOne').textContent = shortLabel(x.key) + ' · ' + fullLabel(x.key);
+  var bs = $('oneBar').children;
+  for (var i = 0; i < bs.length; i++) bs[i].className = 'sm';
+  var o = oneOptions();
+  for (var j = 0; j < o.length && j < bs.length; j++) if (o[j].key === CUR) bs[j].className = 'sm on';
+  updateOneMeta();
+  return x;
+}
+function stopMjpeg(){
+  if (MJPEG_ON){ $('big').src = BLANK; MJPEG_ON = false; CUR = ''; }
+}
+function updateOneMeta(){
+  if (!CUR) return;
+  var a = ageNow(CUR);
+  $('oneAge').textContent = (a == null ? '—' : a.toFixed(1) + 's');
+  $('oneShot').textContent = (a == null ? '—' : hhmmss(Date.now() - a * 1000));
+}
+
+function setMode(m){
+  MODE = m;
+  $('mAll').className = (m === 'all') ? 'on' : '';
+  $('mOne').className = (m === 'one') ? 'on' : '';
+  $('cardAll').style.display = (m === 'all') ? '' : 'none';
+  $('cardOne').style.display = (m === 'one') ? '' : 'none';
+  if (m === 'all'){
+    stopMjpeg();
+    $('oneBar').innerHTML = '';
+  } else {
+    buildOneBar();
+  }
+}
+function apkToggle(){
+  var c = $('apkCard');
+  c.style.display = (c.style.display === 'none' || !c.style.display) ? 'block' : 'none';
+  if (c.style.display === 'block') c.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+// 老倪「做成app给我」⇒ 手机上打开本页就该直接看到下载入口:
+//   · 手机**浏览器**打开 ⇒ 自动展开这张卡(省一步找按钮)
+//   · 已经装在 APP 里(WebView 的 UA 带 "wv") ⇒ 不展开, 免得每次开都弹
+//   · 桌面浏览器 ⇒ 不展开(用不上)
+(function () {
+  try {
+    var ua = navigator.userAgent || '';
+    var mobile = /Android|iPhone|iPad|Mobile/i.test(ua);
+    var inApp = /\bwv\b|ZMAX|Version\/[\d.]+ Chrome/i.test(ua) && /Android/i.test(ua);
+    if (mobile && !inApp && sessionStorage.getItem('apkAuto') !== '1') {
+      sessionStorage.setItem('apkAuto', '1');
+      setTimeout(apkToggle, 400);
+    }
+  } catch (e) {}
+})();
+
+// ── 工具按钮作用在哪一路: 单看选的那路 → 否则臂上相机(仿真/场景契约只有它有效) → 否则第一路在线 ──
+function genCam(){
+  if (CUR) return (CUR.indexOf('ov_') === 0) ? CUR.slice(3) : CUR;
+  if (STATS['arm'] && online(STATS['arm'])) return 'arm';
+  var L = liveList();
+  return L.raw[0] || 'arm';
+}
+
+// ── 叠加规格信息 (与画布共用同一份 overlay_spec.json) ──
+function paintSpec(){
+  var cam = genCam();
+  var inf = (SPEC._overlay_info || {})[cam] || {};
+  var o = inf.origins || {};
+  $('ovWho').textContent = shortBase(cam) + ' · ' + (STATS[cam] ? fullLabel(cam) : cam);
+  $('mode').textContent = SPEC.mode || '空';
+  $('nSim').textContent = o.sim || 0;
+  $('nVlm').textContent = o.vlm || 0;
+  $('nDet').textContent = o.det || 0;
+  $('nSkip').textContent = (inf.skipped || []).length;
+  $('age').textContent = (inf.spec_age_s != null) ? fmtAge(inf.spec_age_s) : (SPEC.updated_at || '—');
+  $('he').textContent = inf.tcp_ok ? '已标定 · 实时' : '—';
+  $('skip').textContent = (inf.skipped || []).map(function(x){ return x[0] + '(' + x[1] + ')'; }).join(' · ') || '—';
+  $('genS').textContent = (SPEC._gen && SPEC._gen.busy) ? ('跑: ' + SPEC._gen.busy) : ((SPEC._gen && SPEC._gen.last) || '空闲');
+}
+
+async function poll(){
+  try {
+    var r = await fetch(API + '/stats?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    STATS = await r.json(); STATS_TS = Date.now();
+    $('link').className = 'chip ok'; $('link').textContent = '已连通';
+    $('srcHost').textContent = API.replace(/^https?:\/\//, '');
+    $('hostCode').textContent = API.replace(/^https?:\/\//, '');
+    buildGrid();
+    updateOneMeta();
+    paintSpec();
+  } catch (e) {
+    $('link').className = 'chip bad'; $('link').textContent = '未连通';
+    $('hint').innerHTML = '<div class="warn">连不上视频源 <code>' + API + '</code>'
+      + '（手机需与学生机/工位机在同一局域网）</div>';
+  }
+}
+async function pollSpec(){
+  try {
+    var r = await fetch(API + '/scene.json?t=' + Date.now(), { cache: 'no-store' });
+    if (r.ok) { SPEC = await r.json(); paintSpec(); }
+  } catch (e) {}
+}
+function refresh(manual){
+  poll(); pollSpec();
+  if (manual){ if (MODE === 'one' && CUR){ playOne({ key: CUR, url: (CUR.indexOf('ov_') === 0 ? '/overlay/' + CUR.slice(3) : '/' + CUR) + '.mjpg' }); } toast('已刷新'); }
+}
+
+// ── 工具按钮: 点了必出结果 (端点返回什么就显示什么, 不猜) ──
+async function gen(kind){
+  var bid = { sim: 'gSim', vlm: 'gVlm', scene: 'gScene', det: 'gDet' }[kind];
+  var txt = { sim: '🎯 仿真投影', vlm: '🧠 大模型理解', scene: '📋 场景契约', det: '🔍 真机检测' }[kind];
+  var cam = genCam();
+  var b = $(bid); b.disabled = true; b.textContent = '⏳ 生成中…';
+  $('genMsg').textContent = '已请求 ' + txt + '（cam=' + cam + '）…';
+  try {
+    var r = await fetch(API + '/gen?kind=' + kind + '&cam=' + encodeURIComponent(cam));
+    var j = await r.json();
+    $('genMsg').textContent = 'HTTP ' + r.status + ' · ' + (j.msg || '（端点无 msg）');
+    toast(j.msg || '端点已回应', 5000);
+  } catch (e) {
+    $('genMsg').textContent = '❌ 触发失败: ' + e.message;
+    toast('❌ 触发失败: ' + e.message, 6000);
+  }
+  setTimeout(function(){
+    b.disabled = false; b.textContent = txt;
+    poll(); pollSpec();
+  }, (kind === 'vlm') ? 9000 : 2500);
+}
+
+// ── 导出: 可复制可导出 (含帧龄/拍照时间) ──
+function snapRows(){
+  var out = [], L = liveList();
+  L.ov.concat(L.raw).forEach(function(k){
+    var s = STATS[k] || {}, a = ageNow(k);
+    out.push({ key: k, label: s.label || k, fps: s.fps,
+      age_s: (a == null ? null : Number(a.toFixed(2))),
+      shot: (a == null ? null : new Date(Date.now() - a * 1000).toISOString()),
+      kb_per_frame: s.kb_per_frame, on: true });
+  });
+  L.dead.forEach(function(k){
+    var s = STATS[k] || {};
+    out.push({ key: k, label: s.label || k, fps: s.fps, age_s: s.age_s, shot: null,
+      kb_per_frame: s.kb_per_frame, on: false });
+  });
+  return out;
+}
+function copyJson(){
+  var j = { ts: new Date().toISOString(), api: API,
+            scene: { mode: SPEC.mode || null, updated_at: SPEC.updated_at || null,
+                     overlay_info: SPEC._overlay_info || {} },
+            streams: snapRows() };
+  copyText(JSON.stringify(j, null, 1), '状态 JSON 已复制（含帧龄/拍照时间）');
+}
+function exportCsv(){
+  var rows = [['key', '名称', '在线', 'fps', '帧龄s', '拍照时间(ISO)', 'KB/帧']];
+  snapRows().forEach(function(r){
+    rows.push([r.key, r.label, r.on ? '1' : '0', r.fps, r.age_s, r.shot, r.kb_per_frame]);
+  });
+  var csv = rows.map(function(a){ return a.map(function(x){
+    return '"' + String(x == null ? '' : x).replace(/"/g, '""') + '"'; }).join(','); }).join('\n');
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'zmax_streams_' + hhmmss(Date.now()).replace(/:/g, '') + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  toast('CSV 已导出（' + (rows.length - 1) + ' 路）');
+}
+function copyUrls(){
+  var L = liveList(), o = [API + '/app  （本页）'];
+  L.ov.forEach(function(k){ o.push(API + '/overlay/' + k.slice(3) + '.mjpg   叠加·' + ((STATS[k] || {}).label || k)); });
+  L.raw.forEach(function(k){ o.push(API + '/' + k + '.mjpg   原始·' + ((STATS[k] || {}).label || k)); });
+  L.raw.concat(L.ov).forEach(function(k){
+    o.push(API + (k.indexOf('ov_') === 0 ? '/snapshot/overlay_' + k.slice(3) + '.jpg' : '/snapshot/' + k + '.jpg'));
+  });
+  copyText(o.join('\n'), '全部流地址已复制');
+}
+function copyApk(){ copyText($('apkSha').textContent, 'sha256 已复制'); }
+
+setMode('all');
+poll(); pollSpec();
+setInterval(poll, 2000);
+setInterval(pollSpec, 5000);
+setInterval(updateOneMeta, 1000);
+loop();
 </script>
 </body>
 </html>
