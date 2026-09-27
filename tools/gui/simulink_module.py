@@ -7762,7 +7762,7 @@ class SimulinkModule(QWidget):
                     pass
             if not tried:
                 return False, "没找到可用的浏览器"
-            _win = ""
+            _wins = []
             for _ in range(16):                       # 最多等 8s 让窗口冒出来
                 time.sleep(0.5)
                 try:
@@ -7770,16 +7770,19 @@ class SimulinkModule(QWidget):
                                           timeout=4).stdout
                 except Exception:
                     _out = ""
-                for _ln in _out.splitlines():
-                    if "场景叠加" in _ln:
-                        _win = _ln.split(None, 3)[-1]
-                        break
-                if _win:
+                # 🐛 2026-09-27 实测: 这里必须取**窗口 id** (第 1 列 0x...), 不能取标题 ——
+                #   原写法把标题当 id 传给 `wmctrl -i -r` ⇒ 静默无效 (窗口纹丝不动,
+                #   日志却写"已最大化"), 实测窗口停在 2880x2012。
+                _wins = [_ln.split(None, 1)[0] for _ln in _out.splitlines()
+                         if "场景叠加" in _ln]
+                if _wins:
                     break
-            if not _win:
+            if not _wins:
                 return True, "%s (窗口没认出来, 未最大化)" % tried[0]
-            # 🐛 实测: 浏览器起在了**另一台显示器** (3840x2086 @ x=3200), 老倪在主屏前看不到。
-            #   ⇒ 先把窗口搬到控制台所在的那块屏 (按 studio 窗口坐标), 再最大化 + 激活。
+            # 🐛 实测两条: ①`--start-maximized` 在本机 GNOME 下**不生效** (新窗只到 2880x2012)
+            #   ⇒ 必须 wmctrl 补一刀; ②浏览器可能把地址塞进**已开窗口的新标签**(标题也会跟着变),
+            #   所以把**所有**标题含"场景叠加"的窗口都搬屏+最大化+激活, 免得最大化错了窗。
+            # 🐛 还实测过: 新窗落在另一块显示器 (3840x2086 @ x=3200), 先按 studio 坐标搬屏。
             _geo = None
             try:
                 _gout = subprocess.run(["wmctrl", "-lG"], capture_output=True, text=True,
@@ -7791,18 +7794,35 @@ class SimulinkModule(QWidget):
                         break
             except Exception:
                 _geo = None
-            _cmds = []
-            if _geo:
-                _cmds.append(["wmctrl", "-r", _win, "-e", "0,%d,%d,%d,%d" % _geo])
-            _cmds += [["wmctrl", "-r", _win, "-b", "add,maximized_vert,maximized_horz"],
-                      ["wmctrl", "-a", _win]]
-            for _cmd in _cmds:
-                try:
-                    subprocess.run(_cmd, timeout=5, stdout=subprocess.DEVNULL,
-                                   stderr=subprocess.DEVNULL)
-                except Exception:
-                    pass
-            return True, "%s · 窗口已最大化%s" % (tried[0], "到控制台那块屏" if _geo else "")
+            _done = 0
+            for _w in _wins:
+                _cmds = []
+                if _geo:
+                    _cmds.append(["wmctrl", "-i", "-r", _w, "-e", "0,%d,%d,%d,%d" % _geo])
+                _cmds += [["wmctrl", "-i", "-r", _w, "-b", "add,maximized_vert,maximized_horz"],
+                          ["wmctrl", "-i", "-a", _w]]
+                for _cmd in _cmds:
+                    try:
+                        subprocess.run(_cmd, timeout=5, stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL)
+                    except Exception:
+                        pass
+                _done += 1
+            # 🔎 读回几何: 不能"发了命令就宣布成功" (实测就是在这一步踩了传错参数的坑)
+            _g2 = ""
+            try:
+                _o2 = subprocess.run(["wmctrl", "-lG"], capture_output=True, text=True,
+                                     timeout=4).stdout
+                for _ln in _o2.splitlines():
+                    if "场景叠加" in _ln:
+                        _q = _ln.split(None, 7)
+                        _g2 = "%sx%s @ (%s,%s)" % (_q[4], _q[5], _q[2], _q[3])
+                        break
+            except Exception:
+                pass
+            return True, "%s · %d 个窗已最大化%s%s" % (
+                tried[0], _done, "到控制台那块屏" if _geo else "",
+                (" · 实测尺寸 " + _g2) if _g2 else "")
 
         def _work():
             # 1) 视频流在不在 (不在 ⇒ 第 3 步带叠加起)
