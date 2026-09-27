@@ -1094,8 +1094,17 @@ OVERLAY_PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
  .foot b{color:#e6edf3}
  .lg{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:4px;vertical-align:-1px}
  .msg{flex:0 0 auto;padding:6px 14px;color:#d29922;font-size:13px;background:#0e151c}
- code{color:#7ee787;font-size:12px}
-</style></head><body class="m_ov">
+/* 🖵 铺满窗口 (老倪: 「图要大一些」) —— 藏页眉/按钮/页脚, 舞台占满整窗; 画面自带真值带+底部 #tape 仍在 */
+body.m_full header,body.m_full .bar,body.m_full .foot,body.m_full .msg{display:none}
+body.m_full #stage{position:fixed;inset:0;z-index:5}
+#exitfull{display:none}
+body.m_full #exitfull{display:block;position:fixed;right:12px;top:12px;z-index:9;
+  opacity:.30;font-size:13px;padding:7px 11px}
+body.m_full #exitfull:hover{opacity:1}
+/* 并排两格各自尽量大 (宽屏用满宽度: 单格 4:3 在宽屏上只能占 46% 宽 —— 老倪说的"小窗口") */
+body.m_both #stage img{width:100%;height:100%;object-fit:contain}
+code{color:#7ee787;font-size:12px}
+</style></head><body class="m_both">
 <header>
   <h1>🧩 场景叠加 · 真实视频流 + 仿真场景边界框</h1>
   <div class="meta">真实画面 = 原始视频流 · 框 = 仿真投影 / L5 大模型理解 / 真机检测（颜色区分，不混为一谈）· 点画面=全屏</div>
@@ -1108,10 +1117,12 @@ OVERLAY_PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <button id="c_local" onclick="setCam('local')">💻 笔记本内置</button>
   <button id="c_local2" onclick="setCam('local2')">📺 MAXHUB 顶摄</button>
   <span class="sep"></span>
-  <button id="m_ov" class="on" onclick="setMode('m_ov')">🧩 叠加图</button>
+  <button id="m_ov" onclick="setMode('m_ov')">🧩 叠加图</button>
   <button id="m_raw" onclick="setMode('m_raw')">📷 原始图</button>
-  <button id="m_both" onclick="setMode('m_both')">▣ 并排</button>
-  <button onclick="fs()">⛶ 全屏</button>
+  <button id="m_both" class="on" onclick="setMode('m_both')">▣ 并排</button>
+  <span class="sep"></span>
+  <button id="m_full" onclick="setFull(true)">🖵 铺满窗口</button>
+  <button onclick="fs()">⛶ 真全屏</button>
 </div>
 <div class="bar">
   <button class="go" onclick="gen('sim')">🎯 仿真场景投影</button>
@@ -1126,6 +1137,7 @@ OVERLAY_PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <img id="raw" src="/arm.mjpg" alt="raw" onclick="fs()">
   <img id="ov" src="/overlay/arm.mjpg" alt="overlay" onclick="fs()">
   <div id="tape">帧龄 —</div>
+  <button id="exitfull" onclick="setFull(false)">✕ 退出铺满</button>
 </div>
 <div class="foot">
   <span>规格 <b id="mode">—</b></span>
@@ -1142,7 +1154,7 @@ OVERLAY_PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <span>跳过 <b id="skip">—</b></span>
 </div>
 <script>
-let CAM='arm', MODE='m_ov', t0=Date.now();
+let CAM='arm', MODE='m_both', t0=Date.now();
 const CAMS=['arm','local','local2'];
 function setCam(c){
   CAM=c; t0=Date.now();
@@ -1151,10 +1163,19 @@ function setCam(c){
   document.getElementById('ov').src='/overlay/'+c+'.mjpg?t='+t0;
 }
 function setMode(m){
-  MODE=m; document.body.className=m;
+  MODE=m;
+  // 🐛 原写法 document.body.className=m 会把 m_full(铺满) 一起抹掉 ⇒ 用 classList 增删
+  document.body.classList.remove('m_ov','m_raw','m_both');
+  document.body.classList.add(m);
   ['m_ov','m_raw','m_both'].forEach(x=>{
     const b=document.getElementById(x); if(b) b.className=(x===m)?'on':'';});
 }
+function setFull(v){
+  // 🖵 铺满: 藏页眉/按钮/页脚, 舞台占满整窗(图因此大 ~1.6 倍); Esc 或右上角 ✕ 退出
+  document.body.classList.toggle('m_full', !!v);
+  const b=document.getElementById('m_full'); if(b) b.className = v ? 'on' : '';
+}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') setFull(false); });
 function fs(){
   // 点画面 = 全屏 (要更大的图就再点一次退出)
   if(!document.fullscreenElement){ (document.documentElement.requestFullscreen||function(){}).call(document.documentElement); }

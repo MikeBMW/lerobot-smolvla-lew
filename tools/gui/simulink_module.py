@@ -7727,6 +7727,19 @@ class SimulinkModule(QWidget):
             返回 (bool 成功, str 说明)。
             """
             import shutil
+            # 🐛 2026-09-27: 先把**旧的**"场景叠加"窗口关掉再开新的 —— 否则每次点按钮都堆一个窗
+            #   (堆起来的旧窗常常是小尺寸/旧版页面 ⇒ 老倪看到的就是"一个小窗口")。
+            try:
+                _o0 = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True,
+                                     timeout=4).stdout
+                _old = [_ln.split(None, 1)[0] for _ln in _o0.splitlines() if "场景叠加" in _ln]
+                for _w in _old:
+                    subprocess.run(["wmctrl", "-i", "-c", _w], timeout=5,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if _old:
+                    time.sleep(1.0)          # 让浏览器把旧窗关完, 免得新窗被当成"旧窗的新标签"
+            except Exception:
+                pass
             tried = []
             for exe, flags in (("chromium", ["--new-window", "--start-maximized"]),
                                ("chromium-browser", ["--new-window", "--start-maximized"]),
