@@ -87,13 +87,65 @@
   .flash{animation:fl .5s}@keyframes fl{from{background:var(--acc);color:#000}to{}}
   .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
   .chips button{background:var(--card2);border:1px solid var(--line);color:var(--dim);border-radius:99px;padding:6px 10px;font-size:13px}
+  /* 📲 装 APP 卡 (2026-09-27 老倪: 「静静做的这个app, 我装不了」⇒ 把"怎么装"做成页面里能点的流程) */
+  .instbtn{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;
+           padding:8px 10px;font-size:14px;font-weight:600;white-space:nowrap}
+  .instbtn.on{background:var(--ok);border-color:var(--ok);color:#08160b}
+  a.dl{display:block;text-align:center;background:var(--ok);color:#08160b;font-weight:800;
+       font-size:17px;text-decoration:none;padding:14px;border-radius:10px;margin:6px 0 8px}
+  a.dl:active{opacity:.75}
+  .hint{font-size:13px;color:var(--dim);margin:6px 0;line-height:1.6}
+  .steps{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:6px 0}
+  .steps b{color:var(--warn);font-size:14px}
+  .steps ol{margin:6px 0 0 18px;padding:0}
+  .steps li{font-size:13.5px;margin:5px 0;line-height:1.55}
+  table.err{width:100%;border-collapse:collapse;margin:6px 0;font-size:13px}
+  table.err td{border-top:1px solid var(--line);padding:6px 4px;vertical-align:top}
+  table.err td:first-child{color:var(--bad);white-space:nowrap;padding-right:8px;font-weight:600}
+  code{background:#0a0e13;border:1px solid var(--line);border-radius:5px;padding:1px 5px;
+       font-size:12.5px;word-break:break-all;color:var(--acc)}
 </style>
 </head>
 <body>
 <div class="bar">
   <h1>📱 Z-MAX 现场</h1>
   <div class="seg"><button id="mAll" class="on">▦ 全看</button><button id="mOne">▣ 单看</button></div>
+  <button class="instbtn" id="btnInst" onclick="var c=document.getElementById('instCard');var s=(c.style.display==='none');c.style.display=s?'block':'none';this.className='instbtn'+(s?' on':'');">📲 装 APP</button>
 </div>
+
+<!-- 📲 装 APP: 老倪「静静做的这个app, 我装不了」⇒ 把"怎么装"做成页面里点一下就能走的流程。
+     哈希由 build_room_apk.sh 每次打包自动写入(占位符 79cc3c7ac9e6e0a9a11fd74eb924d95c74d80a957e1d74d7d2ae806aafa6a39d), 保证页面不说谎 -->
+<div class="card" id="instCard" style="display:none">
+  <p class="ttl"><b>📲 装 Z-MAX 现场 APP</b><span>安卓手机 · 与现有 Z-MAX App 并存, 不用先卸载</span></p>
+  <a class="dl" id="dlBtn" href="/dl/ZMAX-Site.apk" download="ZMAX-Site.apk">⬇️ 下载安装包 (24.8KB)</a>
+  <p class="hint">下完点通知栏里的 <b>ZMAX-Site.apk</b> 安装。第一次会被系统拦一下 —— 按下面三步放开, 再点一次就成。</p>
+  <div class="steps">
+    <b>华为 / 鸿蒙 必须先放开这一处</b>
+    <ol>
+      <li>设置 → 安全 → <b>更多安全设置</b> → 关掉「<b>纯净模式</b>」<span class="hint">(开着它就只让装应用市场的包)</span></li>
+      <li>同一个页面 → <b>安装外部来源应用</b> → 找到「浏览器」/「文件管理」→ 改成<b>允许</b></li>
+      <li>下载/安装时弹风险提示 → 选「<b>继续安装</b>」(不要点"取消")</li>
+    </ol>
+  </div>
+  <p class="hint">还是装不上, 对号入座:</p>
+  <table class="err">
+    <tr><td>应用未安装</td><td>手机上已有同包名的旧版/残包 ⇒ 先卸载「Z-MAX 现场」再装 (本版 versionCode=2, 正常可直接覆盖)</td></tr>
+    <tr><td>解析包错误</td><td>包没下完 ⇒ 删掉重下, 用下面的哈希核对</td></tr>
+    <tr><td>已阻止安装</td><td>纯净模式没关 ⇒ 见上面第 1 条</td></tr>
+    <tr><td>提示"应用来源未知"</td><td>不是错误, 直接继续即可(本包已用 Z-MAX 正式签名)</td></tr>
+  </table>
+  <p class="hint">核对下载完整性 — 下面这串与文件一致就说明下全了:<br>
+    <code id="shaTxt">79cc3c7ac9e6e0a9a11fd74eb924d95c74d80a957e1d74d7d2ae806aafa6a39d</code><br>
+    电脑上对比: <code>sha256sum ZMAX-Site.apk</code></p>
+</div>
+<script>
+// 带 ?inst=1 或 #install 打开 ⇒ 直接展开安装卡 (方便把"怎么装"一键发给别人)
+(function () {
+  if (!/inst=1|#install/.test(location.search + location.hash)) return;
+  var c = document.getElementById('instCard'), b = document.getElementById('btnInst');
+  if (c) { c.style.display = 'block'; if (b) { b.className = 'instbtn on'; } }
+})();
+</script>
 
 <!-- ① 相机: 视频会议式 -->
 <div class="card">
