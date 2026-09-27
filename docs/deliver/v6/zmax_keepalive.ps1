@@ -1,10 +1,11 @@
-# ZMAX AOI keepalive (ASCII only, PS 5.1 safe). 2026-09-27 rev3
+# ZMAX AOI keepalive (ASCII only, PS 5.1 safe). 2026-09-27 rev4
 # For each channel (10082/10083):
-#   1) not listening            -> start the v5 program
-#   2) listening, no v5 face    -> that listener is NOT our v5 (v2 / wedged copy): kill it, start v5
+#   1) not listening            -> start the v6 program
+#   2) listening, no v6 face    -> that listener is NOT our v6 (v2 / wedged copy): kill it, start v6
 #   3) too many copies          -> keep only the port owner (+ its launcher parent), kill the strays
 #      (a stray copy can steal the camera when the live one restarts -> live one then fails to open)
-# v5 face = GET /storage returns HTTP 200.  Logs only when it acts.
+#   4) reverse-channel agent dead -> start task ZMAX_Agent again (so 4060 never loses control)
+# v6 face = GET /storage returns HTTP 200.  Logs only when it acts.
 $ErrorActionPreference = 'SilentlyContinue'
 $dir = 'D:\xspace\ultralytics_AOI'
 $log = Join-Path $dir 'zmax_keepalive.log'
@@ -16,7 +17,7 @@ function PortPid($p) {
   if ($c) { return [int]$c.OwningProcess }
   return 0
 }
-function IsV5($p) {
+function IsV6($p) {
   try {
     $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 8 -Uri ('http://127.0.0.1:' + $p + '/storage')
     return ($r.StatusCode -eq 200)
@@ -47,9 +48,9 @@ foreach ($p in 10082, 10083) {
     $acts += ('start ' + $p + ' (' + $prog[$p] + ')')
     continue
   }
-  if (-not (IsV5 $p)) {
+  if (-not (IsV6 $p)) {
     Start-Sleep -Seconds 4
-    if (-not (IsV5 $p)) {
+    if (-not (IsV6 $p)) {
       Stop-Process -Id $owner -Force -EA SilentlyContinue
       Start-Sleep -Seconds 5
       StartOne $p
@@ -68,6 +69,32 @@ foreach ($p in 10082, 10083) {
       $killed++
     }
     if ($killed -gt 0) { $acts += ('dedup ' + $prog[$p] + ': killed ' + $killed + ' stray copy(ies), kept pid ' + $owner) }
+  }
+}
+# reverse channel: if the agent loop is not running, bring it back (rev5).
+# rev4 used 'schtasks /run /tn ZMAX_Agent' only - on 09-27 10:52 that did NOT revive it
+# (the task refuses to start while its old instance is still registered). Now: run the
+# watchdog script, verify, then fall back to starting the agent process directly. Always logged.
+$ag = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -EA SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine.Contains('agent_start_ascii.ps1') })
+if ($ag.Count -eq 0) {
+  $wd = Join-Path $dir 'zmax_agent_watchdog.ps1'
+  $err = ''
+  if (Test-Path $wd) {
+    try { & powershell -NoProfile -ExecutionPolicy Bypass -File $wd | Out-Null } catch { $err = ' watchdog-err: ' + $_ }
+  } else { $err = ' watchdog-missing' }
+  Start-Sleep -Seconds 3
+  $ag2 = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -EA SilentlyContinue |
+           Where-Object { $_.CommandLine -and $_.CommandLine.Contains('agent_start_ascii.ps1') })
+  if ($ag2.Count -eq 0) {
+    Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -EA SilentlyContinue `
+      -ArgumentList @('-NoProfile','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File',(Join-Path $dir 'agent_start_ascii.ps1'))
+    Start-Sleep -Seconds 3
+    $ag3 = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -EA SilentlyContinue |
+             Where-Object { $_.CommandLine -and $_.CommandLine.Contains('agent_start_ascii.ps1') })
+    $acts += ('agent revive: watchdog+direct -> ' + $ag3.Count + ' proc(s)' + $err)
+  } else {
+    $acts += ('agent revive: via watchdog -> ok' + $err)
   }
 }
 if ($acts.Count -gt 0) {

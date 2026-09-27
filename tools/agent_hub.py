@@ -92,6 +92,18 @@ class Handler(SimpleHTTPRequestHandler):
     def _ok_token(self, q) -> bool:
         return (q.get("t", [""])[0] or "") == STATE["token"]
 
+    def _beat(self, who=""):
+        """记一次 agent 侧活动, 并把时刻落到文件里 —— 让主节点(4060)的看门狗能不看日志就判通道死活。
+           只认**远程**客户端(工控机)的活动, 本机自检/人工探测不算, 免得把死的通道探活成活的。"""
+        STATE["last_beat"] = time.time()
+        if who in ("127.0.0.1", "::1", "localhost", ""):
+            return
+        try:
+            with open("/tmp/zmax_agent_beat", "w") as f:
+                f.write("%.3f" % STATE["last_beat"])
+        except OSError:
+            pass
+
     def do_GET(self):
         u = urlparse(self.path)
         q = parse_qs(u.query)
@@ -100,14 +112,14 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(403, {"ok": False, "msg": "token 不对"})
             who = self.client_address[0]
             if u.path == "/agent/cmd":
-                STATE["last_beat"] = time.time()
+                self._beat(who)
                 cmd = _pop_cmd()
                 if cmd != "NONE":
                     STATE["served"] += 1
                     _log("→ 给 %s 下发: %s" % (who, cmd[:160]))
                 return self._text(200, cmd)
             if u.path == "/agent/beat":
-                STATE["last_beat"] = time.time()
+                self._beat(who)
                 return self._json(200, {"ok": True, "last_beat": STATE["last_beat"],
                                         "served": STATE["served"], "outs": STATE["outs"]})
             if u.path == "/agent/log":

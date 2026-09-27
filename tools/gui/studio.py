@@ -695,7 +695,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.15.26")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.15.27")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10813,7 +10813,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.26 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.27 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10821,9 +10821,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.26 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.27 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.15.27: v5.15.27 — 反向通道加固: 通道自愈失败的真因处理 + 通道死活可判 + 端侧自安装  背景(实测失败): 10:52 我故意杀掉工控机上的通道 agent, 保活任务(rev4 只做 schtasks /run /tn ZMAX_Agent)在 4.5 分钟内 没能把它拉起来 —— 通道整条死了, 我只能让老倪在机器上再贴一次启动命令。  三处加固: ① 端侧独立看门狗: 新增 zmax_agent_watchdog.ps1(检查 agent 进程不在就 Start-Process 直接拉起, 不依赖计划任务状态),    由 ZMAX_Agent_Watchdog 任务每分钟跑一次(SYSTEM); agent 脚本 rev3 启动时自会下载它并**自建该任务**(无需人工)。 ② 保活 rev5: 通道自愈不再用 schtasks /run, 改为"先跑看门狗脚本 → 复查 → 仍没有就直接 Start-Process 拉起",    并把结果(含错误)写进 zmax_keepalive.log —— 下次能直接看到为什么失败。 ③ 主节点侧可判死活: agent_hub.py 每次收到**远程**(工控机)轮询就把时刻写 /tmp/zmax_agent_beat(本机自检不算,    免得把死通道探活); aoi_watch.sh(每5分钟)据此判"通道 >5 分钟没轮询"→ 报警(同一状态 6h 只报一次, 报的判据换了)。    实测: 通道死时第 1 次报警、第 2 次静默; AOI 两路探活正常则零输出。  另: AOI 程序 v6.1 已上线(启动时先探自己端口 /storage, 已有正式实例则明确报错退出码 3) —— 实测两份探针程序 (金手指/表面)都打印"❌ 端口 xxx 上已经有 AOI 服务在应答...不要手动再起第二份"并 exit 3, 现役服务不受影响。 新 SHA256: 金手指 5CA7D8E81516…(38638B) · 表面 AC71331D321E…(28684B)
         # v5.15.26: v5.15.26 — AOI 程序升级到 v6 (老倪: 「升级修改成 v6版本」): 文件名/版本号/横幅统一为 v6, 取图重连修复含在内  - 新文件名(房内命名族): cam_finger_10082_work_v6.py (37658B, SHA256 D1A73DE7..E6678) ·   cam_surface_10083_work_v6.py (27707B, SHA256 DD509424..95AF37); 程序内 VERSION="v6", 横幅打 v6 - v6 = v5.1(取图两路由补"冷启/空闲首抓失败→重连再抓") + 版本号统一; 端口/路由/回执语义仍一字未改 - 保活脚本与自主更新器(zmax_keepalive.ps1 / tools/aoi_remote_deploy.py)已同步 v6 文件名 + /v6/ 发布目录 - 上线实测(10:25): 两路六项验收全过 —— 10082 grab=1 522848B · 10083 236848B · 两路 files_total 不增 ·   capture_detect 回执 code=200 · /last_result 200(gf/housing); 进程: 10082 pid 8792 / 10083 pid 20936 均 v6 - 旧 v5 文件保留作回滚; v2/v4 未动
         # v5.15.25: v5.15.25 — 修: /picture?grab=1 与 /region 冷启/空闲后首抓 500「抓帧失败」(与 /capture_detect 同口径加"重连再抓")  现场(老倪手动起第二份程序 → 10082 相机 100120003 后): 金手指那格取不到图。 探查: /storage 200 · POST /capture_detect 200 且 /last_result 判决正常(n/ms 推进) · /picture?kind=origin(不带grab) 200       但 GET /picture?kind=origin&grab=1 **稳定 500 {"code":500,"msg":"抓帧失败"}**(每次 ~5.0s) 根因: GrabAndSaveImage 里 SciCam_Grab 在冷启/空闲后首抓会失败, 返回 (None, None)。       /capture_detect 早就有"⚠️抓帧失败 → Close_Device() → ensure_camera() → 再抓一次"的兜底, 而       /picture?grab=1 与 /region?grab=1 **没有** ⇒ 只要首抓失败就 500(总览面板/技能预览因此没图)。 修法(v5.1, 两路都改): 那两个路由补上与 /capture_detect 完全相同的重连+重试, 再失败才 500。 实测(重上线后): 10082 grab=1 HTTP 200 520918B/0.73s · 10083 200 237123B/0.26s 均为真 JPEG;                 部署器六项验收两路全过(/storage·capture_detect·last_result·grab出图·files_total 不增);                 新 SHA256: 金手指 FF38BA636064… · 表面 0C52A7170DFC…
         # v5.15.24: v5.15.24 — AOI 两路自治闭环: 保活脚本加 v5 指纹(能替掉冒充进程) + 主节点侧看门狗(异常自愈/仍坏才报警)  - 起因: 老倪在工控机手动跑了两份 v5 (10082 相机报 100120003 = 相机被现役进程独占, 10083 报端口已被占用),   说明"端口在听"不等于"我们的 v5 在听" —— 老版保活只看端口, 会漏掉 v2/哑掉的进程。 - zmax_keepalive.ps1 rev2: 每路检查 ①没在听 → 起 v5 ②在听但 GET /storage 非 200(v2 无此路由/卡死) → 杀掉该 pid 再起 v5。   实测: 更新后在健康状态下跑一次 = 零动作(日志行数 2→2), 两路 /storage 仍 200。 - 新增 4060 侧看门狗 ~/.hermes/scripts/aoi_watch.sh + cron 8a433b97e362 (每 5 分钟, no_agent, 投到 dataworld 群):   正常**零输出**; 异常先让工控机跑 ZMAX_AOI_KeepAlive 自愈, 45s 复验, 仍坏才报警(带 /last_result + 日志路径)。 - 现场实测(10:1x): 10082/10083 /storage 200 · capture_detect 200 · /last_result 200(gf / housing) —— 两路健康。
