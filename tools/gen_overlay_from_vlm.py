@@ -64,12 +64,17 @@ PROMPT = """你是 Z-MAX 具身智能平台的 L5 视觉理解层。图是**真�
 """
 
 
-def call_vlm(jpg_bytes: bytes, w: int, h: int, timeout: int = 300) -> dict:
+def call_vlm(jpg_bytes: bytes, w: int, h: int, timeout: int = 300,
+             prompt: str | None = None) -> dict:
+    """调一次视觉语言大模型。
+    prompt=None ⇒ 用模块自带的场景理解词(PROMPT, 含 {W}/{H} 占位);
+    传入自定义 prompt ⇒ 原样使用(不 format, 免得 JSON 花括号被吃掉)。
+    """
     b64 = base64.b64encode(jpg_bytes).decode()
     body = {
         "model": MODEL,
         "messages": [{"role": "user", "content": [
-            {"type": "text", "text": PROMPT.format(W=w, H=h)},
+            {"type": "text", "text": PROMPT.format(W=w, H=h) if prompt is None else prompt},
             {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}},
         ]}],
         "max_tokens": MAXTOK, "temperature": 0.2,

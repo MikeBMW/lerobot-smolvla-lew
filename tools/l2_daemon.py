@@ -625,9 +625,10 @@ def run_stages(sk, spec, chan, pts):
                 return "🛡 阶段 %d 被守卫拒绝" % i
             pl = pl2
         _to = _stage_timeout(st, pl["lin"], pl.get("speed", spec.get("speed", 60)))
-        if not chan_send(pl["call"]):
-            log("🛑 阶段 %d/%d 下发失败: 命令通道不可用 → 中止剩余阶段(绝不重发)" % (i, n))
-            return "🛑 阶段 %d 下发失败: 命令通道不可用" % i
+        if not chan_send(pl["call"], _intent_desc(pl.get("name", "阶段"), pl.get("dx", 0.0), pl.get("dy", 0.0),
+                                                  pl.get("dz", 0.0), "直线 %.0fmm" % (pl.get("lin") or 0))):
+            log("🛑 阶段 %d/%d 下发被拦(见上一条: 命令通道不可用 或 VL 安全闸拒发) → 中止剩余阶段(绝不重发)" % (i, n))
+            return "🛑 阶段 %d 下发被拦: 通道不可用或 VL 安全闸拒发" % i
         log("已下发 阶段 %d/%d %s → %s · Δ=(%+.1f, %+.1f, %+.1f)mm %s · 直线 %.0fmm · 等到位上限 %.0fs"
             % (i, n, st.get("note", ""), pl["name"], pl["dx"], pl["dy"], pl["dz"], pl["dir"], pl["lin"], _to))
         ok, err, psrc = wait_arrive(pl["pos"], float(st.get("tol_mm", 2.0)), _to)
@@ -831,9 +832,9 @@ def dispatch(reg, spec, chan):
         #   (反复练习/回点前先核对目标, 避免盲发; 也是无副作用的自证手段)
         log("DRY-RUN %s → %s" % (sid, call[:220]))
         return "DRY-RUN(未下发): %s" % call[:170]
-    if not chan_send(call):
-        log("🛑 下发失败: 命令通道不可用(已尝试重建)")
-        return "🛑 下发失败: 命令通道不可用"
+    if not chan_send(call, _intent_desc(sid, dx, dy, dz)):
+        log("🛑 下发被拦(见上一条: 命令通道不可用 或 VL 安全闸拒发)")
+        return "🛑 下发失败: 命令通道不可用 或 VL 安全闸拒发(见日志)"
     log("已下发 %s -> %s · Δ=(%+.1f,%+.1f,%+.1f)mm %s"
         % (sid, (spec.get("d_mm", spec.get("force", spec.get("point", "")))), dx, dy, dz, _dir))
     return "已下发"
@@ -911,8 +912,171 @@ def _spawn_chan(force=False):
     return p
 
 
-def chan_send(call):
-    """下发一条 ROS2 调用; 通道死了就重建并重试一次 (别让技能静默失效)。"""
+# ===== 🛡 VL 视觉安全闸: DeepSeek VL 进控制环 (2026-09-27 老倪) =====
+# 老倪: 「你现在有三个相机，还有深度信号，你的大模型，要负责安全保护。把 deepseek VL 加入控制循环」
+# 形态: VL 单次 40~150s ⇒ 当**慢传感器**(vl_safety_monitor.py 常驻维持带时间戳的裁决),
+#       执行层每次运动下发前读最新裁决: 缺失/过期/不安全 ⇒ **一律拒发**(fail-closed, 看不清也拒)。
+#       关闸只能显式 ZMAX_VL_GUARD=0; 停机/复位类**永远放行**(闸门不许挡急停)。
+VL_VERDICT_PATH = os.path.expanduser("~/zmax_data/vl_safety.json")
+VL_FRESH_S = float(os.environ.get("ZMAX_VL_FRESH_S", "240"))
+VL_INTENT_PATH = os.path.expanduser("~/zmax_data/vl_intent.json")
+VL_INTENT_WAIT_S = float(os.environ.get("ZMAX_VL_INTENT_WAIT_S", "300"))
+_VL_ALWAYS_ALLOW = ("robot_stop", "rokae_recover_estop", "estop", "recover")
+_INTENT = {"seq": 0, "desc": ""}
+try:      # 序号必须**跨重启单调**: 否则新旧动作撞号, 慢层的"同一动作两轮比对"会错配(2026-09-27 实测踩到)
+    _INTENT["seq"] = int(json.loads(open(VL_INTENT_PATH, encoding="utf-8").read()).get("seq") or 0)
+except Exception:                                                       # noqa: BLE001
+    pass
+
+
+def _intent_desc(name: str, dx: float, dy: float, dz: float, extra: str = "") -> str:
+    """把这一步动作讲清楚(老倪: 闸门要知道"我下一步干什么"才判得准)。"""
+    if abs(dz) < 0.5 and (abs(dx) > 0.5 or abs(dy) > 0.5):
+        kind = "纯横向平移, 高度不变(不会更接近下方物体)"
+    elif dz > 0.5:
+        kind = "抬升(远离下方物体; 注意上方横梁/遮挡)"
+    elif dz < -0.5:
+        kind = "下降(必须确认正下方无障碍且余量足够)"
+    else:
+        kind = "原地姿态微调(位置不动)"
+    return "%s Δ=(%+.1f, %+.1f, %+.1f)mm · %s%s" % (name, dx, dy, dz, kind, (" · " + extra) if extra else "")
+
+
+def set_intent(desc: str) -> int:
+    """把"下一步要做的动作"告诉 VL 慢层, 返回意图序号。"""
+    _INTENT["seq"] += 1
+    _INTENT["desc"] = desc
+    try:
+        with open(VL_INTENT_PATH, "w", encoding="utf-8") as f:
+            json.dump({"ts": time.time(), "ts_str": time.strftime("%F %T"),
+                       "seq": _INTENT["seq"], "desc": desc}, f, ensure_ascii=False, indent=1)
+    except Exception as e:                                              # noqa: BLE001
+        log("🛡 意图写入失败: %s" % str(e)[:70])
+    return _INTENT["seq"]
+
+
+def _vl_wait_intent(seq: int, desc: str) -> bool:
+    """等到 VL 基于本次意图给出裁决(最多 VL_INTENT_WAIT_S 秒); 等不到 ⇒ 不拿旧裁决放行。"""
+    t0 = time.time()
+    while time.time() - t0 < VL_INTENT_WAIT_S:
+        time.sleep(2.0)
+        try:
+            d = json.loads(open(VL_VERDICT_PATH, encoding="utf-8").read())
+        except Exception:                                               # noqa: BLE001
+            continue
+        if int(d.get("intent_seq") or 0) >= seq and (d.get("intent_desc") or "") == desc:
+            return True
+    return False
+
+
+def _vl_operator_auth(action: str, consume: bool = True):
+    """人工一次性授权(老倪现场授权 · 2026-09-27「继续, 安全, 开干」)。
+
+    只越过**慢层(VL 判断)**: 现场人已确认安全、而远端 VL 因拥塞/限流给不出裁决时用。
+    **快层(本地 0.2s 遮挡反射)永远有效, 任何授权都不能越过它** —— 手突然伸进来依然立刻拒发。
+    授权文件: ~/zmax_data/vl_operator_auth.json {enabled, ts, ttl_s, max_uses, used, scope[], by, note}
+    审计: 每用一次写 ~/zmax_data/vl_operator_auth_log.jsonl(带时刻/动作/授权人/第几次)。
+    """
+    try:
+        p = os.path.expanduser("~/zmax_data/vl_operator_auth.json")
+        a = json.loads(open(p, encoding="utf-8").read())
+    except Exception:                                                   # noqa: BLE001
+        return None
+    if not a.get("enabled"):
+        return None
+    age = time.time() - float(a.get("ts") or 0)
+    if age > float(a.get("ttl_s") or 300):
+        return None
+    if int(a.get("used") or 0) >= int(a.get("max_uses") or 6):
+        return None
+    scope = a.get("scope") or []
+    if scope and not any(s in (action or "") for s in scope):
+        return None
+    if not consume:                       # peek(只查不记账): 执行层用它决定要不要干等慢层
+        return a
+    a["used"] = int(a.get("used") or 0) + 1
+    try:
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(a, f, ensure_ascii=False, indent=1)
+        with open(os.path.expanduser("~/zmax_data/vl_operator_auth_log.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps({"ts": time.time(), "ts_str": time.strftime("%F %T"), "action": (action or "")[:160],
+                                "by": a.get("by"), "note": a.get("note"), "use": a["used"],
+                                "age_s": round(age, 1)}, ensure_ascii=False) + "\n")
+    except Exception:                                                   # noqa: BLE001
+        pass
+    return a
+
+
+def _vl_gate_blocks(call: str) -> bool:
+    """True = 拦住这条下发。"""
+    c = call or ""
+    if any(k in c for k in _VL_ALWAYS_ALLOW):
+        return False
+    if os.environ.get("ZMAX_VL_GUARD", "1").strip().lower() in ("0", "off", "false", "no"):
+        return False
+
+    def _slow_block(why: str) -> bool:
+        """慢层不放行的收口: 先看有无**人工一次性授权**(带 TTL/次数/审计), 没有才拒发。"""
+        act = c + " " + str(_INTENT.get("desc") or "")
+        a = _vl_operator_auth(act)
+        if a:
+            log("⚠️ 人工一次性放行(**只越过慢层判断, 快层反射照旧**): %s | 授权人=%s · 用途=%s · 第%s/%s次 · TTL=%ss | 慢层原因: %s"
+                % (c[:70], a.get("by"), a.get("note"), a.get("used"), a.get("max_uses"), a.get("ttl_s"), why))
+            return False
+        log(why)
+        return True
+
+    try:
+        d = json.loads(open(VL_VERDICT_PATH, encoding="utf-8").read())
+    except Exception as e:                                              # noqa: BLE001
+        return _slow_block("🛡 VL 安全闸: 无安全裁决文件(%s) ⇒ 从严**拒发**(fail-closed)" % str(e)[:70])
+    age = time.time() - float(d.get("ts") or 0)
+    if age > VL_FRESH_S:
+        return _slow_block("🛡 VL 安全闸: 裁决过期 %.0fs > %.0fs (上次 %s) ⇒ 拒发; 确认 vl_safety_monitor 在跑"
+                           % (age, VL_FRESH_S, d.get("ts_str")))
+    if not d.get("safe"):
+        hz = "; ".join(("%s@%s" % (h.get("what"), h.get("where")))[:70] for h in (d.get("hazards") or []))
+        return _slow_block("🛡 VL 安全闸: **不安全**(risk=%s · %s 裁决): %s | 危害: %s ⇒ 拒发"
+                           % (d.get("risk_level"), d.get("ts_str"), d.get("why"), hz or "-"))
+    # ⚡ 快反射层(本地 5Hz 遮挡检测, 亚秒级): 必须存在 + 安全 + 新鲜, 否则一律拒发
+    try:
+        _fp = os.path.expanduser("~/zmax_data/vl_safety_fast.json")
+        _fresh = float(os.environ.get("ZMAX_VL_FAST_FRESH_S", "4"))
+        f = json.loads(open(_fp, encoding="utf-8").read())
+        fage = time.time() - float(f.get("ts") or 0)
+        if fage > _fresh:
+            log("🛡 VL 安全闸(快层): 反射层裁决过期 %.1fs > %.0fs ⇒ 拒发; 确认 vl_safety_fast 在跑" % (fage, _fresh))
+            return True
+        if not f.get("safe"):
+            log("🛡 VL 安全闸(快层): **遮挡/糊化**(%s): %s ⇒ 拒发(本地检测, 亚秒级)"
+                % (f.get("unsafe_cams"), f.get("why")))
+            return True
+        log("🛡 VL 安全闸(快层): 放行 (裁决 %.1fs 前 · 纹理正常无遮挡)" % fage)
+    except Exception as e:                                              # noqa: BLE001
+        log("🛡 VL 安全闸(快层): 反射层裁决缺失(%s) ⇒ 从严拒发" % str(e)[:60])
+        return True
+    log("🛡 VL 安全闸: 放行 (risk=%s · 裁决 %.0fs 前 · %s)" % (d.get("risk_level"), age, d.get("image")))
+    return False
+
+
+def chan_send(call, intent_desc=None):
+    """下发一条 ROS2 调用; 通道死了就重建并重试一次 (别让技能静默失效)。
+
+    🛡 所有运动类下发在此**唯一收口**: 先过 VL 视觉安全闸(见上), 停机/复位白名单放行。
+    🎯 带 intent_desc 时: 先把"这一步要做什么"告诉 VL, 再**等它针对该动作出裁决**, 等不到就拒发。
+    """
+    if intent_desc:
+        _seq = set_intent(intent_desc)
+        if _vl_operator_auth(call + " " + intent_desc, consume=False):
+            log("🎯 现场授权在场 ⇒ **不干等慢层裁决**, 直接交闸门(快层反射仍强制生效): %s" % intent_desc)
+        else:
+            log("🎯 已把本次动作告知 VL: %s (等针对该动作的裁决, 上限 %.0fs)" % (intent_desc, VL_INTENT_WAIT_S))
+            if not _vl_wait_intent(_seq, intent_desc):
+                log("🛡 VL 安全闸: %.0fs 内未等到针对本次动作的裁决 ⇒ 从严拒发(绝不拿旧裁决放行新动作)"
+                    % VL_INTENT_WAIT_S)
+                return False
+    if _vl_gate_blocks(call):
+        return False
     for attempt in (1, 2):
         if not _chan_alive():
             log("🩹 命令通道不可用 → 重建 (%s)" % ("首次" if attempt == 1 else "重试"))
