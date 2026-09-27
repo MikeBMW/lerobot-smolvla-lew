@@ -259,3 +259,6 @@ flows/*.bak_*
 flows/*.json.bak
 flows/*.bak*
 flows/*.bak-*
+
+# 📦 手机 APP 装包(交付件, 25KB, 可由 state3d_app/build_room_apk.sh 重新打出 ⇒ 不进代码库)
+tools/web/dl/

@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<title>Z-MAX 现场 · 人机在环</title>
+<!--
+  📱 Z-MAX 现场页 (手机 APP 用) — 2026-09-27 老倪:
+     「veh.5.010 状态空间的 HIL 人机在环节点, 接入我的手机 APP … 把工位总揽的所有摄像头推流到
+       APP 的场景叠加, 像开视频会议一样选任意视角/全看/远程操作机器人」
+  设计要点:
+    · 视频会议式: 默认「全看」= 6 路都在动(缩略图轮询刷新, 每路约 1.5s 一次);
+      点任意一路 ⇒「单看」= 那一路走真 MJPEG 实时流(点画面可全屏), 其余 5 路继续缩略图。
+    · 连接预算: 手机到 8791 最多 6 条 HTTP/1.1 连接 ⇒ 页面**永远只有 1 条**取流(全看时是串行轮询,
+      单看时是 1 路 MJPEG) + 1 条状态轮询; 绝不 6 路 MJPEG 一起开(会把连接吃干、整页卡死)。
+    · HIL 面板直连本机 8795 的**本地 HIL API**, 与画布 n_hil 节点、datadrive 的 hil.html 共用同一个大脑:
+      同一份状态、同一套指示处理。涉及真机动作的指示一律被拒答(红线在服务端, 页面绕不过去)。
+    · 远程操作复用 8791 的控制接口(: 两步授权 → 限时 → 撤销), 服务端无授权一律 403。
+      **本页没有软急停** —— 急停请用示教器 / 现场急停按钮(这是现场规矩, 不是遗漏)。
+-->
+<style>
+  :root{--bg:#0b0f14;--card:#141a22;--card2:#0f141b;--line:#243040;--fg:#e6edf3;--dim:#8b98a8;
+        --ok:#3fb950;--warn:#d29922;--bad:#f85149;--blue:#4493f8;--acc:#7ee787}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
+            font:15px/1.45 -apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+  body{padding:8px 8px 26px;max-width:820px;margin:0 auto}
+  .bar{display:flex;align-items:center;gap:8px;margin:4px 0 8px}
+  .bar h1{font-size:16px;margin:0;flex:1;font-weight:600}
+  .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{background:var(--card);color:var(--dim);border:0;padding:8px 12px;font-size:14px;font-weight:600}
+  .seg button.on{background:var(--blue);color:#fff}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:8px}
+  .ttl{font-size:13px;color:var(--dim);margin:0 0 6px;display:flex;align-items:center;gap:6px}
+  .ttl b{color:var(--fg);font-size:14px}
+  #stage{position:relative;background:#000;border-radius:8px;overflow:hidden;line-height:0}
+  #stage img{width:100%;display:block}
+  #stage .tag{position:absolute;left:6px;top:6px;background:rgba(0,0,0,.62);color:#fff;
+              font-size:12px;padding:3px 7px;border-radius:6px;line-height:1.3}
+  #stage .fs{position:absolute;right:6px;top:6px;background:rgba(0,0,0,.62);color:#fff;
+             border:0;font-size:12px;padding:4px 8px;border-radius:6px}
+  body.full{overflow:hidden}
+  body.full #stage{position:fixed;inset:0;z-index:99;border-radius:0;display:flex;align-items:center;background:#000}
+  body.full #stage img{height:100%;width:100%;object-fit:contain}
+  .grid6{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .tile{position:relative;background:#000;border:1px solid var(--line);border-radius:8px;overflow:hidden;line-height:0}
+  .tile.sel{border-color:var(--acc);box-shadow:0 0 0 2px rgba(126,231,135,.35)}
+  .tile img{width:100%;display:block;aspect-ratio:4/3;object-fit:contain;background:#000}
+  .tile .cap{position:absolute;left:4px;bottom:4px;right:4px;background:rgba(0,0,0,.6);color:#fff;
+             font-size:11px;padding:2px 5px;border-radius:5px;line-height:1.3;
+             display:flex;justify-content:space-between;gap:4px}
+  .strip{display:flex;gap:6px;overflow-x:auto;padding:2px 0}
+  .strip button{flex:0 0 auto;background:var(--card2);border:1px solid var(--line);color:var(--fg);
+                border-radius:8px;padding:7px 9px;font-size:12px;line-height:1.25}
+  .strip button.on{border-color:var(--acc);color:var(--acc)}
+  .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .kv{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--dim);margin:2px 0}
+  .kv b{color:var(--fg)}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--dim);margin-right:4px;vertical-align:1px}
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
+  input[type=text],input[type=number]{background:var(--card2);border:1px solid var(--line);color:var(--fg);
+        border-radius:8px;padding:9px 10px;font-size:15px;min-width:0}
+  input[type=text]{flex:1}
+  button.b{background:var(--card2);border:1px solid var(--line);color:var(--fg);border-radius:9px;
+           padding:11px 12px;font-size:15px;font-weight:600}
+  button.b.p{background:var(--blue);border-color:var(--blue);color:#fff}
+  button.b.g{background:var(--ok);border-color:var(--ok);color:#04120a}
+  button.b.r{background:var(--bad);border-color:var(--bad);color:#fff}
+  button.b.w{background:var(--warn);border-color:var(--warn);color:#1a1200}
+  button.b.o{background:#3a2a00;border-color:var(--warn);color:var(--warn)}
+  button.b:disabled{opacity:.45}
+  .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .pad button{padding:14px 4px;font-size:16px}
+  .msg{font-size:13px;border-radius:8px;padding:8px;margin-top:6px;background:var(--card2);
+       border:1px solid var(--line);color:var(--dim);white-space:pre-wrap;word-break:break-word}
+  .msg.ok{border-color:var(--ok);color:var(--acc)} .msg.bad{border-color:var(--bad);color:#ff9d96}
+  .msg.wa{border-color:var(--warn);color:#ffd98a}
+  .authbar{display:flex;align-items:center;gap:8px;border-radius:9px;padding:9px 10px;font-size:14px;font-weight:600;
+           border:1px solid var(--warn);background:#2a1f00;color:#ffd98a}
+  .authbar.on{border-color:var(--ok);background:#0d2413;color:var(--acc)}
+  .bub{border-radius:9px;padding:8px 10px;margin:5px 0;font-size:14px;white-space:pre-wrap;word-break:break-word}
+  .bub.me{background:#12305c;border:1px solid #1f4d8f;margin-left:12%}
+  .bub.ai{background:var(--card2);border:1px solid var(--line)}
+  .bub.red{border-color:var(--bad);background:#2a1213}
+  .hint{font-size:12px;color:var(--dim);margin-top:4px}
+  .flash{animation:fl .5s}@keyframes fl{from{background:var(--acc);color:#000}to{}}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .chips button{background:var(--card2);border:1px solid var(--line);color:var(--dim);border-radius:99px;padding:6px 10px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1>📱 Z-MAX 现场</h1>
+  <div class="seg"><button id="mAll" class="on">▦ 全看</button><button id="mOne">▣ 单看</button></div>
+</div>
+
+<!-- ① 相机: 视频会议式 -->
+<div class="card">
+  <p class="ttl"><b id="camTtl">🎥 工位相机 · 全看</b><span id="camMeta"></span></p>
+  <div id="stage" style="display:none"><img id="main" alt="主画面"><span class="tag" id="mainTag"></span>
+    <button class="fs" id="btnFs">⛶ 全屏</button></div>
+  <div id="grid6" class="grid6"></div>
+  <div class="strip" id="strip"></div>
+  <p class="hint">点任意一路 ⇒ 那一格切「真 MJPEG 实时流」(单看); 单看时点画面 = 全屏。<br>
+     金手指/表面这两路是 OPT 相机触发拍照, 上限约 1.4 帧/秒(相机取图 0.7s)。</p>
+</div>
+
+<!-- ② HIL 人机在环: 与画布节点同一个大脑 -->
+<div class="card">
+  <p class="ttl"><b>🙋 HIL 人机在环</b><span id="hilMeta">连接中…</span></p>
+  <div class="kv" id="hilLayers"></div>
+  <div class="kv" id="hilLine"></div>
+  <div class="row"><input type="text" id="say" placeholder="给状态空间的指示…(如: 状态 / 阶段=对位 / 暂停)">
+    <button class="b p" id="btnSay">发送</button></div>
+  <div class="chips" id="chips"></div>
+  <div id="chat"></div>
+</div>
+
+<!-- ③ 远程操作机器人 -->
+<div class="card">
+  <p class="ttl"><b>🕹 远程操作</b><span id="ctlMeta"></span></p>
+  <div id="authbar" class="authbar">🔒 未授权 —— 真机动作被服务端拦住(403); 要动先两步授权</div>
+  <div class="row" style="margin-top:6px">
+    <button class="b w" id="btnAuth">🔓 授权真动(两步)</button>
+    <button class="b" id="btnDisarm">🔒 撤销授权</button>
+    <button class="b" id="btnShotG">📸 拍金手指</button>
+    <button class="b" id="btnShotS">📸 拍表面</button>
+  </div>
+  <div class="kv" id="robot"></div>
+  <div class="row" style="margin-top:6px"><span class="hint" style="margin:0">步长 mm</span>
+    <span class="strip" id="spd"></span>
+    <span class="hint" style="margin:0">速度</span><input type="number" id="vspd" value="8" min="1" max="60" style="width:74px">
+  </div>
+  <div class="pad" style="margin-top:6px">
+    <button class="b" data-sk="L2.lift">⬆️ 抬升</button>
+    <button class="b" data-sk="L2.forward">⏩ 前进 +X</button>
+    <button class="b" data-sk="L2.backward">⏪ 后退 −X</button>
+    <button class="b" data-sk="L2.left">⬅️ 左移 +Y</button>
+    <button class="b" data-sk="L2.lower">⬇️ 下降</button>
+    <button class="b" data-sk="L2.right">➡️ 右移 −Y</button>
+  </div>
+  <div class="msg wa" id="estop">⚠️ 本页<b>没有软急停</b> —— 急停请用示教器 / 现场急停按钮。真动前三查: 上电 on · 无急停 · 无碰撞。</div>
+  <div class="msg" id="ctlMsg">待命</div>
+</div>
+
+<script>
+"use strict";
+const H   = location.hostname;                 // 手机从 LAN 打开 ⇒ 就是这台机的局域网 IP
+const API = "http://" + H + ":8791";           // 相机 + 控制
+const HIL = "http://" + H + ":8795";           // HIL 本地 API(与画布 n_hil 同一个大脑)
+const CAMS = [
+  {k:"arm",         n:"🤖 臂上相机"},
+  {k:"local",       n:"💻 笔记本内置"},
+  {k:"local2",      n:"📺 MAXHUB 顶视"},
+  {k:"depth",       n:"🟠 深度双目"},
+  {k:"aoi_gold",    n:"🟡 金手指 10082"},
+  {k:"aoi_surface", n:"⚪ 表面 10083"}
+];
+const $ = s => document.querySelector(s);
+let MODE = "all", CUR = "arm", ARMED = false, AUTH_PENDING = 0, ARMWIN = 300, ST = null;
+
+/* ── 取图工具: 串行轮询(1 条连接) ── */
+async function png(name){                                  // 单帧快照 → blob url
+  const r = await fetch(API + "/snapshot/" + name + ".jpg?_=" + Date.now(), {cache:"no-store"});
+  if(!r.ok) throw new Error("HTTP " + r.status);
+  return URL.createObjectURL(await r.blob());
+}
+async function post(path, obj, ms){                        // POST 一律走 8791 控制接口
+  const ac = new AbortController(); const t = setTimeout(()=>ac.abort(), ms||15000);
+  try{
+    const r = await fetch(API + path, {method:"POST", headers:{"Content-Type":"application/json"},
+                                       body:JSON.stringify(obj||{}), signal:ac.signal});
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+
+/* ── 相机渲染 ── */
+function buildGrid(){
+  const g = $("#grid6"); g.innerHTML = "";
+  CAMS.forEach(c=>{
+    const d = document.createElement("div");
+    d.className = "tile" + (c.k===CUR ? " sel" : "");
+    d.innerHTML = '<img id="t_'+c.k+'" alt="'+c.n+'"><span class="cap"><span>'+c.n+
+                  '</span><span id="a_'+c.k+'">—</span></span>';
+    d.onclick = ()=> pick(c.k);
+    g.appendChild(d);
+  });
+}
+function buildStrip(){
+  const s = $("#strip"); s.innerHTML = "";
+  CAMS.forEach(c=>{
+    const b = document.createElement("button");
+    b.id = "s_"+c.k; b.textContent = c.n;
+    if(c.k===CUR) b.className = "on";
+    b.onclick = ()=> pick(c.k);
+    s.appendChild(b);
+  });
+}
+function pick(k){
+  CUR = k;
+  document.querySelectorAll(".tile").forEach(t=>t.classList.remove("sel"));
+  const t = document.querySelector("#t_"+k); if(t){ t.closest(".tile").classList.add("sel"); }
+  document.querySelectorAll("#strip button").forEach(b=>b.classList.remove("on"));
+  const sb = $("#s_"+k); if(sb) sb.classList.add("on");
+  if(MODE === "one"){ setMain(); }
+  else { MODE = "one"; setMode(); }        // 全看里点一格 ⇒ 直接进单看(会议里"放大这一路")
+}
+function setMain(){
+  const c = CAMS.find(x=>x.k===CUR) || CAMS[0];
+  $("#stage").style.display = "";
+  $("#main").src = API + "/" + CUR + ".mjpg?_=" + Date.now();   // 这一路走真 MJPEG
+  $("#camTtl").textContent = "🎥 " + c.n + " · 单看(实时流)";
+}
+function setMode(){
+  $("#mAll").className = MODE==="all" ? "on" : "";
+  $("#mOne").className = MODE==="one" ? "on" : "";
+  document.body.classList.remove("full");
+  if(MODE==="one"){ setMain(); $("#grid6").style.display = "none"; }
+  else{
+    $("#stage").style.display = "none"; $("#main").src = ""; $("#grid6").style.display = "";
+    $("#camTtl").textContent = "🎥 工位相机 · 全看";
+  }
+}
+/* 全看/单看都跑这一条串行轮询: 每次取 1 路(全看 6 路轮流, 单看时跳过主画面那一格) */
+async function loop(){
+  let i = 0;
+  for(;;){
+    const c = CAMS[i % CAMS.length]; i++;
+    if(!(MODE==="one" && c.k===CUR)){
+      try{
+        const url = await png(c.k);
+        const el = $("#t_"+c.k);
+        if(el){ const old = el.dataset.old; if(old) URL.revokeObjectURL(old);
+                el.dataset.old = url; el.src = url; }
+        const a = $("#a_"+c.k); if(a) a.textContent = new Date().toLocaleTimeString("zh-CN",{hour12:false});
+      }catch(e){ const a = $("#a_"+c.k); if(a) a.textContent = "离线"; }
+    }
+    await new Promise(r=>setTimeout(r, MODE==="all" ? 220 : 380));
+  }
+}
+
+/* ── 状态轮询: 一路合并请求(避开 6 连接坑) ── */
+function ageTxt(v){ return (v===undefined||v===null||v<0) ? "—" : (v<10 ? v.toFixed(1)+"s" : Math.round(v)+"s"); }
+async function status(){
+  try{
+    const r = await fetch(API + "/station/status?_=" + Date.now(), {cache:"no-store"});
+    const j = await r.json(); ST = j;
+    CAMS.forEach(c=>{ const s = (j.stats||{})[c.k]||{}; const a = $("#a_"+c.k);
+      if(a && MODE==="all") a.textContent = s.online===false ? "离线" : ageTxt(s.age_s); });
+    if(MODE==="one"){ const s = (ST.stats||{})[CUR]||{};
+      $("#mainTag").textContent = CAMS.find(x=>x.k===CUR).n + " · 帧龄 " + ageTxt(s.age_s) + " · " +
+        (s.fps!==undefined ? s.fps+" fps" : ""); }
+    $("#camMeta").textContent = " · " + new Date().toLocaleTimeString("zh-CN",{hour12:false});
+    applyCtl(j.ctl);
+  }catch(e){ $("#camMeta").textContent = " · 状态取不到(" + e.message + ")"; }
+}
+
+/* ── 控制: 授权两步 / 点动 / 拍照 ── */
+function applyCtl(a){
+  if(!a) return;
+  const was = ARMED;
+  ARMED = !!a.armed; ARMWIN = a.window_s || ARMWIN;
+  const left = Math.max(0, Math.round(a.left_s || 0));
+  const bar = $("#authbar");
+  if(ARMED){ bar.className = "authbar on";
+    bar.textContent = "🔓 已授权真动 —— 剩 " + left + "s 自动失效(服务端闸门) · 授权IP " + (a.ip||""); }
+  else{ bar.className = "authbar";
+    bar.textContent = "🔒 未授权 —— 真机动作被服务端拦住(HTTP 403); 要动先两步授权"; }
+  document.querySelectorAll("button[data-sk]").forEach(b=>b.disabled = !ARMED);
+  if(was && !ARMED) ctlMsg("⌛ 授权已到期/被撤销 —— 回到未授权(现场安全)", "wa");
+  $("#ctlMeta").textContent = ARMED ? "✅ 可动 · 剩 " + left + "s" : "🔒 只看不动";
+}
+function ctlMsg(t, cls){ const m = $("#ctlMsg"); m.className = "msg " + (cls||""); m.textContent = t; }
+async function auth(){
+  if(!ARMED && !AUTH_PENDING){
+    AUTH_PENDING = Date.now();
+    ctlMsg("⚠️ 第 1 步已按 —— 确认机器旁没人、手不在臂内, 再点一次「授权真动(两步)」", "wa");
+    setTimeout(()=>{ if(AUTH_PENDING && Date.now()-AUTH_PENDING > 6000){ AUTH_PENDING = 0; } }, 6500);
+    return;
+  }
+  AUTH_PENDING = 0;
+  try{ const j = await post("/ctl/arm", {on:true, note:"手机APP两步确认(现场安全)"}, 9000);
+       ctlMsg((j.msg||"✅ 已授权") + " · 窗口 " + (j.window_s||ARMWIN) + "s", "ok"); await status(); }
+  catch(e){ ctlMsg("❌ 授权失败: " + e.message, "bad"); }
+}
+async function move(btn){
+  const sk = btn.dataset.sk, spd = parseFloat($("#vspd").value||"8");
+  const step = parseFloat((document.querySelector("#spd button.on")||{dataset:{}}).dataset.v || "10");
+  ctlMsg("⏳ " + sk + " " + step + "mm @速度" + spd + " …");
+  try{ const j = await post("/ctl/move", {skill:sk, d_mm:step, speed:spd, arm:1}, 25000);
+       ctlMsg((j.ok===false ? "❌ " : "✅ ") + (j.msg || JSON.stringify(j).slice(0,220)), j.ok===false ? "bad":"ok");
+       btn.classList.remove("flash"); void btn.offsetWidth; btn.classList.add("flash"); }
+  catch(e){ ctlMsg("❌ 下发失败: " + e.message + "(超时别重发同一条)", "bad"); }
+  await status();
+}
+async function shot(port){
+  const b = port===10082 ? $("#btnShotG") : $("#btnShotS");
+  b.disabled = true; ctlMsg("⏳ 正在让 " + port + " 拍一帧 …");
+  try{ const j = await post("/api/aoi/capture?port=" + port, {}, 120000);
+       ctlMsg((j.ok===false?"❌ ":"✅ ") + (j.msg || JSON.stringify(j).slice(0,240)), j.ok===false?"bad":"ok"); }
+  catch(e){ ctlMsg("❌ 拍照失败: " + e.message, "bad"); }
+  b.disabled = false;
+}
+
+/* ── HIL: 与画布 n_hil 同一个大脑 ── */
+function dots(ly){
+  return Object.keys(ly||{}).sort().map(k=>{
+    const s = ly[k].status, cls = s==="active" ? "ok" : (s==="offline"?"bad":"warn");
+    return '<span><i class="dot '+cls+'"></i><b>'+k+'</b> '+(ly[k].name||"")+' · '+s+'</span>'; }).join(" ");
+}
+async function hil(){
+  try{
+    const r = await fetch(HIL + "/hil/state?_=" + Date.now(), {cache:"no-store"});
+    const j = await r.json(); const s = j.snapshot || {};
+    $("#hilMeta").textContent = " · 帧龄 " + ageTxt(s.frame_age_s) + (j.pause ? " · ⏸ 已暂停" : "");
+    $("#hilLayers").innerHTML = dots(s.layers);
+    const ev = Object.entries(s.events||{}).filter(([k])=>!k.startsWith("_"))
+                 .map(([k,v])=>k+"="+ (typeof v==="number"? v.toFixed(3): v)).join(" · ");
+    $("#hilLine").innerHTML = "阶段 <b>" + (s.stage||"未上报") + "</b> · 事件 " + ev +
+      '<br><span style="color:var(--dim)">' + ((s.idea||{}).one_liner||"") + '</span>';
+    if(!window._hilChat){ window._hilChat = 1; (j.instructions||[]).slice(-6).forEach(x=>bub("me",x.text)); }
+  }catch(e){ $("#hilMeta").textContent = " · HIL 取不到(" + e.message + ")"; }
+}
+function bub(who, text, cls){
+  const d = document.createElement("div");
+  d.className = "bub " + who + (cls ? " " + cls : "");
+  d.textContent = who==="me" ? "🧑 " + text : text;
+  $("#chat").appendChild(d); $("#chat").scrollTop = $("#chat").scrollHeight; return d;
+}
+async function say(t){
+  t = (t || $("#say").value || "").trim(); if(!t) return;
+  $("#say").value = ""; bub("me", t);
+  const p = bub("ai", "⏳ 正在交给状态空间 …");
+  try{
+    const r = await fetch(HIL + "/hil/say", {method:"POST", headers:{"Content-Type":"application/json"},
+                                             body:JSON.stringify({text:t})});
+    const j = await r.json();
+    if(!j.ok){ p.textContent = "❌ " + (j.err||"失败"); p.className = "bub ai red"; return; }
+    p.textContent = j.reply; if(j.verdict === "refused_motion") p.className = "bub ai red";
+    hil();
+  }catch(e){ p.textContent = "❌ HIL 发不出去: " + e.message; p.className = "bub ai red"; }
+}
+
+/* ── 绑定 ── */
+$("#mAll").onclick = ()=>{ MODE="all"; setMode(); };
+$("#mOne").onclick = ()=>{ MODE="one"; setMode(); };
+$("#btnFs").onclick = ()=>{ document.body.classList.toggle("full"); };
+$("#stage").onclick = (e)=>{ if(e.target.id !== "btnFs") document.body.classList.toggle("full"); };
+$("#btnAuth").onclick = auth;
+$("#btnDisarm").onclick = async ()=>{ try{ const j = await post("/ctl/arm",{on:false},9000);
+    ctlMsg("🔒 已撤销授权 · 剩 " + Math.round(j.left_s||0) + "s", "wa"); await status(); }catch(e){ ctlMsg("❌ "+e.message,"bad"); } };
+$("#btnShotG").onclick = ()=> shot(10082);
+$("#btnShotS").onclick = ()=> shot(10083);
+document.querySelectorAll("button[data-sk]").forEach(b=> b.onclick = ()=> move(b));
+["5","10","20","50","100"].forEach(v=>{
+  const b = document.createElement("button"); b.textContent = v + "mm"; b.dataset.v = v;
+  if(v === "10") b.className = "on";
+  b.onclick = ()=>{ document.querySelectorAll("#spd button").forEach(x=>x.className=""); b.className="on"; };
+  $("#spd").appendChild(b);
+});
+["状态","解释","阶段=对位","暂停","恢复","待办"].forEach(t=>{
+  const b = document.createElement("button"); b.textContent = t; b.onclick = ()=> say(t); $("#chips").appendChild(b);
+});
+$("#btnSay").onclick = ()=> say();
+$("#say").addEventListener("keydown", e=>{ if(e.key === "Enter") say(); });
+
+buildGrid(); buildStrip(); setMode(); status(); hil(); loop();
+setInterval(status, 2500); setInterval(hil, 4000);
+</script>
+</body>
+</html>

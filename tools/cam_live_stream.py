@@ -1130,7 +1130,8 @@ code{color:#7ee787;font-size:12px}
   <h1>🧩 场景叠加 · 真实视频流 + 仿真场景边界框</h1>
   <div class="meta">真实画面 = 原始视频流 · 框 = 仿真投影 / L5 大模型理解 / 真机检测（颜色区分，不混为一谈）· 点画面=全屏</div>
   <div class="meta" style="margin-top:4px">
-    <a href="/station" style="color:#7ee787;font-weight:600;font-size:15px">🛰 工位总览（6 路同屏: 三相机+深度图+金手指+表面检测 · 右侧手动控制机器人）→</a>
+    <a href="/room" style="color:#ffd98a;font-weight:700;font-size:15px">📱 手机现场页（全看相机 + 人机在环 + 远程操作）</a>
+&#160;·&#160;<a href="/station" style="color:#7ee787;font-weight:600;font-size:15px">🛰 工位总览（6 路同屏: 三相机+深度图+金手指+表面检测 · 右侧手动控制机器人）→</a>
   </div>
 </header>
 <div class="bar">
@@ -1751,6 +1752,31 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "text/html; charset=utf-8", body)
         elif p in ("/overlay", "/overlay.html", "/scene"):
             self._send(200, "text/html; charset=utf-8", OVERLAY_PAGE.encode("utf-8"))
+        elif p.startswith("/dl/"):
+            # 📦 2026-09-27 交付件下载(手机 APP 装包等): 只服务 tools/web/dl/ 这一个目录,
+            #   文件名取 basename ⇒ 就算路径里塞 ../ 也穿不出去。
+            _dl = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "dl")
+            _fn = os.path.basename(p[len("/dl/"):])
+            try:
+                with open(os.path.join(_dl, _fn), "rb") as f:
+                    _b = f.read()
+                self._send(200, "application/vnd.android.package-archive"
+                           if _fn.endswith(".apk") else "application/octet-stream", _b)
+            except Exception as e:                                          # noqa: BLE001
+                self._send(404, "text/plain; charset=utf-8",
+                           ("没有这个文件: %s (%s)" % (_fn, e)).encode("utf-8"))
+        elif p in ("/room", "/room.html", "/app", "/hil-live"):
+            # 📱 2026-09-27 老倪: 手机 APP 现场页 —— 视频会议式看全工位相机 + 🙋 HIL 人机在环 + 🕹 远程操作
+            #   页面本体独立成 tools/web/room.html(便于维护, 手机竖屏优先);
+            #   HIL 部分直连本机 8795 的本地 HIL API = 与画布 n_hil 节点同一个大脑。
+            _rp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "room.html")
+            try:
+                with open(_rp, encoding="utf-8") as f:
+                    _body = f.read()
+                self._send(200, "text/html; charset=utf-8", _body.encode("utf-8"))
+            except Exception as e:                                          # noqa: BLE001
+                self._send(500, "text/plain; charset=utf-8",
+                           ("room.html 读不到(%s): %s" % (_rp, e)).encode("utf-8"))
         elif p in ("/station", "/station.html", "/board"):
             # 🛰 工位总览: 6 窗同屏(3 相机 + 深度 + 金手指 + 表面) + 手动控制区
             # 老倪的浏览器里曾有两个窗口都开着本机页面, 把「同一主机 6 条连接」占满 ⇒

@@ -3493,6 +3493,10 @@ def node_hil(ctx):
                    {k: v for k, v in (s2.get("events") or {}).items() if not k.startswith("_")}))
             log("   ← 人的指示: 处理 %d 条 %s" % (inst.get("handled", 0), inst.get("items") or ""))
             log("   网页 https://datadrive.world/hil.html (只读状态+软先验指示; 动作类拒答)")
+            # 📱 2026-09-27 老倪: 「从这个点, 我要通过 APP 跟状态空间交互」—— 手机入口挂在本节点上
+            log("   📱 手机 APP 现场页 http://10.163.146.78:8791/room (全看 6 路相机 + 远程操作 + 本节点交互)")
+            log("   本地 HIL API http://10.163.146.78:8795 (与本节点同一个大脑: build_snapshot/handle_instruction)")
+            log("   装包下载 http://10.163.146.78:8791/dl/ZMAX-Site.apk (App 长按屏幕可改地址)")
         return True
     except Exception as e:
         if log:
