@@ -4796,6 +4796,19 @@ class SimulinkModule(QWidget):
             "  · 视频流没在跑会自动带 --overlay 启动; 画面里自带真值带(帧龄/TCP/手眼)可核对",
             self.open_scene_overlay, "#00d4aa")
         tl.addWidget(self.btn_scene_overlay)
+        # 🛰 2026-09-27 老倪: 「之前那个 6 个窗口一起打开的网页怎么搞丢了?」——
+        #   页面一直在(8793/station: 6 路同屏 + 右侧控制区), 但控制台上**没有入口**
+        #   (只能从叠加页顶部那个绿链接跳过去)。这里给它一个自己的按钮, 和场景叠加并列。
+        self.btn_station = mk_btn(
+            "🛰 工位总览",
+            "打开【工位总览】网页 — 6 路同屏 + 右侧手动控制区:\n"
+            "  · 机器人手臂相机(臂上 D405, 来自 Orin) / 笔记本内置相机 / MAXHUB 电视摄像头\n"
+            "  · realsense 深度双目 / OPT 金手指检测(10082) / OPT 表面检测(10083)\n"
+            "  · 右侧控制区: 默认未授权 → 两步授权(300s 自动失效) → 点动/拍帧 (只有 POST 触发动作)\n"
+            "  · 与「🧩 场景叠加」各用各的浏览器窗口 ⇒ 两个页面可以同时开着\n"
+            "  · 地址: http://<本机IP>:8793/station (日志里给出可复制的完整地址)",
+            self.open_station_page, "#f0883e")
+        tl.addWidget(self.btn_station)
         tl.addWidget(self.btn_stop)
         tl.addSpacing(8)
         tl.addWidget(self.btn_tutorial)
@@ -7672,6 +7685,225 @@ class SimulinkModule(QWidget):
 
     # ── 📡 实时采集轮询 (后台线程, 不卡 UI) ──
 
+    def _open_page_window(self, url, title_key, profile_name, tag):
+        """开一个**独立浏览器窗口**并搬回控制台那块屏 (与「🧩 场景叠加」同一套已实测的做法)
+
+        为什么必须独立 profile (两条都是实测, 不是猜):
+          ① 不带独立 profile 时, 新窗请求会被**已经在跑的 chromium 实例吞掉** —— 页面变成别的
+             窗口里的一个后台标签, 看不见也搬不了屏(老倪:"网页还是没打开");
+          ② 本机 chromium 是 **snap(受限)** —— profile 放 ~/.cache 会被拒(浏览器自己报
+             `Failed to create .../SingletonLock` + `Failed to create a ProcessSingleton`),
+             进程起来又静默退出。⇒ profile 只能放 snap 允许写的 `~/snap/chromium/common/<名字>`。
+
+        返回 (bool 成功, str 说明)。调用方负责自己在后台线程里跑(本函数会 sleep ~12s)。
+        """
+        # 🔴 2026-09-27: 本模块**没有**模块级 `subprocess`(LSP + 运行时 hasattr 双实证:
+        #   "module 有 subprocess 吗 = False") —— 必须显式导入, 否则下面每句 subprocess.* 都 NameError。
+        import shutil, subprocess
+
+        def _studio_geo():
+            """控制台那块屏的位置尺寸 —— 页面要跟控制台并排看, 不能落到另一块屏"""
+            try:
+                _g = subprocess.run(["wmctrl", "-lG"], capture_output=True, text=True,
+                                    timeout=4).stdout
+                for _ln in _g.splitlines():
+                    if "XSpace Studio" in _ln:
+                        _p = _ln.split(None, 7)
+                        return (int(_p[2]), int(_p[3]), int(_p[4]), int(_p[5]))
+            except Exception:
+                pass
+            return None
+
+        geo = _studio_geo()
+        # ① 已有同类窗口 ⇒ 直接搬屏+最大化+置前, 不关不重开 (秒回)
+        try:
+            _l = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True, timeout=4).stdout
+            _ex = [_ln.split(None, 1)[0] for _ln in _l.splitlines() if title_key in _ln]
+        except Exception:
+            _ex = []
+        if _ex:
+            for _w in _ex:
+                if geo:
+                    subprocess.run(["wmctrl", "-i", "-r", _w, "-e", "0,%d,%d,%d,%d" % geo],
+                                   timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(["wmctrl", "-i", "-r", _w, "-b", "add,maximized_vert,maximized_horz"],
+                               timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(["wmctrl", "-i", "-a", _w], timeout=5,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True, "复用已在的「%s」窗口并置前 (%d 个) — 没重开, 秒回" % (title_key, len(_ex))
+        # ② 起独立实例 (snap 可写 profile ⇒ 必须新建窗口)
+        _snapcommon = os.path.join(os.path.expanduser("~"), "snap", "chromium", "common")
+        _prof = (os.path.join(_snapcommon, profile_name) if os.path.isdir(_snapcommon) else
+                 os.path.join(os.path.expanduser("~"), ".cache", profile_name))
+        try:
+            os.makedirs(_prof, exist_ok=True)
+        except Exception:
+            pass
+        _common = ["--user-data-dir=" + _prof, "--no-first-run", "--no-default-browser-check"]
+        tried = []
+        for exe, flags in (("chromium", ["--new-window", "--start-maximized"] + _common),
+                           ("chromium-browser", ["--new-window", "--start-maximized"] + _common),
+                           ("google-chrome", ["--new-window", "--start-maximized"] + _common),
+                           ("firefox", ["--new-window"])):
+            p = shutil.which(exe)
+            if not p:
+                continue
+            try:
+                _bf = open("/tmp/zmax_page_browser.log", "ab")   # 浏览器输出留证(起不来能看到原因)
+                subprocess.Popen([p] + flags + [url], stdout=_bf, stderr=subprocess.STDOUT,
+                                 start_new_session=True)
+                tried.append(exe + "(新窗最大化)")
+                break
+            except Exception:
+                continue
+        if not tried:
+            for _cmd in (["xdg-open", url], ["gio", "open", url]):
+                try:
+                    if subprocess.run(_cmd, timeout=20, stdout=subprocess.DEVNULL,
+                                      stderr=subprocess.DEVNULL).returncode == 0:
+                        tried.append(_cmd[0])
+                        break
+                except Exception:
+                    continue
+        if not tried:
+            return False, "没找到可用浏览器 (xdg-open / gio 也不通)"
+        self.log_signal.emit("%s 浏览器已启动(%s) — 页面加载中, 我去把窗口搬到控制台那块屏" % (tag, tried[0]))
+        # ③ 等新窗口出现 (记下已有 id, 按"新出现的 id + 标题"认窗, 12s 内每 3s 报进度)
+        _seen0 = set()
+        try:
+            _l0 = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True, timeout=4).stdout
+            _seen0 = {_ln.split(None, 1)[0] for _ln in _l0.splitlines()}
+        except Exception:
+            pass
+        _wins = []
+        for _i in range(40):
+            time.sleep(0.3)
+            if _i and _i % 10 == 0:
+                self.log_signal.emit("%s 还在等浏览器窗口… 已等 %.1fs (地址 %s)" % (tag, _i * 0.3, url))
+            try:
+                _lines = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True,
+                                        timeout=4).stdout.splitlines()
+            except Exception:
+                continue
+            _wins = [_ln.split(None, 1)[0] for _ln in _lines
+                     if title_key in _ln and _ln.split(None, 1)[0] not in _seen0]
+            if _wins:
+                break
+        # ④ 搬屏 + 最大化 + 置前 (2 轮), 再读回几何如实报告
+        _g2 = None
+        if _wins and geo:
+            for _w in _wins:
+                subprocess.run(["wmctrl", "-i", "-r", _w, "-e", "0,%d,%d,%d,%d" % geo], timeout=5,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(0.4)
+            for _w in _wins:
+                subprocess.run(["wmctrl", "-i", "-r", _w, "-b", "add,maximized_vert,maximized_horz"],
+                               timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(["wmctrl", "-i", "-a", _w], timeout=5,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                _gg = subprocess.run(["wmctrl", "-lG"], capture_output=True, text=True,
+                                     timeout=4).stdout
+                for _ln in _gg.splitlines():
+                    if _wins[0] in _ln:
+                        _p = _ln.split(None, 7)
+                        _g2 = "%sx%s @ (%s,%s)" % (_p[4], _p[5], _p[2], _p[3])
+                        break
+            except Exception:
+                pass
+        if not _wins:
+            _tail = ""
+            try:
+                with open("/tmp/zmax_page_browser.log", "r", errors="replace") as _f:
+                    _tail = " | ".join(_f.read().strip().splitlines()[-2:])[-240:]
+            except Exception:
+                pass
+            return True, ("%s (12s 内没认出窗口%s)" % (tried[0],
+                          (" · 浏览器输出: " + _tail) if _tail else ""))
+        return True, "%s · %d 个窗已搬屏+最大化到控制台那块屏 · 实测尺寸 %s" % (
+            tried[0], len(_wins), _g2 or "未知")
+
+    def open_station_page(self):
+        """🛰 工位总览 (6 路同屏 + 右侧控制区) — 老倪 2026-09-27「那个网页怎么搞丢了?」
+
+        页面地址: http://<本机LAN>:8793/station (由 tools/cam_live_stream.py 服务)
+        6 路源: arm(臂上 D405, 来自 Orin) / local(笔记本内置) / local2(MAXHUB 电视摄像头)
+                / depth(realsense 深度双目) / aoi_gold(OPT 金手指 10082) / aoi_surface(OPT 表面 10083)
+        """
+        self._log("🛰 工位总览: 收到点击 → 正在打开 6 路同屏网页 (视频流没在跑会先拉起, 最多 12s)")
+        # 🔴 2026-09-27: 本模块没有模块级 subprocess/urllib/socket(实测 hasattr=False) ⇒ 显式导入
+        import subprocess, socket, urllib.request
+
+        def _stats_ok(timeout=2.5):
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:%d/stats" % self.OV_LIVE_PORT,
+                                            timeout=timeout) as r:
+                    return r.status == 200
+            except Exception:
+                return False
+
+        def _lan_ip():
+            try:
+                _s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                _s.connect(("8.8.8.8", 80))
+                _ip = _s.getsockname()[0]
+                _s.close()
+                return _ip
+            except Exception:
+                return "127.0.0.1"
+
+        def _work():
+            # 1) 视频流在不在 —— 总览页和叠加页由**同一个进程**服务(cam_live_stream.py)
+            if not _stats_ok():
+                self.log_signal.emit("🛰 工位总览: 视频流未运行 → 自动启动 (6 路源 + 总览页) …")
+                orin_host = os.environ.get("ZMAX_ORIN_HOST", "tashan@192.168.23.66").split("@")[-1]
+                cmd = [sys.executable, os.path.join(self._repo_root(), "tools", "cam_live_stream.py"),
+                       "--port", str(self.OV_LIVE_PORT), "--quality", "72", "--fps", "30",
+                       "--arm-http", "http://%s:8792/frame.jpg" % orin_host, "--arm-fps", "30",
+                       "--local-dev", "2", "--local2-dev", "0",
+                       "--depth-fps", "4", "--aoi-fps", "0.25", "--ctl-motion",
+                       # 总览页自己的端口 —— 漏了它 /station 就 404(总览页"消失"的真根因之一)
+                       "--station-port", "8793",
+                       "--overlay", "--overlay-src", "all", "--overlay-fps", "10"]
+                try:
+                    logf = open("/tmp/zmax_scene_overlay.log", "ab")
+                    subprocess.Popen(cmd, cwd=self._repo_root(), stdout=logf,
+                                     stderr=subprocess.STDOUT, start_new_session=True)
+                    for _ in range(12):
+                        if _stats_ok():
+                            break
+                        time.sleep(1.0)
+                except Exception as e:                                          # noqa: BLE001
+                    self.log_signal.emit("❌ 工位总览: 启动视频流失败 — %s" % e)
+                    return
+            # 2) 页面地址: 现取 LAN IP(工位机 DHCP 会变) + 真 GET 验一次, 再用 127.0.0.1 兜底
+            _ip = _lan_ip()
+            url = None
+            for _u in ("http://%s:8793/station" % _ip, "http://127.0.0.1:8793/station"):
+                try:
+                    with urllib.request.urlopen(_u, timeout=4) as r:
+                        if r.status == 200:
+                            url = _u
+                            break
+                except Exception as e:                                          # noqa: BLE001
+                    self.log_signal.emit("⚠️ 工位总览地址不可达 (%s → %s)" % (_u, e))
+            if not url:
+                self.log_signal.emit("❌ 工位总览: 页面拿不到 (8793/station 不可达) · "
+                                     "看 /tmp/zmax_scene_overlay.log")
+                return
+            # 3) 开浏览器新窗(独立 profile ⇒ 和叠加页各占一个窗, 可同时开着) + 搬回控制台那块屏
+            _ok, _how = self._open_page_window(url, "工位总览", "zmax_station_profile", "🛰 工位总览:")
+            if _ok:
+                self.log_signal.emit("🛰 工位总览页已打开（浏览器）: %s" % _how)
+            else:
+                self.log_signal.emit("❌ 工位总览页没能打开: %s" % _how)
+            self.log_signal.emit("   地址（可复制）: %s" % url)
+            self.log_signal.emit("   6 路: 臂上(Orin) / 笔记本内置 / MAXHUB / realsense 深度 / "
+                                 "金手指(10082) / 表面(10083) · 右侧控制区默认未授权(授权 300s 自动失效)")
+
+        import threading as _th
+        _th.Thread(target=_work, daemon=True).start()
+
     def open_scene_overlay(self):
         """🧩 场景叠加 (老倪 2026-09-27): 真实视频流 + 仿真场景检测框
 
@@ -7740,7 +7972,7 @@ class SimulinkModule(QWidget):
                  把标题含"场景叠加"的窗口激活+最大化 (浏览器起在哪都能拉回正视野)。
             返回 (bool 成功, str 说明)。
             """
-            import shutil
+            import shutil, subprocess   # 🔴 本模块无模块级 subprocess(实测 hasattr=False) ⇒ 显式导入
             # 🔴 2026-09-27 老倪: 「点了很久没反应」—— 两个提速点:
             #   ① 已经有"场景叠加"窗口 ⇒ **直接搬屏+最大化+激活就返回**(不关不重开, 秒回);
             #   ② 真要新开时: 浏览器进程一启动就先报一声"在加载", 认窗预算 25s→12s, 每 0.3s 探一次,
@@ -7932,6 +8164,11 @@ class SimulinkModule(QWidget):
                        "--local-dev", "2", "--local2-dev", "0",
                        # 🛰 2026-09-27 工位总览 6 窗: 深度源 + 工控机金手指/表面检测 + 手动控制区
                        "--depth-fps", "4", "--aoi-fps", "0.25", "--ctl-motion",
+                       # 🔴 2026-09-27 老倪: 「6 个窗口那个网页怎么搞丢了?」——
+                       #   根因之一: 这里自动拉起视频流时**没带 --station-port**, 于是新起的流只服务
+                       #   /overlay, `8793/station`(6 路同屏 + 控制区)直接 404 ⇒ 总览页就"没了"。
+                       #   补上 8793, 只要这个按钮把流拉起来, 总览页就同时在。
+                       "--station-port", "8793",
                        "--overlay", "--overlay-src", "all", "--overlay-fps", "10"]
                 try:
                     logf = open("/tmp/zmax_scene_overlay.log", "ab")
