@@ -695,7 +695,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.15.15")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.15.16")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10813,7 +10813,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.15 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.16 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10821,9 +10821,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.15 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.16 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.15.16: 修: 总览页三处根因 (老倪: 10082/10083 没图像 + 控制区按钮点不动)  ① 控制区按钮"点不动"根因 = 浏览器对该端口的 6 条连接被占满(实测他那个 chromium 对 8791 恰好 6 条)    -> 总览页 6 格全改**串行单帧快照**(一格 MJPEG 都不用, 常占 1 条)    -> 总览页搬到**专用端口 8793** (--station-port), 主端口 /station 302 过去, 各自 6 条名额    -> 按钮 15s 兜底放开 + 请求超时(状态 6s / 动作 18s)后明写"请求没发出去/超时"  ② 金手指 10082 "没图像" 根因 = OPT 空闲时 GET /picture 返    404 {"code":404,"msg":"尚无照片: 先 POST /capture_detect 或 GET /picture?grab=1"}    -> 面板照这句话明写原因 + 「📸 拍一帧」(GET /picture?kind=origin&grab=1, 实测 200/4.9MB/1.4s)    -> 「🔁 自动取景」默认开(页面可关): 发现 404 就替它现拍, 最快 30s 一次; 拍后 90s 内按在线报    -> 另存**整板原图**(2048x2448 -> 1400x1171), 面板一键切换「判据图(一条区域) / 整板原图」  ③ 表面 10083 "没图像" = 那台服务没有取图路由(实测 GET 全 404, 只有 POST /capture_detect)    -> 面板如实写"无取图路由" + 「📸 拍帧」, 工控机侧补丁 docs/patch/opt_surface_10083_add_picture_route.md  新增: tools/verify_aoi_autograb.py(现场盯缓存过期->补拍) · tools/verify_aoi_autograb_branch.py(假404 单测, PASS)      tools/probe_depth_meta.py · tools/probe_depth_color_pair.py(深度布局/同刻相关核验) 踩坑: pkill -f <脚本名> 会匹配到同命令行里出现该文件名的地方 -> 改按监听端口找 pid 再 kill
         # v5.15.15: 🛰 工位总览 v5.15.15: 6 路同屏 + 手动控制机器人  · 新页 /station: 三相机(臂上 D405·笔记本内置·MAXHUB 顶摄) + D405 深度图 +   工控机 OPT 金手指检测(10082 判据图) + 表面检测(10083) 六格同屏, 每格标帧龄/拍照时刻 · 深度源: 容器 ros_depth_stream.py 只读订阅 /realsense/depth/image_rect_raw 落原始数组,   宿主 cam_live_stream 上色 (口径共用 tools/depth_colorize.py); D405 0.0001 m/unit · 三查状态: 容器 ros_tcp_cache.py 增订 /robot_status → robot_status.json, 页面 1.5s 读文件   (原先 ssh ros2 topic echo --once 单次 3~7s, 顶不住轮询) · 手动控制: X Y Z 平动(既有 L2.forward/backward/left/right/lift/lower) +   A B C 绕工具轴旋转(**新增 pose_rot 执行算子** + 6 个 L2.rot_* 技能, 走 /move_pose)   双重闸门: 服务 --ctl-motion + 页面「授权真动」; 白名单技能; 步长/速度/角度/频率限幅;   每次点击都回执行器的原始日志行(可复制取证); GET 一律不触发动作 · 修: 6 格全用 MJPEG 会占满 HTTP/1.1 每主机 6 条连接 → 状态请求永远排队(页面卡"读取中…");   改为 2 路 MJPEG + 4 格串行单帧快照 + 状态合并成 1 条请求, 另加卡顿自诊断提示
         # v5.15.14: 三相机并存: 「🧩 场景叠加」支持 臂上D405 + 笔记本内置(video2) + MAXHUB顶摄(video0); 端点改正则通用路由(加源不动路由表), /stats 下发相机实名label(不再靠参数名猜); 画布节点改为 2x2 拼图(逐格标 相机名/框数/真值链/规格龄 + 每路帧龄), 掉线路如实标"未接"; /gen 带 cam 参数; sim/scene 真几何框只对臂上有效, 本机两路如实拒绝(无手眼); 取证: verify_three_cameras.py + verify_three_cam_canvas.py; 叠加页改**大图**(🧩叠加图/📷原始图/▣并排/⛶全屏, 点画面全屏), 按钮改为开**最大化新窗并搬到控制台那块屏**; 空画布点按钮自动加载工作流再出画面
         # v5.15.13 (2026-09-27): 🎯🎯 **手眼标定 T_base_cam 首次解出(双轴方案) + 标定工具/独立物理检验 + 版本号一致性修复**

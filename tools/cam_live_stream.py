@@ -460,6 +460,15 @@ def _aoi_frame(bgr, clean: bool = True, out: int = 900, quality: int = 78):
     return (buf.tobytes() if ok else b""), meta
 
 
+_AOI_AUTO = {10082: True, 10083: False}   # 自动取景: 工控机内存里没照片时, 由本服务现拍一张
+_AOI_AUTO_AT = {10082: 0.0, 10083: 0.0}   # 上次自动现拍的时刻(限流: 最快 30s 一次)
+_AOI_AUTO_MIN_S = 30.0
+
+
+def _aoi_auto_status() -> dict:
+    return {str(p): bool(_AOI_AUTO.get(p)) for p in (10082, 10083)}
+
+
 def _aoi_note(port: int, **kw) -> None:
     with _AOI_LOCK:
         d = _AOI_INFO.setdefault(port, {})
@@ -467,12 +476,43 @@ def _aoi_note(port: int, **kw) -> None:
         d["t"] = time.time()
 
 
+def _aoi_full_frame(bgr, max_side: int = 1400) -> bytes:
+    """整板原图 → 缩到长边 ≤max_side 的 JPEG (给「判据图 / 整板原图」切换用)。
+
+    为什么要原图: 金手指那路取回来的 origin 是 2448×2048 整板(6MB PNG), 判据图只留了其中
+    一条区域(900×900 拉正) —— 老倪目检时要能看**整板**对着看, 只有一条区域像"没图"。
+    """
+    try:
+        h, w = bgr.shape[:2]
+        s = max_side / float(max(h, w)) if max(h, w) > max_side else 1.0
+        if s < 1.0:
+            bgr = cv2.resize(bgr, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA)
+        ok, buf = cv2.imencode(".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        return buf.tobytes() if ok else b""
+    except Exception:                                                             # noqa: BLE001
+        return b""
+
+
+def _put_aoi_pair(port: int, name: str, bgr) -> None:
+    """一张工控机图 → 两路帧槽: 判据/显示图 (`name`) + 整板缩图 (`name_raw`, 仅 10082 金手指)。
+
+    判据图口径 = `_aoi_frame(clean=...)`: 10082 去死白 + 拉正; 10083 原样缩。
+    """
+    jpg, _m = _aoi_frame(bgr, clean=(port != 10083))
+    if jpg:
+        _put(name, jpg, time.time(), 0.0)
+    if port == 10082:
+        fj = _aoi_full_frame(bgr)
+        if fj:
+            _put(name + "_raw", fj, time.time(), 0.0)
+
+
 def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
-                clean: bool = True, verdict: bool = True) -> None:
+                clean: bool = True, verdict: bool = True, full_name: str = "") -> None:
     """🏭 工控机 OPT 检测图 → 帧槽。**只 GET, 不带 grab** ⇒ 取服务端内存里最近一张, 不触发拍照。
 
-    · 10082 金手指: `/picture?kind=origin`(实测 6.07MB PNG/0.07s) → 去死白 → 判据图;
-      顺带每轮读 `/last_result`(判别结果: 类型/检出数/耗时)。
+    · 10082 金手指: `/picture?kind=origin`(实测 6.07MB PNG/0.07s) → 去死白 → 判据图
+      (`name`), 另存一张**整板缩图** (`full_name`); 顺带每轮读 `/last_result`。
     · 10083 表面: 实测**没有取图路由**(只有 POST /capture_detect) ⇒ 如实报「无取图路由」,
       面板给「拍帧」按钮 —— 点了才 POST 一次(一次一帧), 回执里带 base64 图就直接显示。
     """
@@ -498,14 +538,36 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                 jpg, _meta = _aoi_frame(bgr, clean=clean)
                 if jpg:
                     _put(name, jpg, time.time(), len(raw) / 1024.0)
+                if full_name:                              # 整板缩图 (面板上可切换到这一张)
+                    fj = _aoi_full_frame(bgr)
+                    if fj:
+                        _put(full_name, fj, time.time(), len(raw) / 1024.0)
                 _aoi_note(port, ok=True, src=name, url=url, http=code, kb=round(len(raw) / 1024.0, 1),
                           shape=[int(bgr.shape[0]), int(bgr.shape[1])], err="")
             else:
                 _aoi_note(port, ok=False, src=name, url=url, http=code,
                           err="取到 %d 字节但解不出图(不是图片?)" % len(raw))
         else:
-            _aoi_note(port, ok=False, src=name, url=url, http=code,
-                      err=("HTTP %d %s" % (code, err)).strip() or "取图失败")
+            # 🔁 自动取景: 工控机**只在检测/拍照时留图**, 闲着的时候 GET 就是 404「尚无照片」
+            #    —— 这就是老倪看到"这一格没图像"的原因。开了自动取景就替它现拍一张(最快 30s 一次)。
+            #    拍过之后的 90s 内: 面板按**在线**报(画面确实是新的), 不要让"取图失败"这句话
+            #    把一格里明明是新拍的图说成坏的 —— 老倪会照着字面理解。
+            _no_photo = (code == 404 and ("grab=1" in err or "尚无" in err))
+            _did_grab = False
+            if (_no_photo and _AOI_AUTO.get(port)
+                    and (time.time() - _AOI_AUTO_AT.get(port, 0.0)) >= _AOI_AUTO_MIN_S):
+                _AOI_AUTO_AT[port] = time.time()
+                g = _aoi_capture(port, name, timeout=60.0)
+                _did_grab = bool(g.get("ok"))
+            _fresh_grab = _no_photo and (time.time() - _AOI_AUTO_AT.get(port, 0.0)) < 90.0
+            if _did_grab or _fresh_grab:
+                _aoi_note(port, ok=True, src=name, url=url, http=200, err="",
+                          auto_grab=True,
+                          note=("自动取景: 刚替它现拍了一张" if _did_grab else
+                                "自动取景: 工控机里没照片, 显示的是最近现拍的那张"))
+            else:
+                _aoi_note(port, ok=False, src=name, url=url, http=code,
+                          err=("HTTP %d %s" % (code, err)).strip() or "取图失败")
         if verdict and port == 10082:
             try:
                 with urllib.request.urlopen(vurl, timeout=6) as r:
@@ -517,21 +579,36 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
 
 
 def _aoi_capture(port: int, name: str, timeout: float = 90.0) -> dict:
-    """「拍帧」: POST 工控机 /capture_detect —— 这是**有副作用**的动作(现场真的拍一张并跑检测),
-    所以只能由人点按钮触发, 绝不自动轮询。回执里若带 base64 图就顺手存成该路帧。"""
-    url = "http://192.168.23.23:%d/capture_detect" % port
+    """「拍帧」: 让工控机**现拍一张** —— 这是**有副作用**的动作(现场真的拍一张并跑检测),
+    所以只能由人点按钮触发, 绝不自动轮询。回执里若带图(base64 或直接图片字节)就存成该路帧。
+
+    两条路实测口径不同(别照抄):
+      · 10082 金手指: 服务自己的 404 提示就是「先 POST /capture_detect 或 **GET /picture?grab=1**」
+        ⇒ 用 GET /picture?kind=origin&grab=1, 响应体直接是图片。**平时不要带 grab**(那会拍照)!
+      · 10083 表面: 只有 POST /capture_detect, 回执是个 JSON(可能带 base64 图)。
+    """
+    if port == 10082:
+        url = "http://192.168.23.23:%d/picture?kind=origin&grab=1" % port
+        how, method = "GET /picture?grab=1", "GET"
+    else:
+        url = "http://192.168.23.23:%d/capture_detect" % port
+        how, method = "POST /capture_detect", "POST"
     try:
-        req = urllib.request.Request(url, data=b"{}", method="POST",
-                                     headers={"Content-Type": "application/json",
-                                              "User-Agent": "zmax-station"})
+        if method == "POST":
+            req = urllib.request.Request(url, data=b"{}", method="POST",
+                                         headers={"Content-Type": "application/json",
+                                                  "User-Agent": "zmax-station"})
+        else:
+            req = urllib.request.Request(url, headers={"User-Agent": "zmax-station"})
         with urllib.request.urlopen(req, timeout=timeout) as r:
             code = r.status
             raw = r.read()
     except urllib.error.HTTPError as e:
-        return {"ok": False, "http": e.code, "msg": (e.read()[:300].decode("utf-8", "ignore"))}
+        return {"ok": False, "http": e.code, "how": how,
+                "msg": (e.read()[:300].decode("utf-8", "ignore"))}
     except Exception as e:                                                        # noqa: BLE001
-        return {"ok": False, "http": 0, "msg": str(e)[:200]}
-    out = {"ok": code == 200, "http": code, "bytes": len(raw), "msg": ""}
+        return {"ok": False, "http": 0, "how": how, "msg": str(e)[:200]}
+    out = {"ok": code == 200, "http": code, "bytes": len(raw), "how": how, "msg": ""}
     try:
         j = json.loads(raw.decode("utf-8", "ignore"))
     except Exception:                                                             # noqa: BLE001
@@ -545,13 +622,17 @@ def _aoi_capture(port: int, name: str, timeout: float = 90.0) -> dict:
                     img = cv2.imdecode(np.frombuffer(base64.b64decode(v.split(",")[-1]),
                                                      np.uint8), cv2.IMREAD_COLOR)
                     if img is not None:
-                        _put(name, cv2.imencode(".jpg", img,
-                                                [int(cv2.IMWRITE_JPEG_QUALITY), 82])[1].tobytes(),
-                             time.time(), len(v) * 0.75 / 1024.0)
+                        _put_aoi_pair(port, name, img)
                         out["got_image"] = True
                 except Exception as e:                                            # noqa: BLE001
                     out["msg"] = (out["msg"] + " | base64 解图失败: " + str(e)[:80])[:240]
                 break
+    if not out.get("got_image"):          # 直接返回图片字节(GET /picture?grab=1 就是这种)
+        img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+        if img is not None:
+            _put_aoi_pair(port, name, img)
+            out["got_image"] = True
+            out["shape"] = [int(img.shape[0]), int(img.shape[1])]
     _aoi_note(port, last_capture=out)
     return out
 
@@ -652,6 +733,8 @@ def _ctl_status() -> dict:
             "ok": bool(st.get("success")),
             "power": st.get("power_state", ""), "operation": st.get("operation_state", ""),
             "has_error": st.get("has_error"), "error_code": st.get("error_code", ""),
+            "error_reason": st.get("error_reason", ""), "error_context": st.get("error_context", ""),
+            "controller_error_logs": st.get("controller_error_logs") or [],
             "estop": st.get("estop_detected"), "collision": st.get("collision_detected"),
             "age_s": _age(st.get("t")),
         },
@@ -1106,20 +1189,28 @@ input.num{width:74px;font:600 17px system-ui;padding:8px;border-radius:8px;borde
   <section class="grid">
     <div class="panel"><div class="cap"><span class="ttl">🦾 机器人臂上 D405</span>
       <span class="meta" id="m_arm">…</span></div>
-      <img id="i_arm" data-mode="snap" data-src="/snapshot/arm.jpg" data-every="1000"></div>
+      <img id="i_arm" data-mode="snap" data-src="/snapshot/arm.jpg" data-every="800"></div>
     <div class="panel"><div class="cap"><span class="ttl">💻 笔记本内置相机</span>
       <span class="meta" id="m_local">…</span></div>
-      <img id="i_local" src="/local.mjpg"></div>
+      <img id="i_local" data-mode="snap" data-src="/snapshot/local.jpg" data-every="400"></div>
     <div class="panel"><div class="cap"><span class="ttl">📺 MAXHUB 顶摄</span>
       <span class="meta" id="m_local2">…</span></div>
-      <img id="i_local2" src="/local2.mjpg"></div>
+      <img id="i_local2" data-mode="snap" data-src="/snapshot/local2.jpg" data-every="400"></div>
     <div class="panel"><div class="cap"><span class="ttl">🌈 D405 深度图</span>
       <span class="meta" id="m_depth">…</span></div>
       <img id="i_depth" data-mode="snap" data-src="/snapshot/depth.jpg" data-every="1500"></div>
     <div class="panel"><div class="cap"><span class="ttl">🔍 金手指检测 (工控机 10082)</span>
       <span class="meta" id="m_aoi_gold">…</span></div>
-      <img id="i_aoi_gold" data-mode="snap" data-src="/snapshot/aoi_gold.jpg" data-every="3000">
-      <div class="note" id="n_aoi_gold" style="display:none"></div></div>
+      <img id="i_aoi_gold" data-mode="snap" data-src="/snapshot/aoi_gold.jpg" data-every="2000">
+      <div class="row" style="padding:6px 10px 2px"><span class="seg" id="gview">
+        <button data-src="/snapshot/aoi_gold.jpg" class="on">判据图(一条区域)</button>
+        <button data-src="/snapshot/aoi_gold_raw.jpg">整板原图</button></span></div>
+      <div class="note" id="n_aoi_gold" style="display:none"></div>
+      <div class="row" style="padding:4px 10px 2px">
+        <button class="cap warn" onclick="shot(10082)">📸 拍一帧 (工控机现拍一张)</button></div>
+      <div class="row" style="padding:2px 10px 10px">
+        <label class="arm"><input type="checkbox" id="auto82" checked>
+          <span>自动取景：工控机内存里没照片时，每 ≥30s 自动现拍一张</span></label></div></div>
     <div class="panel"><div class="cap"><span class="ttl">🔍 表面检测 (工控机 10083)</span>
       <span class="meta" id="m_aoi_surface">…</span></div>
       <img id="i_aoi_surface" data-mode="snap" data-src="/snapshot/aoi_surface.jpg" data-every="4000">
@@ -1194,28 +1285,46 @@ seg('sX',v=>STEP_MM=v); seg('sA',v=>STEP_DEG=v);
 function hhmmss(a){const d=new Date(Date.now()-a*1000);const p=n=>String(n).padStart(2,'0');
   return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}
 function fmt(x,n){return (x===null||x===undefined)?'—':Number(x).toFixed(n);}
-async function post(url,body){
-  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(body||{})}); return await r.json();}
+async function post(url,body,ms){
+  const ac=new AbortController(); const t=setTimeout(()=>ac.abort(), ms||20000);
+  try{
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body||{}),signal:ac.signal});
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+async function getj(url,ms){
+  const ac=new AbortController(); const t=setTimeout(()=>ac.abort(), ms||8000);
+  try{
+    const r=await fetch(url,{cache:'no-store',signal:ac.signal});
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+function _btns(on){document.querySelectorAll('button[data-skill]').forEach(b=>b.disabled=!on);}
 async function move(btn){
   const skill=btn.dataset.skill, p=btn.dataset.p;
   const v=(p==='deg')?STEP_DEG:STEP_MM;
   const arm=$('#armed').checked?1:0;
-  document.querySelectorAll('button[data-skill]').forEach(b=>b.disabled=true);
-  $('#msg').textContent='下发中…'; $('#msg').className='big wa';
+  _btns(false);
+  // 兜底: 万一请求被浏览器排队/卡死, 15s 后也必须把按钮放开(否则看起来"按钮坏了点不动")
+  const unlock=setTimeout(()=>_btns(true),15000);
+  $('#msg').textContent='下发中… (最多等 15s)'; $('#msg').className='big wa';
   try{
-    const j=await post('/ctl/move',{skill:skill,[p]:v,speed:parseFloat($('#spd').value||'8'),arm:arm});
+    const j=await post('/ctl/move',{skill:skill,[p]:v,speed:parseFloat($('#spd').value||'8'),arm:arm},18000);
     $('#msg').textContent=(j.ok? (j.dry?'🧪 ':'✅ ')+j.msg : '⛔ '+j.msg);
     $('#msg').className='big '+(j.ok?(j.dry?'wa':'ok'):'bad');
     $('#lines').textContent=(j.lines&&j.lines.length?j.lines.join('\n'):'(执行器还没有回执行)');
-  }catch(e){$('#msg').textContent='请求失败: '+e; $('#msg').className='big bad';}
-  document.querySelectorAll('button[data-skill]').forEach(b=>b.disabled=false);
+  }catch(e){
+    $('#msg').textContent='请求没发出去/超时: '+e+' —— 若反复如此, 请关掉其它 8791 页面(浏览器对同一主机只有 6 条连接)';
+    $('#msg').className='big bad';
+  }
+  clearTimeout(unlock); _btns(true);
   poll();
 }
 document.querySelectorAll('button[data-skill]').forEach(b=>b.onclick=()=>move(b));
 async function shot(port){
   $('#msg').textContent='拍帧中(工控机要真拍一张并跑检测，可能要几十秒)…'; $('#msg').className='big wa';
-  try{const j=await post('/api/aoi/capture?port='+port,{});
+  try{const j=await post('/api/aoi/capture?port='+port,{},100000);
     $('#msg').textContent=(j.ok?'✅ ':'⛔ ')+('HTTP '+j.http+' '+(j.msg||''))+(j.got_image?' · 已取到图并显示':'');
     $('#msg').className='big '+(j.ok?'ok':'bad');
     $('#lines').textContent=JSON.stringify(j,null,1);}catch(e){$('#msg').textContent='失败: '+e;}
@@ -1232,8 +1341,10 @@ async function poll(){
   if(_pollBusy) return; _pollBusy=true; _pollAt=Date.now();
   let s=null, aoi=null, st=null;
   try{                                  // 一条请求拿全部状态 (见下面调度注释里的连接数坑)
-    const j=await (await fetch('/station/status')).json();
+    const j=await getj('/station/status?t='+Date.now(),6000);
     s=j.ctl; aoi=j.aoi; st=j.stats; _okAt=Date.now();
+    const a82=$('#auto82');                       // 自动取景开关: 以服务端为准(防两个页面不同步)
+    if(a82){const want=((j.aoi_auto||{})['10082']!==false); if(a82.checked!==want) a82.checked=want;}
   }catch(e){}
   try{
     if(!s) throw 0;
@@ -1242,6 +1353,19 @@ async function poll(){
     $('#robot').innerHTML='上电 '+(r.power==='on'?'<span class="ok">on</span>':'<span class="bad">'+(r.power||'?')+'</span>')
       +' · 运行 <span class="'+(r.operation==='idle'?'ok':'wa')+'">'+(r.operation||'?')+'</span>'
       +' · 报警 '+(r.has_error?'<span class="bad">有 '+(r.error_code||'')+'</span>':'<span class="ok">无</span>');
+    // 报警要分清**来源**: 控制器自己没报警(controller_error_logs 空)而 error_context=wait_until_idle
+    // 时, 那是**我们桥的标记**(等机械臂 30s 没回 idle 就记一笔), 不是产线控制器故障。
+    // 老倪会照着字面理解, 这里必须写清, 否则他会以为臂坏了。
+    const _ce=r.controller_error_logs||[];
+    if(r.has_error){
+      const _bridge=(!(_ce.length)&&(r.error_context||'')==='wait_until_idle');
+      $('#robot').innerHTML+='<div class="dim" style="font-size:13px;margin-top:4px">'
+        +(_bridge
+          ? '⚠ 这是<b>我们桥自己记的超时标记</b>(等机械臂 30s 没回 idle), 控制器侧无报警; '
+            +'按现场规矩<b>不要重发同一条指令</b>, 手动点一下别的轴或重新上电即可清除。'
+          : '控制器报警详情: '+_ce.join(' | '))
+        +'<br>'+(r.error_reason||'')+'</div>';
+    }
     $('#robot2').textContent='急停 '+(r.estop?'有':'无')+' · 碰撞 '+(r.collision?'有':'无')
       +' · 状态帧龄 '+fmt(r.age_s,2)+'s ('+(s.motion_armed?'服务已授权真动':'服务未授权=只能演练')+')';
     if(tp.xyz){$('#tcp').textContent='X '+fmt(tp.xyz[0],4)+'  Y '+fmt(tp.xyz[1],4)+'  Z '+fmt(tp.xyz[2],4);}
@@ -1271,8 +1395,19 @@ async function poll(){
     $('#m_aoi_gold').textContent=(g.ok?'判据图在线':'取图失败')+gv
       +' · 源 '+fmt(g.kb,0)+'KB/帧 · 拍照 '+hhmmss(Date.now()/1000-(g.t||0));
     const ng=$('#n_aoi_gold');
-    ng.style.display=(g.ok===false&&g.err)?'block':'none';
-    if(g.ok===false&&g.err) ng.innerHTML='取图失败：'+g.err+'<br>源: '+(g.url||'');
+    const noPhoto=/尚无照片|grab=1/.test(g.err||'');
+    ng.style.display=((g.ok===false)||g.auto_grab)?'block':'none';
+    if(g.ok===true&&g.auto_grab){
+      ng.innerHTML='🔁 <b>自动取景</b>：工控机内存里没照片时替它现拍一张(最快 30s 一次) —— '
+        +'这一格显示的是最近现拍的那张。<span class="dim">'+(g.note||'')+'</span>';
+    } else if(g.ok===false){
+      ng.innerHTML=(noPhoto
+        ? '<b>工控机内存里当前没有照片</b> —— OPT 只在检测/拍照时留图, 它闲着的时候取就是 404「尚无照片」, '
+          +'这就是这一格没画面的原因(不是我们链路断了)。<br>下面「自动取景」已默认打开: 发现没照片就替你现拍一张'
+          +'(最快 30s 一次); 不想让它自己拍就取消勾选, 改用手点「📸 拍一帧」。拍过之后即使它又闲着, 这一格也保留最后一张。'
+        : '取图失败：'+g.err);
+      ng.innerHTML+='<br><span class="dim">源: '+(g.url||'')+'</span>';
+    }
     if(sf.ok===false){
       $('#n_aoi_surface').style.display='block';
       $('#n_aoi_surface').innerHTML='<b>该路没有取图路由</b> —— 工控机 10083 只开了 POST /capture_detect，'
@@ -1287,25 +1422,40 @@ async function poll(){
   const lag=(Date.now()-_okAt)/1000;              // 自诊断: 状态卡住 = 很可能连接被占满
   const w=$('#warn');
   if(lag>7){ w.style.display=''; w.textContent='⚠ 状态已 '+lag.toFixed(0)
-      +'s 没更新 —— 同一浏览器对 8791 的 6 条连接可能被占满(HTTP/1.1 每主机上限)。'
-      +'请关掉其它 8791 页面(例如旧的「场景叠加」窗)，或换个标签页/浏览器再开本页。'; }
+      +'s 没更新 —— 浏览器对同一主机(端口)只有 6 条连接, 可能被别的页面占满了。'
+      +'本页已改成只剩 2 条(状态+串行快照), 若还卡请关掉同一个浏览器里其它本机页面再刷新。'; }
   else { w.style.display='none'; }
   _pollBusy=false;
 }
 // 看门狗: 请求被浏览器排队时 _pollBusy 会一直挂着 ⇒ 8s 后强制放行, 否则页面永远不再刷新
 setInterval(()=>{ if(_pollBusy && Date.now()-_pollAt>8000){ _pollBusy=false; } }, 2000);
-/* ── 取图调度 (踩过的真坑) ──────────────────────────────────────────────
-   HTTP/1.1 对同一主机只有 **6 条并发连接**。6 格若全用 MJPEG(长连接) 会把 6 条占满——
-   实测: 右侧状态永远"读取中…", /stats、/ctl/status 永远排在队里进不来。
-   所以: 高速两路(local 15fps / local2 27fps) 留 MJPEG;
-        其余 4 格(臂上/深度/金手指/表面) 走**单帧快照**, 且**全局串行**(同一时刻只发一条)。
-   常年占用 ≤ 4 条连接, 单帧图还带自身帧龄(面板上的"拍照 hh:mm:ss"就是真帧龄, 不是加载时刻)。*/
+/* ── 取图调度 (踩过的真坑, 别退回 MJPEG) ────────────────────────────────
+   HTTP/1.1 对同一主机只有 **6 条并发连接**。6 格若用 MJPEG(长连接) 会把 6 条占满 ——
+   实测: 老倪那个浏览器窗口里「笔记本/MAXHUB」两格有画面, 其余 4 格空着、
+   右侧状态永远"读取中…"、按钮点了没反应(请求全排在队里进不来)。
+   所以本页 **一格 MJPEG 都不用**: 6 格全走单帧快照 + **全局串行**(同一时刻只发一条),
+   常年只占 1 条连接(+ 状态 1 条) ⇒ 即使同一个浏览器里还开着别的大流量页面也不会饿死。
+   代价: 刷新率上限 ~2.5fps/格(实测够目检和手动控制用); 要真正流畅的 MJPEG 请用「场景叠加」页。
+   面板上的"拍照 hh:mm:ss"取的是**源帧时间戳**(src_ts), 不是图片加载时刻。*/
 const _q=[]; let _busy=false;
 function _pump(){ if(_busy||!_q.length) return; _busy=true;
   const f=_q.shift(); f(()=>{_busy=false;_pump();}); }
 function _enq(f){_q.push(f);_pump();}
 const SNAPS=[...document.querySelectorAll('img[data-mode=snap]')].map(im=>({
   im:im, url:im.dataset.src, every:parseInt(im.dataset.every||'2000'), due:0, miss:0}));
+document.querySelectorAll('#gview button').forEach(b=>b.onclick=()=>{   // 判据图 ⇄ 整板原图
+  document.querySelectorAll('#gview button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  const p=SNAPS.find(x=>x.im.id==='i_aoi_gold');
+  if(p){ p.url=b.dataset.src; p.every=(b.dataset.src.indexOf('raw')>=0)?3000:2000; p.due=0; }
+});
+const _a82=$('#auto82');                                              // 🔁 自动取景开关
+if(_a82) _a82.onchange=async()=>{
+  $('#msg').textContent='切换自动取景…'; $('#msg').className='big wa';
+  try{const j=await post('/api/aoi/auto?port=10082&on='+(_a82.checked?1:0),{},8000);
+    $('#msg').textContent=(j.ok?'✅ ':'⛔ ')+(j.note||''); $('#msg').className='big '+(j.ok?'ok':'bad');
+  }catch(e){$('#msg').textContent='切换失败: '+e; $('#msg').className='big bad';}
+};
 setInterval(()=>{
   const t=Date.now();
   const p=SNAPS.filter(x=>x.due<=t).sort((a,b)=>a.due-b.due)[0];
@@ -1329,6 +1479,7 @@ _RE_SNAP = re.compile(r"^/snapshot/(?P<ov>overlay_)?(?P<name>[A-Za-z0-9_]+)\.jpg
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    station_port = 0        # 工位总览专用端口, main() 里按 --station-port 设
 
     def log_message(self, *a):  # 静音
         pass
@@ -1342,6 +1493,19 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "text/html; charset=utf-8", OVERLAY_PAGE.encode("utf-8"))
         elif p in ("/station", "/station.html", "/board"):
             # 🛰 工位总览: 6 窗同屏(3 相机 + 深度 + 金手指 + 表面) + 手动控制区
+            # 老倪的浏览器里曾有两个窗口都开着本机页面, 把「同一主机 6 条连接」占满 ⇒
+            # 本页的图/状态/按钮全排队(看起来就是"没图像 + 按钮点不动")。
+            # 所以本页有**自己的端口**(--station-port, 默认 8793): 主端口的 /station 一律 302 过去,
+            # 两个端口各自 6 条连接名额, 互不影响。
+            sp = int(getattr(Handler, "station_port", 0) or 0)
+            if sp and not getattr(self.server, "is_station", False):
+                host = (self.headers.get("Host") or "").split(":")[0] or self.client_address[0]
+                self.send_response(302)
+                self.send_header("Location", "http://%s:%d%s" % (host, sp, p))
+                self.send_header("Content-Length", "0")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return
             self._send(200, "text/html; charset=utf-8", STATION_PAGE.encode("utf-8"))
         elif p in ("/app", "/app.html", "/m"):
             # 📱 手机版场景叠加页 (Z-MAX APP 首页「🧩 场景叠加」的跳转目标)
@@ -1395,7 +1559,8 @@ class Handler(BaseHTTPRequestHandler):
                        json.dumps(_ctl_status(), ensure_ascii=False).encode("utf-8"))
         elif p == "/station/status":
             # 🛰 页面只发**一条**状态请求 (3 条合并成 1) —— 见页面注释里的 HTTP/1.1 六连接坑
-            payload = {"stats": self._stats(), "ctl": _ctl_status()}
+            payload = {"stats": self._stats(), "ctl": _ctl_status(),
+                       "aoi_auto": _aoi_auto_status()}
             with _AOI_LOCK:
                 payload["aoi"] = {str(k): dict(v) for k, v in _AOI_INFO.items()}
             self._send(200, "application/json; charset=utf-8",
@@ -1446,6 +1611,23 @@ class Handler(BaseHTTPRequestHandler):
                     except ValueError:
                         pass
             out = _aoi_capture(port, "aoi_surface" if port == 10083 else "aoi_gold")
+        elif p in ("/api/aoi/auto", "/aoi/auto"):
+            # 🔁 自动取景开关(只 POST 能改): 工控机内存里没照片时, 由本服务每 ≥30s 现拍一张
+            port, on = 10082, None
+            for kv in (self.path.split("?", 1)[1] if "?" in self.path else "").split("&"):
+                if kv.startswith("port="):
+                    try:
+                        port = int(kv.split("=", 1)[1])
+                    except ValueError:
+                        pass
+                elif kv.startswith("on="):
+                    on = kv.split("=", 1)[1] not in ("0", "false", "off", "")
+            if on is not None:
+                _AOI_AUTO[port] = bool(on)
+            out = {"ok": True, "port": port, "auto": bool(_AOI_AUTO.get(port)),
+                   "aoi_auto": _aoi_auto_status(),
+                   "note": "自动取景 %s" % ("开(工控机没照片时现拍一张, 最快30s一次)"
+                                          if _AOI_AUTO.get(port) else "关(只在手动点「拍一帧」时拍)")}
         else:
             self._send(404, "text/plain", b"not found")
             return
@@ -1503,7 +1685,8 @@ class Handler(BaseHTTPRequestHandler):
         out = {}
         # 🎥 2026-09-27: 原始路全报 (arm/local/local2); 叠加路只在真有帧时报
         # 🛰 2026-09-27 工位总览: 深度源与工控机两路也一并报 (页面靠这张表出每格帧龄)
-        names = [n for n in ("arm", "local", "local2", "depth", "aoi_gold", "aoi_surface")
+        names = [n for n in ("arm", "local", "local2", "depth", "aoi_gold", "aoi_gold_raw",
+                            "aoi_surface")
                  if _FRAMES.get(n)]
         names += [n for n in sorted(_FRAMES) if n.startswith("ov_")
                   and _FRAMES.get(n, {}).get("jpg") is not None]
@@ -1575,6 +1758,10 @@ def main():
     ap.add_argument("--overlay-fps", type=float, default=12.0, help="叠加渲染上限 fps")
     # 🌈🏭🕹 2026-09-27 老倪: 工位总览 6 窗 —— 深度源 / 工控机 OPT 检测源 / 手动控制闸门
     ap.add_argument("--depth-fps", type=float, default=4.0, help="深度源刷新上限 fps (源话题实测仅 ~0.24Hz)")
+    ap.add_argument("--station-port", type=int, default=8793,
+                    help="工位总览 /station 专用端口 (0=不另开, 直接在主端口出页)。"
+                         "为什么要单独端口: 浏览器对**同一主机:端口**只有 6 条连接, "
+                         "老倪同时开着别的本机页面时会把主端口占满 ⇒ 总览页图表全排队")
     ap.add_argument("--no-depth", action="store_true", help="不起深度源 (D405 深度图窗口)")
     ap.add_argument("--depth-npy", default=DEPTH_NPY, help="容器 ros_depth_stream 落的原始深度数组")
     ap.add_argument("--depth-meta", default=DEPTH_META, help="同上配套的元数据 JSON")
@@ -1662,7 +1849,7 @@ def main():
         _CAM_LABEL["aoi_gold"] = "🔍 金手指检测 (工控机 OPT)"
         _CAM_LABEL["aoi_surface"] = "🔍 表面检测 (工控机 OPT)"
         threading.Thread(target=_aoi_worker,
-                         args=(10082, "aoi_gold", args.aoi_fps, "origin", True, True),
+                         args=(10082, "aoi_gold", args.aoi_fps, "origin", True, True, "aoi_gold_raw"),
                          daemon=True, name="aoi-gold").start()
         threading.Thread(target=_aoi_worker,
                          args=(10083, "aoi_surface", args.aoi_fps, "origin", False, False),
@@ -1677,8 +1864,24 @@ def main():
 
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
     srv.local_dev = args.local_dev
+    srv.is_station = False
+    Handler.station_port = int(args.station_port or 0) if int(args.station_port or 0) != args.port else 0
     print(f"   ✅ 看板: http://0.0.0.0:{args.port}/   (手机/PC 同网可开)", flush=True)
-    print(f"   ✅ 工位总览: http://0.0.0.0:{args.port}/station  (6 路同屏 + 手动控制)", flush=True)
+    if Handler.station_port:
+        try:
+            st2 = ThreadingHTTPServer((args.host, Handler.station_port), Handler)
+            st2.local_dev = args.local_dev
+            st2.is_station = True
+            threading.Thread(target=st2.serve_forever, daemon=True, name="station-port").start()
+            print(f"   ✅ 工位总览: http://0.0.0.0:{Handler.station_port}/station  "
+                  f"(6 路同屏 + 手动控制; 独立端口 = 独立 6 条连接名额)", flush=True)
+            print(f"      (主端口 /station 会 302 跳到这里)", flush=True)
+        except OSError as e:
+            Handler.station_port = 0
+            print(f"   ⚠️ 工位总览专用端口 {args.station_port} 起不来({e}) —— 退回主端口出页", flush=True)
+            print(f"   ✅ 工位总览: http://0.0.0.0:{args.port}/station", flush=True)
+    else:
+        print(f"   ✅ 工位总览: http://0.0.0.0:{args.port}/station  (6 路同屏 + 手动控制)", flush=True)
     if args.overlay:
         print(f"   ✅ 叠加: http://0.0.0.0:{args.port}/overlay", flush=True)
     try:
