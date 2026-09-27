@@ -246,6 +246,27 @@ v4 相对 v2 = **只加不减**: `POST /capture_detect` 回执逐字一致(`{"co
 - 删: 重复 state dump 1.8G (硬链接同一份) / 8 月旧归档 0.48G / 重复的 Qwen2.5-VL-3B 副本 7.0G (`zmax_data/hf_home`, 默认 `~/.cache` 那份保留) / `l5_gen_v2+v3.h5` 12.8G / 无引用的 `smolvla_lew_v10_full` 1.4G / pip 缓存。
 - 未删 (留证/留用): `optical_insert_v6_disturb_part00~04.npz` 4.3G (9-26 刚生成) / 09-21~22 真机录像 / 仍被配置或 GUI 引用的 smolvla 跑次。
 
+## 0.10 第八轮 (老倪: 「以后你得自主更新工控机的程序，你是主节点，要完全控制工控机和 Orin；不要用 10084 10085 通道；还得用 10082 10083 通道」)
+
+**A. 工控机侧改成"自治" (不再依赖老倪贴那一行 / 不再依赖某个窗口)**
+- 两个 Windows 计划任务 (SYSTEM, 最高权限):
+  - `ZMAX_Agent` (`/sc onstart`) → 跑 `zmax_agent_loop.ps1` → 反向通道轮询, 崩了 10s 后自拉起 ⇒ **我随时能驱动那台机器**。
+  - `ZMAX_AOI_KeepAlive` (`/sc minute /mo 1`) → `zmax_keepalive.ps1`: 检查 10082/10083, **哪一个没在听就把它拉起来** (只在自己动手时写日志, 平时不输出)。
+- **自愈实测**: 故意 kill 表面 v5 (pid 21764) → `schtasks /run /tn ZMAX_AOI_KeepAlive` → 25s 后 10083 起来; 日志 `2026-09-27 09:57:38 started: surface`。
+  ⇒ 顺带证明 **相机 SDK 在 session 0(SYSTEM) 下能正常开相机**, 所以开机/无人登录也能起服务。
+- 服务仍按 v5 的老口径启动: `cd /d D:\xspace\ultralytics_AOI && venv\Scripts\python.exe <脚本>` + 分离启动(`WScript.Shell.Run(...,0,$false)`)。
+
+**B. 自主更新器 `tools/aoi_remote_deploy.py` (只用 10082/10083, 不碰 10084/10085)**
+```
+./gui-venv311/bin/python tools/aoi_remote_deploy.py --finger <金手指.py> --surface <表面.py>
+# ①拷进 8794 静态目录 ②反向通道让工控机 iwr 下载 + Get-FileHash 与本地 SHA256 逐位核对(不一致就中止)
+# ③现役程序备份成 .bak ④停旧起新(始终 10082/10083, 分离启动) ⑤验收 ⑥失败自动用 .bak 回滚并复验
+```
+- 验收项(缺一即失败): `/storage` 200 · `POST /capture_detect` 回执 `code=200` · `/last_result` 判决通道 · `grab=1` 出图字节>0 · **`grab=1` 前后 `files_total` 不增**(v5 不落盘口径)。
+- **实测(幂等重发 v5)**: 10:02 一轮 6 项 **两路全过** —— 10082 `ms≈1557` / 10083 `ms≈8.9s`, `grab=1` 389377B / 273297B, `files_total` 4→4 与 2→2 不增 ✓。
+- ⚠️ 踩坑: 第一版对 10083 只固定等 6s 就断言 `/last_result` 200 ⇒ **假失败并触发了回滚**(表面推理实测 ~8.9s)。
+  已改成轮询最多 45s, 且接受 `/last_result` 的**两种合法形态**(`200+verdict/count` ‖ `404+尚无检测结果`)。
+
 ## 1. 交付物
 
 **页面: `http://<本机IP>:8793/station`** (本机 `http://127.0.0.1:8793/station`;
