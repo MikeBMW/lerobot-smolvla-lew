@@ -210,6 +210,42 @@ v4 相对 v2 = **只加不减**: `POST /capture_detect` 回执逐字一致(`{"co
 
 ---
 
+## 0.9 第七轮 (v5 已上线工控机 + 反向通道 + 群消息降噪)
+
+老倪: 「本地磁盘没用的数据可以删掉」+ 通道 `Test-NetConnection 192.168.23.50 -Port 8794` = True。
+
+**A. 反向通道 (工控机 192.168.23.23 没有可登录端口)**
+- 那台机器只开 135/139/445/10081/10082/10083, 22/3389/5985 全闭 ⇒ 从 4060 侧无法登录。
+- 做法: `tools/agent_hub.py` (4060:8794) + Windows 端 12 行 `agent_start_ascii.ps1` (纯 ASCII, 避开 PS5.1 中文乱码)。
+  老倪在工控机贴一行 → 每 3s 来取命令、跑完把输出 POST 回来。命令队列**只有 4060 本机可写** (网络侧只能取不能投), 带 token, 关窗即断。
+- 通道实测: `CHANNEL OK -> {"ok": true, ...}` 后 15 条命令全部往返成功 (含真拍/检测/起停服务)。
+- **踩坑**: ①PS 5.1 的 `irm` 不带 `-UseBasicParsing` 会卡在代理/IE 初始化 (老倪第一遍就卡在这, 我这边看到 0 连接);
+  ②`Write-Host` 的输出**不会**被 `2>&1|Out-String` 捕获 ⇒ 回传命令只用管道输出 (纯字符串/cmdlet)。
+
+**B. v5 部署到 10082/10083 (通道不变)**
+- 落地: `D:\xspace\ultralytics_AOI\{cam_finger_10082_work_v5.py, surface_10083_work_v5.py}`,
+  SHA256 核对 4ACFC458..FF0EC951 (36746B) / 940449BA..4B6A8BD4 (27013B) **一致**; 本机 `venv\Scripts\python.exe` 3.10.1 (cv2 4.10.0 / flask 3.1.3 / numpy 1.26.4) py_compile 通过。
+- 试跑 10084/10085 (不碰产线口): 金手指 `POST /capture_detect` → 200 `{"code":200,"msg":"success"}`, 真检测落盘 (CropNatural 1→2), 内存缓存 `crop_kb=53.8 / origin_kb=338.2` 就位;
+  随后 `GET /picture?kind=origin&grab=1` → **200 / 346361B, 磁盘张数不变** ✓。
+  表面 10085: `grab=1` → 200 / 277871B ✓; `POST /capture_detect` 在该口返回 400「未配置检测模型, 可选端口 ['10083']」= **端口绑定的模型映射, 属设计** (所以正式口才验真检测)。
+- 正式口验收 (从 4060 直连 192.168.23.23): 
+  - 10082 `/last_result` → 200 `detect_type=gf, ms=1571, origin=./goldfinger_images/Finger_Image_W2448_H2048_No_1.png, saved_incoming=D:\AOI_images\gf\incoming\20260927_095433_001.png`
+  - 10083 `/last_result` → 200 `detect_type=housing, ms=8852.6` (表检较重, 8.9s)
+  - `POST /capture_detect` 两路均 200 success (回执语义一字未改); 10083 落盘 1→2 ✓
+  - `GET /picture?kind=origin&grab=1`: 10082 385475B/0.73s, 10083 261485B/0.32s, 两路 **files_total 均不变** ✓
+  - 总览两格 `/aoi_gold.mjpg` `/aoi_surface.mjpg` → 200 有流 ✓ (面板显 🔴 实时推流)
+- 启动方式: 用 `WScript.Shell.Run(cmd,0,$false)` **分离启动** (不受那个 PowerShell 窗口关闭影响); 日志 `D:\xspace\ultralytics_AOI\v5[fs].log`。
+  10081 上的原服务 pid 22328 全程未动 ✓。
+
+**C. 群消息降噪 (老倪: 「没请求的时候不要总发图片, 不要刷屏」)**
+- 查明噪声源: ①链路巡检 (每 30min 无条件 `✅ 链路正常` = 48 条/天) ②磁盘红线 (每 2h 打一屏过程提示) ③L4 进度任务 (每 30min 回「无变化」两字, 照样被投递) ④`tools/aoi_feishu_push.py --watch` (root 起的常驻, 有新图就推)。
+- 处置: ①②改「正常就一个字都不打」(实测输出 0 字节) ③提示词改「没新东西只回 `[SILENT]`」④停掉 watcher (以后 `--once` 按需推)。
+  磁盘超红线才报, 且**同一状态 6 小时只报一次** (实测第一次 702B / 第二次 0B)。
+
+**D. 磁盘回收 (306G → 283G, 回到 300G 红线内)**
+- 删: 重复 state dump 1.8G (硬链接同一份) / 8 月旧归档 0.48G / 重复的 Qwen2.5-VL-3B 副本 7.0G (`zmax_data/hf_home`, 默认 `~/.cache` 那份保留) / `l5_gen_v2+v3.h5` 12.8G / 无引用的 `smolvla_lew_v10_full` 1.4G / pip 缓存。
+- 未删 (留证/留用): `optical_insert_v6_disturb_part00~04.npz` 4.3G (9-26 刚生成) / 09-21~22 真机录像 / 仍被配置或 GUI 引用的 smolvla 跑次。
+
 ## 1. 交付物
 
 **页面: `http://<本机IP>:8793/station`** (本机 `http://127.0.0.1:8793/station`;
