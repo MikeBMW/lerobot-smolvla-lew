@@ -119,6 +119,22 @@ GET  /agent/status                         → 两侧计数 + last_prompt/last_r
 - 回执文件按去队秒命名, 同秒两条互相覆盖 ⇒ 认回执看 hub 日志的 `← 回执 <n> 字节 → <路径>` 行, 不要 `ls -t` 目录里最新那个(可能还没落盘, 你会看到上一轮的内容并误判通道已活)。
 - 命令里别用 `Write-Host`(写 information 流, `2>&1|Out-String` 抓不到 → hub 端只拿到空回执); 用字符串表达式/cmdlet 的输出。
 
+### 13. 上传口 ≠ 快照入口（探语义要用无副作用的方式）
+同一个服务上常并存两条完全不同的数据路：**包队列**（`POST /upload` → `pkg_<ts>.<ext>`，供训练/消费者读）
+与**对外快照文件**（nginx/BT 直接吐的那张图，如 `/api/snapshot/latest`）。
+- **往队列推图片不会更新那张快照**：实测 POST 一张 JPEG 回 `{"ok":true,"name":"pkg_....npz","size":102571}`，
+  而 `/api/snapshot/latest` 字节不变。要图对外可见，必须让域名侧把快照文件指到同一处、或另加一个收图的口
+  —— **别把"推上去了"当成"对外可见了"**。反之，快照停更是推方停了（`cache-control: no-store` 且多次取回字节完全相同
+  = 服务器上那个文件没被写，不是 CDN 缓存）。
+- 探语义的代价从低到高：`OPTIONS`（看允许方法）→ `GET <上传口>`（多数实现返回自描述 JSON：端点清单/字段格式）
+  → `POST 空体` → `POST 最小 JSON`。每步记下返回的 `name/size/frames`。
+- ⚠️ **`POST 空体` 会真的落一个 0 字节的包** ⇒ 探测即产生垃圾文件。只读够用时绝不 POST；
+  写过测试件就在交付说明里如实告知（对方会看到碎文件，自己删）。
+- ⚠️ **服务自述的端点清单 ≠ 实际可路由的路径**：手册里写的 `GET /latest` / `/packages` 实测可能是 nginx 404
+  （只转发了部分前缀）。判端点存在与否要实测，不照抄自述。
+- 判"某路径是不是真端点"不能只看 200：设备/中继常见 catch-all（未知路径返回同一份默认 JSON）。
+  逐路径比 `%{size_download}` + 首字节（`head -c 4 | xxd -p`）—— 大小与类型完全一致 = 兜底路由，端点不存在。
+
 ## Verification checklist
 1. `curl -X POST <relay>/upload` small JSON → `{"ok": true}`
 2. `curl <relay>/peek` → item present, still queued after
