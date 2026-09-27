@@ -1309,13 +1309,13 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       <div class="rot"><span class="lbl">C 绕工具Z轴 · 自转</span>
         <button data-skill="L2.rot_c_neg" data-p="deg">↻ −C <span class="hint">5°</span></button>
         <button data-skill="L2.rot_c_pos" data-p="deg">↺ +C <span class="hint">5°</span></button></div>
-      <div class="row" style="margin-top:8px"><span class="k">速度(相对量, 1~30+)</span>
+      <div class="row" style="margin-top:8px"><span class="k">速度 (相对量 1~60+)</span>
         <span class="seg" id="sSpd"><button data-v="8" class="on">8 慢·默认</button>
         <button data-v="20">20</button><button data-v="40">40</button><button data-v="60">60 快</button></span>
         <input class="num" id="spd" value="8"></div>
       <div class="hint" style="margin-top:6px">速度是相对量: <b>8 很慢</b>(一次动作可能十几~几十秒才停, 停下前
-        驱动可能报一次 wait_until_idle 超时 —— **那是超时标记不是失败**, 看 TCP 有没有变就知道动没动);
-        想快用 40/60。键盘: A/B/C 加 Shift = 反向; 单次 ≤30°(执行层守卫)</div>
+        驱动可能报一次 wait_until_idle 超时 —— <b>那是超时标记, 不是失败</b>, 看 TCP 有没有变就知道动没动);
+        想快用 40/60。键盘: A/B/C 加 Shift = 反向; 单次 ≤30°(执行层守卫)。整页没有软急停, 急停请用示教器。</div>
     </div>
     <div class="card">
       <h2>📋 最近一次动作 (可复制)</h2>
