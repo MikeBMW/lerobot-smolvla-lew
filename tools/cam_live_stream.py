@@ -462,7 +462,7 @@ def _aoi_frame(bgr, clean: bool = True, out: int = 900, quality: int = 78):
 
 _AOI_AUTO = {10082: True, 10083: False}   # 自动取景: 工控机内存里没照片时, 由本服务现拍一张
 _AOI_AUTO_AT = {10082: 0.0, 10083: 0.0}   # 上次自动现拍的时刻(限流: 最快 30s 一次)
-_AOI_AUTO_MIN_S = 30.0
+_AOI_AUTO_MIN_S = 60.0
 
 
 def _aoi_auto_status() -> dict:
@@ -508,7 +508,8 @@ def _put_aoi_pair(port: int, name: str, bgr) -> None:
 
 
 def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
-                clean: bool = True, verdict: bool = True, full_name: str = "") -> None:
+                clean: bool = True, verdict: bool = True, full_name: str = "",
+                full_kind: str = "", full_every: int = 0) -> None:
     """🏭 工控机 OPT 检测图 → 帧槽。**只 GET, 不带 grab** ⇒ 取服务端内存里最近一张, 不触发拍照。
 
     · 10082 金手指: `/picture?kind=origin`(实测 6.07MB PNG/0.07s) → 去死白 → 判据图
@@ -539,7 +540,7 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                 jpg, _meta = _aoi_frame(bgr, clean=clean)
                 if jpg:
                     _put(name, jpg, time.time(), len(raw) / 1024.0)
-                if full_name:                              # 整板缩图 (面板上可切换到这一张)
+                if full_name and not full_kind:            # 整板缩图 (面板上可切换到这一张)
                     fj = _aoi_full_frame(bgr)
                     if fj:
                         _put(full_name, fj, time.time(), len(raw) / 1024.0)
@@ -569,6 +570,21 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
             else:
                 _aoi_note(port, ok=False, src=name, url=url, http=code,
                           err=("HTTP %d %s" % (code, err)).strip() or "取图失败")
+        # 🐢 整板原图(体积大: 10082 origin 实测 4.9MB) 单独按更低频率取: 每 full_every 轮一次, 不拖累主流
+        if full_name and full_kind and full_every and (n % int(full_every) == 0):
+            try:
+                fu = "http://192.168.23.23:%d/picture?kind=%s" % (port, full_kind)
+                with urllib.request.urlopen(
+                        urllib.request.Request(fu, headers={"User-Agent": "zmax-station"}),
+                        timeout=20) as r:
+                    if r.status == 200:
+                        fb = cv2.imdecode(np.frombuffer(r.read(), np.uint8), cv2.IMREAD_COLOR)
+                        if fb is not None:
+                            fj = _aoi_full_frame(fb)
+                            if fj:
+                                _put(full_name, fj, time.time(), 0.0)
+            except Exception:                                                     # noqa: BLE001
+                pass
         if verdict:
             try:
                 with urllib.request.urlopen(vurl, timeout=6) as r:
@@ -686,7 +702,7 @@ def _ctl_move(req: dict) -> dict:
         speed = float(req.get("speed", 8))
     except (TypeError, ValueError):
         speed = 8.0
-    speed = max(1.0, min(30.0, speed))            # 手动控制一律低速(实测默认 8)
+    speed = max(1.0, min(60.0, speed))            # 手动控制速度上限 60(与页面档位一致); 默认 8 很慢
     want_real = bool(req.get("arm")) and bool(_CTL["motion"])
     cmd = {"skill": sid, pname: val, "speed": speed}
     if not want_real:
@@ -1243,10 +1259,10 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       <img id="i_depth" data-mode="snap" data-src="/snapshot/depth.jpg" data-every="1500"></div>
     <div class="panel"><div class="cap"><span class="ttl">🔍 金手指检测 (工控机 10082)</span>
       <span class="meta" id="m_aoi_gold">…</span></div>
-      <img id="i_aoi_gold" data-mode="snap" data-src="/snapshot/aoi_gold.jpg" data-every="2000">
+      <img id="i_aoi_gold" data-mode="mjpg" data-src="/aoi_gold.mjpg">
       <div class="row" style="padding:6px 10px 2px"><span class="seg" id="gview">
-        <button data-src="/snapshot/aoi_gold.jpg" class="on">判据图</button>
-        <button data-src="/snapshot/aoi_gold_raw.jpg">整板原图</button></span></div>
+        <button data-stream="/aoi_gold.mjpg" class="on">判据图</button>
+        <button data-stream="/aoi_gold_raw.mjpg">整板原图</button></span></div>
       <div class="note" id="n_aoi_gold" style="display:none"></div>
       <div class="row" style="padding:4px 10px 2px">
         <button onclick="shot(10082)">📸 拍一帧</button>
@@ -1255,7 +1271,7 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
           <span>自动取景(没照片时现拍一张)</span></label></div></div>
     <div class="panel"><div class="cap"><span class="ttl">🔍 表面检测 (工控机 10083)</span>
       <span class="meta" id="m_aoi_surface">…</span></div>
-      <img id="i_aoi_surface" data-mode="snap" data-src="/snapshot/aoi_surface.jpg" data-every="4000">
+      <img id="i_aoi_surface" data-mode="mjpg" data-src="/aoi_surface.mjpg">
       <div class="note" id="n_aoi_surface"></div>
       <div class="row" style="padding:4px 10px 10px">
         <button onclick="shot(10083)">📸 拍帧 (真拍一次)</button></div></div>
@@ -1263,8 +1279,8 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
   <aside>
     <div class="card">
       <h2>🕹 手动控制台</h2>
-      <button id="armbar" onclick="toggleArm()"><span class="st" id="armtxt">⛔ 演练模式</span>
-        <span class="hint" id="armhint">点这里启用「真动」；不启用时按钮只算目标、不动机械臂</span></button>
+      <button id="armbar" class="on" onclick="toggleArm()"><span class="st" id="armtxt">✅ 真动已启用</span>
+        <span class="hint" id="armhint">每点一次方向键, 机械臂就真的动一次(步长/速度按下面选的); 不想真动就点这里切演练</span></button>
       <div class="row" style="margin-top:10px">
         <span class="big" id="robot" style="font-size:20px">读取中…</span></div>
       <div class="hint" id="robot2"></div>
@@ -1320,7 +1336,8 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
     <div class="card">
       <h2>📋 最近一次动作 (可复制)</h2>
       <div id="msg">—</div>
-      <div class="row"><button id="copyb" onclick="copylog()">📄 复制原始日志</button></div>
+      <div class="row"><button id="copyb" onclick="copylog()">📄 复制原始日志</button>
+        <button id="mq" onclick="moveReal()" style="display:none">▶ 立刻真动执行一次</button></div>
       <pre id="lines">(点上面的按钮，这里出执行器的原始回执)</pre>
     </div>
     <div class="card">
@@ -1333,7 +1350,7 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
 </main>
 <script>
 const $=(s)=>document.querySelector(s);
-let STEP_MM=10, STEP_DEG=5, ARMED=false;
+let STEP_MM=10, STEP_DEG=5, ARMED=true;   // 默认就是「真动」: 老倪两次反馈"点了不动作"= 开关没开(实测日志里是 DRY-RUN)
 function seg(id,cb){document.querySelectorAll('#'+id+' button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#'+id+' button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on'); cb(b.dataset.v);});}
@@ -1360,35 +1377,42 @@ async function getj(url,ms){
   } finally { clearTimeout(t); }
 }
 function _btns(on){document.querySelectorAll('button[data-skill]').forEach(b=>b.disabled=!on);}
-function toggleArm(){
-  ARMED=!ARMED;
+function setArm(v){
+  ARMED=!!v;
   const b=$('#armbar');
   b.classList.toggle('on',ARMED);
-  $('#armtxt').textContent=ARMED?'✅ 真动已启用':'⛔ 演练模式';
+  $('#armtxt').textContent=ARMED?'✅ 真动已启用':'⛔ 演练模式(不下发)';
   $('#armhint').textContent=ARMED
-    ? '点这里关掉。启用后每次点击都会真下发(执行器侧 1.5s 间隔限制)'
-    : '点这里启用「真动」；不启用时按钮只算目标、不动机械臂';
+    ? '每点一次方向键, 机械臂就真的动一次(速度靠右下选的档位, 执行器侧 1.5s 间隔); 点这里切演练'
+    : '现在是演练: 点了只算目标不动臂。点这里切回「真动」';
   try{localStorage.setItem('zmax_armed',ARMED?'1':'0');}catch(e){}
-  const srv=$('#armstate');
-  if(srv) srv.innerHTML+='';
-  $('#msg').textContent=ARMED?'真动已启用 —— 点方向键会真的动机械臂':'已切回演练模式(只算目标不下发)';
-  $('#msg').className=(ARMED?'bad':'wa');
+  $('#msg').textContent=ARMED?'✅ 真动已启用 —— 点方向键 / 按方向键就真的动机械臂':'⛔ 已切回演练(只算目标, 不下发)';
+  $('#msg').className=(ARMED?'ok':'wa');
 }
+function toggleArm(){ setArm(!ARMED); }
+try{ setArm(localStorage.getItem('zmax_armed')!=='0'); }catch(e){ setArm(true); }
 function flash(btn){try{btn.classList.remove('flash');void btn.offsetWidth;btn.classList.add('flash');}catch(e){}}
-async function move(btn){
+async function move(btn,force){
   const skill=btn.dataset.skill, p=btn.dataset.p;
   const v=(p==='deg')?STEP_DEG:STEP_MM;
+  const spd=parseFloat($('#spd').value||'8');
+  _lastMove={skill:skill,p:p,v:v};
+  const real=!!force||ARMED;
   _btns(false); flash(btn);
   const unlock=setTimeout(()=>_btns(true),15000);   // 兜底: 请求卡住也必须把按钮放开
   $('#msg').textContent='下发中… (最多等 15s)'; $('#msg').className='wa';
+  $('#mq').style.display='none';
   try{
-    const j=await post('/ctl/move',{skill:skill,[p]:v,speed:parseFloat($('#spd').value||'8'),
-      arm:ARMED?1:0},18000);
+    const j=await post('/ctl/move',{skill:skill,[p]:v,speed:spd,arm:real?1:0},18000);
     const _el=(typeof j.elapsed_s==='number')?(' · 用时 '+j.elapsed_s.toFixed(1)+'s'):'';
     $('#msg').textContent=(j.ok?(j.dry?'🧪 ':'✅ ')+j.msg+_el:'⛔ '+j.msg+_el)
       +'  (对上 X/Y/Z 看有没有变就知道动没动)';
     $('#msg').className=(j.ok?(j.dry?'wa':'ok'):'bad');
     $('#lines').textContent=(j.lines&&j.lines.length?j.lines.join('\n'):'(执行器还没有回执)');
+    if(j.ok&&j.dry){                       // 演练模式点了 → 给一个一键真动, 免得"点了没反应"
+      $('#mq').style.display='';
+      $('#mq').textContent='▶ 立刻真动执行一次 ('+(p==='deg'?(v+'°'):(v+'mm'))+')';
+    }
   }catch(e){
     $('#msg').textContent='请求没发出去/超时: '+e+' —— 若反复如此, 请关掉其它本机页面(浏览器对同一端口只有 6 条连接)';
     $('#msg').className='bad';
@@ -1396,6 +1420,8 @@ async function move(btn){
   clearTimeout(unlock); _btns(true);
   poll();
 }
+let _lastMove=null;
+async function moveReal(){ if(_lastMove) move(_lastMove,true); }
 document.querySelectorAll('button[data-skill]').forEach(b=>b.onclick=()=>move(b));
 function copylog(){
   const t=$('#lines').textContent+'\n'+$('#msg').textContent;
@@ -1412,10 +1438,12 @@ async function shot(port){
 }
 function panel(id,st,label){
   const m=$('#m_'+id); if(!m) return;
-  if(!st){m.textContent='未接'; return;}
-  if(!st.online){m.textContent=(label||'')+' 无帧'; return;}
+  const _im=$('#i_'+id);
+  const _live=(_im&&_im.dataset.mode==='mjpg')?' · 🔴 实时推流':'';
+  if(!st){m.textContent='未接'+_live; return;}
+  if(!st.online){m.textContent=(label||'')+' 无帧'+_live; return;}
   m.textContent=(label?label+' · ':'')+'帧龄 '+fmt(st.age_s,2)+'s · 拍照 '+hhmmss(st.age_s)
-    +' · '+fmt(st.fps,1)+'fps · '+fmt(st.kb_per_frame,0)+'KB';
+    +' · '+fmt(st.fps,1)+'fps · '+fmt(st.kb_per_frame,0)+'KB'+_live;
 }
 let _pollBusy=false, _okAt=Date.now(), _pollAt=0;
 async function poll(){
@@ -1523,11 +1551,17 @@ function _pump(){ if(_busy||!_q.length) return; _busy=true;
 function _enq(f){_q.push(f);_pump();}
 const SNAPS=[...document.querySelectorAll('img[data-mode=snap]')].map(im=>({
   im:im, url:im.dataset.src, every:parseInt(im.dataset.every||'2000'), due:0, miss:0}));
+/* 🔴 2026-09-27 老倪: 「金手指和表面检测要实时推流」 —— 这两格改走 MJPEG 长连接
+   (各占 1 条连接; 加上 1 条状态轮询 + 1 条串行快照 = ≤4 条, 仍在本机 6 条名额内)。
+   源侧本身是"每次检测才有一张", 所以看起来是"有新图就立刻推" + 帧龄如实标。 */
+document.querySelectorAll('img[data-mode=mjpg]').forEach(im=>{
+  im.classList.add('live'); im.src=im.dataset.src+'?t='+Date.now();
+});
 document.querySelectorAll('#gview button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#gview button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on');
-  const p=SNAPS.find(x=>x.im.id==='i_aoi_gold');
-  if(p){ p.url=b.dataset.src; p.every=(b.dataset.src.indexOf('raw')>=0)?3000:2000; p.due=0; }
+  const im=$('#i_aoi_gold');                    // 现在是 MJPEG 流: 换 src 就等于换源(旧连接自动断)
+  if(im) im.src=b.dataset.stream+'?t='+Date.now();
 });
 const _a82=$('#auto82');
 if(_a82) _a82.onchange=async()=>{
@@ -1563,7 +1597,6 @@ addEventListener('keydown',(e)=>{
   const b=document.querySelector('button[data-skill="'+skill+'"]');
   if(b && !b.disabled){ e.preventDefault(); move(b); }
 });
-try{ if(localStorage.getItem('zmax_armed')==='1') toggleArm(); }catch(e){}
 poll(); setInterval(poll,1500);
 </script></body></html>
 
@@ -1862,7 +1895,7 @@ def main():
     ap.add_argument("--no-depth", action="store_true", help="不起深度源 (D405 深度图窗口)")
     ap.add_argument("--depth-npy", default=DEPTH_NPY, help="容器 ros_depth_stream 落的原始深度数组")
     ap.add_argument("--depth-meta", default=DEPTH_META, help="同上配套的元数据 JSON")
-    ap.add_argument("--aoi-fps", type=float, default=0.25,
+    ap.add_argument("--aoi-fps", type=float, default=1.0,
                     help="工控机 OPT 取图频率 (默认 0.25 = 每 4s; 原图 6MB/帧, 别调太高)")
     ap.add_argument("--no-aoi", action="store_true", help="不起工控机金手指/表面检测源")
     ap.add_argument("--ctl-motion", action="store_true",
@@ -1952,7 +1985,8 @@ def main():
                          args=(10083, "aoi_surface", args.aoi_fps, "crop", False, True),
                          daemon=True, name="aoi-surface").start()
         print(f"   🏭 工控机检测源: 10082 金手指(取原图→去死白判据图) + 10083 表面 "
-              f"@≤{args.aoi_fps}Hz (只 GET 不触发拍照; 表面取 kind=crop = 模型看的规范图)", flush=True)
+              f"@≤{args.aoi_fps}Hz (只 GET 不触发拍照; 表面取 kind=crop = 模型看的规范图) "
+              f"· 两路都推 MJPEG: /aoi_gold.mjpg · /aoi_surface.mjpg", flush=True)
     # ── 🕹 手动控制闸门 (双重: 这里 + 页面勾选) ──
     _CTL["motion"] = bool(args.ctl_motion)
     print("   🕹 手动控制: %s" % ("⚠️ 已授权真动 (页面还需勾「授权真动」)"
