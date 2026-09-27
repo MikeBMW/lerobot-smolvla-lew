@@ -498,6 +498,18 @@ _AOI_AUTO = {10082: True, 10083: False}   # 自动取景: 工控机内存里没�
 _AOI_AUTO_AT = {10082: 0.0, 10083: 0.0}   # 上次自动现拍的时刻(限流: 最快 30s 一次)
 _AOI_AUTO_MIN_S = 60.0
 
+# 🔴 2026-09-27 老倪: 「工位总览 10082 10083 通道不是实时的推流, 改成实时视频流」
+#   实测事实(先量后改):
+#     · OPT 相机**只在被触发拍照时**才更新内存里的图 —— 不触发时连读 3 次(隔 3s)指纹完全一样;
+#     · 单张耗时: 10082 `GET /picture?kind=origin&grab=1` 实测 0.67~0.73s;
+#       10083 `GET /picture?kind=crop&grab=1` ≈0.6s(class); 只读 /picture 是 8~11ms(拿旧图)。
+#     ⇒ **硬件上限 ≈1.4~1.7 帧/秒**, 这是 OPT 相机取一张图的时间, 不是网络/代码的锅; 不可能到 25fps。
+#   做法: 有人正在看这一格(MJPEG 客户端在取帧)时, 采集线程**每轮都带 grab 触发一帧并立刻取回**
+#        = 顶到设备上限的连续流; 没人看就退回"只读不触发"的慢速 —— 不长时间占着产线相机。
+#   心跳(时刻)而不用引用计数: 客户端被强杀也不会泄漏计数 ⇒ 不会永久顶着重拍相机。
+_AOI_VIEW_TS = {}          # 帧槽名 → 最后一次被 MJPEG 客户端取帧的时刻
+_AOI_LIVE_WIN_S = 8.0      # 心跳在这么多秒内 ⇒ 认为"有人在看", 走实时触发模式
+
 
 def _aoi_auto_status() -> dict:
     return {str(p): bool(_AOI_AUTO.get(p)) for p in (10082, 10083)}
@@ -558,9 +570,15 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
     while not _STOP.is_set():
         t0 = time.time()
         n += 1
+        # 🔴 2026-09-27 老倪: 有人看这一格 ⇒ 每轮都带 grab 触发一帧(顶到 OPT 上限 ~1.4/1.7fps);
+        #   没人看 ⇒ 保持只读(不触发拍照, 不长时间占产线相机)。
+        _watching = ((time.time() - _AOI_VIEW_TS.get(name, 0.0)) < _AOI_LIVE_WIN_S
+                     or (full_name and (time.time() - _AOI_VIEW_TS.get(full_name, 0.0)) < _AOI_LIVE_WIN_S))
+        _url_live = url + ("&grab=1" if "?" in url else "?grab=1")
+        _req_url = _url_live if _watching else url
         code, raw, err = 0, b"", ""
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "zmax-station"})
+            req = urllib.request.Request(_req_url, headers={"User-Agent": "zmax-station"})
             with urllib.request.urlopen(req, timeout=10) as r:
                 code = r.status
                 raw = r.read()
@@ -578,8 +596,8 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                     fj = _aoi_full_frame(bgr)
                     if fj:
                         _put(full_name, fj, time.time(), len(raw) / 1024.0)
-                _aoi_note(port, ok=True, src=name, url=url, http=code, kb=round(len(raw) / 1024.0, 1),
-                          shape=[int(bgr.shape[0]), int(bgr.shape[1])], err="")
+                _aoi_note(port, ok=True, src=name, url=_req_url, http=code, kb=round(len(raw) / 1024.0, 1),
+                          shape=[int(bgr.shape[0]), int(bgr.shape[1])], err="", live=bool(_watching))
             else:
                 _aoi_note(port, ok=False, src=name, url=url, http=code,
                           err="取到 %d 字节但解不出图(不是图片?)" % len(raw))
@@ -626,7 +644,10 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                 _aoi_note(port, verdict=v)
             except Exception as e:                                                # noqa: BLE001
                 _aoi_note(port, verdict_err=str(e)[:100])
-        time.sleep(max(0.2, 1.0 / max(0.1, fps)) - (time.time() - t0))
+        if _watching:
+            _STOP.wait(0.01)          # 🔴 实时模式: 不等, 立刻下一轮(节奏 = OPT 取图耗时 0.6~0.7s/帧)
+        else:
+            time.sleep(max(0.2, 1.0 / max(0.1, fps)) - (time.time() - t0))
 
 
 def _aoi_capture(port: int, name: str, timeout: float = 90.0) -> dict:
@@ -1912,6 +1933,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         last_seq = -1
         while not _STOP.is_set():
+            # 🔴 2026-09-27 老倪: "有人在看这一格" 的心跳 —— AOI 两格靠它决定是否顶到设备上限连续触发
+            _AOI_VIEW_TS[name] = time.time()
             jpg, seq, ts, src_ts, raw_kb = _get(name)
             if jpg is None or seq == last_seq:
                 _STOP.wait(0.004)
