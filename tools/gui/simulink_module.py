@@ -7698,6 +7698,10 @@ class SimulinkModule(QWidget):
         except Exception:                                              # noqa: BLE001
             pass
 
+        # 🔴 2026-09-27 老倪: 「点击后很久没反应」⇒ 点下去先给回执, 别等后台跑完才出声
+        self._log("🧩 场景叠加: 收到点击 → 正在打开浏览器叠加页 (画布不再放小窗口; "
+                  "视频流没在跑会先拉起, 最多 12s)")
+
         def _stats_ok(timeout=2.5):
             """8791 真活着吗 —— 只看 HTTP 状态, 不猜"""
             try:
@@ -7737,19 +7741,38 @@ class SimulinkModule(QWidget):
             返回 (bool 成功, str 说明)。
             """
             import shutil
-            # 🐛 2026-09-27: 先把**旧的**"场景叠加"窗口关掉再开新的 —— 否则每次点按钮都堆一个窗
-            #   (堆起来的旧窗常常是小尺寸/旧版页面 ⇒ 老倪看到的就是"一个小窗口")。
+            # 🔴 2026-09-27 老倪: 「点了很久没反应」—— 两个提速点:
+            #   ① 已经有"场景叠加"窗口 ⇒ **直接搬屏+最大化+激活就返回**(不关不重开, 秒回);
+            #   ② 真要新开时: 浏览器进程一启动就先报一声"在加载", 认窗预算 25s→12s, 每 0.3s 探一次,
+            #      途中每 3s 报一次进度(不再长时间静默)。
+            _geo0 = None
+            try:
+                _g0 = subprocess.run(["wmctrl", "-lG"], capture_output=True, text=True,
+                                     timeout=4).stdout
+                for _ln in _g0.splitlines():
+                    if "XSpace Studio" in _ln:
+                        _p = _ln.split(None, 7)
+                        _geo0 = (int(_p[2]), int(_p[3]), int(_p[4]), int(_p[5]))
+                        break
+            except Exception:
+                _geo0 = None
             try:
                 _o0 = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True,
                                      timeout=4).stdout
-                _old = [_ln.split(None, 1)[0] for _ln in _o0.splitlines() if "场景叠加" in _ln]
-                for _w in _old:
-                    subprocess.run(["wmctrl", "-i", "-c", _w], timeout=5,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                if _old:
-                    time.sleep(1.0)          # 让浏览器把旧窗关完, 免得新窗被当成"旧窗的新标签"
+                _exist = [_ln.split(None, 1)[0] for _ln in _o0.splitlines() if "场景叠加" in _ln]
             except Exception:
-                pass
+                _exist = []
+            if _exist:
+                for _w in _exist:
+                    if _geo0:
+                        subprocess.run(["wmctrl", "-i", "-r", _w, "-e", "0,%d,%d,%d,%d" % _geo0],
+                                       timeout=5, stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL)
+                    subprocess.run(["wmctrl", "-i", "-r", _w, "-b", "add,maximized_vert,maximized_horz"],
+                                   timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run(["wmctrl", "-i", "-a", _w], timeout=5,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return True, "复用已在的叠加页窗口并置前 (%d 个) — 没重开, 所以是秒回" % len(_exist)
             tried = []
             for exe, flags in (("chromium", ["--new-window", "--start-maximized"]),
                                ("chromium-browser", ["--new-window", "--start-maximized"]),
@@ -7781,6 +7804,9 @@ class SimulinkModule(QWidget):
                 #   "QThread: Destroyed while thread is still running / Fatal Python error: Aborted"。
                 #   兜底只留 xdg-open / gio (纯进程调用, 不碰 Qt)。
                 return False, "没找到可用的浏览器 (只找到 xdg-open/gio 也不通)"
+            # 🔴 「点了很久没反应」：浏览器进程已经起来了, 立刻报一声(不再等认窗才出声)
+            self.log_signal.emit("🧩 场景叠加: 浏览器已启动(%s) — 页面加载中, 我去把窗口搬到控制台那块屏"
+                                 " (最多等 12s)" % tried[0])
             # 🔴 2026-09-27 定因(这条是"点了按钮还是一个小窗口"的真根因):
             #   老写法只在 **8 秒** 内找"标题含场景叠加"的窗口 —— 实测本机 chromium 把新窗开在
             #   **外接屏**(x≈3884), 而窗口标题要等页面加载完才更新; 8s 到点就 return "窗口没认出来,
@@ -7807,8 +7833,11 @@ class SimulinkModule(QWidget):
             except Exception:
                 _geo = None
             _wins = []
-            for _i in range(50):                      # 最多 25s (chromium 冷启常要 8~15s)
-                time.sleep(0.5)
+            for _i in range(40):                      # 12s (每 0.3s 探一次; 之前 25s/0.5s 太慢)
+                time.sleep(0.3)
+                if _i and _i % 10 == 0:               # 每 3s 报一次进度 → 不再长时间静默
+                    self.log_signal.emit("🧩 场景叠加: 还在等浏览器窗口… 已等 %.1fs (地址 %s)"
+                                         % (_i * 0.3, u))
                 try:
                     _out = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True,
                                           timeout=4).stdout
