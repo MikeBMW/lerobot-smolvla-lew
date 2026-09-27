@@ -25,6 +25,36 @@ if _GUI_DIR not in sys.path:
 import node_logic
 from node_logic_dialog import NodeLogicDialog
 
+
+def _zmax_sane_env():
+    """给"控制台自己拉起的子进程"(浏览器等)一份**能跑 snap 的环境**。
+
+    🔴 2026-09-27 定因(实测复现, 不是猜): 本机 chromium 是 **snap**, 它必须能通过会话 D-Bus 找 snapd。
+       控制台若带着 `DBUS_SESSION_BUS_ADDRESS=disabled:` 起(从终端/服务里启动时常见),
+       chromium 会打印 "<...scope> is not a snap cgroup for tag snap.chromium.chromium" 然后
+       **静默退出(exit 1, 一个窗口都没有)** —— 老倪看到的"点了场景叠加什么都没打开"就是它。
+    同机同 profile 对照:
+       DBUS=disabled:                    → 退出码 1, 窗口 0 个
+       DBUS=unix:path=/run/user/1000/bus → 浏览器在跑(超时未退出), 窗口正常
+    """
+    env = dict(os.environ)
+    uid = os.getuid()
+    cur = env.get("DBUS_SESSION_BUS_ADDRESS", "")
+    if (not cur) or cur.startswith("disabled"):
+        _bus = "/run/user/%d/bus" % uid
+        if os.path.exists(_bus):
+            env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=" + _bus
+    env.setdefault("XDG_RUNTIME_DIR", "/run/user/%d" % uid)
+    env.setdefault("DISPLAY", ":0")
+    if not env.get("XAUTHORITY"):
+        for _c in ("/run/user/%d/gdm/Xauthority" % uid,
+                   os.path.join(os.path.expanduser("~"), ".Xauthority")):
+            if os.path.exists(_c):
+                env["XAUTHORITY"] = _c
+                break
+    return env
+
+
 import os as _os_mod
 import concurrent.futures as _cfutures   # 🐛 2026-09-09: 真实化单线程池 (env 渲染线程亲和)
 _ECS_PW_SM = _os_mod.environ.get("ZMAX_ECS_PW", "")  # ECS 密码 (不入库)
@@ -7748,10 +7778,15 @@ class SimulinkModule(QWidget):
             p = shutil.which(exe)
             if not p:
                 continue
+            # 🔴 2026-09-27 真根因(实测复现): snap 版 chromium 要能连**会话 D-Bus** 才能让 snapd
+            #   建好 cgroup; 控制台带 `DBUS_SESSION_BUS_ADDRESS=disabled:` 起时, chromium 报
+            #   "<...scope> is not a snap cgroup for tag snap.chromium.chromium" 后静默退出(exit 1, 零窗口)。
+            _cmd = [p] + flags + [url]
+            _env = _zmax_sane_env()
             try:
                 _bf = open("/tmp/zmax_page_browser.log", "ab")   # 浏览器输出留证(起不来能看到原因)
-                subprocess.Popen([p] + flags + [url], stdout=_bf, stderr=subprocess.STDOUT,
-                                 start_new_session=True)
+                subprocess.Popen(_cmd, stdout=_bf, stderr=subprocess.STDOUT,
+                                 start_new_session=True, env=_env)
                 tried.append(exe + "(新窗最大化)")
                 break
             except Exception:
@@ -8030,11 +8065,29 @@ class SimulinkModule(QWidget):
                 p = shutil.which(exe)
                 if not p:
                     continue
+                # 🔴 2026-09-27 真根因(实测复现, 浏览器自己的报错为证):
+                #   snap 版 chromium 要**能连会话 D-Bus** 才能让 snapd 建好它的 cgroup;
+                #   控制台若带着 `DBUS_SESSION_BUS_ADDRESS=disabled:` 起(从终端/服务启动常见),
+                #   chromium 会报 "<...scope> is not a snap cgroup for tag snap.chromium.chromium"
+                #   然后**静默退出(exit 1, 零窗口)** —— 老倪:"点了什么都没打开"。
+                #   同机对照: DBUS=disabled → 退出码 1/0 窗; DBUS=unix:path=/run/user/1000/bus → 正常。
+                #   ⇒ 拉起前用 _zmax_sane_env() 把 env 修好再 Popen。
+                _cmd = [p] + flags + [u]
+                _env = _zmax_sane_env()
                 try:
                     # 浏览器自己的输出留证: 起不来时日志里直接能看到原因(原来丢 DEVNULL, 出了事两眼一抹黑)
                     _bf = open("/tmp/zmax_overlay_browser.log", "ab")
-                    subprocess.Popen([p] + flags + [u], stdout=_bf,
-                                     stderr=subprocess.STDOUT, start_new_session=True)
+                    try:
+                        with open("/tmp/zmax_browser_cmd.log", "a") as _cf:
+                            _cf.write("=== %s\nCMD: %r\nCWD: %s\nCGROUP: %s\nDBUS(修前)=%s → (修后)=%s\n"
+                                      % (time.strftime("%H:%M:%S"), _cmd, os.getcwd(),
+                                         open("/proc/self/cgroup").read().strip(),
+                                         os.environ.get("DBUS_SESSION_BUS_ADDRESS"),
+                                         _env.get("DBUS_SESSION_BUS_ADDRESS")))
+                    except Exception:
+                        pass
+                    subprocess.Popen(_cmd, stdout=_bf,
+                                     stderr=subprocess.STDOUT, start_new_session=True, env=_env)
                     tried.append(exe + "(新窗最大化)")
                     break
                 except Exception:
