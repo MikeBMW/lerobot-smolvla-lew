@@ -411,7 +411,15 @@ def plan_stage(sk, st, pts, spec, cur):
                        "确认已解锁请带 allow_unlocked_retract=true", "pos": t}
     ml = g.get("max_lin_mm")
     if ml is not None and lin > float(ml):
-        return {"err": "直线距离 %.0fmm > 守卫 %.0fmm (请人工把臂移到槽位附近再跑)" % (lin, float(ml)),
+        # 🔴 2026-09-27 老倪: 「一号位技能怎么没有反映了」—— 技能没坏, 是它每次都在**拒绝**,
+        #   但拒答只说"太远", 没说"差多少、往哪个方向走" ⇒ 现场看不出下一步干嘛, 看起来就像没反应。
+        #   改成把**方向 + 各轴差量**一起报出来: 照着点动过去, 再点一次本技能即可。
+        _pairs = [("+X 前进", dx), ("+Y 左移(朝槽位)", dy)]
+        _pairs.append(("+Z 抬升" if dz > 0 else "−Z 下降", abs(dz)))
+        _pairs.sort(key=lambda kv: -abs(kv[1]))
+        _dir = " · ".join("%s %.0fmm" % (n, abs(v)) for n, v in _pairs[:2] if abs(v) >= 5.0)
+        return {"err": "本阶段目标点 %s 离当前位姿 %.0fmm, 超过守卫 %.0fmm ⇒ 先点动靠近再点本技能: %s"
+                       % (name, lin, float(ml), _dir or "就在附近"),
                 "pos": t, "lin": lin}
     sp = float(spec.get("speed", 60))
     if sk.get("speed_max") is not None:                    # 技能级限速上限(练习用低速, 收口在执行层)
