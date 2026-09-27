@@ -7766,36 +7766,25 @@ class SimulinkModule(QWidget):
                     except Exception:
                         continue
             if not tried:
-                try:
-                    from PyQt5.QtCore import QUrl
-                    from PyQt5.QtGui import QDesktopServices
-                    if QDesktopServices.openUrl(QUrl(u)):
-                        tried.append("QDesktopServices")
-                except Exception:
-                    pass
-            if not tried:
-                return False, "没找到可用的浏览器"
-            _wins = []
-            for _ in range(16):                       # 最多等 8s 让窗口冒出来
-                time.sleep(0.5)
-                try:
-                    _out = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True,
-                                          timeout=4).stdout
-                except Exception:
-                    _out = ""
-                # 🐛 2026-09-27 实测: 这里必须取**窗口 id** (第 1 列 0x...), 不能取标题 ——
-                #   原写法把标题当 id 传给 `wmctrl -i -r` ⇒ 静默无效 (窗口纹丝不动,
-                #   日志却写"已最大化"), 实测窗口停在 2880x2012。
-                _wins = [_ln.split(None, 1)[0] for _ln in _out.splitlines()
-                         if "场景叠加" in _ln]
-                if _wins:
-                    break
-            if not _wins:
-                return True, "%s (窗口没认出来, 未最大化)" % tried[0]
-            # 🐛 实测两条: ①`--start-maximized` 在本机 GNOME 下**不生效** (新窗只到 2880x2012)
-            #   ⇒ 必须 wmctrl 补一刀; ②浏览器可能把地址塞进**已开窗口的新标签**(标题也会跟着变),
-            #   所以把**所有**标题含"场景叠加"的窗口都搬屏+最大化+激活, 免得最大化错了窗。
-            # 🐛 还实测过: 新窗落在另一块显示器 (3840x2086 @ x=3200), 先按 studio 坐标搬屏。
+                # 🔴 2026-09-27: 这里**删掉了**原来的 QDesktopServices.openUrl 兜底 ——
+                #   它是在 _work 的工作线程里调 Qt GUI API ⇒ 实测把整个控制台打成
+                #   "QThread: Destroyed while thread is still running / Fatal Python error: Aborted"。
+                #   兜底只留 xdg-open / gio (纯进程调用, 不碰 Qt)。
+                return False, "没找到可用的浏览器 (只找到 xdg-open/gio 也不通)"
+            # 🔴 2026-09-27 定因(这条是"点了按钮还是一个小窗口"的真根因):
+            #   老写法只在 **8 秒** 内找"标题含场景叠加"的窗口 —— 实测本机 chromium 把新窗开在
+            #   **外接屏**(x≈3884), 而窗口标题要等页面加载完才更新; 8s 到点就 return "窗口没认出来,
+            #   未最大化" ⇒ 窗口既没搬屏也没最大化, 用户在那块屏上看到的就是一个不认识的小窗,
+            #   而控制台这块屏上只多了画布上 572x344 的节点 ⇒ 老倪说的"打开的还是小窗口"。
+            #   现在: ①启动前记下已有窗口 id ②按"新出现的 id"认窗(不依赖标题) ③等足 25s
+            #   ④搬屏+最大化+激活各做 2 轮 ⑤读回几何, 报告到底落在哪块屏
+            _seen = set()
+            try:
+                _o0 = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True,
+                                     timeout=4).stdout
+                _seen = {_ln.split(None, 1)[0] for _ln in _o0.splitlines()}
+            except Exception:
+                pass
             _geo = None
             try:
                 _gout = subprocess.run(["wmctrl", "-lG"], capture_output=True, text=True,
@@ -7807,35 +7796,68 @@ class SimulinkModule(QWidget):
                         break
             except Exception:
                 _geo = None
-            _done = 0
-            for _w in _wins:
-                _cmds = []
-                if _geo:
-                    _cmds.append(["wmctrl", "-i", "-r", _w, "-e", "0,%d,%d,%d,%d" % _geo])
-                _cmds += [["wmctrl", "-i", "-r", _w, "-b", "add,maximized_vert,maximized_horz"],
-                          ["wmctrl", "-i", "-a", _w]]
-                for _cmd in _cmds:
-                    try:
-                        subprocess.run(_cmd, timeout=5, stdout=subprocess.DEVNULL,
-                                       stderr=subprocess.DEVNULL)
-                    except Exception:
-                        pass
-                _done += 1
-            # 🔎 读回几何: 不能"发了命令就宣布成功" (实测就是在这一步踩了传错参数的坑)
+            _wins = []
+            for _i in range(50):                      # 最多 25s (chromium 冷启常要 8~15s)
+                time.sleep(0.5)
+                try:
+                    _out = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True,
+                                          timeout=4).stdout
+                except Exception:
+                    _out = ""
+                _lines = _out.splitlines()
+                _new = [_ln.split(None, 1)[0] for _ln in _lines
+                        if _ln.split(None, 1)[0] not in _seen
+                        and ("场景叠加" in _ln or "Chromium" in _ln or "Firefox" in _ln)]
+                if _new:
+                    _wins = sorted(set(_new))
+                    break
+                _t = [_ln.split(None, 1)[0] for _ln in _lines if "场景叠加" in _ln]
+                if _t:
+                    _wins = sorted(set(_t))
+                    break
+            if not _wins:
+                return True, "%s (窗口 25s 内没认出来, 未搬屏/最大化)" % tried[0]
+            # 🐛 实测: ①`--start-maximized` 在本机 GNOME 下不生效 ⇒ 必须 wmctrl 补一刀;
+            #   ②新窗会落在另一块显示器 (x≈3884) ⇒ 先按 studio 的坐标搬屏。
             _g2 = ""
-            try:
-                _o2 = subprocess.run(["wmctrl", "-lG"], capture_output=True, text=True,
-                                     timeout=4).stdout
+            for _round in range(2):
+                for _w in _wins:
+                    _cmds = []
+                    if _geo:
+                        _cmds.append(["wmctrl", "-i", "-r", _w, "-e", "0,%d,%d,%d,%d" % _geo])
+                    _cmds += [["wmctrl", "-i", "-r", _w, "-b", "add,maximized_vert,maximized_horz"],
+                              ["wmctrl", "-i", "-a", _w]]
+                    for _cmd in _cmds:
+                        try:
+                            subprocess.run(_cmd, timeout=5, stdout=subprocess.DEVNULL,
+                                           stderr=subprocess.DEVNULL)
+                        except Exception:
+                            pass
+                time.sleep(0.7)
+                # 🔎 读回几何: 不能"发了命令就宣布成功"
+                try:
+                    _o2 = subprocess.run(["wmctrl", "-lG"], capture_output=True, text=True,
+                                         timeout=4).stdout
+                except Exception:
+                    _o2 = ""
                 for _ln in _o2.splitlines():
-                    if "场景叠加" in _ln:
+                    if _wins and _ln.split(None, 1)[0] in _wins:
                         _q = _ln.split(None, 7)
                         _g2 = "%sx%s @ (%s,%s)" % (_q[4], _q[5], _q[2], _q[3])
                         break
+            _onscreen = False
+            try:
+                if _g2 and _geo:
+                    _x = int(_g2.split("@ (")[1].split(",")[0])
+                    _onscreen = abs(_x - _geo[0]) < 200
             except Exception:
-                pass
-            return True, "%s · %d 个窗已最大化%s%s" % (
-                tried[0], _done, "到控制台那块屏" if _geo else "",
-                (" · 实测尺寸 " + _g2) if _g2 else "")
+                _onscreen = False
+            if not _onscreen:
+                return True, ("%s · ⚠️ 开了 %d 个窗但仍不在控制台那块屏 (实测 %s) —— "
+                              "如果看不到页面, 点控制台日志里那条地址手动看"
+                              % (tried[0], len(_wins), _g2 or "未知"))
+            return True, "%s · %d 个窗已搬屏+最大化到控制台那块屏 · 实测尺寸 %s" % (
+                tried[0], len(_wins), _g2)
 
         def _work():
             # 1) 视频流在不在 (不在 ⇒ 第 3 步带叠加起)
@@ -8071,7 +8093,15 @@ class SimulinkModule(QWidget):
         self._ov_live_timer.setInterval(250)          # 4Hz 应用 (拉帧 4Hz, 画面不抖)
         self._ov_live_timer.timeout.connect(self._ov_live_apply)
         self._ov_live_timer.start()
-        grew = self._ov_live_enlarge(item, *((580, 350) if len(online) >= 2 else (380, 246)))
+        # 🐛 2026-09-27: 逐级尝试 —— 直接要 900x560 遇到邻居会被整体否决(退回 280x110, 反而更小);
+        #   按 大→中→原尺寸 依次试, 能放多大就多大(实测 harness 里 900x560 有邻居 → 落到 580x350)。
+        grew = ""
+        _cands = ((900, 560), (700, 430), (580, 350), (420, 270)) if len(online) >= 2 \
+            else ((560, 360), (420, 270))
+        for _nw, _nh in _cands:
+            grew = self._ov_live_enlarge(item, _nw, _nh)
+            if "放大到" in grew or "尺寸已够" in grew:
+                break
         self._log("🧩 场景叠加 → 画布: 节点「%s」实时出画面 %d 路 [%s] · 拉帧 %.0fHz · %s"
                   % (item.node.get("name", "?"), len(online), "+".join(online), fps, grew))
         return True
@@ -8101,7 +8131,7 @@ class SimulinkModule(QWidget):
             self._log("🧩 场景叠加: 画布实时帧已停 (共应用 %d 帧)" % d.get("frames", 0))
         return True
 
-    def _ov_live_mosaic(self, d, srcs, tile=(286, 162), band=20):
+    def _ov_live_mosaic(self, d, srcs, tile=(452, 254), band=22):
         """🎥 多路叠加快照 → 一张拼图 (2 列; 顶部真值带 + 每格相机名/框数/真值链/规格龄)"""
         cols = 1 if len(srcs) <= 1 else 2
         rows = 1 if len(srcs) <= cols else 2
@@ -8120,7 +8150,7 @@ class SimulinkModule(QWidget):
             if d.get("offline"):
                 head += " · 未接: " + "+".join(d["offline"])
             p.setPen(QColor("#7ee787"))
-            p.setFont(QFont("Arial", 9))
+            p.setFont(QFont("Arial", 11))
             p.drawText(QRectF(6, 2, W - 12, band - 4), Qt.AlignVCenter | Qt.AlignLeft,
                        p.fontMetrics().elidedText(head, Qt.ElideRight, W - 12))
             for i, nm in enumerate(srcs):
@@ -8137,8 +8167,8 @@ class SimulinkModule(QWidget):
                 bs = " ".join("%s%d" % (k, v) for k, v in sorted(bo.items())) if bo else "-"
                 sa = m.get("spec_age")
                 p.setPen(QColor("#e6edf3"))
-                p.setFont(QFont("Arial", 9, QFont.Bold))
-                p.drawText(QRectF(cx + 4, cy + tile[1] - 17, tile[0] - 8, 15),
+                p.setFont(QFont("Arial", 11, QFont.Bold))
+                p.drawText(QRectF(cx + 4, cy + tile[1] - 22, tile[0] - 8, 20),
                            Qt.AlignVCenter | Qt.AlignLeft,
                            "%s · 框 %s · 真值链 %s · 规格 %s" %
                            (nm, bs,

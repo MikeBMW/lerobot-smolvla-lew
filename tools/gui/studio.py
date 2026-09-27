@@ -695,7 +695,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.15.28")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.15.29")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10813,7 +10813,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.28 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.29 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10821,9 +10821,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.28 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.29 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.15.29: v5.15.29 — 「🧩 场景叠加」按钮开的是外接屏上的小窗(老倪: "打开的还是小窗口") —— 定因+修  老倪第二条纠回: 控制台重启(v5.15.28 代码)后点按钮, 打开的还是小窗口。定因三条(都是实测):  ① 真根因 — `_open_browser` 认窗只看 **8 秒** 且**只按标题**含"场景叠加":    实测本机 chromium 把新窗开在**外接屏**(wmctrl: 3884,288 3184x1784 @ x≥3200), 而窗口标题要等页面    加载完才更新 ⇒ 8s 到点直接 return "窗口没认出来, 未最大化", 窗口就留在那块屏且不最大化。    修: 启动前记下窗口 id → 按"**新出现的 id**"认窗(不依赖标题) → 等足 **25s** → 搬屏/最大化/激活    各做 **2 轮** → **读回几何**并如实报告落在哪块屏(不在控制台那块屏就明说, 不写"已最大化")。  ② 顺带修掉一个"点按钮把控制台打崩"的真 bug: `_open_browser` 的兜底分支里有    `QDesktopServices.openUrl()` —— 它跑在 `_work` **工作线程**里调 Qt GUI API ⇒ 实测    `QThread: Destroyed while thread is still running` + `Fatal Python error: Aborted`(控制台整进程死)。    兜底只留 xdg-open / gio(纯进程调用)。  ③ 画布上那个 572x344 的节点拼图太像"小窗口": 节点放大改为**逐级尝试** 900x560 → 700x430 → 580x350 →    420x270(一次直接要 900x560 遇到邻居会被整体否决、反而退回 280x110 更小 —— 实测), 拼图 tile    286x162 → 452x254(904x530, 放大不糊), 字号 9→11。  实测(交互级脚本真调按钮 + 截图量化): 窗口 **3068x1862 @ (132,212) = 控制台那块笔记本屏**(x<3200), 画面内容占窗口宽度 **100.0%**(左/右黑边 0, 改前 46.1%/左右各 827px); 左格原始图+右格叠加图并排, 叠加格真值带可读(帧龄 0.1s · 源 11:21:34 · TCP=(0.3910,-0.4434,0.5511) · 手眼 cam→tcp ∥=252mm · 框 仿真0 大模型6 检测1); 画布节点 904x530 出画面 · 放大到 580x350(零重叠)。
         # v5.15.28: v5.15.28 — 场景叠加按钮: 真按老倪的话"图要大" —— 页面默认并排铺满宽度 + 新增"🖵 铺满窗口"  现场(实测不是猜): 按下「🧩 场景叠加」后浏览器窗口**确实**最大化开了(3068x1862 @ 笔记本屏), 但画面只占窗口宽度 **46.1%**(左右各 827px 纯黑信箱边) —— 单画面 4:3 在 2.84:1 的宽屏上 contain 只能这样, 老倪看到的"一个小窗口"就是这个黑框里的图。  改法(两处): ① 叠加页: 默认布局改「▣ 并排」(原始图|叠加图 两格各 ~1475px ⇒ 宽度吃满 100%),    新增「🖵 铺满窗口」(body.m_full: 藏页眉/两条按钮栏/页脚, 舞台 position:fixed 占满整窗),    Esc 或右上角"✕ 退出铺满"退出; 修 setMode 用 className 整体覆盖会抹掉 m_full 的 bug(改 classList)。 ② 按钮 handler: 开新窗前先关掉**旧的**"场景叠加"窗口(原来每次点都堆一个, 堆出来的旧窗正是"小窗口")。  实测(交互级脚本真调按钮 + 截图量化): 窗口 3068x1862, 画面内容列 0..3067 = **窗口 100.0%**(左/右黑边 0);   左右两格各占该格 100%; 叠加图自带真值带(帧龄0.0s/TCP/手眼 252mm/框 仿真0 大模型7 检测1)可读;   DOM 自检: m_full 时 #stage = 整视口(1280x577); m_ov+m_full 时单画面 = 整视口。 服务已按原参数重启(8791/8793 均 200, 叠加流 3 秒 503KB)。
         # v5.15.27: v5.15.27 — 反向通道加固: 通道自愈失败的真因处理 + 通道死活可判 + 端侧自安装  背景(实测失败): 10:52 我故意杀掉工控机上的通道 agent, 保活任务(rev4 只做 schtasks /run /tn ZMAX_Agent)在 4.5 分钟内 没能把它拉起来 —— 通道整条死了, 我只能让老倪在机器上再贴一次启动命令。  三处加固: ① 端侧独立看门狗: 新增 zmax_agent_watchdog.ps1(检查 agent 进程不在就 Start-Process 直接拉起, 不依赖计划任务状态),    由 ZMAX_Agent_Watchdog 任务每分钟跑一次(SYSTEM); agent 脚本 rev3 启动时自会下载它并**自建该任务**(无需人工)。 ② 保活 rev5: 通道自愈不再用 schtasks /run, 改为"先跑看门狗脚本 → 复查 → 仍没有就直接 Start-Process 拉起",    并把结果(含错误)写进 zmax_keepalive.log —— 下次能直接看到为什么失败。 ③ 主节点侧可判死活: agent_hub.py 每次收到**远程**(工控机)轮询就把时刻写 /tmp/zmax_agent_beat(本机自检不算,    免得把死通道探活); aoi_watch.sh(每5分钟)据此判"通道 >5 分钟没轮询"→ 报警(同一状态 6h 只报一次, 报的判据换了)。    实测: 通道死时第 1 次报警、第 2 次静默; AOI 两路探活正常则零输出。  另: AOI 程序 v6.1 已上线(启动时先探自己端口 /storage, 已有正式实例则明确报错退出码 3) —— 实测两份探针程序 (金手指/表面)都打印"❌ 端口 xxx 上已经有 AOI 服务在应答...不要手动再起第二份"并 exit 3, 现役服务不受影响。 新 SHA256: 金手指 5CA7D8E81516…(38638B) · 表面 AC71331D321E…(28684B)
         # v5.15.26: v5.15.26 — AOI 程序升级到 v6 (老倪: 「升级修改成 v6版本」): 文件名/版本号/横幅统一为 v6, 取图重连修复含在内  - 新文件名(房内命名族): cam_finger_10082_work_v6.py (37658B, SHA256 D1A73DE7..E6678) ·   cam_surface_10083_work_v6.py (27707B, SHA256 DD509424..95AF37); 程序内 VERSION="v6", 横幅打 v6 - v6 = v5.1(取图两路由补"冷启/空闲首抓失败→重连再抓") + 版本号统一; 端口/路由/回执语义仍一字未改 - 保活脚本与自主更新器(zmax_keepalive.ps1 / tools/aoi_remote_deploy.py)已同步 v6 文件名 + /v6/ 发布目录 - 上线实测(10:25): 两路六项验收全过 —— 10082 grab=1 522848B · 10083 236848B · 两路 files_total 不增 ·   capture_detect 回执 code=200 · /last_result 200(gf/housing); 进程: 10082 pid 8792 / 10083 pid 20936 均 v6 - 旧 v5 文件保留作回滚; v2/v4 未动
