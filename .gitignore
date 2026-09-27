@@ -262,3 +262,7 @@ flows/*.bak-*
 
 # 📦 手机 APP 装包(交付件, 25KB, 可由 state3d_app/build_room_apk.sh 重新打出 ⇒ 不进代码库)
 tools/web/dl/
+
+# 工作树软链(实体在共享检出 /home/ubuntu/lerobot-smolvla-lew)
+gui-venv311
+outputs
