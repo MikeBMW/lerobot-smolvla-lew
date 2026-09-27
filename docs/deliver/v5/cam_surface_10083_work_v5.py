@@ -503,6 +503,11 @@ def picture_api():
             # v5: 取图默认**不落盘**(加 &save=1 才写盘) —— 不检测时不再堆图
             _sv = str(request.args.get("save", "")).lower() in ("1", "true", "yes")
             o, tv = GrabAndSaveImage(save=_sv)
+            if o is None and tv is None:      # v5.1: 与 /capture_detect 同口径 —— 冷启/空闲后首抓会失败, 重连再抓一次
+                print("⚠️ grab 抓帧失败, 重连相机后重试…")
+                Close_Device()
+                if ensure_camera():
+                    o, tv = GrabAndSaveImage(save=_sv)
             if o is None and tv is None:
                 return jsonify({"code": 500, "msg": "抓帧失败"}), 500
             with _PIC_LOCK:

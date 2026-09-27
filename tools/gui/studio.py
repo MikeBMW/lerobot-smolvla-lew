@@ -695,7 +695,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.15.24")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.15.25")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10813,7 +10813,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.24 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.25 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10821,9 +10821,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.24 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.25 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.15.25: v5.15.25 — 修: /picture?grab=1 与 /region 冷启/空闲后首抓 500「抓帧失败」(与 /capture_detect 同口径加"重连再抓")  现场(老倪手动起第二份程序 → 10082 相机 100120003 后): 金手指那格取不到图。 探查: /storage 200 · POST /capture_detect 200 且 /last_result 判决正常(n/ms 推进) · /picture?kind=origin(不带grab) 200       但 GET /picture?kind=origin&grab=1 **稳定 500 {"code":500,"msg":"抓帧失败"}**(每次 ~5.0s) 根因: GrabAndSaveImage 里 SciCam_Grab 在冷启/空闲后首抓会失败, 返回 (None, None)。       /capture_detect 早就有"⚠️抓帧失败 → Close_Device() → ensure_camera() → 再抓一次"的兜底, 而       /picture?grab=1 与 /region?grab=1 **没有** ⇒ 只要首抓失败就 500(总览面板/技能预览因此没图)。 修法(v5.1, 两路都改): 那两个路由补上与 /capture_detect 完全相同的重连+重试, 再失败才 500。 实测(重上线后): 10082 grab=1 HTTP 200 520918B/0.73s · 10083 200 237123B/0.26s 均为真 JPEG;                 部署器六项验收两路全过(/storage·capture_detect·last_result·grab出图·files_total 不增);                 新 SHA256: 金手指 FF38BA636064… · 表面 0C52A7170DFC…
         # v5.15.24: v5.15.24 — AOI 两路自治闭环: 保活脚本加 v5 指纹(能替掉冒充进程) + 主节点侧看门狗(异常自愈/仍坏才报警)  - 起因: 老倪在工控机手动跑了两份 v5 (10082 相机报 100120003 = 相机被现役进程独占, 10083 报端口已被占用),   说明"端口在听"不等于"我们的 v5 在听" —— 老版保活只看端口, 会漏掉 v2/哑掉的进程。 - zmax_keepalive.ps1 rev2: 每路检查 ①没在听 → 起 v5 ②在听但 GET /storage 非 200(v2 无此路由/卡死) → 杀掉该 pid 再起 v5。   实测: 更新后在健康状态下跑一次 = 零动作(日志行数 2→2), 两路 /storage 仍 200。 - 新增 4060 侧看门狗 ~/.hermes/scripts/aoi_watch.sh + cron 8a433b97e362 (每 5 分钟, no_agent, 投到 dataworld 群):   正常**零输出**; 异常先让工控机跑 ZMAX_AOI_KeepAlive 自愈, 45s 复验, 仍坏才报警(带 /last_result + 日志路径)。 - 现场实测(10:1x): 10082/10083 /storage 200 · capture_detect 200 · /last_result 200(gf / housing) —— 两路健康。
         # v5.15.23: v5.15.23 — 10083 表面程序按房内命名规范改成 cam_surface_10083_work_v5.py 并重上线 (老倪: 「cam_surface_10083_work_v2.py 10083也要升级到v5; 你自己更新」)  - 现状纠正: 10083 早就是 v5 (v2 没有 /storage 与 grab=1 路由, 实测都有 ⇒ 跑的是 v5);   本轮把文件名统一成与 v2/v4 同族: D:\xspace\ultralytics_AOI\cam_surface_10083_work_v5.py (27013B, SHA256 940449BA..4B6A8BD4) - 进程证据: 10082 pid :: python.exe cam_finger_10082_work_v5.py · 10083 pid :: python.exe cam_surface_10083_work_v5.py - 保活脚本与自主更新器同步改名 (zmax_keepalive.ps1 / tools/aoi_remote_deploy.py 的 FILENAME_10083 + 启动行);   旧的 surface_10083_work_v5.py 已删, 目录不再有两个同名不同文件名 - v2 原封不动 (老倪铁律「不改 v2」): cam_surface_10083_work_v2.py 仍是 14097B / 09-19 20:34 - 重上线验收: aoi_remote_deploy 一轮 6/6 全过 (10082 gf ms≈1.5s · 10083 housing · grab 408012B/242383B · files_total 4→4 与 2→2 不增)
         # v5.15.22: v5.15.22 — 工控机自治 + 自主更新器 (老倪: 你是主节点要完全控制工控机和Orin; 禁用10084/10085, 只用10082/10083)  A) 工控机自愈/自治 (两个 SYSTEM 计划任务, 不再依赖老倪那个窗口):    · ZMAX_Agent (/sc onstart) 跑 zmax_agent_loop.ps1 → 反向通道轮询, 崩了 10s 自拉起 ⇒ 我随时能驱动那台机器    · ZMAX_AOI_KeepAlive (/sc minute /mo 1) 跑 zmax_keepalive.ps1 → 10082/10083 哪个没在听就拉起 (平时不打日志)    · 实测自愈: kill 表面 v5 (pid 21764) → 25s 内 10083 自行恢复, 日志 09:57:38 started: surface      ⇒ 相机 SDK 在 session 0(SYSTEM) 能开相机, 开机/无人登录也能起服务 B) 自主更新器 tools/aoi_remote_deploy.py (只用 10082/10083, 不碰 10084/10085):    ①拷进 8794 静态目录 ②工控机 iwr 下载 + Get-FileHash 与本地 SHA256 逐位核对(不一致即中止)    ③现役备份 .bak ④停旧起新(分离启动) ⑤验收 ⑥失败自动 .bak 回滚 + 复验    验收项: /storage 200 · capture_detect 回执 code=200 · /last_result 判决通道 · grab=1 出图>0 · grab 前后 files_total 不增    实测(幂等重发 v5, 10:02): 两路 6/6 全过 — 10082 ms≈1557 / 10083 ms≈8.9s, grab 389377B/273297B, files_total 4→4 与 2→2 不增    坑: /last_result 刚拍完会 404「尚无检测结果」(表面推理~8.9s) → 断言须轮询最多 45s 并接受两种合法形态 (第一版固定等 6s 假失败并触发回滚)
