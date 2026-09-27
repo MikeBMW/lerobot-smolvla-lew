@@ -28,8 +28,13 @@ import rclpy
 from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import String
 
 OUT = Path("/out/zmax_scene/tcp_pose.json")
+# 🩺 2026-09-27: 顺带缓存 /robot_status (三查: 上电/运行态/报警) ——
+#   手动控制区要显示"是否 idle / 有没有报警", 而 `ssh ros2 topic echo --once` 单次 3~7s,
+#   页面 1.5s 轮询顶不住 ⇒ 同 TCP 位姿一样落文件, 宿主微秒级读。
+OUT_ST = Path("/out/zmax_scene/robot_status.json")
 
 
 class TcpCache(Node):
@@ -37,8 +42,14 @@ class TcpCache(Node):
         super().__init__("zmax_tcp_cache", enable_rosout=False)
         self.last = None
         self.stamp = 0.0
+        self.st = None                      # 🩺 最近一条 /robot_status(已解析)
+        self.st_stamp = 0.0
         self.create_subscription(
             PoseStamped, "/robot/tcp_pose", self._on,
+            QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
+                       history=HistoryPolicy.KEEP_LAST))
+        self.create_subscription(
+            String, "/robot_status", self._on_st,
             QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
                        history=HistoryPolicy.KEEP_LAST))
 
@@ -48,6 +59,17 @@ class TcpCache(Node):
                      "quat": [p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w],
                      "frame_id": m.header.frame_id}
         self.stamp = time.time()
+
+    def _on_st(self, m: String):
+        """话题载荷是 JSON 字符串(实测样例: {"success":true,"power_state":"on",...})"""
+        try:
+            d = json.loads(m.data)
+            if isinstance(d, dict):
+                self.st = d
+                self.st_stamp = time.time()
+        except Exception:                    # 载荷不是 JSON 就原样记下来, 别丢信息
+            self.st = {"raw": m.data[:400]}
+            self.st_stamp = time.time()
 
 
 def main() -> int:
@@ -61,6 +83,7 @@ def main() -> int:
     nxt = time.time()
     writes = 0
     print("  TCP 缓存启动: /robot/tcp_pose → %s @%.0fHz" % (OUT, a.hz), flush=True)
+    print("  三查缓存启动: /robot_status → %s" % OUT_ST, flush=True)
     while rclpy.ok():
         rclpy.spin_once(n, timeout_sec=0.05)
         if n.last is not None and time.time() >= nxt:
@@ -74,6 +97,17 @@ def main() -> int:
                 writes += 1
             except Exception as e:
                 print("  ⚠ 写失败: %s" % e, flush=True)
+            # 🩺 三查状态 (与位姿同一落盘节奏; 没有新消息就不覆盖, 保留最后一条 + 其帧龄)
+            if n.st is not None:
+                ds = dict(n.st)
+                ds["t"] = n.st_stamp
+                ds["age_s"] = round(time.time() - n.st_stamp, 3)
+                tmp2 = OUT_ST.with_suffix(".tmp")
+                try:
+                    tmp2.write_text(json.dumps(ds, ensure_ascii=False), encoding="utf-8")
+                    os.replace(tmp2, OUT_ST)
+                except Exception as e:
+                    print("  ⚠ 状态写失败: %s" % e, flush=True)
             nxt = time.time() + period
             if writes % 200 == 1:
                 print("  已写 %d 次 · TCP=(%.4f,%.4f,%.4f)"

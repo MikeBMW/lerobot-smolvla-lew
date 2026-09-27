@@ -7837,6 +7837,8 @@ class SimulinkModule(QWidget):
                        "--arm-http", "http://%s:8792/frame.jpg" % orin_host, "--arm-fps", "30",
                        # 🎥 2026-09-27 三相机: ①臂上(Orin) ②笔记本内置 /dev/video2 ③MAXHUB 电视顶摄 /dev/video0
                        "--local-dev", "2", "--local2-dev", "0",
+                       # 🛰 2026-09-27 工位总览 6 窗: 深度源 + 工控机金手指/表面检测 + 手动控制区
+                       "--depth-fps", "4", "--aoi-fps", "0.25", "--ctl-motion",
                        "--overlay", "--overlay-src", "all", "--overlay-fps", "10"]
                 try:
                     logf = open("/tmp/zmax_scene_overlay.log", "ab")

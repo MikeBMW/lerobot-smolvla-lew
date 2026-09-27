@@ -206,6 +206,63 @@ def _quat_R(q):
             [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]]
 
 
+def _qnorm(q):
+    """四元数归一 (防数值漂移: 反复相乘后模长偏了会被控制器当成坏姿态)"""
+    n = (q[0] ** 2 + q[1] ** 2 + q[2] ** 2 + q[3] ** 2) ** 0.5 or 1.0
+    return [q[0] / n, q[1] / n, q[2] / n, q[3] / n]
+
+
+def _qmul(a, b):
+    """四元数乘法 (w 在末位, 与 xacro/ROS 一致)"""
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
+    return [aw * bx + ax * bw + ay * bz - az * by,
+            aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw,
+            aw * bw - ax * bx - ay * by - az * bz]
+
+
+def _axis_q(axis, deg):
+    """绕**工具自身**某轴的旋转四元数 (x/y/z = 俯仰/倾侧/自转)"""
+    import math
+    h = math.radians(deg) / 2.0
+    s, c = math.sin(h), math.cos(h)
+    return {"x": [s, 0.0, 0.0, c], "y": [0.0, s, 0.0, c], "z": [0.0, 0.0, s, c]}[axis]
+
+
+def build_pose_rot(sk, spec, cur, curq):
+    """🔄 原地姿态旋转 (2026-09-27 老倪手动控制区 A/B/C) —— **位置不动, 只改姿态**。
+
+    数学与已验证的 `tools/l2_pose_rot.py` 同源: R_new = R_cur · R_axis(θ) (右手定则, **工具系**),
+    走 /move_pose (TargetPose 同型; 实测该通道不掉电, 所以不用反复上电解锁)。
+
+    axis: a=绕工具X(俯仰) · b=绕工具Y(倾侧) · c=绕工具Z(光轴自转);
+    度数只填正数, 方向由技能内定(与方向点动同一口径：现场不用填负号)。
+    返回 {"tq": (pos, quat), "deg": deg, "ax": ax, "dir": +1/-1, "label": ...} 或 None(已 log)。
+    """
+    if not cur or not curq:
+        log("拒绝: 目标位姿读不到(直读失败且常驻缓存过期), 旋转需要真实当前姿态")
+        return None
+    ax = {"a": "x", "b": "y", "c": "z"}.get(str(sk.get("axis", "")).lower())
+    if ax is None:
+        log("拒绝: 技能 %s 的 axis=%r 不是 a/b/c (绕工具轴旋转只认这三个)" % (sk.get("id"), sk.get("axis")))
+        return None
+    _pd = (sk.get("param") or {}).get("deg") or {}
+    deg = abs(float(spec.get("deg", _pd.get("default", 5))))
+    _sign = -1.0 if str(sk.get("id", "")).endswith(("_neg", "_minus", "-")) else 1.0
+    deg *= _sign
+    g = dict(sk.get("guard") or {})
+    g.update(spec.get("guard") or {})
+    gmax = abs(float(g.get("max_deg", 30.0)))
+    if abs(deg) > gmax:
+        log("🛡 拒绝: 单次旋转 %.1f° 超过守卫 max_deg=%.0f° (要更大角度请分次转)" % (deg, gmax))
+        return None
+    q_new = _qnorm(_qmul(list(curq), _axis_q(ax, deg)))
+    _cn = {"x": "A(工具X·俯仰)", "y": "B(工具Y·倾侧)", "z": "C(工具Z·自转)"}[ax]
+    return {"tq": (list(cur), q_new), "deg": deg, "ax": ax,
+            "label": "绕%s %+.1f°" % (_cn, deg)}
+
+
 def _args_to_yaml(a):
     """dict → ROS2 CLI 的服务请求串 {k: v, k2: [..]} (只支持 标量/布尔/数值数组)"""
     def val(v):
@@ -289,6 +346,10 @@ def plan_stage(sk, st, pts, spec, cur):
     实时位姿算, 姿态保持当前。拔出这类动作必须用相对量: 力控插入会把模块多压进几毫米, 若用
     "回到示教插入位"的绝对点, 就变成了先把模块往回拽(锁着的时候=硬拽锁扣)。
     """
+    if sk.get("ros") == "pose_rot":
+        # 🔄 旋转是单步技能(位置不动, 一次一个角度) —— 多阶段(steps)会把 name/点位逻辑绕进去,
+        #    静默算错落点。宁可直接拒发, 也不让"看起来跑了"。
+        return {"err": "pose_rot(绕工具轴旋转)是单步技能, 不支持 steps 多阶段; 请去掉 steps"}
     if st.get("rel"):
         name = "rel(当前位姿)"
         t = [float(v) for v in cur]
@@ -721,7 +782,13 @@ def dispatch(reg, spec, chan):
         # 相对运动(前进/后退/向左/向右/抬升/下降)的落点 = **真实当前位姿** + 偏移
         # → 位姿直读, 不用滞后缓存(缓存滞后会把每一步的误差累加成错落点); 与 Δ 日志共用同一次读。
         _cur, _cq, _csrc = _pose_best()
-        r = build_move(sk, spec, pts, _cur, _cq)
+        # 🔄 2026-09-27 老倪(手动控制区): A/B/C = 原地姿态旋转, 位置不动 → 不走 build_move 的平移分支
+        _rot = None
+        if sk.get("ros") == "pose_rot":
+            _rot = build_pose_rot(sk, spec, _cur, _cq)
+            r = _rot["tq"] if _rot else None
+        else:
+            r = build_move(sk, spec, pts, _cur, _cq)
         if not r:
             log("拒绝: 位姿读不到(直读失败且常驻缓存过期)或点位不存在")
             return "位姿缓存未就绪"
@@ -733,6 +800,10 @@ def dispatch(reg, spec, chan):
         _dir = _dir_label(dx, dy, dz)
         log("目标 %s: pos=(%.4f, %.4f, %.4f) · Δ=(%+.1f, %+.1f, %+.1f)mm %s · 位姿来源 %s"
             % (sid, x, y, z, dx, dy, dz, _dir, _csrc))
+        if _rot:                       # 旋转: 位置必须不动(Δ≈0), 只报姿态前后 —— 这条日志就是取证
+            _dir = _rot["label"]
+            log("🔄 %s: 当前位置不动, 姿态 quat [%.4f %.4f %.4f %.4f] → [%.4f %.4f %.4f %.4f]"
+                % (_rot["label"], *(_cq or [0, 0, 0, 0]), qx, qy, qz, qw))
         _gd = (sk.get("guard") or {}).get("dz_down_limit_mm")
         if _gd is not None and dz < -abs(float(_gd)):
             _allow = spec.get("allow_down_mm")
@@ -741,9 +812,12 @@ def dispatch(reg, spec, chan):
                     % (float(_gd), -dz))
                 return "🛡 已拒绝: 向下 %.0fmm 超过守卫 %.0fmm" % (-dz, float(_gd))
         sp = float(spec.get("speed", 60))
-        call = ('timeout 90 ros2 service call /move_line interfaces/srv/TargetPose "{speed: %s, joint_state: {name: [], '
+        # 🔄 旋转走 /move_pose (与 tools/l2_pose_rot.py 已验证通道一致); 平移仍走 /move_line
+        _srv = "/move_pose" if _rot else "/move_line"
+        _to = int(max(90, 20 + abs(float(_rot["deg"])) * 3)) if _rot else 90
+        call = ('timeout %d ros2 service call %s interfaces/srv/TargetPose "{speed: %s, joint_state: {name: [], '
                 'position: []}, pose: {position: {x: %s, y: %s, z: %s}, orientation: {x: %s, y: %s, z: %s, w: %s}}}"'
-                % (sp, x, y, z, qx, qy, qz, qw))
+                % (_to, _srv, sp, x, y, z, qx, qy, qz, qw))
     if spec.get("dry"):
         # 🧪 2026-09-20: 空跑 —— 算出目标位姿与将要下发的 ros2 调用并打印, **不下发**
         #   (反复练习/回点前先核对目标, 避免盲发; 也是无副作用的自证手段)

@@ -695,7 +695,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.15.14")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.15.15")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10813,7 +10813,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.14 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.15 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10821,9 +10821,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.14 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.15 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.15.15: 🛰 工位总览 v5.15.15: 6 路同屏 + 手动控制机器人  · 新页 /station: 三相机(臂上 D405·笔记本内置·MAXHUB 顶摄) + D405 深度图 +   工控机 OPT 金手指检测(10082 判据图) + 表面检测(10083) 六格同屏, 每格标帧龄/拍照时刻 · 深度源: 容器 ros_depth_stream.py 只读订阅 /realsense/depth/image_rect_raw 落原始数组,   宿主 cam_live_stream 上色 (口径共用 tools/depth_colorize.py); D405 0.0001 m/unit · 三查状态: 容器 ros_tcp_cache.py 增订 /robot_status → robot_status.json, 页面 1.5s 读文件   (原先 ssh ros2 topic echo --once 单次 3~7s, 顶不住轮询) · 手动控制: X Y Z 平动(既有 L2.forward/backward/left/right/lift/lower) +   A B C 绕工具轴旋转(**新增 pose_rot 执行算子** + 6 个 L2.rot_* 技能, 走 /move_pose)   双重闸门: 服务 --ctl-motion + 页面「授权真动」; 白名单技能; 步长/速度/角度/频率限幅;   每次点击都回执行器的原始日志行(可复制取证); GET 一律不触发动作 · 修: 6 格全用 MJPEG 会占满 HTTP/1.1 每主机 6 条连接 → 状态请求永远排队(页面卡"读取中…");   改为 2 路 MJPEG + 4 格串行单帧快照 + 状态合并成 1 条请求, 另加卡顿自诊断提示
         # v5.15.14: 三相机并存: 「🧩 场景叠加」支持 臂上D405 + 笔记本内置(video2) + MAXHUB顶摄(video0); 端点改正则通用路由(加源不动路由表), /stats 下发相机实名label(不再靠参数名猜); 画布节点改为 2x2 拼图(逐格标 相机名/框数/真值链/规格龄 + 每路帧龄), 掉线路如实标"未接"; /gen 带 cam 参数; sim/scene 真几何框只对臂上有效, 本机两路如实拒绝(无手眼); 取证: verify_three_cameras.py + verify_three_cam_canvas.py; 叠加页改**大图**(🧩叠加图/📷原始图/▣并排/⛶全屏, 点画面全屏), 按钮改为开**最大化新窗并搬到控制台那块屏**; 空画布点按钮自动加载工作流再出画面
         # v5.15.13 (2026-09-27): 🎯🎯 **手眼标定 T_base_cam 首次解出(双轴方案) + 标定工具/独立物理检验 + 版本号一致性修复**
         #   ① 【双轴是硬需求, 不是"转大点就行"】单绕世界Z轴 ⇒ R_i=Rz(ψ_i)·R_ref ⇒ R_iᵀR_j 转轴恒为 R_refᵀ·(0,0,1)

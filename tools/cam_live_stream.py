@@ -32,12 +32,15 @@ Z-MAX 旁路调试 · 实时视频流（压缩版）
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import cv2
@@ -60,7 +63,8 @@ _OVERLAY_FPS = 12.0
 _LOCK = threading.Lock()
 _FRAME_TPL = {"jpg": None, "ts": 0.0, "seq": 0, "src_ts": 0.0, "raw_kb": 0.0}
 _FRAMES = {k: dict(_FRAME_TPL) for k in
-           ("arm", "local", "local2", "ov_arm", "ov_local", "ov_local2")}
+           ("arm", "local", "local2", "depth", "aoi_gold", "aoi_surface",
+            "ov_arm", "ov_local", "ov_local2")}
 _OV_INFO = {}                        # 每路最近一次的叠加统计（画了多少框/跳过原因）
 _CAM_LABEL = {}                      # 🎥 源名 → 真实相机名 (页面/画布直显"这是哪个摄像头")
 _STOP = threading.Event()
@@ -351,6 +355,323 @@ def url_cam_worker(url: str, fps_cap: float, frame_name: str = "local2",
 
 
 # ── ③ 场景叠加渲染线程（解码 → 画仿真/大模型/检测框 → 重编码）──────────
+# ══════════════════════════════════════════════════════════════════════════════
+# 🌈 深度源 + 🏭 工控机 OPT 检测源 + 🕹 手动控制后端
+#   (2026-09-27 老倪: 「6 个窗口同时显示 + 留出控制区, 手动控制机器人 X Y Z 平动 / A B C 绕轴旋转」)
+# ══════════════════════════════════════════════════════════════════════════════
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # 同目录工具互导 (tools/*.py)
+SCENE_DIR = "/home/ubuntu/zmax_ss_remote/zmax_scene"
+DEPTH_NPY = SCENE_DIR + "/depth_raw.npy"
+DEPTH_META = SCENE_DIR + "/depth_meta.json"
+TCP_JSON = SCENE_DIR + "/tcp_pose.json"          # 容器 ros_tcp_cache 20Hz 落盘
+ROBOT_STATUS_JSON = SCENE_DIR + "/robot_status.json"   # 同上的 /robot_status 三查缓存
+_AOI_INFO = {}            # port → {ok, err, http, t, kb, verdict, kind, src}
+_AOI_LOCK = threading.Lock()
+_DEPTH_INFO = {}
+# 🕹 手动控制: **服务级开关** —— 不加 --ctl-motion 时本进程只演练(dry), 真动需要
+#   ①启动参数 --ctl-motion ②页面勾「授权真动」, 双重闸门(防止推流服务被当成遥控器)。
+_CTL = {"motion": False, "min_gap": 1.5, "last_real": 0.0,
+        "last": {"t": 0.0, "skill": "", "dry": True, "ok": False, "msg": "", "lines": []}}
+_CTL_LOG = "/tmp/zmax_ctl.log"
+_L2_FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
+# 允许的指令白名单: 技能 → (参数名, 最小, 最大)。**只认这些**, 别的技能(含点位/多阶段技能)
+# 一律拒绝 —— 手动控制区是给"点动"用的, 不是通用技能下发口。
+_CTL_SKILLS = {
+    "L2.forward": ("d_mm", 5, 300), "L2.backward": ("d_mm", 5, 300),
+    "L2.left": ("d_mm", 5, 300), "L2.right": ("d_mm", 5, 300),
+    "L2.lift": ("d_mm", 5, 300), "L2.lower": ("d_mm", 5, 100),
+    "L2.rot_a_pos": ("deg", 1, 30), "L2.rot_a_neg": ("deg", 1, 30),
+    "L2.rot_b_pos": ("deg", 1, 30), "L2.rot_b_neg": ("deg", 1, 30),
+    "L2.rot_c_pos": ("deg", 1, 30), "L2.rot_c_neg": ("deg", 1, 30),
+}
+
+
+def _read_json(path: str, default=None):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:                                                         # noqa: BLE001
+        return default
+
+
+def _age(t) -> float:
+    return round(time.time() - float(t), 2) if t else -1.0
+
+
+def _depth_worker(npy_path: str, meta_path: str, fps_cap: float) -> None:
+    """🌈 深度源: 读容器落的 depth_raw.npy(+meta) → 伪彩 JPEG → 帧槽 "depth"。
+
+    为什么不在容器里上色: 容器(ros:humble-ros-base)没 cv2, 装了重启即失。彩色化口径在
+    tools/depth_colorize.py(两边共用), 宿主这里负责真正画。
+    帧龄取「拍照时刻」= meta.t − src_stamp_age_s (容器写盘时贴的新鲜度), 不是读盘时刻。
+    """
+    try:
+        from depth_colorize import colorize as _colorize
+    except Exception as e:                                                    # noqa: BLE001
+        print("   ⚠ 深度源: depth_colorize 导入失败(%s) ⇒ 深度窗口不可用" % e, flush=True)
+        return
+    last_mtime = -1.0
+    while not _STOP.is_set():
+        t0 = time.time()
+        try:
+            mt = os.path.getmtime(meta_path)
+            if mt != last_mtime:
+                last_mtime = mt
+                meta = _read_json(meta_path, {}) or {}
+                raw = np.load(npy_path)                       # uint16 HxW (原子替换, 不会读半截)
+                d = raw.astype(np.float32) * float(meta.get("depth_scale", 0.0001))
+                jpg = _colorize(d, meta)
+                if jpg:
+                    src_ts = float(meta.get("t", time.time())) - float(meta.get("src_stamp_age_s", 0.0))
+                    _put("depth", jpg, src_ts, raw.nbytes / 1024.0)
+                    with _LOCK:
+                        _DEPTH_INFO.clear()
+                        _DEPTH_INFO.update(meta)
+                        _DEPTH_INFO["file_age_s"] = _age(mt)
+        except Exception as e:                                                    # noqa: BLE001
+            with _LOCK:
+                _DEPTH_INFO["err"] = str(e)[:140]
+        time.sleep(max(0.05, 1.0 / max(0.5, fps_cap)) - (time.time() - t0))
+
+
+def _aoi_frame(bgr, clean: bool = True, out: int = 900, quality: int = 78):
+    """工控机原图(BGR) → 判据图 JPEG。
+
+    ⚠️ 色彩顺序坑: `aoi_exposure_fix.clean_judge_frame` 内部按 **RGB** 加权算灰度(过曝/边缘),
+    喂它 BGR 会把红的过曝带判成别的 ⇒ **进出各转一次**; 传错的表现是"判据图偏色/裁错行"。
+    """
+    img, meta = bgr, {}
+    if clean:
+        try:
+            from aoi_exposure_fix import clean_judge_frame
+            clean_rgb, meta = clean_judge_frame(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), out=out)
+            if clean_rgb is not None:
+                img = cv2.cvtColor(clean_rgb, cv2.COLOR_RGB2BGR)
+            else:
+                meta = dict(meta or {})
+                meta["fallback"] = "自裁失败 → 退回原图(如实标注, 不硬裁一张错的)"
+        except Exception as e:                                                    # noqa: BLE001
+            meta = {"ok": False, "err": str(e)[:120]}
+    h, w = img.shape[:2]
+    if max(h, w) > out:
+        k = out / float(max(h, w))
+        img = cv2.resize(img, (int(w * k), int(h * k)))
+    ok, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+    return (buf.tobytes() if ok else b""), meta
+
+
+def _aoi_note(port: int, **kw) -> None:
+    with _AOI_LOCK:
+        d = _AOI_INFO.setdefault(port, {})
+        d.update(kw)
+        d["t"] = time.time()
+
+
+def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
+                clean: bool = True, verdict: bool = True) -> None:
+    """🏭 工控机 OPT 检测图 → 帧槽。**只 GET, 不带 grab** ⇒ 取服务端内存里最近一张, 不触发拍照。
+
+    · 10082 金手指: `/picture?kind=origin`(实测 6.07MB PNG/0.07s) → 去死白 → 判据图;
+      顺带每轮读 `/last_result`(判别结果: 类型/检出数/耗时)。
+    · 10083 表面: 实测**没有取图路由**(只有 POST /capture_detect) ⇒ 如实报「无取图路由」,
+      面板给「拍帧」按钮 —— 点了才 POST 一次(一次一帧), 回执里带 base64 图就直接显示。
+    """
+    url = "http://192.168.23.23:%d/picture?kind=%s" % (port, kind)
+    vurl = "http://192.168.23.23:%d/last_result" % port
+    n = 0
+    while not _STOP.is_set():
+        t0 = time.time()
+        n += 1
+        code, raw, err = 0, b"", ""
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "zmax-station"})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                code = r.status
+                raw = r.read()
+        except urllib.error.HTTPError as e:
+            code, err = e.code, (e.read()[:200].decode("utf-8", "ignore") if hasattr(e, "read") else "")
+        except Exception as e:                                                    # noqa: BLE001
+            err = str(e)[:140]
+        if code == 200 and raw:
+            bgr = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+            if bgr is not None:
+                jpg, _meta = _aoi_frame(bgr, clean=clean)
+                if jpg:
+                    _put(name, jpg, time.time(), len(raw) / 1024.0)
+                _aoi_note(port, ok=True, src=name, url=url, http=code, kb=round(len(raw) / 1024.0, 1),
+                          shape=[int(bgr.shape[0]), int(bgr.shape[1])], err="")
+            else:
+                _aoi_note(port, ok=False, src=name, url=url, http=code,
+                          err="取到 %d 字节但解不出图(不是图片?)" % len(raw))
+        else:
+            _aoi_note(port, ok=False, src=name, url=url, http=code,
+                      err=("HTTP %d %s" % (code, err)).strip() or "取图失败")
+        if verdict and port == 10082:
+            try:
+                with urllib.request.urlopen(vurl, timeout=6) as r:
+                    v = json.loads(r.read().decode("utf-8", "ignore"))
+                _aoi_note(port, verdict=v)
+            except Exception as e:                                                # noqa: BLE001
+                _aoi_note(port, verdict_err=str(e)[:100])
+        time.sleep(max(0.2, 1.0 / max(0.1, fps)) - (time.time() - t0))
+
+
+def _aoi_capture(port: int, name: str, timeout: float = 90.0) -> dict:
+    """「拍帧」: POST 工控机 /capture_detect —— 这是**有副作用**的动作(现场真的拍一张并跑检测),
+    所以只能由人点按钮触发, 绝不自动轮询。回执里若带 base64 图就顺手存成该路帧。"""
+    url = "http://192.168.23.23:%d/capture_detect" % port
+    try:
+        req = urllib.request.Request(url, data=b"{}", method="POST",
+                                     headers={"Content-Type": "application/json",
+                                              "User-Agent": "zmax-station"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            code = r.status
+            raw = r.read()
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "http": e.code, "msg": (e.read()[:300].decode("utf-8", "ignore"))}
+    except Exception as e:                                                        # noqa: BLE001
+        return {"ok": False, "http": 0, "msg": str(e)[:200]}
+    out = {"ok": code == 200, "http": code, "bytes": len(raw), "msg": ""}
+    try:
+        j = json.loads(raw.decode("utf-8", "ignore"))
+    except Exception:                                                             # noqa: BLE001
+        j = None
+    if isinstance(j, dict):
+        out["msg"] = str(j.get("msg") or j.get("message") or j.get("error") or "")[:200]
+        for k in ("image_base64", "image_b64", "jpeg_base64", "jpg_base64", "image"):
+            v = j.get(k)
+            if isinstance(v, str) and len(v) > 500:
+                try:
+                    img = cv2.imdecode(np.frombuffer(base64.b64decode(v.split(",")[-1]),
+                                                     np.uint8), cv2.IMREAD_COLOR)
+                    if img is not None:
+                        _put(name, cv2.imencode(".jpg", img,
+                                                [int(cv2.IMWRITE_JPEG_QUALITY), 82])[1].tobytes(),
+                             time.time(), len(v) * 0.75 / 1024.0)
+                        out["got_image"] = True
+                except Exception as e:                                            # noqa: BLE001
+                    out["msg"] = (out["msg"] + " | base64 解图失败: " + str(e)[:80])[:240]
+                break
+    _aoi_note(port, last_capture=out)
+    return out
+
+
+def _tail(path: str, off: int, limit: int = 8192) -> str:
+    """读 from offset 的新内容 (给"下发后等执行器回执"用, 不依赖时间戳解析)"""
+    try:
+        with open(path, "rb") as f:
+            f.seek(off)
+            return f.read(limit).decode("utf-8", "ignore")
+    except Exception:                                                             # noqa: BLE001
+        return ""
+
+
+def _ctl_move(req: dict) -> dict:
+    """🕹 手动点动: 白名单校验 → 双重授权 → 限流 → 写执行器 FIFO → **等回执**。
+
+    返回里一定带 `lines`(执行器的原始日志行) —— 老倪口径: 点了必须有结果, 而且是可复制的证据,
+    不是"已发送"这种自报。
+    """
+    sid = str(req.get("skill") or "")
+    if sid not in _CTL_SKILLS:
+        return {"ok": False, "msg": "技能 %r 不在手动控制白名单里" % sid}
+    pname, lo, hi = _CTL_SKILLS[sid]
+    try:
+        val = float(req.get(pname, 0))
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "参数 %s 不是数字" % pname}
+    if not (lo <= val <= hi):
+        return {"ok": False, "msg": "%s=%.1f 超出允许范围 [%d, %d]" % (pname, val, lo, hi)}
+    try:
+        speed = float(req.get("speed", 8))
+    except (TypeError, ValueError):
+        speed = 8.0
+    speed = max(1.0, min(30.0, speed))            # 手动控制一律低速(实测默认 8)
+    want_real = bool(req.get("arm")) and bool(_CTL["motion"])
+    cmd = {"skill": sid, pname: val, "speed": speed}
+    if not want_real:
+        cmd["dry"] = True
+        why = "服务未授权真动(--ctl-motion)" if not _CTL["motion"] else "页面未勾「授权真动」"
+    else:
+        why = ""
+        gap = time.time() - float(_CTL["last_real"])
+        if gap < float(_CTL["min_gap"]):
+            return {"ok": False, "msg": "太快了(距上一条 %.1fs < %.1fs), 防连点把臂当摇杆刷"
+                    % (gap, _CTL["min_gap"])}
+    try:
+        fd = os.open(_L2_FIFO, os.O_WRONLY | os.O_NONBLOCK)
+    except OSError as e:
+        return {"ok": False, "msg": "执行器 FIFO 打不开(%s) —— L2 常驻执行器没在跑?" % e}
+    off = 0
+    try:
+        off = os.path.getsize(_L2_LOG)
+    except OSError:
+        pass
+    try:
+        os.write(fd, (json.dumps(cmd, ensure_ascii=False) + "\n").encode("utf-8"))
+    except OSError as e:
+        os.close(fd)
+        return {"ok": False, "msg": "写入执行器失败: %s" % e}
+    os.close(fd)
+    if want_real:
+        _CTL["last_real"] = time.time()
+    # 等回执: 执行器要先直读真值位姿再算目标, 实测 1~3s
+    buf, t0 = "", time.time()
+    while time.time() - t0 < 9.0:
+        time.sleep(0.4)
+        buf += _tail(_L2_LOG, off)
+        if sid in buf and ("受理" in buf or "拒绝" in buf or "失败" in buf):
+            break
+    lines = [l.strip() for l in buf.splitlines() if l.strip()][-6:]
+    out = {"ok": True, "dry": not want_real, "skill": sid, "param": {pname: val}, "speed": speed,
+           "msg": ("演练(未下发): %s" % why) if not want_real else "已下发(真动)",
+           "elapsed_s": round(time.time() - t0, 2), "lines": lines}
+    rec = {"t": time.time(), "skill": sid, pname: val, "speed": speed,
+           "dry": not want_real, "lines": lines}
+    _CTL["last"] = {"t": rec["t"], "skill": sid, "dry": not want_real, "ok": True,
+                    "msg": out["msg"], "lines": lines}
+    try:
+        with open(_CTL_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+    return out
+
+
+def _ctl_status() -> dict:
+    """页面 1.5s 轮询用的一把抓状态: 三查 + TCP 位姿 + 最近运动 + 各路源心跳。"""
+    st = _read_json(ROBOT_STATUS_JSON, {}) or {}
+    tp = _read_json(TCP_JSON, {}) or {}
+    with _LOCK:
+        depth = dict(_DEPTH_INFO)
+        aoi = {str(k): dict(v) for k, v in _AOI_INFO.items()}
+    now = time.time()
+    return {
+        "motion_armed": bool(_CTL["motion"]),
+        "robot": {
+            "ok": bool(st.get("success")),
+            "power": st.get("power_state", ""), "operation": st.get("operation_state", ""),
+            "has_error": st.get("has_error"), "error_code": st.get("error_code", ""),
+            "estop": st.get("estop_detected"), "collision": st.get("collision_detected"),
+            "age_s": _age(st.get("t")),
+        },
+        "tcp": {"xyz": tp.get("xyz"), "quat": tp.get("quat"), "age_s": _age(tp.get("t")),
+                "frame_id": tp.get("frame_id", "")},
+        "motion": _motion_state(),
+        "depth": dict(depth, age_s=_age(depth.get("t"))),
+        "aoi": aoi,
+        "last_cmd": dict(_CTL["last"], age_s=_age(_CTL["last"].get("t"))),
+        "server_time": now,
+        "labels": dict(_CAM_LABEL),
+    }
+
+
+def _aoi_note_init() -> None:
+    """开局就给两路 AOI 建个状态槽, 免得页面在首帧前读不到键"""
+    for port, nm in ((10082, "aoi_gold"), (10083, "aoi_surface")):
+        _aoi_note(port, ok=None, src=nm, err="启动中…")
+
+
 def overlay_worker(src_name: str, fps_cap: float) -> None:
     """
     把 src_name 的最新帧解码, 叠加 data/scene/overlay_spec.json 里的框, 存到 ov_<src>。
@@ -619,6 +940,9 @@ OVERLAY_PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <header>
   <h1>🧩 场景叠加 · 真实视频流 + 仿真场景边界框</h1>
   <div class="meta">真实画面 = 原始视频流 · 框 = 仿真投影 / L5 大模型理解 / 真机检测（颜色区分，不混为一谈）· 点画面=全屏</div>
+  <div class="meta" style="margin-top:4px">
+    <a href="/station" style="color:#7ee787;font-weight:600;font-size:15px">🛰 工位总览（6 路同屏: 三相机+深度图+金手指+表面检测 · 右侧手动控制机器人）→</a>
+  </div>
 </header>
 <div class="bar">
   <button id="c_arm" class="on" onclick="setCam('arm')">🦾 臂上相机</button>
@@ -718,6 +1042,287 @@ setInterval(load,1500);load();
 
 
 # 🎥 2026-09-27 老倪(三相机): 通用相机路由 —— 新增相机源不用再改路由表
+STATION_PAGE = r"""<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Z-MAX 工位总览 · 6 路同屏 + 手动控制</title>
+<style>
+:root{--bg:#0e1116;--card:#161b22;--line:#2a3340;--txt:#e6edf3;--dim:#8b98a5;
+      --grn:#3fb950;--red:#f85149;--yel:#d29922;--blu:#58a6ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.45 system-ui,"Noto Sans CJK SC",sans-serif}
+header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);
+       position:sticky;top:0;background:#0e1116ee;z-index:9;backdrop-filter:blur(4px)}
+header h1{font-size:20px;margin:0;font-weight:600}
+header .sp{flex:1}
+header .clk{color:var(--dim);font-variant-numeric:tabular-nums}
+main{display:flex;gap:12px;padding:12px;align-items:flex-start}
+.grid{flex:1;display:grid;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:1100px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;position:relative}
+.panel .cap{display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line)}
+.panel .ttl{font-size:16px;font-weight:600}
+.panel .meta{margin-left:auto;color:var(--dim);font-size:13px;font-variant-numeric:tabular-nums;text-align:right}
+.panel img{display:block;width:100%;background:#000;min-height:120px}
+.panel .note{padding:26px 14px;color:var(--yel);font-size:15px;line-height:1.7;background:#1a1d14}
+.panel .note b{color:#ffd866}
+.panel .badge{position:absolute;left:8px;bottom:8px;background:#000a;border:1px solid var(--line);
+              border-radius:6px;padding:2px 8px;font-size:13px;color:#cfe3ff}
+aside{width:372px;flex:0 0 372px;display:flex;flex-direction:column;gap:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.card h2{font-size:16px;margin:0 0 8px;font-weight:600;color:#cfe3ff}
+.row{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}
+.axis{font-size:16px;font-weight:600;width:210px}
+button{font:600 17px/1 system-ui,"Noto Sans CJK SC",sans-serif;color:#e6edf3;background:#21262d;
+       border:1px solid #3d444d;border-radius:8px;padding:12px 10px;min-height:46px;cursor:pointer;flex:1}
+button:hover{background:#2b323b}
+button:active{transform:translateY(1px)}
+button.on{border-color:var(--blu);background:#173a5e}
+button.warn{border-color:#7a4b00;background:#3a2a08}
+button.cap{font-size:15px;min-height:38px;padding:8px;flex:0 0 auto;min-width:104px}
+.seg{display:flex;gap:6px}
+.seg button{padding:8px 12px;min-height:38px;font-size:15px}
+.k{color:var(--dim)}
+.big{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.ok{color:var(--grn)}.bad{color:var(--red)}.wa{color:var(--yel)}
+pre{margin:6px 0 0;background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:8px;
+    font:13px/1.5 ui-monospace,Menlo,monospace;color:#c9d1d9;white-space:pre-wrap;word-break:break-all;
+    max-height:190px;overflow:auto;user-select:text}
+.hint{color:var(--dim);font-size:13px;line-height:1.6}
+.warnbar{color:#ffd866;background:#3a2a08;border:1px solid #7a4b00;border-radius:8px;padding:6px 10px;font-size:14px}
+label.arm{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:600;
+          background:#3a1d1d;border:1px solid #7a3030;border-radius:8px;padding:10px;cursor:pointer}
+label.arm input{width:22px;height:22px}
+input.num{width:74px;font:600 17px system-ui;padding:8px;border-radius:8px;border:1px solid #3d444d;
+          background:#0b0f14;color:var(--txt);text-align:center}
+</style></head><body>
+<header>
+  <h1>🛰 工位总览</h1>
+  <span class="hint">6 路同屏 · 手动控制机器人 (X Y Z 平动 / A B C 绕轴旋转)</span>
+  <span class="sp"></span>
+  <span class="warnbar" id="warn" style="display:none"></span>
+  <span class="clk" id="clk"></span>
+</header>
+<main>
+  <section class="grid">
+    <div class="panel"><div class="cap"><span class="ttl">🦾 机器人臂上 D405</span>
+      <span class="meta" id="m_arm">…</span></div>
+      <img id="i_arm" data-mode="snap" data-src="/snapshot/arm.jpg" data-every="1000"></div>
+    <div class="panel"><div class="cap"><span class="ttl">💻 笔记本内置相机</span>
+      <span class="meta" id="m_local">…</span></div>
+      <img id="i_local" src="/local.mjpg"></div>
+    <div class="panel"><div class="cap"><span class="ttl">📺 MAXHUB 顶摄</span>
+      <span class="meta" id="m_local2">…</span></div>
+      <img id="i_local2" src="/local2.mjpg"></div>
+    <div class="panel"><div class="cap"><span class="ttl">🌈 D405 深度图</span>
+      <span class="meta" id="m_depth">…</span></div>
+      <img id="i_depth" data-mode="snap" data-src="/snapshot/depth.jpg" data-every="1500"></div>
+    <div class="panel"><div class="cap"><span class="ttl">🔍 金手指检测 (工控机 10082)</span>
+      <span class="meta" id="m_aoi_gold">…</span></div>
+      <img id="i_aoi_gold" data-mode="snap" data-src="/snapshot/aoi_gold.jpg" data-every="3000">
+      <div class="note" id="n_aoi_gold" style="display:none"></div></div>
+    <div class="panel"><div class="cap"><span class="ttl">🔍 表面检测 (工控机 10083)</span>
+      <span class="meta" id="m_aoi_surface">…</span></div>
+      <img id="i_aoi_surface" data-mode="snap" data-src="/snapshot/aoi_surface.jpg" data-every="4000">
+      <div class="note" id="n_aoi_surface"></div>
+      <div class="row" style="padding:8px 10px 10px">
+        <button class="cap warn" onclick="shot(10083)">📸 拍帧 (触发一次拍照检测)</button></div></div>
+  </section>
+  <aside>
+    <div class="card">
+      <h2>🩺 机器人三查</h2>
+      <div class="big" id="robot">读取中…</div>
+      <div class="hint" id="robot2"></div>
+    </div>
+    <div class="card">
+      <h2>📍 末端位姿 TCP (base_link)</h2>
+      <div class="big" id="tcp">读取中…</div>
+      <div class="hint" id="tcp2"></div>
+    </div>
+    <div class="card">
+      <h2>🕹 手动控制 · 平动 (走 /move_line)</h2>
+      <div class="row"><span class="axis">X 前后 步长</span>
+        <span class="seg" id="sX"><button data-v="5">5</button><button data-v="10" class="on">10</button>
+        <button data-v="20">20</button><button data-v="50">50</button><button data-v="100">100</button></span>
+        <span class="k">mm</span></div>
+      <div class="row"><button data-skill="L2.forward" data-p="d_mm">⏩ 前进 +X</button>
+        <button data-skill="L2.backward" data-p="d_mm">⏪ 后退 −X</button></div>
+      <div class="row"><button data-skill="L2.left" data-p="d_mm">⬅️ 向左 +Y</button>
+        <button data-skill="L2.right" data-p="d_mm">➡️ 向右 −Y</button></div>
+      <div class="row"><button data-skill="L2.lift" data-p="d_mm">⬆️ 抬升 +Z</button>
+        <button data-skill="L2.lower" data-p="d_mm">⬇️ 下降 −Z</button></div>
+    </div>
+    <div class="card">
+      <h2>🔄 手动控制 · 绕轴旋转 (走 /move_pose)</h2>
+      <div class="row"><span class="axis">旋转角度 步长</span>
+        <span class="seg" id="sA"><button data-v="1">1</button><button data-v="5" class="on">5</button>
+        <button data-v="10">10</button><button data-v="20">20</button></span>
+        <span class="k">°</span></div>
+      <div class="row"><span class="axis">A 绕工具X轴 俯仰</span>
+        <button data-skill="L2.rot_a_neg" data-p="deg">↻ −A</button>
+        <button data-skill="L2.rot_a_pos" data-p="deg">↺ +A</button></div>
+      <div class="row"><span class="axis">B 绕工具Y轴 倾侧</span>
+        <button data-skill="L2.rot_b_neg" data-p="deg">↻ −B</button>
+        <button data-skill="L2.rot_b_pos" data-p="deg">↺ +B</button></div>
+      <div class="row"><span class="axis">C 绕工具Z轴 自转</span>
+        <button data-skill="L2.rot_c_neg" data-p="deg">↻ −C</button>
+        <button data-skill="L2.rot_c_pos" data-p="deg">↺ +C</button></div>
+      <div class="row"><span class="k">速度(1~30, 默认 8 慢速)</span>
+        <input class="num" id="spd" value="8"></div>
+      <div class="hint">旋转 = <b>位置不动、只改姿态</b>；单次 ≤30°(执行层守卫)，要更大角度分次转。</div>
+    </div>
+    <div class="card">
+      <h2>🛡 下发闸门</h2>
+      <label class="arm"><input type="checkbox" id="armed">
+        <span>授权真动 (不勾 = 演练 dry-run，只算目标不下发)</span></label>
+      <div class="hint" id="armstate"></div>
+      <div class="hint">急停请用示教器/现场急停按钮 —— 本页**没有**软急停，也不提供未验证的停止指令。</div>
+    </div>
+    <div class="card">
+      <h2>📋 点击结果 (可复制)</h2>
+      <div class="big" id="msg">—</div>
+      <pre id="lines">(点上面的按钮，这里出执行器的原始回执行)</pre>
+    </div>
+  </aside>
+</main>
+<script>
+const $=(s)=>document.querySelector(s);
+let STEP_MM=10, STEP_DEG=5;
+function seg(id,cb){document.querySelectorAll('#'+id+' button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#'+id+' button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); cb(parseFloat(b.dataset.v));});}
+seg('sX',v=>STEP_MM=v); seg('sA',v=>STEP_DEG=v);
+function hhmmss(a){const d=new Date(Date.now()-a*1000);const p=n=>String(n).padStart(2,'0');
+  return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}
+function fmt(x,n){return (x===null||x===undefined)?'—':Number(x).toFixed(n);}
+async function post(url,body){
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body||{})}); return await r.json();}
+async function move(btn){
+  const skill=btn.dataset.skill, p=btn.dataset.p;
+  const v=(p==='deg')?STEP_DEG:STEP_MM;
+  const arm=$('#armed').checked?1:0;
+  document.querySelectorAll('button[data-skill]').forEach(b=>b.disabled=true);
+  $('#msg').textContent='下发中…'; $('#msg').className='big wa';
+  try{
+    const j=await post('/ctl/move',{skill:skill,[p]:v,speed:parseFloat($('#spd').value||'8'),arm:arm});
+    $('#msg').textContent=(j.ok? (j.dry?'🧪 ':'✅ ')+j.msg : '⛔ '+j.msg);
+    $('#msg').className='big '+(j.ok?(j.dry?'wa':'ok'):'bad');
+    $('#lines').textContent=(j.lines&&j.lines.length?j.lines.join('\n'):'(执行器还没有回执行)');
+  }catch(e){$('#msg').textContent='请求失败: '+e; $('#msg').className='big bad';}
+  document.querySelectorAll('button[data-skill]').forEach(b=>b.disabled=false);
+  poll();
+}
+document.querySelectorAll('button[data-skill]').forEach(b=>b.onclick=()=>move(b));
+async function shot(port){
+  $('#msg').textContent='拍帧中(工控机要真拍一张并跑检测，可能要几十秒)…'; $('#msg').className='big wa';
+  try{const j=await post('/api/aoi/capture?port='+port,{});
+    $('#msg').textContent=(j.ok?'✅ ':'⛔ ')+('HTTP '+j.http+' '+(j.msg||''))+(j.got_image?' · 已取到图并显示':'');
+    $('#msg').className='big '+(j.ok?'ok':'bad');
+    $('#lines').textContent=JSON.stringify(j,null,1);}catch(e){$('#msg').textContent='失败: '+e;}
+  poll();
+}
+function panel(id,st,label){
+  const m=$('#m_'+id); if(!m) return;
+  if(!st){m.textContent='未接'; return;}
+  if(!st.online){m.textContent=(label||'')+' 无帧'; return;}
+  m.textContent=(label?label+' · ':'')+'帧龄 '+fmt(st.age_s,2)+'s · 拍照 '+hhmmss(st.age_s)+' · '+fmt(st.fps,1)+'fps · '+fmt(st.kb_per_frame,0)+'KB';
+}
+let _pollBusy=false, _okAt=Date.now(), _pollAt=0;
+async function poll(){
+  if(_pollBusy) return; _pollBusy=true; _pollAt=Date.now();
+  let s=null, aoi=null, st=null;
+  try{                                  // 一条请求拿全部状态 (见下面调度注释里的连接数坑)
+    const j=await (await fetch('/station/status')).json();
+    s=j.ctl; aoi=j.aoi; st=j.stats; _okAt=Date.now();
+  }catch(e){}
+  try{
+    if(!s) throw 0;
+    const r=s.robot||{}, tp=s.tcp||{};
+    const onoff=(v)=>v?'<span class="ok">是</span>':'<span class="dim">否</span>';
+    $('#robot').innerHTML='上电 '+(r.power==='on'?'<span class="ok">on</span>':'<span class="bad">'+(r.power||'?')+'</span>')
+      +' · 运行 <span class="'+(r.operation==='idle'?'ok':'wa')+'">'+(r.operation||'?')+'</span>'
+      +' · 报警 '+(r.has_error?'<span class="bad">有 '+(r.error_code||'')+'</span>':'<span class="ok">无</span>');
+    $('#robot2').textContent='急停 '+(r.estop?'有':'无')+' · 碰撞 '+(r.collision?'有':'无')
+      +' · 状态帧龄 '+fmt(r.age_s,2)+'s ('+(s.motion_armed?'服务已授权真动':'服务未授权=只能演练')+')';
+    if(tp.xyz){$('#tcp').textContent='X '+fmt(tp.xyz[0],4)+'  Y '+fmt(tp.xyz[1],4)+'  Z '+fmt(tp.xyz[2],4);}
+    else{$('#tcp').textContent='读不到位姿';}
+    $('#tcp2').textContent=(tp.frame_id||'')+' · 位姿帧龄 '+fmt(tp.age_s,2)+'s'
+      +' · 四元数 '+((tp.quat||[]).map(v=>fmt(v,3)).join(', ')||'—');
+    $('#armstate').innerHTML=s.motion_armed
+      ? '服务侧 <span class="ok">已开 --ctl-motion</span>：勾上「授权真动」后按钮真的会动臂。'
+      : '服务侧 <span class="bad">未开 --ctl-motion</span>：无论勾不勾，指令只演练不下发。';
+    const d=s.depth||{};
+    $('#m_depth').textContent='帧龄 '+fmt(d.age_s,2)+'s · 拍照 '+hhmmss(d.age_s)+' · 中位 '+fmt(d.median_m,3)
+      +'m · 有效 '+fmt(d.valid_pct,1)+'%';
+  }catch(e){}
+  try{
+    if(!st) throw 0;
+    panel('arm',st.arm,(st.arm&&st.arm.label)||'');
+    panel('local',st.local,(st.local&&st.local.label)||'');
+    panel('local2',st.local2,(st.local2&&st.local2.label)||'');
+    panel('depth',st.depth,'深度');
+    panel('aoi_gold',st.aoi_gold,'判据图');
+    panel('aoi_surface',st.aoi_surface,'表面');
+  }catch(e){}
+  if(aoi){
+    const g=aoi['10082']||{}, sf=aoi['10083']||{};
+    const gv=(g.verdict&&(g.verdict.count!==undefined||g.verdict.n!==undefined))
+      ? ' · 上轮检出 '+((g.verdict.count!==undefined)?g.verdict.count:g.verdict.n)+' 个' : '';
+    $('#m_aoi_gold').textContent=(g.ok?'判据图在线':'取图失败')+gv
+      +' · 源 '+fmt(g.kb,0)+'KB/帧 · 拍照 '+hhmmss(Date.now()/1000-(g.t||0));
+    const ng=$('#n_aoi_gold');
+    ng.style.display=(g.ok===false&&g.err)?'block':'none';
+    if(g.ok===false&&g.err) ng.innerHTML='取图失败：'+g.err+'<br>源: '+(g.url||'');
+    if(sf.ok===false){
+      $('#n_aoi_surface').style.display='block';
+      $('#n_aoi_surface').innerHTML='<b>该路没有取图路由</b> —— 工控机 10083 只开了 POST /capture_detect，'
+        +'没有 GET 取图接口，所以这里没有实时画面。<br>'
+        +'请点下面「📸 拍帧」：会真触发一次拍照检测，回执里带图就直接显示在这一格。<br>'
+        +'要真正的实时画面，需在工控机侧加一条取图路由（补丁已写好：docs/patch/opt_surface_10083_add_picture_route.md）。';
+      const lc=sf.last_capture;
+      if(lc) $('#n_aoi_surface').innerHTML+='<br>上次拍帧: HTTP '+lc.http+' '+(lc.msg||'')+(lc.got_image?' · 已取到图':'');
+    } else { $('#n_aoi_surface').style.display='none'; }
+  }
+  $('#clk').textContent=new Date().toLocaleTimeString();
+  const lag=(Date.now()-_okAt)/1000;              // 自诊断: 状态卡住 = 很可能连接被占满
+  const w=$('#warn');
+  if(lag>7){ w.style.display=''; w.textContent='⚠ 状态已 '+lag.toFixed(0)
+      +'s 没更新 —— 同一浏览器对 8791 的 6 条连接可能被占满(HTTP/1.1 每主机上限)。'
+      +'请关掉其它 8791 页面(例如旧的「场景叠加」窗)，或换个标签页/浏览器再开本页。'; }
+  else { w.style.display='none'; }
+  _pollBusy=false;
+}
+// 看门狗: 请求被浏览器排队时 _pollBusy 会一直挂着 ⇒ 8s 后强制放行, 否则页面永远不再刷新
+setInterval(()=>{ if(_pollBusy && Date.now()-_pollAt>8000){ _pollBusy=false; } }, 2000);
+/* ── 取图调度 (踩过的真坑) ──────────────────────────────────────────────
+   HTTP/1.1 对同一主机只有 **6 条并发连接**。6 格若全用 MJPEG(长连接) 会把 6 条占满——
+   实测: 右侧状态永远"读取中…", /stats、/ctl/status 永远排在队里进不来。
+   所以: 高速两路(local 15fps / local2 27fps) 留 MJPEG;
+        其余 4 格(臂上/深度/金手指/表面) 走**单帧快照**, 且**全局串行**(同一时刻只发一条)。
+   常年占用 ≤ 4 条连接, 单帧图还带自身帧龄(面板上的"拍照 hh:mm:ss"就是真帧龄, 不是加载时刻)。*/
+const _q=[]; let _busy=false;
+function _pump(){ if(_busy||!_q.length) return; _busy=true;
+  const f=_q.shift(); f(()=>{_busy=false;_pump();}); }
+function _enq(f){_q.push(f);_pump();}
+const SNAPS=[...document.querySelectorAll('img[data-mode=snap]')].map(im=>({
+  im:im, url:im.dataset.src, every:parseInt(im.dataset.every||'2000'), due:0, miss:0}));
+setInterval(()=>{
+  const t=Date.now();
+  const p=SNAPS.filter(x=>x.due<=t).sort((a,b)=>a.due-b.due)[0];
+  if(!p) return;
+  _enq(done=>{
+    const u=p.url+'?t='+Date.now();
+    const pre=new Image();                 // 先预载, 成功才换帧(失败保留上一帧, 不闪黑)
+    pre.onload=()=>{ p.im.src=u; p.due=Date.now()+p.every; p.miss=0; done(); };
+    pre.onerror=()=>{ p.due=Date.now()+Math.max(3000,p.every); p.miss++; done(); };
+    pre.src=u;
+  });
+}, 250);
+poll(); setInterval(poll,1500);
+</script></body></html>
+"""
+
+
 _RE_MJPG = re.compile(r"^/(?P<ov>overlay/)?(?P<name>[A-Za-z0-9_]+)\.mjpg$")
 _RE_SNAP = re.compile(r"^/snapshot/(?P<ov>overlay_)?(?P<name>[A-Za-z0-9_]+)\.jpg$")
 
@@ -735,6 +1340,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "text/html; charset=utf-8", body)
         elif p in ("/overlay", "/overlay.html", "/scene"):
             self._send(200, "text/html; charset=utf-8", OVERLAY_PAGE.encode("utf-8"))
+        elif p in ("/station", "/station.html", "/board"):
+            # 🛰 工位总览: 6 窗同屏(3 相机 + 深度 + 金手指 + 表面) + 手动控制区
+            self._send(200, "text/html; charset=utf-8", STATION_PAGE.encode("utf-8"))
         elif p in ("/app", "/app.html", "/m"):
             # 📱 手机版场景叠加页 (Z-MAX APP 首页「🧩 场景叠加」的跳转目标)
             self._send(200, "text/html; charset=utf-8", _mobile_page())
@@ -782,6 +1390,21 @@ class Handler(BaseHTTPRequestHandler):
         elif p == "/motion":
             self._send(200, "application/json; charset=utf-8",
                        json.dumps(_motion_state(), ensure_ascii=False).encode("utf-8"))
+        elif p == "/ctl/status":
+            self._send(200, "application/json; charset=utf-8",
+                       json.dumps(_ctl_status(), ensure_ascii=False).encode("utf-8"))
+        elif p == "/station/status":
+            # 🛰 页面只发**一条**状态请求 (3 条合并成 1) —— 见页面注释里的 HTTP/1.1 六连接坑
+            payload = {"stats": self._stats(), "ctl": _ctl_status()}
+            with _AOI_LOCK:
+                payload["aoi"] = {str(k): dict(v) for k, v in _AOI_INFO.items()}
+            self._send(200, "application/json; charset=utf-8",
+                       json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+        elif p == "/aoi/status":
+            with _AOI_LOCK:
+                d = {str(k): dict(v) for k, v in _AOI_INFO.items()}
+            self._send(200, "application/json; charset=utf-8",
+                       json.dumps(d, ensure_ascii=False).encode("utf-8"))
         else:
             # 🎥 2026-09-27: 通用路由 —— 任意相机源自动可用 (加相机不用改路由表)
             #   /<cam>.mjpg · /overlay/<cam>.mjpg · /snapshot/<cam>.jpg · /snapshot/overlay_<cam>.jpg
@@ -794,6 +1417,40 @@ class Handler(BaseHTTPRequestHandler):
                 self._snapshot(("ov_" if m.group("ov") else "") + m.group("name"))
                 return
             self._send(404, "text/plain", b"not found")
+
+    def do_POST(self):
+        """🕹 只有 POST 能触发动作(点动/拍帧) —— GET 一律不行。
+
+        原因: 浏览器预取、截图工具、爬虫、甚至我自己的取证脚本都会 GET;
+        绝不能因为一次预取就把机械臂动了 / 让产线相机拍一张。
+        """
+        p = self.path.split("?")[0]
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = 0
+        body = {}
+        if n:
+            try:
+                body = json.loads(self.rfile.read(n).decode("utf-8", "ignore"))
+            except Exception:                                                     # noqa: BLE001
+                body = {}
+        if p in ("/ctl/move", "/api/ctl/move"):
+            out = _ctl_move(body if isinstance(body, dict) else {})
+        elif p in ("/api/aoi/capture", "/aoi/capture"):
+            port = 10083
+            for kv in (self.path.split("?", 1)[1] if "?" in self.path else "").split("&"):
+                if kv.startswith("port="):
+                    try:
+                        port = int(kv.split("=", 1)[1])
+                    except ValueError:
+                        pass
+            out = _aoi_capture(port, "aoi_surface" if port == 10083 else "aoi_gold")
+        else:
+            self._send(404, "text/plain", b"not found")
+            return
+        self._send(200, "application/json; charset=utf-8",
+                   json.dumps(out, ensure_ascii=False).encode("utf-8"))
 
     def _send(self, code: int, ctype: str, body: bytes):
         self.send_response(code)
@@ -845,7 +1502,9 @@ class Handler(BaseHTTPRequestHandler):
         now = time.time()
         out = {}
         # 🎥 2026-09-27: 原始路全报 (arm/local/local2); 叠加路只在真有帧时报
-        names = [n for n in ("arm", "local", "local2") if _FRAMES.get(n)]
+        # 🛰 2026-09-27 工位总览: 深度源与工控机两路也一并报 (页面靠这张表出每格帧龄)
+        names = [n for n in ("arm", "local", "local2", "depth", "aoi_gold", "aoi_surface")
+                 if _FRAMES.get(n)]
         names += [n for n in sorted(_FRAMES) if n.startswith("ov_")
                   and _FRAMES.get(n, {}).get("jpg") is not None]
         for name in names:
@@ -914,6 +1573,16 @@ def main():
                     choices=["arm", "local", "local2", "both", "all"],
                     help="叠加哪几路 (both=arm+local; all=三路)")
     ap.add_argument("--overlay-fps", type=float, default=12.0, help="叠加渲染上限 fps")
+    # 🌈🏭🕹 2026-09-27 老倪: 工位总览 6 窗 —— 深度源 / 工控机 OPT 检测源 / 手动控制闸门
+    ap.add_argument("--depth-fps", type=float, default=4.0, help="深度源刷新上限 fps (源话题实测仅 ~0.24Hz)")
+    ap.add_argument("--no-depth", action="store_true", help="不起深度源 (D405 深度图窗口)")
+    ap.add_argument("--depth-npy", default=DEPTH_NPY, help="容器 ros_depth_stream 落的原始深度数组")
+    ap.add_argument("--depth-meta", default=DEPTH_META, help="同上配套的元数据 JSON")
+    ap.add_argument("--aoi-fps", type=float, default=0.25,
+                    help="工控机 OPT 取图频率 (默认 0.25 = 每 4s; 原图 6MB/帧, 别调太高)")
+    ap.add_argument("--no-aoi", action="store_true", help="不起工控机金手指/表面检测源")
+    ap.add_argument("--ctl-motion", action="store_true",
+                    help="⚠️ 允许页面「授权真动」真的下发运动 (不加则一律 dry-run 演练)")
     args = ap.parse_args()
 
     print(f"🎥 Z-MAX 实时视频流（压缩）· JPEG q{args.quality} · 推流 ≤{args.fps}fps",
@@ -979,9 +1648,37 @@ def main():
                   " 那两路只画 检测/大模型 2D 框", flush=True)
             print(f"      叠加页: http://0.0.0.0:{args.port}/overlay", flush=True)
 
+    # ── 🌈 深度源 (D405 深度图) ──
+    if not args.no_depth:
+        _CAM_LABEL["depth"] = "🌈 D405 深度图 (彩色化)"
+        threading.Thread(target=_depth_worker,
+                         args=(args.depth_npy, args.depth_meta, args.depth_fps),
+                         daemon=True, name="depth").start()
+        print(f"   🌈 深度源: {args.depth_npy} ≤{args.depth_fps}fps "
+              f"(容器 ros_depth_stream.py 落盘; 话题实测 ~0.24Hz ⇒ 帧龄如实标)", flush=True)
+    # ── 🏭 工控机 OPT 检测源 (10082 金手指 / 10083 表面) ──
+    if not args.no_aoi:
+        _aoi_note_init()
+        _CAM_LABEL["aoi_gold"] = "🔍 金手指检测 (工控机 OPT)"
+        _CAM_LABEL["aoi_surface"] = "🔍 表面检测 (工控机 OPT)"
+        threading.Thread(target=_aoi_worker,
+                         args=(10082, "aoi_gold", args.aoi_fps, "origin", True, True),
+                         daemon=True, name="aoi-gold").start()
+        threading.Thread(target=_aoi_worker,
+                         args=(10083, "aoi_surface", args.aoi_fps, "origin", False, False),
+                         daemon=True, name="aoi-surface").start()
+        print(f"   🏭 工控机检测源: 10082 金手指(取原图→去死白判据图) + 10083 表面 "
+              f"@≤{args.aoi_fps}Hz (只 GET 不触发拍照)", flush=True)
+    # ── 🕹 手动控制闸门 (双重: 这里 + 页面勾选) ──
+    _CTL["motion"] = bool(args.ctl_motion)
+    print("   🕹 手动控制: %s" % ("⚠️ 已授权真动 (页面还需勾「授权真动」)"
+                                 if args.ctl_motion else
+                                 "仅演练(dry-run) —— 要真动加 --ctl-motion 重启本服务"), flush=True)
+
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
     srv.local_dev = args.local_dev
     print(f"   ✅ 看板: http://0.0.0.0:{args.port}/   (手机/PC 同网可开)", flush=True)
+    print(f"   ✅ 工位总览: http://0.0.0.0:{args.port}/station  (6 路同屏 + 手动控制)", flush=True)
     if args.overlay:
         print(f"   ✅ 叠加: http://0.0.0.0:{args.port}/overlay", flush=True)
     try:
