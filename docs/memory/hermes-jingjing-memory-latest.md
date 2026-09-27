@@ -8,7 +8,7 @@ NTP回拨8h(勿动RTC)→节拍用monotonic, 负帧龄拒用
 §
 Hermes: 长命令写/tmp/*.sh(巨型内联被拦); sudo免密; 网络优化=zmax-net-optimize
 §
-L5=DeepSeek视觉=推理型: 视觉强, 但max_tokens须≥3000(思考吃满则content空✗); 单次~120s→异步; smolvlm2-500m太弱
+L5=DeepSeek视觉: max_tokens须≥3000(否则content空); 单次~120s→异步; smolvlm2-500m太弱
 §
 飞书99991663=token缓存过期→重启gateway;长文≥1.5k字须拆条
 §
@@ -24,7 +24,7 @@ L4=INTACT直驱; 反归一化按ckpt训练集同源; L2收口闸逐轴corr<0.5�
 §
 Orin ROS=domain0; tcp_pose 50Hz真值; 几何须ss_geom_calib; Orin政策放宽(授权只读遥测桥,禁装包); 真机动作默认慢速speed=8
 §
-真机3D须K+手眼+plane_z; D405深度=0.1mm/单位(SDK直读4013单位=401mm; 旧"depth勿用"是尺度误读); 我节点已发30fps深度
+真机3D须K+手眼+plane_z; D405深度0.1mm/单位(SDK 4013=401mm; 旧'depth勿用'是尺度误读)
 §
 YOLO在役=软链yolo_peg_live.pt; 瓶颈是数据
 §
@@ -36,26 +36,28 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈是数据
 §
 记忆五层: L2/L3/L4+总装Qwen(SS_MACRO); 势场喂obs[0:3]
 §
-真源: zmax_robot_spec/calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2(dry-run先); LoRA=lora_inject.py
+真源: calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2; LoRA=lora_inject.py
 §
 L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT稳态101ms冷6.7s→须常驻
 §
-阶段MOE: 门控必硬先验路由; 枚举不匹配会静默降级索引0吞阶段(引擎8阶段vs专家7→覆盖表+显式兜底); 判据=单射性
+阶段MOE: 门控必硬先验路由; 枚举不匹配会静默降级吞阶段; 判据=单射性
 §
 LoRA需merge(否则零动作伪装'没提升'): merge_lora_ckpt.py; 判假A/B=逐位同
 §
-AOI: 10082金手指/10083表面; /capture_detect 200=受理; 判据图=手选框>原图自裁>拉长图
+AOI: 10082金手指/10083表面(已上v6: 不检测不落盘); 200=受理, 判决读/last_result; 判据图=手选框>原图自裁>拉长图
 §
-老倪APP四链: 手机zmax=WebView壳→state-3d.html · robot-monitor.html · 桌面=studio.py · hw/ZMAX-Hardware.apk
+老倪APP四链: 手机zmax=WebView壳(state-3d/robot-monitor.html)·桌面studio.py·hw/ZMAX-Hardware.apk
 §
-ECS relay: upload/latest/status + /agent/{prompt,reply} + /hil/state + /orin/status; 站点根=/www/wwwroot/datadrive.world; 新做的网页必挂首页入口(老倪会追问两次)
+ECS relay: /agent/{prompt,reply} + /hil/state + /orin/status; 站点根=/www/wwwroot/datadrive.world; 新网页必挂首页入口
 §
-遥测DDS: 只测试/标定/诊断,量产关(prod不import); 开关 env>运行时>文件~/.zmax_telemetry_mode; 守护=zmax_dds_ss_daemon.py+zmax-dds-ss.service(6真实源/9类型/14话题); 连线=zmax/link_value
+遥测DDS: 只测试/标定/诊断,量产关; 开关 env>运行时>文件~/.zmax_telemetry_mode; 守护=zmax-dds-ss.service(6源/9类型/14话题)
 §
 GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音逐步日志+workers↑;负载用窗口平均判
 §
 main线真源=worktree /home/ubuntu/zmax_rel (共享检出lerobot-smolvla-lew 会被切到mac-hw分支→main脚本全缺); 服务一律指worktree+软链venv
 §
-控制台字体: 老倪嫌小会连提两次→一次给到位(≈2×; 硬件卡标题34/数值28px)
+控制台字体: 一次给到位(≈2×; 硬件卡34/28px)
 §
-老倪定位我=自主进化系统: 不依赖外部条件, 从已有资源自构方案(章程在zmax_rel/docs)
+场景叠加: 工具栏🧩→10.163.146.78:8791/overlay(技能sim-real-scene-overlay, 验证5.2px≈3.1mm); 边界: ss_geom_calib未采/手眼旋转915°
+§
+我=主节点+自主进化系统(章程zmax_rel/docs): 工控机+Orin全归我; **AOI禁10084/10085只用10082/10083**; 工控机任务 ZMAX_Agent(开机)+ZMAX_AOI_KeepAlive(每分自愈); 更新=tools/aoi_remote_deploy.py

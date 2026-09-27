@@ -136,6 +136,26 @@ metaworld 仿真模型与真机模型**双模型并存**, 仿真模型只推理�
 - 别问凭据，自己搞定 (ECS 密码 Nix19789 在记忆里)
 - 注意各端性能负载，别死机，及时保存数据 (git push)
 
+## 归档与提交卫生 (老倪: "小版本迭代, 保存数据, 推动代码")
+
+**"保存数据" = 发布归档**, 照仓库既有约定 (拿最新一份 `tools/archive_release_<版本>.sh` 当模板, 复制改版本号即可):
+- 目标 `~/zmax_data/release_<版本>_<日期>/`, 下分 `tools/ app/ evidence/ docs/ reports/` 五类, 收:
+  ①本轮改动的代码 ②交付装包 + 可重建源码 + 装包 sha256 ③实测证据(截图/回读日志/版本摘要 md)
+  ④文档(VERSION.md + 本轮专题 md) ⑤现场数据快照; 末尾生成 `MANIFEST.md`(含仓库 commit/主题/入口链接) + `sha256sums.txt`。
+- **归档脚本入库** ⇒ 下次一条命令复现, 别每次手敲 cp。
+- 交付件双落点: 大数据/装包进 `~/zmax_data`(不进代码库), 小 json 快照(标定点位/状态) 同时进已跟踪的 `reports/`。
+
+**提交卫生 (同一 worktree 常有多会话并行)**:
+- `data/`、`outputs/`、`gui-venv311` 这类是**外链符号目录** ⇒ 进 `.gitignore`, 快照一律落数据盘/`reports/`。
+  `git add data/...` 报 `beyond a symbolic link` 或 ignored 时, 不是路径写错, 是它根本不在本仓。
+- **路径限定提交**, 别 `git add -A` / `git commit -a`: 别的会话可能已把它的改动 `git add` 进索引, 一提交就顺手带走。
+  用 `git commit -m "<msg>" -- <我的路径>…`; 新文件若被忽略要先 `git add -f <path>` 再进路径限定提交。
+  提交前后各 `git status --porcelain` 数一次, 确认别人的暂存项没被带走。
+- 推送前 `git fetch -q origin` + `git merge-base --is-ancestor HEAD origin/main`: 能快进说明没分叉直接 push;
+  远端可能已被别的会话推进 ⇒ 先看清再推, **绝不 force**。
+- push 后核对 `git log --oneline origin/main -1` 与 `git rev-list --count origin/main..HEAD`(应为 0), 再推 tag。
+- tag 别漏: 本地漏打过时补打指向当时的 commit (`git tag -f -a vX.Y.Z <sha> -m …`) 再推, 让版本链完整可追。
+
 ## Pitfalls
 1. **弹栈队列丢数据**：GET /latest 即删 — 消费方先 /peek 确认再取，取后立刻落盘
 2. **二进制 vs JSON 误判**：safetensors 文件头是合法 JSON(以`{`开头)，只读 4KB 判断会误判；用 Content-Type 或 ≤64MB 完整解析尝试，失败走流式

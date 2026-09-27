@@ -96,6 +96,29 @@ GET  /agent/status                         → 两侧计数 + last_prompt/last_r
 症状: `/api/relay/*` **全部** 502 且 `/ws` 也 502, 但首页 200 → 说明 nginx 活着, **zmax_relay(39053) 与 ws_relay(8765) 双双不在** (无人监管, 重启/崩溃后静默死掉)。
 恢复: 各用自带脚本拉起 (`bash /root/zmax-relay/start.sh`、`bash /root/zmax-relay/start_ws.sh`), 两次 ssh 分开执行 (脚本内 pkill 会匹配同一条命令行)。复核 status/peek/packages/orin/status/cam/status + `/ws`(426=升级协商, 说明 WS 服务活了; 502=还没起)。
 
+### 12. 无登录口主机的反向命令通道 (poll-and-exec client)
+场景: 目标机只开几个业务口(如 135/139/445 + 服务端口), 无 SSH/RDP/WinRM, 也无 SMB 凭据 ⇒ 唯一可控手段是**在那台机上跑一个轮询客户端**主动来 hub 取命令。
+
+结构(实测可用):
+- hub 侧: 命令队列 + `GET /agent/cmd?t=<token>`(取一条) + `POST /agent/out?t=<token>`(回执) + `GET /agent/beat?t=<token>`(探活); **队列只允许 hub 本机写入**, 网络侧只能取/回。
+- 客户端(hub 派发的静态脚本, **纯 ASCII**): 每 3s 取一条 → 执行 → 回执。
+
+必守四条(每条都踩过):
+1. **命令必须在子进程里跑, 不能内联在主循环里**: 内联写法 `$o = (Invoke-Expression $c 2>&1 | Out-String)` 一旦碰上抛**终止性错误**的命令(不存在的外部程序、语法错), 整个轮询循环一起退出 → 客户端悄悄死掉。
+   症状 = hub 日志出现了「下发」但后面**没有对应的「回执」**, 之后永远没有新的「下发」。
+   修法: 命令先写进临时 `.ps1`(**UTF-8 带 BOM**, 否则 PS 5.1 把中文解析成乱码; 首行 `Set-Location -LiteralPath '<工作目录>'` 把工作目录补回来),
+   再 `& powershell -NoProfile -ExecutionPolicy Bypass -File <文件> 2>&1 | Out-String` 取输出; 主循环整体再包 try/catch。
+2. **主循环不依赖一次性成功**: 取命令失败(超时/ARP 抖动)只跳过本轮, 不退出。
+3. **两端都要能自愈**: 目标机的**分钟级看门狗**里加一条「没有客户端进程在跑 → 重新触发它的计划任务/unit」; 客户端启动时自己拉一次最新看门狗脚本(自举), 否则看门狗升级永远只能靠人手贴。
+4. **通道死了就从外面救不回来** (无登录口 = 无第二入口) ⇒ 把「让人在那台机贴一行」当正式恢复手段写进 runbook, 交付时就把那一行贴出来。一行模板:
+   `cd <工作目录>; iwr http://<hub>:<port>/<client>.ps1 -OutFile <client>.ps1 -UseBasicParsing -TimeoutSec 20; powershell -ExecutionPolicy Bypass -File .\<client>.ps1`
+   (PS 5.1 下下载/轮询一律带 `-UseBasicParsing -TimeoutSec N` —— 不带会卡在 IE/代理初始化, 现场表现就是"怎么卡住了")。
+
+判活与取证:
+- **别用取命令端点探活**: `curl http://127.0.0.1:<port>/agent/cmd?t=<token>` 会把队列里的一条待办命令**取走**(hub 日志会记成"下发给了 <本机IP>" = 自己吞了一条正经命令)。要探活就发一条真命令当探针, 或只看 hub 日志。
+- 回执文件按去队秒命名, 同秒两条互相覆盖 ⇒ 认回执看 hub 日志的 `← 回执 <n> 字节 → <路径>` 行, 不要 `ls -t` 目录里最新那个(可能还没落盘, 你会看到上一轮的内容并误判通道已活)。
+- 命令里别用 `Write-Host`(写 information 流, `2>&1|Out-String` 抓不到 → hub 端只拿到空回执); 用字符串表达式/cmdlet 的输出。
+
 ## Verification checklist
 1. `curl -X POST <relay>/upload` small JSON → `{"ok": true}`
 2. `curl <relay>/peek` → item present, still queued after
@@ -128,6 +151,7 @@ Diagnostic ladder (each step narrows it):
 Prevention note: nothing supervises relay/nginx on the ECS — a reboot or crash leaves both down silently. If the user accepts a watchdog, the recovery script (nginx BT-binary start + `bash start.sh`) is the candidate body.
 
 ## References
+- `references/host-down-vs-service-down-triage.md` — 整站不可达: 实例停机 vs web 层死的判据表 + 可直接复用的取证命令 + 「它真的重启了吗 / 服务自愈了吗」的判据
 - `references/zmax-relay-deploy.md` — Z-MAX deployment specifics (endpoints, nginx block, client scripts, bug history)
 - `references/websocket-relay.md` — WS 状态中转实测: ws_relay.py 广播 hub + Orin WS主/HTTP兜底 + 路径别名坑 + 验证步骤
 - `references/zmax-ws-event-loop.md` — WS 事件驱动闭环实测 (2026-08-03): data_arrived 事件广播 (notify:8766→hub) + auto_loop.py v2 订阅端 + /command 采集指令端点 + 三个新坑 (/status mtime 排序 / 二进制包 frames=? / 远程补丁吞函数头)

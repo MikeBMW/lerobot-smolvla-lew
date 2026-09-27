@@ -10,6 +10,28 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > 📌 refs: veh-id-system,ssh-remote-gpu,config-center-excel,relay-middleware,simulink-id-and-skill-tokens,wsl-display-links,simulink-flow-json,gui-navigation,devflow-panel-pdf-2026-08-15
 > ⚠️纪律: 只patch改; kill-9重启(pkill 用 "gui-venv311/bin/python studio" 别用 studio.py, 会打死 Hermes 自己的 shell); --gpus all本地/--runtime nvidia远程; -o Port; 主线程禁网络请求(摄像头坑); 启动/黑屏见 launch-guide.md; 训练入口/状态见 gui-navigation.md; 控件小/字挤/面板窄见 ui-sizing-hidpi.md; refs: gui-discipline, simulink-flow-and-buttons, simulink-flow-authoring, help-menu-doc-open
 
+## 🖵 工具栏按钮 → 开浏览器页 (studio.py / simulink_module.py)
+- 开浏览器**必须用独立 profile**, 且 profile 要放 **snap 可写**目录 `~/snap/chromium/common/<用途名>`
+  (无 snap 目录才回落 `~/.cache/...`), 配 `--no-first-run --no-default-browser-check`。两条实测原因:
+  · 不带独立 profile ⇒ `--new-window` 被**已经在跑的 chromium 实例吞掉**: 页面变成别的窗口里的
+    后台标签, `wmctrl -l` 12s 内一个窗都不出现 = 用户说"网页还是没打开";
+  · profile 放 `~/.cache` ⇒ **snap(受限)拒写**(浏览器自报 `Failed to create .../SingletonLock` +
+    `Failed to create a ProcessSingleton for your profile directory`) ⇒ 进程起来又静默退出。
+  · 两个页面要能同开就各给一份 profile(同一 profile 再请求新窗可能只是复用它那一个窗, 实测顶掉前一页)。
+- 浏览器 stdout/stderr **落文件**(如 `/tmp/zmax_page_browser.log`); 认窗超时把它最后两行打进日志 —— 
+  丢 DEVNULL 的话, "进程起来了但没窗口"这种故障两眼一抹黑。
+- **点了先出声**: 主线程立刻回执 → 进程起来报"页面加载中(最多 12s)" → 最后报几何 + 可复制地址;
+  任一段静默别超 ~3s —— 用户判"没反应"看的是**日志不出声**, 不是页面的真实状态。
+- 已有同类窗口 ⇒ **复用(搬屏+最大化+置前)就返回**, 不关不重开: 关掉重开要白付一次 chromium 冷启(8~15s)。
+- 页面**要能从控制台一步打开**: 只能从另一个页面里点链接跳过去 = 用户眼里的"这个网页搞丢了" ⇒ 给工具栏按钮。
+- 验收不许靠自报日志: 离屏直调 handler + `wmctrl -lG` 几何断言(`tools/verify_station_button.py` 是模板)。
+  两个坑: `self._log()` 的行**到不了** `log_signal`(断言要匹配 `log_signal.emit` 那几条);
+  控制台日志面板的内容**不在** `/tmp/studio_launch.log` 里(要留证得自己写文件, 或让用户贴面板原文, 先按它定因)。
+- `simulink_module.py` **无模块级** `subprocess`/`urllib`/`socket`(LSP 报错 + 运行时 `hasattr` 双证)
+  ⇒ 用到就在函数里显式 import; 这类 NameError 会被周围 `except Exception: pass` 吞掉,
+  表现就是"按钮点了什么都不做"—— 找不到原因时先怀疑 NameError。
+精确参数 / 失败串原话 / 取证脚本形状 / 拉流漏参丢页见 `references/button-opens-browser-page.md`。
+
 ## 🏷 画布节点**改名/移位**必同步清单 (2026-09-24 融合定位实测, 漏一处即静默失效)
 画布节点名 = **数据总线通道名** = `node_logic` 注册匹配键, 改名不是改 JSON 一件事。逐处清单:
 | # | 位置 | 漏了会怎样 |
