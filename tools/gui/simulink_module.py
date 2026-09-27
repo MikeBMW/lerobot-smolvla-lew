@@ -7774,16 +7774,35 @@ class SimulinkModule(QWidget):
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 return True, "复用已在的叠加页窗口并置前 (%d 个) — 没重开, 所以是秒回" % len(_exist)
             tried = []
-            for exe, flags in (("chromium", ["--new-window", "--start-maximized"]),
-                               ("chromium-browser", ["--new-window", "--start-maximized"]),
-                               ("google-chrome", ["--new-window", "--start-maximized"]),
+            # 🔴 2026-09-27 定因(老倪贴的控制台日志 + 浏览器自己的报错):
+            #   点按钮 → "浏览器已启动" 后 12s 内**没有任何新窗口**。原因两层:
+            #   ① 请求被**已经在跑的 chromium 实例吞掉**(页面成了已有窗口里的后台标签, 看不见也搬不了屏);
+            #   ② 想用独立 profile 绕开时, 本机 chromium 是 **snap(受限)**, 写不了 ~/.cache 里的
+            #      profile —— 它自己报 "Failed to create .../SingletonLock" + "Failed to create a
+            #      ProcessSingleton for your profile directory"，于是进程起来又静默退出。
+            #   ⇒ profile 必须放在 **snap 允许写**的目录: ~/snap/chromium/common/<名字>。
+            #   实测: 独立 profile 起 → 新窗口 12s 内必现(可能在另一块屏, 由下面搬屏那步拉回控制台那块屏)。
+            _snapcommon = os.path.join(os.path.expanduser("~"), "snap", "chromium", "common")
+            _prof = (os.path.join(_snapcommon, "zmax_overlay_profile")
+                     if os.path.isdir(_snapcommon) else
+                     os.path.join(os.path.expanduser("~"), ".cache", "zmax_overlay_browser"))
+            try:
+                os.makedirs(_prof, exist_ok=True)
+            except Exception:
+                pass
+            _common = ["--user-data-dir=" + _prof, "--no-first-run", "--no-default-browser-check"]
+            for exe, flags in (("chromium", ["--new-window", "--start-maximized"] + _common),
+                               ("chromium-browser", ["--new-window", "--start-maximized"] + _common),
+                               ("google-chrome", ["--new-window", "--start-maximized"] + _common),
                                ("firefox", ["--new-window"])):
                 p = shutil.which(exe)
                 if not p:
                     continue
                 try:
-                    subprocess.Popen([p] + flags + [u], stdout=subprocess.DEVNULL,
-                                     stderr=subprocess.DEVNULL, start_new_session=True)
+                    # 浏览器自己的输出留证: 起不来时日志里直接能看到原因(原来丢 DEVNULL, 出了事两眼一抹黑)
+                    _bf = open("/tmp/zmax_overlay_browser.log", "ab")
+                    subprocess.Popen([p] + flags + [u], stdout=_bf,
+                                     stderr=subprocess.STDOUT, start_new_session=True)
                     tried.append(exe + "(新窗最大化)")
                     break
                 except Exception:
