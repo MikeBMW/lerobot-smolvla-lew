@@ -1,0 +1,2 @@
+  d1a73de7b06ae8978bd982237e67a0cbc1d204a4278588cad18bf603193e6678  docs/deliver/v6/cam_finger_10082_work_v6.py
+  dd5094242d7686cdc17ef0f63ac851174db69f1eb46c0a1aa5769b23dc95af37  docs/deliver/v6/cam_surface_10083_work_v6.py

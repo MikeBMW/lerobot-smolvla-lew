@@ -12,7 +12,7 @@
   ⑥ 任一失败 → 用 .bak 回滚 + 重启 + 复验, 并如实报失败
 
 用法:
-  python tools/aoi_remote_deploy.py --finger ~/aoi_v4/cam_finger_10082_work_v5.py \
+  python tools/aoi_remote_deploy.py --finger ~/aoi_v4/cam_finger_10082_work_v6.py \
                                    --surface ~/aoi_v4/surface_10083_work_v5.py
   可选: --no-restart(只推文件不重启) · --dry(只做 ① ② 核对) · --pubdir <目录>
 """
@@ -32,8 +32,8 @@ HUB = os.path.join(ROOT, "tools", "agent_hub.py")
 OUT_DIR = "/tmp/zmax_agent_out"
 HOST = "192.168.23.50"
 ILO = "192.168.23.23"
-FILENAME_10082 = "cam_finger_10082_work_v5.py"
-FILENAME_10083 = "cam_surface_10083_work_v5.py"
+FILENAME_10082 = "cam_finger_10082_work_v6.py"
+FILENAME_10083 = "cam_surface_10083_work_v6.py"
 
 
 def log(msg):
@@ -144,8 +144,8 @@ def start_pair(restart=True):
         'foreach($p in 10082,10083){ $c=Get-NetTCPConnection -LocalPort $p -State Listen -EA SilentlyContinue; '
         'if($c){ Stop-Process -Id $c.OwningProcess -Force } }; Start-Sleep 4; '
         '$sh=New-Object -ComObject WScript.Shell; '
-        '$sh.Run("cmd /c cd /d %s && %s cam_finger_10082_work_v5.py > %s\\v5f.log 2>&1",0,$false) | Out-Null; '
-        '$sh.Run("cmd /c cd /d %s && %s cam_surface_10083_work_v5.py > %s\\v5s.log 2>&1",0,$false) | Out-Null; '
+        '$sh.Run("cmd /c cd /d %s && %s cam_finger_10082_work_v6.py > %s\\v5f.log 2>&1",0,$false) | Out-Null; '
+        '$sh.Run("cmd /c cd /d %s && %s cam_surface_10083_work_v6.py > %s\\v5s.log 2>&1",0,$false) | Out-Null; '
         'Start-Sleep -Seconds 40; '
         'foreach($p in 10082,10083){ $c=Get-NetTCPConnection -LocalPort $p -State Listen -EA SilentlyContinue; '
         '"$p -> " + $(if($c){"up pid " + $c.OwningProcess}else{"DOWN"}) }'
@@ -161,9 +161,9 @@ def stop_pair():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--finger", default=os.path.expanduser("~/aoi_v4/cam_finger_10082_work_v5.py"))
-    ap.add_argument("--surface", default=os.path.expanduser("~/aoi_v4/cam_surface_10083_work_v5.py"))
-    ap.add_argument("--pubdir", default="/home/ubuntu/aoi_v4/deliver/v5")
+    ap.add_argument("--finger", default=os.path.expanduser("~/aoi_v4/cam_finger_10082_work_v6.py"))
+    ap.add_argument("--surface", default=os.path.expanduser("~/aoi_v4/cam_surface_10083_work_v6.py"))
+    ap.add_argument("--pubdir", default="/home/ubuntu/aoi_v4/deliver/v6")
     ap.add_argument("--no-restart", action="store_true", help="只推文件+核对, 不动服务")
     ap.add_argument("--dry", action="store_true", help="只推文件+核对, 不重启不验收")
     a = ap.parse_args()
@@ -183,7 +183,7 @@ def main():
 
     # ② 工控机下载 + SHA256 核对
     dl = ("cd D:\\xspace\\ultralytics_AOI; "
-          "foreach($f in '%s','%s'){ iwr \"http://%s:%d/v5/$f\" -OutFile $f -UseBasicParsing -TimeoutSec 60 }; "
+          "foreach($f in '%s','%s'){ iwr \"http://%s:%d/v6/$f\" -OutFile $f -UseBasicParsing -TimeoutSec 60 }; "
           "Get-FileHash %s,%s -Algorithm SHA256 | ForEach-Object { $_.Hash + '  ' + (Split-Path $_.Path -Leaf) }"
           ) % (FILENAME_10082, FILENAME_10083, HOST, 8794, FILENAME_10082, FILENAME_10083)
     out = remote(dl, wait=150, label="download")
@@ -216,7 +216,7 @@ def main():
         return 0
 
     # ④ 停旧起新 (10082/10083)
-    log("④ 重启 10082/10083 上的 v5")
+    log("④ 重启 10082/10083 上的 v6")
     log("   " + start_pair().strip().replace("\n", " / "))
 
     # ⑤ 验收
