@@ -74,12 +74,12 @@ QTimer.singleShot(12000, loop.quit)
 loop.exec_()
 app.processEvents()
 
-chk("① 画布节点已出画面", item.video_pixmap is not None and not item.video_pixmap.isNull(),
-    "%sx%s" % (item.video_pixmap.width() if item.video_pixmap else "-",
-               item.video_pixmap.height() if item.video_pixmap else "-"))
-chk("① 画布实时帧在跑 (frames≥4)",
-    m._ov_live.get("frames", 0) >= 4, "frames=%d · %s" % (m._ov_live.get("frames", 0),
-                                                          item.video_overlay))
+chk("① 画布上**没有**小窗口 (老倪: 不要在画布上放小窗口)",
+    item.video_pixmap is None or item.video_pixmap.isNull(),
+    "video_pixmap=%s" % ("None/空 ✓" if (item.video_pixmap is None or item.video_pixmap.isNull())
+                         else "%dx%d ✗" % (item.video_pixmap.width(), item.video_pixmap.height())))
+chk("① 画布实时帧已停 (没在跑)", not m._ov_live.get("on"),
+    "on=%s · frames=%d" % (m._ov_live.get("on"), m._ov_live.get("frames", 0)))
 
 # ② 地址可达
 lan = None

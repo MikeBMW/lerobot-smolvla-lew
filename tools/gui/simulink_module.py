@@ -7688,6 +7688,16 @@ class SimulinkModule(QWidget):
         import threading
         import urllib.request
 
+        # 🔴 2026-09-27 老倪(两次纠回 + 一句明说): 「不要在画布上放小窗口, 直接打开浏览器」——
+        #   本按钮**不再**往画布节点上贴实时画面(那 572x344 的小方块就是老倪说的"小窗口");
+        #   以前点出来的残留实时帧在这里撤掉(这里是主线程, 安全)。
+        try:
+            if self.canvas_live_overlay_active():
+                self.stop_canvas_live_overlay(quiet=True)
+                self._log("🧩 场景叠加: 已撤掉画布上的实时画面 —— 只开浏览器大图页")
+        except Exception:                                              # noqa: BLE001
+            pass
+
         def _stats_ok(timeout=2.5):
             """8791 真活着吗 —— 只看 HTTP 状态, 不猜"""
             try:
@@ -7887,11 +7897,11 @@ class SimulinkModule(QWidget):
                     self.log_signal.emit("❌ 场景叠加: 启动视频流失败 — %s" % e)
                     return
                 up = _stats_ok(timeout=4)
-            # 4) 🔴 先把画面落到**画布**上 (老倪正看的界面; 不依赖浏览器就能出结果)
-            if up:
-                self.start_canvas_live_overlay(srcs=["arm", "local", "local2"], fps=4.0)
-            else:
-                self.log_signal.emit("⚠️ 视频流未就绪 ⇒ 画布/页面都拿不到帧 · 看 /tmp/zmax_scene_overlay.log")
+            # 4) 🔴 2026-09-27 老倪明说: 「不要在画布上放小窗口, 直接打开浏览器」
+            #    ⇒ 这里**删掉了** start_canvas_live_overlay(那才是画布上那个小方块的来源)。
+            #    本按钮的唯一可见结果 = 下面的浏览器大图页; 画布保持原样。
+            if not up:
+                self.log_signal.emit("⚠️ 视频流未就绪 ⇒ 页面拿不到帧 · 看 /tmp/zmax_scene_overlay.log")
             # 5) 再开页面: 现取 LAN IP + 实测可达 + 显式开浏览器并检查返回值
             url = "http://127.0.0.1:%d/overlay" % self.OV_LIVE_PORT
             for _mode in ("lan", "loop"):
