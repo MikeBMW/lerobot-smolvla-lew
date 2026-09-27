@@ -711,7 +711,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.15.40")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.15.41")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10829,7 +10829,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.40 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.41 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10837,9 +10837,13 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.40 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.41 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.15.41 (2026-09-27): 现场实况交付 —— 场景叠加页手机化(9格/帧龄/拍照时间) + 手机 APP
+        #   (com.zmax.live v1.1, 双网口自动切换) + 公网入口 datadrive.world/zmax-live.html;
+        #   arm(D405) 路恢复(rs_fast_node 不在 launch 里, 栈重启必挂 → 补回后 29.9fps);
+        #   /overlay 路由修成按 mtime 热读真源(原先发的是 cam_live_stream.py 内嵌旧副本)
         # v5.15.40: v5.15.40 — L5 视觉语言自动标注上线: 6 路实拍(3相机+深度双目+2路OPT) → 场景理解 + 边界框 + 标注图  老倪: 「你现在已经有了 3 个摄像头, 1 个深度双目, 两个 OPT 相机; 你现在调用大模型层, 用视觉语言,       开始理解这个场景, 开始自动标注; 我现在到飞书端与你人机交互」  新增 tools/auto_annotate.py (复用既有件, 不另造一套):   · 取帧 8791 /snapshot/<cam>.jpg (6 路) → 缩到最长边 1024 → gen_overlay_from_vlm.call_vlm     (L5 视觉档, 严格 JSON + 左上原点像素口径) → 框按比例**映回原图** → 落盘   · 输出 ~/zmax_data/auto_annotate/batch_<时间>/: <cam>.jpg 原图 + <cam>_ann.jpg 标注图 + <cam>.json;     追加式数据集 annotations.jsonl; summary.json 汇总   · 6 路**并行**(网络等待型) ⇒ 一批 ~3 分钟; --watch N 常驻; --push-overlay 可把 arm 那路框写进场景叠加规格 实测第一批: 6/6 路成功 · 17 个物体 · 用时 178s · model=deepseek-flash   arm   5 个: 末端相机倒置视角, 绿色电路板在金属托盘上方, 周围线缆纸箱   local 6 个: 白色夹爪正把绿色光模块插入桌面黑色多槽托盘   local2 3 个: 实验室俯视, 臂在工作台上方, 前景标定球+线缆   depth 2 个: 右侧倾斜标定板 + 下方托盘槽位   aoi_gold 0 个: 暗色金属近距离模糊影像, **未见可辨识物体(如实报空, 不猜)**   aoi_surface 1 个: 暗光近景缝隙+右侧反光边, 疑似插槽对接区域  新增 tools/annot_push_feishu.py + cron(每 30 分钟, 去重靠 .pushed):   2×3 标注总图 + 六路场景描述 → dataworld 飞书群; 同时写 LATEST.md 给飞书端/HIL 人机在环一眼可读   实测已推送成功: image_key=img_v3_0215u_b6ce… · message_id=om_x100b64bd9d4ff8a0c3fa0c29370dd69  常驻: auto_annotate.py --watch 600 (pid 见 ps) —— 每 10 分钟一批, 数据持续累积
         # v5.15.38: v5.15.38 — 一号位(slot1)示教点现场重记: |Δ| 5.6mm + 姿态 4.18° (老倪: "位置不对，偏移了，我挪动一下，你记录")  记录链路(仓库既有工具, 只读订阅, 不下发任何运动):   tools/record_l2_point.py slot1 "<说明>"  →  /robot/tcp_pose 只读采样 6 帧均值(经 Docker tap, ROS_DOMAIN_ID=0) 纪律生效: 第一次采样被拒 —— "机械臂还在动 (极差 1.52e-03 m > 1e-4)"; 等现场停稳后重采:   新 pos (0.648842, 0.498298, 0.110398)  quat (-0.7392228, 0.0034525, -0.6733947, 0.0087927)   采样 6 帧 · 抖动 pos 3.86e-05 m (0.039mm) · quat 1.63e-05 · recorded_at 2026-09-27 12:28:24 与旧值(2026-09-20 20:37:48 记)的差: X +1.7mm · Y -4.3mm · Z -3.1mm · |Δ| 5.6mm · 姿态 4.18°   ⇒ 证实现场判断: 一号位示教点确实偏了 5.6mm(约半个模块宽度量级)。 生效方式: l2_daemon 每次执行技能都 `_load_points()` 重读点位库 ⇒ **热生效, 不用重启执行器**;   技能 L2.slot1 是 point_locked=true ⇒ 目标点只认库里的 slot1, 改库即改技能目标。 回滚: cp ~/zmax_data/taught_points_backup_20260927_1225.json data/skills/l2_atomic/taught_points.json
         # v5.15.37: v5.15.37 — 「一号位技能怎么没反应」= 技能没坏, 是安全闸在拒绝且拒答没指路  老倪: 「一号位 技能，怎么没有反映了」 真相(取证, 不是猜): 点技能当时 daemon 日志原文   [12:17:24] 当前位姿(来源 direct): (0.6638, -0.0386, 0.2929)   [12:17:24] 🛡 阶段 1/2 拒绝: 直线距离 562mm > 守卫 500mm (请人工把臂移到槽位附近再跑)   [12:18:06] 同上(第二次点) 而「L2 原子技能清单」对话框里其实回读到了:   ← 执行器: [12:18:06] 受理: 阶段 1 拒绝: 直线距离 562mm > 守卫 500mm ⇒ 技能注册表(54 个原子技能)有 L2.slot1「一号位」✓, 常驻执行器活着 ✓, 指令到了 ✓,   唯一问题: **臂当前在 (0.6638,-0.0386,0.2929), 槽位示教点 slot1 在 (0.6471,0.5026,0.1135)**,   阶段1目标(slot1 +30mm 上方)直线 562mm > 守门 max_lin_mm=500 ⇒ 按设计拒发(不盲走长距离)。   拒答只写了"太远", 没写"差多少/往哪走" ⇒ 现场看不出下一步, 就像"没反应"。  改法(tools/l2_daemon.py 守卫分支): 拒答里直接给**方向 + 各轴差量**:   🛡 阶段 1/2 拒绝: 本阶段目标点 slot1 离当前位姿 562mm, 超过守卫 500mm      ⇒ 先点动靠近再点本技能: +Y 左移(朝槽位) 541mm · −Z 下降 149mm 实测(重启执行器后从 FIFO 真发一次): 回执逐字如上, 客户端按原有"回读 受理: 行"机制照常拿到 ✓ (全程只读位姿 + 拒发, 机械臂零动作 ✓)

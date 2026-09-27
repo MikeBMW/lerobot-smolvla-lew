@@ -43,7 +43,7 @@ IMGDIR = Path(os.path.expanduser("~/zmax_data/vl_safety"))
 LOG = Path(os.path.expanduser("~/zmax_data/vl_safety_log.jsonl"))
 CAMS = [("arm", "臂上相机(随工具)"), ("local", "笔记本相机(全局)"),
         ("local2", "MAXHUB顶视"), ("depth", "深度图(伪彩,近=亮)")]
-FRESH_S = 240.0          # 裁决保鲜: 超过这个秒数视为过期 ⇒ 拒发
+FRESH_S = 600.0          # 裁决保鲜: 超过这个秒数视为过期 ⇒ 拒发
 TILE = (480, 360)
 
 PROMPT = """你是工业机器人(珞石 6 轴 XMS5-R800)现场的安全守护。下面是**同一时刻**的工位画面 2x2 拼图:
@@ -155,18 +155,29 @@ def run_once(feishu=False, save_img=True) -> dict:
         cv2.imwrite(img_path, mosaic)
         rec["image"] = img_path
     try:
-        r = G.call_vlm(enc.tobytes(), w, h, prompt=prompt, timeout=100)
-        if not (r.get("txt") or "").strip() and float(r.get("latency_s") or 0) < 20:
-            time.sleep(2)   # 快返回空 = 抖一下, 值得重试; 慢失败(超时) = 拥塞, 再试只会更糟, 直接落降级裁决
-            r = G.call_vlm(enc.tobytes(), w, h, prompt=prompt, timeout=100)
+        # 实测(2026-09-27): DeepSeek 视觉**偶发**返回空 content —— finish_reason=stop 却无内容,
+        # 快(2.7s)/慢(137s)都可能出现, 且同样的图再调一次就正常 ⇒ 空了就重试。
+        # 旧逻辑按"慢返回空=拥塞, 不重试"处理, 把 49.5s 那次直接落成"不安全" ⇒ 误报真因。
+        r = {}
+        for _try in range(3):
+            r = G.call_vlm(enc.tobytes(), w, h, prompt=prompt, timeout=300)
+            if (r.get("txt") or "").strip():
+                break
+            print("[%s] VL 空 content(第%d次, %.1fs) ⇒ 2s 后重试  raw=%s" % (
+                time.strftime("%H:%M:%S"), _try + 1, float(r.get("latency_s") or 0),
+                str(r)[:140]), flush=True)
+            time.sleep(2)
         rec["model"] = r.get("model")
         rec["latency_s"] = round(float(r.get("latency_s") or 0), 1)
         txt = (r.get("txt") or "").strip()
         if not txt:
+            # 空 content = 模型这次没给出裁决(API 侧偶发), 语义是"无法裁决"而不是"画面有危险"。
+            # 仍 fail-closed(safe=False ⇒ 执行层拒发), 但 hazards 置空 + why 写明,
+            # 避免被读成"现场有危险" ⇒ 老倪 22:58 收到的误报就是这么来的。
             rec.update({"safe": False, "risk_level": "high", "arm_path_clear": False,
-                        "hazards": [{"what": "大模型不可用", "where": "-",
-                                     "why": "content 空(额度/超时) ⇒ 按看不清处理"}],
-                        "why": "VL 未给出裁决 ⇒ 从严当不安全", "degraded": True})
+                        "hazards": [],
+                        "why": "VL 连续 3 次返回空 content(DeepSeek 视觉侧偶发, 非超时/额度) ⇒ "
+                               "本帧无法裁决 ⇒ 拒发(不是'现场危险')", "degraded": True})
         else:
             d = G.parse_json(txt)
             rec["safe"] = bool(d.get("safe") is True)

@@ -918,7 +918,7 @@ def _spawn_chan(force=False):
 #       执行层每次运动下发前读最新裁决: 缺失/过期/不安全 ⇒ **一律拒发**(fail-closed, 看不清也拒)。
 #       关闸只能显式 ZMAX_VL_GUARD=0; 停机/复位类**永远放行**(闸门不许挡急停)。
 VL_VERDICT_PATH = os.path.expanduser("~/zmax_data/vl_safety.json")
-VL_FRESH_S = float(os.environ.get("ZMAX_VL_FRESH_S", "240"))
+VL_FRESH_S = float(os.environ.get("ZMAX_VL_FRESH_S", "600"))
 VL_INTENT_PATH = os.path.expanduser("~/zmax_data/vl_intent.json")
 VL_INTENT_WAIT_S = float(os.environ.get("ZMAX_VL_INTENT_WAIT_S", "300"))
 _VL_ALWAYS_ALLOW = ("robot_stop", "rokae_recover_estop", "estop", "recover")
@@ -1065,7 +1065,14 @@ def chan_send(call, intent_desc=None):
     🛡 所有运动类下发在此**唯一收口**: 先过 VL 视觉安全闸(见上), 停机/复位白名单放行。
     🎯 带 intent_desc 时: 先把"这一步要做什么"告诉 VL, 再**等它针对该动作出裁决**, 等不到就拒发。
     """
-    if intent_desc:
+    # 🩹 2026-09-27 老倪: 「技艺 合抓/松开 怎么不好使了」—— 根因: 夹爪类技能(ros=gripper, 无 steps)
+    #   被当成"臂运动" ⇒ 走"告知VL+等针对该动作的裁决"分支 ⇒ 等不到就**挂住**;
+    #   而执行器是单线程 ⇒ 挂住期间后续任何技能全部排队不动(表现为"点了没反应")。
+    #   夹爪不属于臂运动(位置 Δ=0) ⇒ 免意图等待; 仍走下面的 VL 闸门(快层反射强制, fail-closed 不变)。
+    _is_grip = bool(intent_desc) and ("gripper" in call or "L2.grip_" in call or "grip_open" in call or "grip_close" in call)
+    if _is_grip:
+        log("🎯 夹爪类动作 ⇒ 免意图等待(非臂运动), 仍过快层反射闸门: %s" % intent_desc)
+    if intent_desc and not _is_grip:
         _seq = set_intent(intent_desc)
         if _vl_operator_auth(call + " " + intent_desc, consume=False):
             log("🎯 现场授权在场 ⇒ **不干等慢层裁决**, 直接交闸门(快层反射仍强制生效): %s" % intent_desc)

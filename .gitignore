@@ -266,3 +266,6 @@ tools/web/dl/
 # 工作树软链(实体在共享检出 /home/ubuntu/lerobot-smolvla-lew)
 gui-venv311
 outputs
+
+# 审计日志(持续增长, 不进库)
+reports/web_agent_bridge_audit.jsonl

@@ -852,6 +852,46 @@ def _aoi_note_init() -> None:
         _aoi_note(port, ok=None, src=nm, err="启动中…")
 
 
+_TCP_LATEST = {"tcp": None, "ts": 0.0, "err": ""}
+
+
+def _tcp_label(tcp, age) -> str:
+    """TCP 标签: 带上是**多久前**的真值 —— 别把缓存值说成实时(老倪口径: 实时数据必须标时间)。"""
+    s = "TCP=(%.4f, %.4f, %.4f) 真值" % (float(tcp[0]), float(tcp[1]), float(tcp[2]))
+    if age is not None:
+        s += " · %.1fs前" % age
+    return s
+
+
+def _tcp_refresher(interval: float = 2.0) -> None:
+    """后台刷 TCP 位姿真值, 供叠加循环**非阻塞**取用。
+
+    为什么必须独立成线程(2026-09-27 实测):
+      读 TCP 的快速路径是容器写的 tcp_pose.json 缓存; 但 read_tcp 只在缓存
+      **新鲜度 ≤1.5s** 时才认它。容器栈一停, 缓存立刻变陈旧 ⇒ 每次都回退到
+      `sshpass ssh … ros2 topic echo --once`(单次 0.3~8s)。叠加循环每 2 秒同步
+      做一次这种读, 实测把 ov_arm 从 10fps 拖到 **2.1~4.3fps**(中位 3.0)。
+      拆成后台线程后: 循环只取最新值 ⇒ 帧率回到上限, TCP 最多旧一个刷新周期
+      (标签里会写明是多少秒前的值, 不装实时)。
+    """
+    while not _STOP.is_set():
+        try:
+            if _SO is not None:
+                v = _SO.read_tcp(timeout=8, allow_ssh=True)
+                if v is not None:
+                    with _LOCK:
+                        _TCP_LATEST["tcp"] = v
+                        _TCP_LATEST["ts"] = time.time()
+                        _TCP_LATEST["err"] = ""
+                elif _TCP_LATEST["tcp"] is None:
+                    with _LOCK:
+                        _TCP_LATEST["err"] = "读不到 TCP"
+        except Exception as e:                                             # noqa: BLE001
+            with _LOCK:
+                _TCP_LATEST["err"] = str(e)[:80]
+        _STOP.wait(max(0.5, interval))
+
+
 def overlay_worker(src_name: str, fps_cap: float) -> None:
     """
     把 src_name 的最新帧解码, 叠加 data/scene/overlay_spec.json 里的框, 存到 ov_<src>。
@@ -882,19 +922,21 @@ def overlay_worker(src_name: str, fps_cap: float) -> None:
             # 只有本路真有需要投影的 3D 框时才去读 TCP（读 Orin 有开销；否则白等拖帧率）
             cam_boxes = (spec.get("cameras") or {}).get(src_name, {}).get("boxes") or []
             need_tcp = any(b.get("box3d") for b in cam_boxes)
-            if need_tcp and time.time() - tcp_ts > 2.0:
-                try:
-                    tcp = _SO.read_tcp(timeout=20)
-                except Exception:
-                    tcp = None
-                tcp_ts = time.time()
+            if need_tcp:
+                # ★ 非阻塞取值: 后台 _tcp_refresher 刷, 本循环绝不在这里等 ssh
+                #   (曾同步读 ⇒ ov_arm 被拖到 2.1~4.3fps)
+                with _LOCK:
+                    tcp = _TCP_LATEST.get("tcp")
+                    tcp_age = (time.time() - _TCP_LATEST["ts"]) if _TCP_LATEST["ts"] else None
+            else:
+                tcp_age = None
             extra = {
                 "frame_age": "帧龄 %.1fs · 源 %s" % (max(0.0, time.time() - src_ts),
                                                     time.strftime("%H:%M:%S", time.localtime(src_ts))),
                 "handeye": ("手眼 cam→tcp |t|=%.0fmm (%s/%s位姿)"
                             % (np.linalg.norm(he["X"][:3, 3]) * 1000, he.get("method"), he.get("n_poses")))
                            if he["ok"] else "手眼未标定 ⇒ 仿真框无法投影",
-                "tcp": (("TCP=(%.4f, %.4f, %.4f) 实时真值" % tuple(tcp[:3])) if tcp is not None
+                "tcp": (_tcp_label(tcp, tcp_age) if tcp is not None
                         else ("TCP 未读到（仿真投影将跳过）" if need_tcp else "本路无 3D 投影框（不需要 TCP）")),
             }
             img2, info = _SO.draw_overlay(img, spec, src_name, tcp, extra)
@@ -1750,8 +1792,11 @@ class Handler(BaseHTTPRequestHandler):
         if p in ("/", "/index.html"):
             body = PAGE.replace("__IDX__", str(self.server.local_dev)).encode("utf-8")
             self._send(200, "text/html; charset=utf-8", body)
-        elif p in ("/overlay", "/overlay.html", "/scene"):
-            self._send(200, "text/html; charset=utf-8", OVERLAY_PAGE.encode("utf-8"))
+        elif p in ("/overlay", "/overlay.html", "/scene", "/live"):
+            # 🧩 2026-09-27: 叠加/现场实况页 —— 真源 = tools/web/scene-overlay.html(按 mtime 热读)。
+            #   之前这里发的是本文件内嵌的 OVERLAY_PAGE 旧副本 ⇒ 改 html 不生效(内嵌副本只认 arm 那路)。
+            #   /app 原先也被 room.html 那条分支**抢先命中**(死代码), 现一并归位到同一份真源。
+            self._send(200, "text/html; charset=utf-8", _mobile_page())
         elif p.startswith("/dl/"):
             # 📦 2026-09-27 交付件下载(手机 APP 装包等): 只服务 tools/web/dl/ 这一个目录,
             #   文件名取 basename ⇒ 就算路径里塞 ../ 也穿不出去。
@@ -1765,10 +1810,11 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:                                          # noqa: BLE001
                 self._send(404, "text/plain; charset=utf-8",
                            ("没有这个文件: %s (%s)" % (_fn, e)).encode("utf-8"))
-        elif p in ("/room", "/room.html", "/app", "/hil-live"):
+        elif p in ("/room", "/room.html", "/hil-live"):
             # 📱 2026-09-27 老倪: 手机 APP 现场页 —— 视频会议式看全工位相机 + 🙋 HIL 人机在环 + 🕹 远程操作
             #   页面本体独立成 tools/web/room.html(便于维护, 手机竖屏优先);
             #   HIL 部分直连本机 8795 的本地 HIL API = 与画布 n_hil 节点同一个大脑。
+            #   ⚠ /app 与 /app.html 归 **场景叠加/现场实况页**(它们原来的分支被这里抢先命中成了死代码)。
             _rp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "room.html")
             try:
                 with open(_rp, encoding="utf-8") as f:
@@ -2124,6 +2170,9 @@ def main():
             _m = {"arm": ["arm"], "local": ["local"], "local2": ["local2"],
                   "both": ["arm", "local"], "all": ["arm", "local", "local2"]}
             srcs = _m.get(args.overlay_src, ["arm"])
+            # TCP 真值改由后台线程刷, 叠加循环只取最新值(否则每 2s 一次 ssh 读会把帧率拖到 3fps)
+            threading.Thread(target=_tcp_refresher, args=(2.0,), daemon=True,
+                             name="tcp-refresh").start()
             for s in srcs:
                 threading.Thread(target=overlay_worker, args=(s, args.overlay_fps),
                                  daemon=True, name="ov-" + s).start()

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><script src="/auth.js"></script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Z-MAX 现场实况 · 手机 APP</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#04070d;--panel:#0a0f18;--line:#1a2030;--fg:#c8d1d9;--dim:#6e7681;--acc:#00d4aa;--warn:#d29922}
+body{background:var(--bg);color:var(--fg);font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+     padding:20px 16px 60px}
+.wrap{max-width:820px;margin:0 auto}
+h1{font-size:24px;color:#fff;font-weight:800}
+h1 em{color:var(--acc);font-style:normal}
+.sub{color:var(--dim);font-size:14px;margin-top:6px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:16px}
+h2{font-size:16.5px;color:#fff;margin-bottom:10px;font-weight:700}
+h2 span{font-size:12.5px;color:var(--dim);font-weight:400;margin-left:6px}
+a.dl{display:block;text-align:center;text-decoration:none;background:#0f5c37;border:1px solid #22c55e;color:#d6ffe6;
+     font-weight:800;font-size:17px;padding:15px;border-radius:11px}
+a.link{color:var(--acc)}
+code{background:#111a24;padding:2px 6px;border-radius:5px;color:#7ee787;font-size:12.5px;word-break:break-all}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--dim);font-weight:600;font-size:12.5px}
+td.n{text-align:right}
+tr.off td{color:#5c6570}
+.bd{font-size:11px;font-weight:800;color:var(--acc);border:1px solid #1f7a4d;border-radius:20px;padding:0 6px;margin-left:6px}
+ul{margin:6px 0 0 18px}li{margin:3px 0}
+.steps{line-height:2}
+.warn{background:#231a08;border:1px solid #6b4a12;color:#f0c674;border-radius:9px;padding:11px 13px;font-size:13.5px;margin-top:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+button{font:inherit;font-size:13.5px;font-weight:700;padding:9px 12px;border-radius:9px;border:1px solid #2b3946;
+       background:#141d27;color:var(--fg);cursor:pointer}
+.foot{color:var(--dim);font-size:12.5px;margin-top:18px;line-height:1.8}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📱 现场实况 <em>Z-MAX</em></h1>
+  <div class="sub">工位机所有活着的相机流 + 仿真/检测叠加 · 一个 App 看全 —— 符合5个场景的具身方案技术协议 · 现场取证通道</div>
+
+  <div class="card">
+    <h2>① 装 App <span>24.8KB · 安卓 7.0+</span></h2>
+    <a class="dl" href="/dl/ZMAX-Live.apk">⬇ 下载 ZMAX-Live.apk</a>
+    <div style="margin-top:10px">sha256 <code id="sha">57328c2628ca4f2736e5c12935949d0ab0263c1e404abdb11346c9a94fd6844d</code></div>
+    <div class="row"><button onclick="cp(this)">📋 复制校验串</button></div>
+    <div class="steps" style="margin-top:12px">
+      ① 设置 → 安全 → 更多安全设置 → <b>关闭「纯净模式」</b><br>
+      ② 同页「安装外部来源应用」→ 给浏览器/文件管理 <b>允许</b><br>
+      ③ 提示风险 → 选 <b>继续安装</b>
+    </div>
+    <div class="warn">
+      装不上看报错原文：<b>应用未安装</b> = 同包名残留 → 先卸载旧版；
+      <b>解析包错误</b> = 没下完 → 重下并用上面 sha256 核对；
+      <b>已阻止安装</b> = 纯净模式没关 → 回到第 ① 步。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>② 怎么打开 <span>需与工位机同一局域网（产线 WiFi）</span></h2>
+    <div>装完桌面出现「<b>Z-MAX 实况</b>」图标，点开就是现场页。手机浏览器也能直接开：</div>
+    <div style="margin-top:8px"><code>http://192.168.23.50:8791/overlay</code></div>
+    <div style="margin-top:8px;color:var(--dim);font-size:13px">
+      页面必须由工位机自己用 http 提供 —— 相机流是 http MJPEG，站点是 https，https 页里嵌 http 画面会被内核按混合内容拦死
+      （表现是页面能开、画面永远黑）。App 是顶层直接加载工位机 http 页，与视频流同源。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>③ 现在能看到什么 <span>抓样 2026-09-27 21:22:48（帧龄随取帧实时刷新）</span></h2>
+    <table>
+      <tr><th>画面</th><th>帧率</th><th class="n">帧龄</th><th class="n">拍照时间</th><th class="n">体积</th></tr>
+<tr><td>💻 笔记本内置<span class="bd">叠加</span></td><td>10.0 fps</td><td class="n">0.1s</td><td class="n">21:22:48</td><td class="n">19KB</td></tr>
+<tr><td>📺 MAXHUB 顶摄<span class="bd">叠加</span></td><td>10.0 fps</td><td class="n">0.1s</td><td class="n">21:22:48</td><td class="n">65KB</td></tr>
+<tr><td>💻 笔记本内置</td><td>15.2 fps</td><td class="n">0.0s</td><td class="n">21:22:48</td><td class="n">12KB</td></tr>
+<tr><td>📺 MAXHUB 顶摄</td><td>19.9 fps</td><td class="n">0.1s</td><td class="n">21:22:48</td><td class="n">59KB</td></tr>
+<tr><td>🔍 金手指判据图</td><td>1.0 fps</td><td class="n">0.1s</td><td class="n">21:22:48</td><td class="n">45KB</td></tr>
+<tr><td>🔍 金手指整板原图</td><td>1.0 fps</td><td class="n">0.0s</td><td class="n">21:22:48</td><td class="n">78KB</td></tr>
+<tr><td>🔍 表面检测</td><td>1.0 fps</td><td class="n">0.0s</td><td class="n">21:22:48</td><td class="n">34KB</td></tr>
+<tr><td>🦾 臂上 D405 (Orin)</td><td>29.9 fps</td><td class="n">0.0s</td><td class="n">21:22:48</td><td class="n">36KB</td></tr>
+<tr><td>🦾 臂上 D405 (Orin)<span class="bd">叠加</span></td><td>1.9 fps</td><td class="n">4.9s</td><td class="n">21:22:43</td><td class="n">50KB</td></tr>
+<tr class="off"><td>🌈 D405 深度图</td><td>未上线</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+    </table>
+    <div style="margin-top:10px;color:var(--dim);font-size:13px">
+      帧龄是源侧上报、拍照时间 = 本机时钟 − 帧龄（页面上每格实时显示，导出 CSV/JSON 也带这两列）。
+      未上线的两路（臂上 D405 / 深度图）<b>如实标注、不上屏、不当活的用</b> —— 臂上 D405 的取帧口当前返回 503。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>④ 现场页能干什么</h2>
+    <ul>
+      <li><b>全看</b>：所有活着的流同屏 —— 全局只开 <b>1 条</b>串行取帧连接（手机只有 6 条 HTTP 连接，多路 MJPEG 会把连接吃干、整页卡死）</li>
+      <li><b>单看</b>：挑一路放大，只开 1 条 MJPEG 常连，可选「原图 / 叠加」</li>
+      <li><b>叠加来源</b>：🎯 仿真投影 · 🧠 大模型理解 · 📋 场景契约 · 🔍 真机检测，点哪个都回显真实结果（含失败原因）</li>
+      <li><b>导出</b>：状态 JSON / CSV（带帧龄+拍照时间）/ 全部流地址，一键复制</li>
+      <li><b>装 APP</b>：页面内直接下载安装包 + sha256 校验串</li>
+    </ul>
+    <div class="warn">本页/App <b>没有软急停</b> —— 急停用示教器或现场急停按钮。页面不发起真机动作。</div>
+  </div>
+
+  <div class="card">
+    <h2>⑤ 相关入口</h2>
+    <ul>
+      <li><a class="link" href="/state-3d.html">🧊 Z-MAX 状态空间 3D</a> — 分层空间 + 实况联动</li>
+      <li><a class="link" href="/hil.html">🙋 HIL 人机在环</a> — 状态与人的指示（与画布同一份状态）</li>
+      <li><a class="link" href="/agent.html">🤖 Web 智能体桥</a> — 远程提示词 → 只读白名单</li>
+      <li><span style="color:var(--dim)">手机现场页（局域网）：</span><code>http://192.168.23.50:8791/overlay</code></li>
+    </ul>
+  </div>
+
+  <div class="foot">
+    发布口径：APK 与页面均按本次构建产物发布，下载链接的字节与磁盘产物逐字节一致（sha256 见上）。
+    活着的流清单为抓样时刻的真实读数，非预录；未上线通道如实标注。
+  </div>
+</div>
+<script>
+function cp(btn){var t=document.getElementById('sha').textContent;
+ try{ if(navigator.clipboard){navigator.clipboard.writeText(t);} }catch(e){}
+ var a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();
+ try{document.execCommand('copy');}catch(e){}document.body.removeChild(a);
+ if(btn){btn.textContent='✅ 已复制';}}
+</script>
+</body>
+</html>

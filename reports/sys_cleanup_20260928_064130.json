@@ -1,0 +1,21 @@
+{
+  "ts": "2026-09-28 06:41:33",
+  "items": [
+    {"k":"journal","before_mb":0,"after_mb":0},
+    {"k":"apt","before_mb":123.5,"after_mb":122.7},
+    {"k":"crash","before_mb":6.6,"after_mb":0},
+    {"k":"rotate_log","before_mb":466.9,"after_mb":297.6},
+    {"k":"cache_thumbnails","before_mb":0,"after_mb":0},
+    {"k":"cache_tracker3","before_mb":0,"after_mb":0},
+    {"k":"cache_mesa_shader_cache","before_mb":1.5,"after_mb":0},
+    {"k":"cache_gnome-desktop-thumbnailer","before_mb":0,"after_mb":0},
+    {"k":"cache_pip","before_mb":0,"after_mb":0},
+    {"k":"cache_uv","before_mb":0,"after_mb":0},
+    {"k":"snap_firefox","before_mb":0,"after_mb":0},
+    {"k":"snap_snap-store","before_mb":0,"after_mb":0},
+    {"k":"snap_chromium","before_mb":2.0,"after_mb":0},
+    {"k":"snap_thunderbird","before_mb":0,"after_mb":0},
+    {"k":"hermes_scratch","before_mb":204.0,"after_mb":204.0},
+    {"k":"hermes_delegation","before_mb":.1,"after_mb":.1}
+  ]
+}
