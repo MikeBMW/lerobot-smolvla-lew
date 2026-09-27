@@ -61,6 +61,23 @@ sha256sum ZMAX-State3D.apk                                              # 应等
 
 > 不部署 ② 也不影响新图标可用：APK 里 `Z-MAX 场景叠加` 入口是**直连 4060** 的，装完即用。
 
+## 5b. 三个 Z-MAX 手机 APP 对照（别发错包）
+
+| APK | 包名 | 装完打开 | 用途 |
+|---|---|---|---|
+| **ZMAX-Live.apk** | `com.zmax.live` | **现场实况页（=叠加页）** | ★ 本次要发布的：所有活着的相机流 + 仿真/检测叠加 |
+| ZMAX-State3D.apk | `com.zmax.state3d.aoi` | 桌面两个图标：3D 全链 / 场景叠加 | 状态空间 3D 页 + 叠加页 |
+| ZMAX-Site.apk | `com.zmax.room` | 现场页（多路相机 + HIL 遥控） | 现场总览 + 人机在环 |
+
+**ZMAX-Live.apk v1.1（2026-09-27 修）**：MainActivity 的候选口 =
+`[http://10.163.146.78:8791/overlay, http://192.168.23.50:8791/overlay]`，**自动依次试** ——
+手机在哪个网段都能连（旧版只写产线口 ⇒ 老倪手机走 WiFi 时打开是空白页 = "用不了"）。
+成功的口记进 SharedPreferences，下次先用；全不通才提示，长按屏幕仍可手改地址。
+两个口实测都通（HTTP 200）。
+
+> 各包**当前** sha256/体积以**页面上的 APP 卡**为准（打包脚本每出一版就把哈希写回页面，
+> 页面声明因此永远等于实际下发件）。别把哈希抄进这份文档 —— 重打包后会过期。
+
 ## 6. 源码
 
 本目录（已入库，`git pull` 即可）：
@@ -71,3 +88,6 @@ sha256sum ZMAX-State3D.apk                                              # 应等
 ## 7. 回执
 
 检查完 / 发布完，回一句到群里（或走 `agent_hub` 命令台 8794），我这边好对齐版本号与站点状态。
+
+> **ZMAX-Live.apk 的源码**在 `tools/app/live/`（`MainActivity.java` 双网自动切换 / manifest /
+> `build_live_apk.sh`）。真正在用的工程在 4060 的 `/home/ubuntu/state3d_app/live/`。
