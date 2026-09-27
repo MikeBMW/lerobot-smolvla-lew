@@ -91,6 +91,37 @@ OPT 只在检测/拍照时留图, 我们只 GET 不拍照 ⇒ 取了个空。修
 
 ---
 
+## 0.6 第四轮 (老倪: 「更新工控机的表面检测程序，升级到v4版本；程序路径 D:\xspace\ultralytics_AOI；
+##      cam_surface_10083_work_v2.py；不要改v2；通道还是10083」)
+
+### A. 交付件 (v4 早就写好并离线验过, 这轮把它送到那台机器上)
+| 文件 | 说明 |
+|---|---|
+| `surface_10083_work_v4.py` (20725B, 488 行) | 独立文件, **不覆盖/不改 v2 任何文件**; 端口默认 **10083**; 复用 v2 同目录的 SciCam SDK / yolo_detector / config.yaml |
+| `upgrade_10083_v4.ps1` | 上线脚本: `-CheckOnly` 只自检 / 不带参 = 起 10084 试跑(不碰 v2) / `-Apply` = 停 v2→起 v4→真拍一张验图 |
+| `README_上线步骤.txt` | 三步操作 + 验收判据 + 回滚(10 秒) + 相机独占注意事项 |
+| `surface_10083_work_v4.py.sha256` | `65b5a1a6…f8e42`(脚本会核对) |
+| 下载地址 | **`http://192.168.23.50:8794/`** (4060 本机 8794 静态文件服务, 工控机同网段直连; 本机路由实测 `dev enx00e04c0c32a0 src 192.168.23.50`; 本机防火墙 inactive) |
+
+v4 相对 v2 = **只加不减**: `POST /capture_detect` 回执逐字一致(`{"code":200,"msg":"success"}` —— 已实测 v2 现场回执就是这个);
+新增 `GET /picture?kind=crop|origin[&meta=1][&grab=1]`、`GET /last_result`、`GET /crop_info`;
+相机常驻 + 单 worker 异步队列; 规范图 = `config.yaml` housing 的 `imgsz=1280` 保比例 letterbox(表面全幅检测不拉伸)。
+离线契约测试(`aoi_v4/.venv-test` + `_stub` 假相机/假检测器)实测 5/5 通过:
+`capture_detect 200` / `picture?kind=crop 200 1280×1280` / `picture?kind=origin 200 2048×2448` /
+`last_result 200 {verdict:NG,count:2,ms:12.3}` / `crop_info 200 {canonical:[1280,1280],mean:68.1}`。
+
+### B. 本页(工位总览)配合改动 —— 上完 v4 **本页零改动就出图**
+· 表面 worker 取图口径改 `kind=crop`(模型真正看到的那张规范图, 也是判决依据); 金手指仍 `kind=origin`→去死白判据图。
+· 表面也读 `/last_result` → 那一格的标题栏会带上「上轮判定 OK/NG (n 缺陷 · 推理 xxms)」(与本页给金手指的待遇一致)。
+· 「📸 拍帧」补了**拍后取图**: v4 的 `/capture_detect` 回执不带图, 拍完顺手 GET 一次 `/picture` 把图取回来
+  (只读取图, 不会再拍); v2 下这条 GET 仍 404 → 行为与升级前一致。
+· 面板文案改成现状: 「10083 那台程序还是 v2(没有取图路由)」+ **怎么上 v4**(文件名/目标目录/端口不变/v2 不改) +
+  「它一上线本页不用改一行就出图」。55 条候选路径全 404 的实测结论保留在文案里(留证据, 不是搪塞)。
+· 实测(重启后): `10083 → HTTP 404 (kind=crop)` 如实记在 `/station/status` 的 `aoi['10083']` 里,
+  `aoi_surface` 帧槽 `online:false`; 10082 仍 `ok:true · 4799KB/帧`。取证图 `/tmp/station_v4patch.png`。
+
+---
+
 ## 1. 交付物
 
 **页面: `http://<本机IP>:8793/station`** (本机 `http://127.0.0.1:8793/station`;

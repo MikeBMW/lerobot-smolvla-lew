@@ -513,8 +513,9 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
 
     · 10082 金手指: `/picture?kind=origin`(实测 6.07MB PNG/0.07s) → 去死白 → 判据图
       (`name`), 另存一张**整板缩图** (`full_name`); 顺带每轮读 `/last_result`。
-    · 10083 表面: 实测**没有取图路由**(只有 POST /capture_detect) ⇒ 如实报「无取图路由」,
-      面板给「拍帧」按钮 —— 点了才 POST 一次(一次一帧), 回执里带 base64 图就直接显示。
+    · 10083 表面: v2 无取图路由(只有 POST /capture_detect) ⇒ 如实报「取图失败/无路由」;
+      **升级到 v4 后**本 worker 零改动就有图: v4 增加了 GET /picture?kind=crop(规范图 1280, 喂模型的图)/
+      kind=origin(原图)/ last_result / crop_info。这里取 kind=crop(=模型真正看到的那张) + 读 /last_result。
     """
     url = "http://192.168.23.23:%d/picture?kind=%s" % (port, kind)
     vurl = "http://192.168.23.23:%d/last_result" % port
@@ -568,7 +569,7 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
             else:
                 _aoi_note(port, ok=False, src=name, url=url, http=code,
                           err=("HTTP %d %s" % (code, err)).strip() or "取图失败")
-        if verdict and port == 10082:
+        if verdict:
             try:
                 with urllib.request.urlopen(vurl, timeout=6) as r:
                     v = json.loads(r.read().decode("utf-8", "ignore"))
@@ -633,6 +634,24 @@ def _aoi_capture(port: int, name: str, timeout: float = 90.0) -> dict:
             _put_aoi_pair(port, name, img)
             out["got_image"] = True
             out["shape"] = [int(img.shape[0]), int(img.shape[1])]
+    if out.get("ok") and not out.get("got_image"):
+        # v4(表面/金手指): /capture_detect 回执不带图, 但拍完内存里就有照片了
+        #  ⇒ 顺手 GET 一次 /picture 把图取回来(这一步是只读取图, 不会再拍)
+        try:
+            gurl = "http://192.168.23.23:%d/picture?kind=%s" % (
+                port, "crop" if port == 10083 else "origin")
+            with urllib.request.urlopen(
+                    urllib.request.Request(gurl, headers={"User-Agent": "zmax-station"}),
+                    timeout=min(30.0, timeout)) as r:
+                if r.status == 200:
+                    img = cv2.imdecode(np.frombuffer(r.read(), np.uint8), cv2.IMREAD_COLOR)
+                    if img is not None:
+                        _put_aoi_pair(port, name, img)
+                        out["got_image"] = True
+                        out["shape"] = [int(img.shape[0]), int(img.shape[1])]
+                        out["via"] = gurl
+        except Exception as e:                                                # noqa: BLE001
+            out["msg"] = (out.get("msg") or "" + " | 拍后取图失败: " + str(e)[:80])[-240:]
     _aoi_note(port, last_capture=out)
     return out
 
@@ -1468,14 +1487,19 @@ async function poll(){
         : '取图失败：'+g.err);
       ng.innerHTML+='<br><span class="dim">源: '+(g.url||'')+'</span>';
     }
+    const sfv=(sf.verdict&&(sf.verdict.count!==undefined))
+      ? ' · 上轮判定 '+(sf.verdict.verdict||'')+' ('+sf.verdict.count+' 缺陷 · 推理 '+fmt(sf.verdict.ms,0)+'ms)' : '';
+    if(sf.ok===true){ $('#m_aoi_surface').textContent+=' · 模型看的规范图 kind=crop'+sfv; }
     if(sf.ok===false){
       $('#n_aoi_surface').style.display='block';
-      $('#n_aoi_surface').innerHTML='<b>这一格没有实时画面 —— 工控机那台程序没开取图口</b><br>'
-        +'本机用 OPTIONS 把 10083 上 50+ 条候选路径全探了一遍(零副作用), 只有 POST /capture_detect; '
-        +'工控机上也没有第二个 HTTP 服务能取表面相机的图。<br>'
-        +'修法在工控机侧: 粘 30 行加一条 /picture 路由 → <b>docs/patch/opt_surface_10083_add_picture_route.md</b>'
-        +'(含 4 步上线自测)。补丁一上, 本页**不用改一行**就会自动出图(这一格一直在轮询取图)。<br>'
-        +'现在能做的: 点「📸 拍帧」真拍一次(它会把图存到工控机 ./surface_images/, 但取不回来)。';
+      $('#n_aoi_surface').innerHTML='<b>这一格还没有画面 —— 10083 那台程序还是 v2(没有取图路由)</b><br>'
+        +'实测: 10083 上 55 条候选路径全 404, 只有 POST /capture_detect; 工控机上也没有第二个 HTTP 服务能取表面相机的图。<br>'
+        +'<b>修法已经备好, 只等在那台机器上执行</b>: 把 <code>surface_10083_work_v4.py</code> 拷进 '
+        +'<code>D:\\xspace\\ultralytics_AOI</code>, 停掉 v2 的进程后运行它 —— 端口还是 10083, '
+        +'<b>v2 的文件一个字都不改</b>(出问题原样回 v2)。<br>'
+        +'<b>它一上线, 本页不用改一行就出图</b> —— 这一格一直在轮询 <code>GET /picture?kind=crop</code> '
+        +'(v4 新增的取图路由), 还会顺带显示它上一轮的判定(OK/NG + 缺陷数 + 推理耗时)。<br>'
+        +'现在能做的: 点「📸 拍帧」真拍一次(图会存到工控机 ./surface_images/, 但在 v2 下取不回来)。';
       const lc=sf.last_capture;
       if(lc) $('#n_aoi_surface').innerHTML+='<br>上次拍帧: HTTP '+lc.http+' '+(lc.msg||'')
         +(lc.got_image?' · 已取到图':(lc.how?' · '+lc.how:''));
@@ -1925,10 +1949,10 @@ def main():
                          args=(10082, "aoi_gold", args.aoi_fps, "origin", True, True, "aoi_gold_raw"),
                          daemon=True, name="aoi-gold").start()
         threading.Thread(target=_aoi_worker,
-                         args=(10083, "aoi_surface", args.aoi_fps, "origin", False, False),
+                         args=(10083, "aoi_surface", args.aoi_fps, "crop", False, True),
                          daemon=True, name="aoi-surface").start()
         print(f"   🏭 工控机检测源: 10082 金手指(取原图→去死白判据图) + 10083 表面 "
-              f"@≤{args.aoi_fps}Hz (只 GET 不触发拍照)", flush=True)
+              f"@≤{args.aoi_fps}Hz (只 GET 不触发拍照; 表面取 kind=crop = 模型看的规范图)", flush=True)
     # ── 🕹 手动控制闸门 (双重: 这里 + 页面勾选) ──
     _CTL["motion"] = bool(args.ctl_motion)
     print("   🕹 手动控制: %s" % ("⚠️ 已授权真动 (页面还需勾「授权真动」)"
