@@ -110,7 +110,29 @@ def parse_json(txt: str) -> dict:
     return {}
 
 
-def main_cli(cam: str = "arm", path: str = "", dry: bool = False) -> str:
+def build_prompt(w: int, h: int, hint: str = "", negatives=None, keep=None) -> str:
+    """场景理解词 + 操作者现场指示 (老倪 2026-09-28: 「我可以通过提示词跟你互动, 指导你标注的方向」)。
+
+    · hint: 操作者用自然语言给的标注方向(最高优先级), 原样进提示词, 不做解释替换
+    · negatives: 已被操作者删除的 label ⇒ 明确要求不要重复给(否则删了又冒出来)
+    · keep: 操作者认为对的 label ⇒ 保持同一套口径
+    """
+    p = PROMPT.format(W=w, H=h)
+    extra = []
+    if (hint or "").strip():
+        extra.append("【操作者现场指示（最高优先级，必须遵守；与上面默认口径冲突时以本节为准）】\n"
+                     + hint.strip())
+    if negatives:
+        extra.append("【操作者已删除、判定为错的标注 —— 不要再给出这些】：" + "、".join(sorted(set(negatives))))
+    if keep:
+        extra.append("【操作者保留、认为正确的标注 —— 请沿用同样口径】：" + "、".join(sorted(set(keep))))
+    if extra:
+        p = p + "\n" + "\n".join(extra) + "\n"
+    return p
+
+
+def main_cli(cam: str = "arm", path: str = "", dry: bool = False,
+             hint: str = "", negatives=None, keep=None) -> str:
     raw = SO.fetch_frame(cam, path=path)
     if not raw:
         return "✗ 取不到 %s 的实帧（视频流在跑吗？curl :8791/stats）" % cam
@@ -123,7 +145,8 @@ def main_cli(cam: str = "arm", path: str = "", dry: bool = False) -> str:
     if dry:
         return "dry-run: 帧 %dx%d %d B · 模型 %s" % (W, H, len(raw), MODEL)
 
-    r = call_vlm(raw, W, H)
+    prompt = build_prompt(W, H, hint=hint, negatives=negatives, keep=keep)
+    r = call_vlm(raw, W, H, prompt=prompt)
     txt = r["txt"] or r["reasoning"]
     if not r["txt"]:
         return "✗ 大模型 content 为空（推理额度吃满）· model=%s · 用时%.0fs" % (r["model"], r["latency_s"])
@@ -145,12 +168,17 @@ def main_cli(cam: str = "arm", path: str = "", dry: bool = False) -> str:
     spec = SO.load_spec()
     SO.merge_origin(spec, cam, "vlm", boxes, meta={
         "model": r["model"], "latency_s": round(r["latency_s"], 1), "n": len(boxes),
-        "usage": r["usage"], "at": time.strftime("%H:%M:%S"), "cam": cam})
+        "usage": r["usage"], "at": time.strftime("%H:%M:%S"), "cam": cam,
+        # 互动可追溯: 这一轮用的现场指示与被排除项都记下来(页面上直接显示)
+        "hint": (hint or "").strip()[:300], "negatives": sorted(set(negatives or [])),
+        "keep": sorted(set(keep or []))})
     spec["source"] = "L5 大模型理解 (%s)" % r["model"]
     spec["scene"] = (d.get("scene") or "")[:200]
     SO.save_spec(spec)
-    return ("L5 大模型: %d 框 (原文 %d 个) · %.0fs · %s"
-            % (len(boxes), len(objs), r["latency_s"], spec.get("scene", "")[:60]))
+    return ("L5 大模型: %d 框 (原文 %d 个) · %.0fs%s · %s"
+            % (len(boxes), len(objs), r["latency_s"],
+               (" · 带指示「%s…」" % (hint or "").strip()[:20]) if (hint or "").strip() else "",
+               spec.get("scene", "")[:60]))
 
 
 def main() -> int:
@@ -158,8 +186,11 @@ def main() -> int:
     ap.add_argument("--cam", default="arm", choices=["arm", "local", "local2"])  # 🎥 2026-09-27 三相机
     ap.add_argument("--frame", default="", help="用指定图（缺省取视频流实帧）")
     ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--hint", default="", help="操作者现场指示(自然语言), 进提示词最高优先级段")
+    ap.add_argument("--negatives", default="", help="要排除的 label(逗号分隔), 来自操作者删除的框")
     a = ap.parse_args()
-    print("  " + main_cli(a.cam, a.frame, a.dry))
+    print("  " + main_cli(a.cam, a.frame, a.dry, hint=a.hint,
+                          negatives=[s for s in (a.negatives or "").split(",") if s.strip()]))
     return 0
 
 

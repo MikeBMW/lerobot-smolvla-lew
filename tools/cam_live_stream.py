@@ -41,6 +41,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -1466,6 +1467,9 @@ def overlay_worker(src_name: str, fps_cap: float) -> None:
                         "mode": spec.get("mode"), "source": spec.get("source"),
                         "spec_age_s": round(time.time() - spec.get("ts", 0), 1),
                         "tcp_ok": tcp is not None, "ts": time.time(),
+                        # 🖱 可交互 3D 框: 像素几何 + 稳定 id + 已删清单(页面选中/删除用)
+                        "boxes": info.get("boxes") or [], "deleted": info.get("deleted") or [],
+                        "n_3d": info.get("n_3d", 0), "n_2d": info.get("n_2d", 0),
                     }
         except Exception as e:
             with _LOCK:
@@ -1476,6 +1480,88 @@ def overlay_worker(src_name: str, fps_cap: float) -> None:
 
 
 # ── ④ 规格生成触发器（页面按钮 → 后台跑，不阻塞请求）──────────────
+def _boxes_payload(cam: str = "arm") -> dict:
+    """🖱 给页面用的可交互框清单(像素几何 + 稳定 id + 已删清单)。
+
+    优先用叠加线程刚画出来的那份(与画面同帧); 没人看流时叠加线程没跑 ⇒ 现算一遍,
+    免得好按钮点了没反应。老倪口径: 工具按钮点了必出结果。
+    """
+    cam = cam or "arm"
+    with _LOCK:
+        inf = dict(_OV_INFO.get(cam) or {})
+    if inf.get("boxes"):
+        return {"ok": True, "cam": cam, "src": "live", "ts": inf.get("ts"),
+                "boxes": inf["boxes"], "deleted": inf.get("deleted") or [],
+                "drawn": inf.get("drawn"), "n_3d": inf.get("n_3d"), "n_2d": inf.get("n_2d"),
+                "spec_age_s": inf.get("spec_age_s"), "mode": inf.get("mode")}
+    if _SO is None:
+        return {"ok": False, "cam": cam, "msg": "scene_overlay 未加载", "boxes": []}
+    try:
+        spec = _SO.load_spec()
+        # TCP 真值: 先用后台线程缓存的那份(与画面同源口径), 没有才同步读一次
+        with _LOCK:
+            tcp = _TCP_LATEST.get("tcp")
+        if tcp is None:
+            tcp = _SO.read_tcp(timeout=8, allow_ssh=True)
+        blank = np.zeros((480, 640, 3), np.uint8)
+        _img, info = _SO.draw_overlay(blank, spec, cam, tcp, None)
+        return {"ok": True, "cam": cam, "src": "computed", "boxes": info.get("boxes") or [],
+                "deleted": info.get("deleted") or [], "drawn": len(info.get("drawn") or []),
+                "n_3d": info.get("n_3d", 0), "n_2d": info.get("n_2d", 0),
+                "skipped": info.get("skipped"), "tcp_ok": tcp is not None}
+    except Exception as e:                                                        # noqa: BLE001
+        return {"ok": False, "cam": cam, "msg": str(e)[:200], "boxes": []}
+
+
+def _boxes_edit(cam: str, ids, mode: str) -> dict:
+    """🗑 删除/恢复叠加框(操作者点选后调用)。
+
+    id 是 `origin|label` (同名重复的加 #2…), 由 `scene_overlay.draw_overlay` 生成 ⇒
+    同一件东西在重新生成后 id 仍然一样, 所以"删掉的别再冒出来"能持久, 不靠内存状态。
+    """
+    cam = cam or "arm"
+    ids = [str(i) for i in (ids or []) if str(i).strip()]
+    if _SO is None:
+        return {"ok": False, "msg": "scene_overlay 未加载"}
+    if not ids and mode != "restore_all":
+        return {"ok": False, "msg": "没给框 id (先在上面的框上点一下选中)"}
+    spec = _SO.load_spec()
+    del_map = spec.setdefault("deleted", {})
+    cur = set(del_map.get(cam) or [])
+    if mode == "delete":
+        cur |= set(ids)
+    elif mode == "restore":
+        cur -= set(ids)
+    else:                                  # restore_all
+        cur = set()
+    del_map[cam] = sorted(cur)
+    spec["deleted"] = del_map
+    _SO.save_spec(spec)
+    # 立刻让页面能核对(不等下一帧叠加)
+    with _LOCK:
+        inf = _OV_INFO.get(cam)
+        if isinstance(inf, dict):
+            inf["deleted"] = sorted(cur)
+    labels = sorted(x.split("|")[-1] for x in cur)
+    return {"ok": True, "cam": cam, "deleted": sorted(cur), "n": len(cur),
+            "labels": labels,
+            "msg": ("🗑 已删除 %d 个框: %s" % (len(ids), "、".join(i.split("|")[-1] for i in ids)))
+            if mode == "delete" else
+            ("↩ 已恢复 %d 个框" % len(ids) if mode == "restore"
+             else "↩ 已恢复全部（清空删除清单）"),
+            "note": "删除只作用于本叠加层, 原始物体没动; 重新标注时会把已删项作为'不要再给'的指示传给大模型"}
+
+
+def _deleted_labels(cam: str = "arm") -> list:
+    if _SO is None:
+        return []
+    try:
+        spec = _SO.load_spec()
+        return sorted({x.split("|")[-1] for x in ((spec.get("deleted") or {}).get(cam or "arm") or [])})
+    except Exception:                                                             # noqa: BLE001
+        return []
+
+
 _GEN_STATE = {"busy": None, "last": None, "ts": 0.0}
 _GEN_KINDS = {"sim": "仿真场景投影", "scene": "场景契约", "vlm": "L5 大模型理解", "det": "真机检测"}
 # 生成卡死上限(秒): VLM 实测 5~120s, 网络最坏 300s(gen_overlay_from_vlm 的 urlopen timeout)
@@ -1483,10 +1569,12 @@ _GEN_KINDS = {"sim": "仿真场景投影", "scene": "场景契约", "vlm": "L5 �
 _GEN_STALE_S = 360.0
 
 
-def _gen_worker(kind: str, cam: str = "") -> None:
+def _gen_worker(kind: str, cam: str = "", hint: str = "") -> None:
     """生成一路的来源框。🎥 2026-09-27: 支持按相机生成 ——
     · sim/scene 走真几何投影(手眼) ⇒ **只对臂上相机成立**; 本机/USB 相机如实拒绝, 不假装画得上
     · vlm/det 是纯 2D 视觉 ⇒ 三路相机都能跑
+    💬 2026-09-28 老倪: vlm 支持带**现场指示(hint)** 重新标注 —— 人删掉错的框 + 给方向,
+       大模型按指示重标; 被删的 label 作为"不要再给"的负项一起传下去。
     """
     cam = cam or "arm"
     try:
@@ -1499,7 +1587,11 @@ def _gen_worker(kind: str, cam: str = "") -> None:
                 r = "%s: %d 框 (源 %s)" % (_GEN_KINDS[kind],
                                           len(spec["cameras"]["arm"]["boxes"]), spec["source"])
         else:
-            r = __import__("gen_overlay_from_" + ("vlm" if kind == "vlm" else "det")).main_cli(cam=cam)
+            mod = __import__("gen_overlay_from_" + ("vlm" if kind == "vlm" else "det"))
+            if kind == "vlm":
+                r = mod.main_cli(cam=cam, hint=hint, negatives=_deleted_labels(cam))
+            else:
+                r = mod.main_cli(cam=cam)
     except Exception as e:
         r = "✗ %s/%s: %s" % (kind, cam, str(e)[:180])
     with _LOCK:
@@ -1507,7 +1599,7 @@ def _gen_worker(kind: str, cam: str = "") -> None:
     print("[gen] %s/%s → %s" % (kind, cam, r), flush=True)
 
 
-def _spawn_gen(kind: str, cam: str = "") -> str:
+def _spawn_gen(kind: str, cam: str = "", hint: str = "") -> str:
     """启动一次生成。
 
     ★ 卡死自愈: VLM 走网络(DeepSeek), 单次可长达 120~300s; 若网断/进程被卡,
@@ -1526,8 +1618,9 @@ def _spawn_gen(kind: str, cam: str = "") -> str:
         if b:
             return "已有生成在跑: %s (已 %.0fs, 上限 %.0fs)" % (b, age, _GEN_STALE_S)
         _GEN_STATE.update(busy="%s/%s" % (kind, cam), ts=time.time())
-    threading.Thread(target=_gen_worker, args=(kind, cam), daemon=True).start()
-    return "已启动: %s (%s · %s)" % (_GEN_KINDS.get(kind, kind), kind, cam)
+    threading.Thread(target=_gen_worker, args=(kind, cam, hint), daemon=True).start()
+    return "已启动: %s (%s · %s)%s" % (_GEN_KINDS.get(kind, kind), kind, cam,
+                                      (" · 带指示「%s」" % hint.strip()[:40]) if (hint or "").strip() else "")
 
 
 # ── HTTP 服务 ─────────────────────────────────────────────────
@@ -2460,19 +2553,30 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "application/json; charset=utf-8",
                        json.dumps(spec, ensure_ascii=False).encode("utf-8"))
         elif p == "/gen":
-            kind = cam = ""
+            kind = cam = hint = ""
             if "?" in self.path:
                 for kv in self.path.split("?", 1)[1].split("&"):
                     if kv.startswith("kind="):
                         kind = kv.split("=", 1)[1]
                     elif kv.startswith("cam="):
                         cam = kv.split("=", 1)[1]
+                    elif kv.startswith("hint="):
+                        hint = urllib.parse.unquote_plus(kv.split("=", 1)[1])
             if _SO is None:
                 msg = "scene_overlay 未加载，叠加能力不可用"
             else:
-                msg = _spawn_gen(kind, cam) if kind in _GEN_KINDS else "未知 kind=%s" % kind
+                msg = _spawn_gen(kind, cam, hint) if kind in _GEN_KINDS else "未知 kind=%s" % kind
             self._send(200, "application/json; charset=utf-8",
                        json.dumps({"msg": msg}, ensure_ascii=False).encode("utf-8"))
+        elif p == "/boxes":
+            # 🖱 可交互框清单: 像素几何(3D 线框 8 角点 / 2D xyxy) + 稳定 id + 已删清单
+            cam = "arm"
+            if "?" in self.path:
+                for kv in self.path.split("?", 1)[1].split("&"):
+                    if kv.startswith("cam="):
+                        cam = urllib.parse.unquote_plus(kv.split("=", 1)[1])
+            self._send(200, "application/json; charset=utf-8",
+                       json.dumps(_boxes_payload(cam), ensure_ascii=False).encode("utf-8"))
         elif p == "/arm.mjpg":
             self._mjpeg("arm")
         elif p == "/local.mjpg":
@@ -2547,6 +2651,15 @@ class Handler(BaseHTTPRequestHandler):
                         if on else "🔒 已撤销授权: 现在点方向键只算目标, 机械臂不会动"})
         elif p in ("/ctl/move", "/api/ctl/move"):
             out = _ctl_move(body if isinstance(body, dict) else {})
+        elif p in ("/boxes/delete", "/api/boxes/delete"):
+            # 🗑 删除选中的叠加框(操作者点选后)
+            out = _boxes_edit(str((body or {}).get("cam") or "arm"),
+                              (body or {}).get("ids") or [], "delete")
+        elif p in ("/boxes/restore", "/api/boxes/restore"):
+            # ↩ 恢复: 给 ids 恢复这些; 不给 ids ⇒ 清空删除清单
+            _ids = (body or {}).get("ids") or []
+            out = _boxes_edit(str((body or {}).get("cam") or "arm"), _ids,
+                              "restore" if _ids else "restore_all")
         elif p in ("/api/aoi/detect", "/aoi/detect"):
             # 2026-09-28 老倪: 「增加一个请求按钮, 发出正常的检测命令, 工控机本地也可以保存图片」
             #   发的是**产线正常检测命令** POST /capture_detect(触发相机拍照 + 后台 YOLO),

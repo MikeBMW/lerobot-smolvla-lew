@@ -58,6 +58,16 @@
   a.jump{color:#67c9e0;text-decoration:none;border-bottom:1px dashed #2b6b7a}
   .toast{position:fixed;left:12px;right:12px;bottom:16px;background:#12202c;border:1px solid #24404f;
          border-radius:11px;padding:11px 13px;font-size:14px;color:#cfe8f5;display:none;z-index:50}
+  /* 🖱 3D 框交互层: SVG 精确覆盖在图像渲染区上, 坐标=图像像素 ⇒ 点框命中就是所见即所选 */
+  .cellwrap svg.bx{position:absolute;left:0;top:0;pointer-events:auto;touch-action:manipulation}
+  .cellwrap svg.bx text{pointer-events:none;font-family:inherit}
+  .bxlist{margin-top:7px;display:flex;flex-wrap:wrap;gap:6px;max-height:126px;overflow-y:auto}
+  .bxlist .it{font-size:12.5px;padding:5px 8px;border:1px solid #2b3946;border-radius:8px;background:#111a24;cursor:pointer}
+  .bxlist .it.sel{border-color:#ffd400;color:#ffd400;background:#2a2405}
+  .bxlist .it small{color:#8b98a5}
+  input.hint{width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;padding:9px 11px;border-radius:9px;
+             border:1px solid #2b3946;background:#0b1219;color:#e6edf3;margin-top:5px}
+  input.hint:focus{outline:none;border-color:#00d4aa}
   /* 全屏: 只留画面(叠加图满屏), 点画面/ESC 退出 */
   body.m_full{overflow:hidden}
   body.m_full header,body.m_full .bar{display:none}
@@ -112,8 +122,9 @@
     <h2>🦾 臂上 D405 <span id="camName">—</span></h2>
     <div class="stage" id="stage" onclick="toggleFull()">
       <div class="cellwrap" id="wrapOv">
-        <div class="tag">叠加图（仿真/大模型/检测框画在真图上）</div>
+        <div class="tag">叠加图（3D 线框/2D 框画在真图上 · 点框可选中）</div>
         <img id="imgOv" alt="叠加图">
+        <svg class="bx" id="svgOv" viewBox="0 0 640 480" preserveAspectRatio="none"></svg>
       </div>
       <div class="cellwrap" id="wrapRaw" style="display:none">
         <div class="tag">原始图（相机裸画面）</div>
@@ -154,6 +165,41 @@
         绿框 = 仿真场景投影（物体 3D → 手眼 T_base_cam → 实时 TCP 真值 → 像素，已验 8 位姿 5.2px≈3.1mm）<br>
         蓝框 = L5 大模型看图理解　红框 = 真机 YOLO 检测　三源颜色区分、互不覆盖<br>
         ⚠️ 仿真/场景契约<b>只对臂上相机有效</b>（只有它有手眼标定）—— 本页只显示这一路，就是为这个。
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🖱 3D 框交互 <span>点框选中 · 删错的 · 提示词重标</span></h2>
+    <div class="pane">
+      <div class="kv"><span class="k">画面框</span>
+        <span><span class="lg" style="background:#22c55e"></span>3D 线框 <b id="n3d">0</b></span>
+        <span><span class="lg" style="background:#888"></span>2D 框 <b id="n2d">0</b></span>
+        <span>已选 <b id="nSel">0</b></span>
+        <span>已删 <b id="nDel">0</b></span>
+      </div>
+      <div class="bxlist" id="bxList"><span style="color:#8b98a5;font-size:13px">等待框数据…</span></div>
+      <div class="row">
+        <button class="sm" id="bxDel" onclick="bxAct('delete')">🗑 删除选中</button>
+        <button class="sm" onclick="bxAct('restore')">↩ 恢复选中</button>
+        <button class="sm" onclick="bxAct('restore_all')">♻ 恢复全部删除</button>
+        <button class="sm" onclick="bxClear()">✖ 取消选择</button>
+      </div>
+      <div class="kv" style="margin-top:10px"><span class="k">提示词</span>
+        <span style="color:#8b98a5;font-size:13px">给大模型方向（只标什么/不标什么/怎么判）</span></div>
+      <input class="hint" id="hintTxt" placeholder="例：只标光模块和插槽，不要标托盘整体；绿色端头朝下的算光模块">
+      <div class="row">
+        <button class="go sm" id="bxVlm" onclick="bxRehint()">🧠 按提示重新标注(L5)</button>
+        <button class="sm" onclick="gen('sim'); setTimeout(loadBoxes, 4000);">🎯 重建仿真元素</button>
+        <button class="sm" onclick="gen('det'); setTimeout(loadBoxes, 3000);">🔍 重跑 YOLO</button>
+      </div>
+      <div class="kv"><span class="k">结果</span><span id="bxMsg" style="color:#8b98a5;font-size:13px">—</span></div>
+      <div class="kv"><span class="k">上轮指示</span><span id="vlmHint" style="color:#8b98a5;font-size:13px">—</span></div>
+      <div class="note">
+        · 点画面上任意框(或下面列表里的编号)=选中，再点一次取消；选中的框在图上变黄虚线<br>
+        · 删除只作用于叠加层(真机物体没动)；被删的 label 会在重新标注时作为“不要再给”的指示传给大模型<br>
+        · 3D 线框 = 物体 base 系 3D 盒的 8 角点按手眼+实时 TCP 投到像素（近粗远细，所以能看出进深）；<br>
+        &nbsp;&nbsp;2D 框 = 大模型/YOLO 只给了像素框（没有 3D，不假装有线框）
       </div>
     </div>
   </div>
@@ -288,6 +334,14 @@ function paintSpec(){
   $('he').textContent = inf.tcp_ok ? '已标定 · 实时' : '—';
   $('skip').textContent = (inf.skipped || []).map(function(x){ return x[0] + '(' + x[1] + ')'; }).join(' · ') || '—';
   $('genS').textContent = (SPEC._gen && SPEC._gen.busy) ? ('跑: ' + SPEC._gen.busy) : ((SPEC._gen && SPEC._gen.last) || '空闲');
+  var sm = (SPEC.sources || {}).vlm || {};
+  var el = $('vlmHint');
+  if (el){
+    el.textContent = (sm.at ? ('@' + sm.at + ' ') : '') + (sm.hint ? ('「' + sm.hint + '」') : '无指示')
+      + ' · 排除: ' + ((sm.negatives || []).join('、') || '无')
+      + (sm.model ? (' · ' + sm.model) : '');
+  }
+  if (SPEC.scene) { $('bxMsg').title = SPEC.scene; }
 }
 
 // ── 真值带: 帧龄/拍照时间/速率/单帧 + 不上线就如实说(un不冒充"实时") ──
@@ -396,12 +450,161 @@ function copyUrls(){
   copyText(o.join('\n'), '本路地址已复制（其它通道在工位总览）');
 }
 
+// ══════════ 🖱 3D 框交互: 选中 / 删除 / 提示词重新标注 ══════════
+// 口径: 叠加线程每帧把"这帧实际画出来的框 + 像素几何 + 稳定 id"写进 /boxes;
+//       本层用 SVG **精确覆盖在渲染出的图像区**上(坐标=图像像素) ⇒ 点框命中即所见即所选。
+//       3D 框点击区用 8 角点的凸包(形状跟画在 JPEG 里的线框一致), 2D 框用矩形。
+var BX = [], BXINFO = {}, SEL = {};
+
+// id/标签会被塞进 HTML 属性 ⇒ 先过一道白名单, 别让模型给的怪字符把页面搞坏
+function safeId(s){ return String(s == null ? '' : s).replace(/[^\w\u4e00-\u9fa5#·\-|. ]/g, ''); }
+function escHtml(s){
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function syncSvg(){
+  var s = $('svgOv'), im = $('imgOv');
+  if (!s || !im) return;
+  var nw = im.naturalWidth || 640, nh = im.naturalHeight || 480;
+  var bw = im.clientWidth, bh = im.clientHeight;
+  if (!bw || !bh) return;
+  var sc = Math.min(bw / nw, bh / nh);            // object-fit:contain 的实际渲染尺寸
+  s.style.left = ((bw - nw * sc) / 2) + 'px';
+  s.style.top  = ((bh - nh * sc) / 2) + 'px';
+  s.style.width  = (nw * sc) + 'px';
+  s.style.height = (nh * sc) + 'px';
+  s.setAttribute('viewBox', '0 0 ' + nw + ' ' + nh);
+}
+function hull(pts){                                // 凸包(点数少, 直算)
+  pts = pts.slice().sort(function(a, b){ return a[0] - b[0] || a[1] - b[1]; });
+  function cr(o, a, b){ return (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]); }
+  var lo = [], up = [], i;
+  for (i = 0; i < pts.length; i++){ while (lo.length >= 2 && cr(lo[lo.length-2], lo[lo.length-1], pts[i]) <= 0) lo.pop(); lo.push(pts[i]); }
+  for (i = pts.length - 1; i >= 0; i--){ while (up.length >= 2 && cr(up[up.length-2], up[up.length-1], pts[i]) <= 0) up.pop(); up.push(pts[i]); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
+function bColor(b){ var c = b.color || [200,200,200]; return 'rgb(' + c[2] + ',' + c[1] + ',' + c[0] + ')'; }
+function bShape(b){
+  var pts = (b.corners || []).filter(Boolean);
+  if (b.kind === '3d' && pts.length >= 4) return { poly: hull(pts) };
+  return { box: b.xyxy };
+}
+function ptsStr(p){ return p.map(function(q){ return q[0].toFixed(1) + ',' + q[1].toFixed(1); }).join(' '); }
+function renderSvg(){
+  var s = $('svgOv'); if (!s) return;
+  syncSvg();
+  var out = [];
+  BX.forEach(function(b, i){
+    var sh = bShape(b), sel = !!SEL[b.id], col = bColor(b);
+    var d = sel ? 'stroke="#ffd400" stroke-width="3" stroke-dasharray="7 4" fill="rgba(255,212,0,.13)"'
+                : 'stroke="' + col + '" stroke-width="1.6" stroke-dasharray="4 3" fill="rgba(0,0,0,0)"';
+    var hit = 'fill="rgba(0,0,0,0.001)" stroke="rgba(255,255,255,0.001)" stroke-width="16" '
+            + 'style="cursor:pointer" onclick="pick(&quot;' + safeId(b.id) + '&quot;,event)"';
+    if (sh.poly){
+      out.push('<polygon points="' + ptsStr(sh.poly) + '" ' + d + '/>');
+      out.push('<polygon points="' + ptsStr(sh.poly) + '" ' + hit + '/>');
+    } else {
+      var x = sh.box, w = Math.max(6, x[2] - x[0]), h = Math.max(6, x[3] - x[1]);
+      out.push('<rect x="' + x[0] + '" y="' + x[1] + '" width="' + w + '" height="' + h + '" ' + d + '/>');
+      out.push('<rect x="' + x[0] + '" y="' + x[1] + '" width="' + w + '" height="' + h + '" ' + hit + '/>');
+    }
+    var ax = Math.max(10, sh.box ? sh.box[0] : sh.poly[0][0]);
+    var ay = Math.max(14, (sh.box ? sh.box[1] : Math.min.apply(null, sh.poly.map(function(q){ return q[1]; }))) - 6);
+    out.push('<circle cx="' + (ax + 8) + '" cy="' + (ay - 6) + '" r="9" fill="' + (sel ? '#ffd400' : '#000000cc')
+      + '" stroke="' + (sel ? '#000' : '#ffffff88') + '"/>');
+    out.push('<text x="' + (ax + 8) + '" y="' + (ay - 2) + '" font-size="11" font-weight="700" text-anchor="middle" fill="'
+      + (sel ? '#000' : '#ffffff') + '">' + (i + 1) + '</text>');
+  });
+  s.innerHTML = out.join('');
+}
+function selIds(){ return Object.keys(SEL).filter(function(k){ return SEL[k]; }); }
+function paintPick(){
+  var ids = selIds();
+  $('nSel').textContent = ids.length;
+  var del = (BXINFO.deleted || []);
+  $('nDel').textContent = del.length;
+  var html = [];
+  BX.forEach(function(b, i){
+    var z = (b.z_mm == null ? '' : ' <small>z=' + b.z_mm + 'mm</small>');
+    html.push('<span class="it ' + (SEL[b.id] ? 'sel' : '') + '" onclick="pick(&quot;' + safeId(b.id) + '&quot;)">'
+      + (i + 1) + ' ' + escHtml(b.label) + ' <small>' + escHtml(b.kind) + '</small>' + z + '</span>');
+  });
+  if (!BX.length) html.push('<span style="color:#8b98a5;font-size:13px">这帧没有画出来的框（看下面的跳过原因）</span>');
+  if (del.length){
+    html.push('<span style="color:#8b98a5;font-size:13px;width:100%">已删(点一下恢复)：</span>');
+    del.forEach(function(id){
+      html.push('<span class="it" style="border-color:#5a2b2b;color:#c98a8a" onclick="bxAct(&quot;restore&quot;,[&quot;'
+        + safeId(id) + '&quot;])">' + escHtml(String(id).split('|')[1]) + '</span>');
+    });
+  }
+  $('bxList').innerHTML = html.join('');
+  $('bxDel').disabled = !ids.length;
+}
+async function loadBoxes(){
+  try {
+    var r = await fetch(API + '/boxes?cam=' + encodeURIComponent(CAM) + '&t=' + Date.now(), { cache: 'no-store' });
+    var j = await r.json();
+    BX = (j.boxes || []); BXINFO = j;
+    $('n3d').textContent = (j.n_3d == null ? 0 : j.n_3d);
+    $('n2d').textContent = (j.n_2d == null ? 0 : j.n_2d);
+    renderSvg(); paintPick();
+  } catch (e) { /* 取不到就保持上一帧, 不闪 */ }
+}
+function pick(id, ev){
+  if (ev) { ev.stopPropagation(); }
+  if (SEL[id]) delete SEL[id]; else SEL[id] = true;
+  renderSvg(); paintPick();
+  toast(SEL[id] ? ('已选中 ' + id.split('|')[1] + '（点 🗑 删除选中）') : ('已取消 ' + id.split('|')[1]), 2200);
+}
+function bxClear(){ SEL = {}; renderSvg(); paintPick(); }
+async function bxAct(kind, ids){
+  ids = ids || selIds();
+  if (kind !== 'restore_all' && !ids.length){ toast('先点画面上的框选中(或点列表编号)', 4200); return; }
+  $('bxMsg').textContent = '下发中…';
+  try {
+    var r = await fetch(API + '/boxes/' + kind, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cam: CAM, ids: ids })
+    });
+    var j = await r.json();
+    $('bxMsg').textContent = (j.msg || ('HTTP ' + r.status)) + (j.note ? (' · ' + j.note) : '');
+    toast(j.msg || ('HTTP ' + r.status), 5000);
+    SEL = {};
+    setTimeout(loadBoxes, 700);                    // 叠加线程下一帧就按新清单画
+  } catch (e) {
+    $('bxMsg').textContent = '❌ 请求失败: ' + e.message;
+    toast('❌ 请求失败: ' + e.message, 6000);
+  }
+}
+async function bxRehint(){
+  var h = ($('hintTxt').value || '').trim();
+  var b = $('bxVlm'); b.disabled = true; var old = b.textContent; b.textContent = '⏳ 大模型重标中…';
+  $('bxMsg').textContent = '已请求 L5 重新标注（cam=' + CAM + '）' + (h ? ('，带指示「' + h.slice(0, 40) + '」') : '，无指示用默认口径');
+  try {
+    var r = await fetch(API + '/gen?kind=vlm&cam=' + encodeURIComponent(CAM) + '&hint=' + encodeURIComponent(h));
+    var j = await r.json();
+    $('bxMsg').textContent = 'HTTP ' + r.status + ' · ' + (j.msg || '（端点无 msg）');
+    toast(j.msg || '端点已回应', 6000);
+  } catch (e) {
+    $('bxMsg').textContent = '❌ 触发失败: ' + e.message;
+  }
+  setTimeout(function(){ b.disabled = false; b.textContent = old; loadBoxes(); pollSpec(); }, 12000);
+}
+
 $('jumpStation').href = stationUrl();
 $('jumpStation2').href = stationUrl();
 setView('ov');
-poll(); pollSpec();
+poll(); pollSpec(); loadBoxes();
 setInterval(poll, 2000);
 setInterval(pollSpec, 5000);
+setInterval(loadBoxes, 1500);                       // 框几何每 1.5s 对齐一次(与画面同源口径)
+window.addEventListener('resize', function(){ syncSvg(); });
+window.addEventListener('orientationchange', function(){ setTimeout(syncSvg, 300); });
+if (window.ResizeObserver && $('imgOv')) { try { new ResizeObserver(syncSvg).observe($('imgOv')); } catch (e) {} }
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape' && !FULL) { bxClear(); }
+});
 </script>
 </body>
 </html>

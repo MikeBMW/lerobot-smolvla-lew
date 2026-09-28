@@ -184,6 +184,41 @@ def box3d_to_xyxy(center, size, K, X_cam2tcp, tcp7, R_box=None):
     return [float(u.min()), float(v.min()), float(u.max()), float(v.max())]
 
 
+def box3d_corners(center, size, R_box=None) -> np.ndarray:
+    """3D 盒(base 系中心 m + 尺寸 mm) → 8 个角点 (base 系, m)。
+
+    角点顺序按二进制位 (i,j,k) i=+x/j=+y/k=+z ⇒ index = 4*i + 2*j + k。
+    这样 12 条棱的索引表是固定的 EDGES, 画线框不用每次重算。
+    """
+    c = np.asarray(center, float)
+    s = np.asarray(size, float) / 1000.0 / 2.0                # mm → 半边长 m
+    R = np.eye(3) if R_box is None else np.asarray(R_box, float)
+    bits = np.array([[i, j, k] for i in (0, 1) for j in (0, 1) for k in (0, 1)], float)
+    loc = (bits * 2.0 - 1.0) * s                              # ±s
+    return c + (R @ loc.T).T
+
+
+# 12 条棱（按上面的位序，差一位就相连）
+EDGES = [(0, 1), (0, 2), (0, 4), (1, 3), (1, 5), (2, 3), (2, 6), (3, 7), (4, 5), (4, 6), (5, 7), (6, 7)]
+
+
+def base_to_cam(P_base, X_cam2tcp, tcp7) -> np.ndarray:
+    """base 系点 → 相机系点（要判 z<=0 的角点, 投不了就得整盒丢弃）"""
+    R_g = quat_to_R(np.asarray(tcp7, float)[3:7])
+    t_g = np.asarray(tcp7, float)[:3]
+    R_x, t_x = X_cam2tcp[:3, :3], X_cam2tcp[:3, 3]
+    P_tcp = (R_g.T @ (np.asarray(P_base, float) - t_g).T).T
+    return (R_x.T @ (P_tcp - t_x).T).T
+
+
+def cam_to_px(P_cam, K) -> np.ndarray:
+    z = np.asarray(P_cam, float)[:, 2]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        u = K["fx"] * np.asarray(P_cam, float)[:, 0] / z + K["cx"]
+        v = K["fy"] * np.asarray(P_cam, float)[:, 1] / z + K["cy"]
+    return np.stack([u, v], 1)
+
+
 def px_to_base_ray(u, v, K, X_cam2tcp, tcp7, plane_z):
     """像素 + 平面 z=plane_z → base 系交点（config 里写明的反投影口径）"""
     d_cam = np.array([(u - K["cx"]) / K["fx"], (v - K["cy"]) / K["fy"], 1.0])
@@ -268,39 +303,101 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
     cam_spec = (spec.get("cameras") or {}).get(cam) or {}
     boxes = cam_spec.get("boxes") or []
 
-    drawn, skipped = [], []
+    he_ok = bool(he["ok"] and tcp7 is not None)
+    deleted = set((spec.get("deleted") or {}).get(cam) or [])
+    _ids = {}
+
+    def _bid(b):
+        base = "%s|%s" % (b.get("origin", "?"), b.get("label", "?"))
+        k = _ids.get(base, 0) + 1
+        _ids[base] = k
+        return base if k == 1 else "%s#%d" % (base, k)
+
+    drawn, skipped, out_boxes = [], [], []
     for b in boxes:
-        xyxy = b.get("xyxy")
-        if xyxy is None and b.get("box3d"):
-            if not (he["ok"] and tcp7 is not None):
-                skipped.append((b.get("label", "?"), "无手眼/TCP"))
-                continue
-            xyxy = box3d_to_xyxy(b["box3d"]["center"], b["box3d"].get("size", [40, 16, 12]),
-                                 K, he["X"], tcp7, b["box3d"].get("R"))
-            if xyxy is None:
-                skipped.append((b.get("label", "?"), "投影在视野外"))
-                continue
-        if not xyxy:
-            skipped.append((b.get("label", "?"), "无几何"))
+        bid = _bid(b)
+        label = b.get("label", "?")
+        if bid in deleted:
+            skipped.append((label, "用户删除"))
             continue
-        x1, y1, x2, y2 = [float(t) for t in xyxy]
-        # 裁剪报告（框出画是明确口径，不假装看得见）
-        clipped = (x1 < 0) or (y1 < 0) or (x2 > W) or (y2 > H)
-        x1, y1 = max(0, min(W - 1, x1)), max(0, min(H - 1, y1))
-        x2, y2 = max(0, min(W - 1, x2)), max(0, min(H - 1, y2))
-        if x2 - x1 < 2 or y2 - y1 < 2:
-            skipped.append((b.get("label", "?"), "框退化(视锥外)"))
+        col, _zname = ORIGIN_STYLE.get(b.get("origin", "det"), ((200, 200, 200), "?"))
+        info = {"id": bid, "label": label, "origin": b.get("origin"), "conf": b.get("conf"),
+                "color": [int(c) for c in col]}
+
+        # ── 3D 盒: 画真三维线框(12 条棱), 近粗远细 ⇒ 人眼能看出进深 ──
+        if b.get("box3d"):
+            if not he_ok:
+                skipped.append((label, "无手眼/TCP"))
+                continue
+            b3 = b["box3d"]
+            C = box3d_corners(b3["center"], b3.get("size", [40, 16, 12]), b3.get("R"))
+            Pcam = base_to_cam(C, he["X"], tcp7)
+            zc = Pcam[:, 2]
+            uv = cam_to_px(Pcam, K)
+            fin = (zc > 0.05) & np.isfinite(uv).all(1)
+            if fin.sum() < 8:
+                skipped.append((label, "角点不足(相机后/贴面) ⇒ 视锥外"))
+                continue
+            xs, ys = uv[fin, 0], uv[fin, 1]
+            if xs.max() < 0 or ys.max() < 0 or xs.min() > W or ys.min() > H:
+                skipped.append((label, "整盒在画面外(视锥外)"))
+                continue
+            zc_med = float(np.median(zc[fin]))
+            edges = []
+            for (i, j) in EDGES:
+                if not (fin[i] and fin[j]):
+                    continue
+                edges.append(((i, j), float((zc[i] + zc[j]) / 2.0)))
+            edges.sort(key=lambda t: -t[1])                       # 远的先画
+            for (i, j), ze in edges:
+                near = ze <= zc_med
+                c_e = tuple(int(min(255, v * (1.0 if near else 0.55))) for v in col)
+                cv2.line(img, (int(round(uv[i, 0])), int(round(uv[i, 1]))),
+                         (int(round(uv[j, 0])), int(round(uv[j, 1]))), c_e, 2 if near else 1,
+                         cv2.LINE_AA)
+            for i in range(8):                                    # 角点小点(近点大)
+                if fin[i] and -5 <= uv[i, 0] <= W + 5 and -5 <= uv[i, 1] <= H + 5:
+                    r = 3 if zc[i] <= zc_med else 2
+                    cv2.circle(img, (int(round(uv[i, 0])), int(round(uv[i, 1]))), r, col, -1,
+                               cv2.LINE_AA)
+            top = int(np.argmin(np.where(fin, uv[:, 1], 1e9)))
+            tx, ty = float(uv[top, 0]), float(uv[top, 1])
+            xyxy = [float(np.clip(xs.min(), 0, W - 1)), float(np.clip(ys.min(), 0, H - 1)),
+                    float(np.clip(xs.max(), 0, W - 1)), float(np.clip(ys.max(), 0, H - 1))]
+            clipped = bool(xs.min() < 0 or ys.min() < 0 or xs.max() > W or ys.max() > H)
+            info.update(kind="3d", corners=[[round(float(uv[i, 0]), 1), round(float(uv[i, 1]), 1)]
+                                            if fin[i] else None for i in range(8)],
+                        xyxy=xyxy, z_mm=round(zc_med * 1000, 1), clipped=clipped,
+                        size_mm=list(b3.get("size", [])),
+                        _anchor=[round(tx, 1), round(ty, 1)])
+        # ── 2D 框(det/vlm 只有像素框): 保持矩形, 无色框材质 ──
+        elif b.get("xyxy"):
+            x1, y1, x2, y2 = [float(t) for t in b["xyxy"]]
+            clipped = (x1 < 0) or (y1 < 0) or (x2 > W) or (y2 > H)
+            x1, y1 = max(0, min(W - 1, x1)), max(0, min(H - 1, y1))
+            x2, y2 = max(0, min(W - 1, x2)), max(0, min(H - 1, y2))
+            if x2 - x1 < 2 or y2 - y1 < 2:
+                skipped.append((label, "框退化(视锥外)"))
+                continue
+            # 2D 框: 四角也用细线连成"面框"(虚线感), 与 3D 线框区分
+            cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), col, 2)
+            info.update(kind="2d", corners=None, xyxy=[x1, y1, x2, y2], z_mm=None, clipped=bool(clipped))
+        else:
+            skipped.append((label, "无几何"))
             continue
-        col, zname = ORIGIN_STYLE.get(b.get("origin", "det"), ((200, 200, 200), "?"))
-        cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), col, 2)
-        tag = "%s%s" % (b.get("label", "?"), (" %.2f" % b["conf"]) if b.get("conf") is not None else "")
+
+        tag = "%s%s" % (label, (" %.2f" % b["conf"]) if b.get("conf") is not None else "")
         (tw, th), _ = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-        cv2.rectangle(img, (int(x1), max(0, int(y1) - th - 6)),
-                      (int(x1) + tw + 6, int(y1)), col, -1)
-        cv2.putText(img, tag, (int(x1) + 3, max(12, int(y1) - 4)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
-        drawn.append({"label": b.get("label"), "origin": b.get("origin"), "xyxy": [x1, y1, x2, y2],
-                      "clipped": bool(clipped)})
+        anch = info.get("_anchor") or [info["xyxy"][0], info["xyxy"][1]]
+        ax = max(0.0, min(W - 1.0, float(anch[0])))
+        ay = max(float(th + 6), float(anch[1]))
+        info.pop("_anchor", None)
+        cv2.rectangle(img, (int(ax), int(ay) - th - 6), (int(min(W, ax + tw + 6)), int(ay)), col, -1)
+        cv2.putText(img, tag, (int(ax) + 3, int(ay) - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    (0, 0, 0), 1, cv2.LINE_AA)
+        drawn.append({"id": bid, "label": label, "origin": b.get("origin"),
+                      "xyxy": info["xyxy"], "clipped": info["clipped"], "kind": info["kind"]})
+        out_boxes.append(info)
 
     # ── 真值带（画面上必须能自证状态）──
     band = []
@@ -314,12 +411,20 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
                 % (sum(1 for d in drawn if d["origin"] == "sim"),
                    sum(1 for d in drawn if d["origin"] == "vlm"),
                    sum(1 for d in drawn if d["origin"] == "det"), len(drawn)))
+    n3 = sum(1 for d in drawn if d.get("kind") == "3d")
+    band.append("3D 线框 %d · 2D 框 %d · 用户已删 %d %s"
+                % (n3, len(drawn) - n3, len(deleted),
+                   ("(可点框选中/删除)" if drawn else "")))
+    if deleted:
+        band.append("已删: " + ", ".join(sorted(x.split("|")[-1] for x in deleted))[:110])
     y = H - 8 - 16 * (len(band) - 1)
     cv2.rectangle(img, (0, max(0, y - 18)), (W, H), (16, 22, 30), -1)
     for i, t in enumerate(band):
         cv2.putText(img, t, (8, max(14, y + i * 16)), cv2.FONT_HERSHEY_SIMPLEX, 0.42,
                     (230, 237, 243), 1, cv2.LINE_AA)
-    return img, {"drawn": drawn, "skipped": skipped, "intrinsics_est": K.get("est", False)}
+    return img, {"drawn": drawn, "skipped": skipped, "intrinsics_est": K.get("est", False),
+                 "boxes": out_boxes, "deleted": sorted(deleted),
+                 "n_3d": n3, "n_2d": len(drawn) - n3}
 
 
 # ══════════════════════ 规格生成 ══════════════════════
