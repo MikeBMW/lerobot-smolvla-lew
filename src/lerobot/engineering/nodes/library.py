@@ -3474,7 +3474,7 @@ _reg("ss_lat", ["潜空间", "潜空", "潜空-流形"],
     "🧮 潜空-流形 — 潜空间/世界模型流形标定 (原「潜空间 · 世界模型流形标定」): 维度(latent_dim 4D=位置3+预测力1)/类别(manifold_kind flat-linear, flow_kind const-vel)/速度场 prior_A; PCA 实测观测有效维 vs 标定; 潜坐标+速度场取引擎轨迹真实量; 输入含 L4 流形(接触/性能)连线 (地图导航视角; 源码 calibration_layer.py LATENT_CALIB)",
     node_ss_lat)
 
-_EXTERNAL_LOC["ss_lat"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"), 58, "LATENT_CALIB")
+_EXTERNAL_LOC["ss_lat"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"), 55, "LATENT_CALIB")
 
 # 🧮 流形层 (2026-09-03 老倪: 光模块精密插拔 = 高维状态空间的低维流形 —
 #   接触流形=插拔安全通道(沿流形推进=测地线, 偏离→引脚弯曲), 性能流形=光耦合
@@ -4164,7 +4164,7 @@ _reg("ss_test", ["Test"],
 
 _EXTERNAL_LOC["ss_feature"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 47, "FEATURES = [")
 
-_EXTERNAL_LOC["ss_test"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 111, "class VerificationLayer")
+_EXTERNAL_LOC["ss_test"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 123, "class VerificationLayer")  # 行号按真源实测(2026-09-29)
 
 # 🅰️🅱️🅾️ 通用算子 A/B/C (2026-09-10 老倪: L2 原子技能行最左侧万能节点 — L4 动态参数更新)
 _reg("ssa", ["通用算子 A", "参数写入"],
@@ -4179,11 +4179,11 @@ _reg("ssc", ["通用算子 C", "参数校验"],
      "🅾️ 通用算子 C · 参数校验 (VALIDATE) — 🛡 安全限值闸 (力/速度/位姿), 越界拒绝回退 (源码 node_logic.py node_ss_abc)",
      node_ss_abc)
 
-_EXTERNAL_LOC["ssa"] = (os.path.abspath(__file__), 3900, "def node_ss_abc(ctx):")
+_EXTERNAL_LOC["ssa"] = (os.path.abspath(__file__), 3533, "def node_ss_abc(ctx):")  # 行号按真源实测
 
-_EXTERNAL_LOC["ssb"] = (os.path.abspath(__file__), 3900, "def node_ss_abc(ctx):")
+_EXTERNAL_LOC["ssb"] = (os.path.abspath(__file__), 3533, "def node_ss_abc(ctx):")  # 行号按真源实测
 
-_EXTERNAL_LOC["ssc"] = (os.path.abspath(__file__), 3900, "def node_ss_abc(ctx):")
+_EXTERNAL_LOC["ssc"] = (os.path.abspath(__file__), 3533, "def node_ss_abc(ctx):")  # 行号按真源实测
 
 # ═══ 📡/📈/🖥 旁路真机感知 (2026-09-16 老倪: 旁路接控制台可视化 + 真机信号节点) ═══
 def _bypass_src_module():
