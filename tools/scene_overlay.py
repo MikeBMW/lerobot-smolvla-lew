@@ -73,6 +73,7 @@ ORIGIN_STYLE = {
     "det": ((60, 60, 235), "真机检测"),      # 红
     "human": ((200, 200, 200), "人工"),
     "l5corners": ((0, 200, 255), "L5 四角+槽位"),   # 橙黄(2026-09-28 四角光模块/14槽位几何标注)
+    "meas": ((230, 0, 230), "实测长方体"),          # 紫(2026-09-28 深度实测的 3D 长方体: 光模块)
 }
 
 
@@ -463,8 +464,9 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
         for k in ("frame_age", "tcp", "handeye", "note"):
             if extra.get(k):
                 band.append(str(extra[k]))
-    band.append("框: 仿真=%s 大模型=%s 检测=%s (共%d)"
+    band.append("框: 仿真=%s 量测=%s 大模型=%s 检测=%s (共%d)"
                 % (sum(1 for d in drawn if d["origin"] == "sim"),
+                   sum(1 for d in drawn if d["origin"] == "meas"),
                    sum(1 for d in drawn if d["origin"] == "vlm"),
                    sum(1 for d in drawn if d["origin"] == "det"), len(drawn)))
     n3 = sum(1 for d in drawn if d.get("kind") == "3d")
