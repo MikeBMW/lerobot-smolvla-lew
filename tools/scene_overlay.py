@@ -213,6 +213,12 @@ def box3d_corners(center, size, R_box=None) -> np.ndarray:
 
 # 12 条棱（按上面的位序，差一位就相连）
 EDGES = [(0, 1), (0, 2), (0, 4), (1, 3), (1, 5), (2, 3), (2, 6), (3, 7), (4, 5), (4, 6), (5, 7), (6, 7)]
+# 🎨 面染色总开关 (A/B 取证用): 本机近乎正俯视 ⇒ 只画线框读不出体积, 见 draw_overlay 里说明。
+#    留这个开关是为了**同帧 A/B**: 同一输入帧渲染两遍(开/关)做差, 才能证明染色真的落笔
+#    (跨帧比对会被机械臂运动淹没; 2026-09-28 外部复核就吃过这个亏)。
+_FILL_ON = os.environ.get("ZMAX_FILL", "1") != "0"
+FILL_ALPHA = float(os.environ.get("ZMAX_FILL_ALPHA", "0.22"))    # 整体轮廓
+FILL_TOP_ALPHA = float(os.environ.get("ZMAX_FILL_TOP_ALPHA", "0.32"))  # 顶面加浓(俯视必见 ⇒ 体积感来源)
 
 
 def base_to_cam(P_base, X_cam2tcp, tcp7) -> np.ndarray:
@@ -361,17 +367,21 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
             #   照仿真 3D 视图的做法给"体"上色: 整体轮廓淡填 + 顶面加浓 → 两色调出体积感。
             #   顶面 = k=1 的四个角点 (index = 4i+2j+k ⇒ 1,3,7,5); 该面朝上, 俯视时一定看得见。
             pts_all = uv[fin].astype(np.int32)
-            if len(pts_all) >= 4:
+            if _FILL_ON and len(pts_all) >= 4:
+                # 大盒(台面 429×653mm ≈ 14 万 px)按面积自动减淡: 否则整屏糊成一块绿, 反而看不清东西
+                _area = float(cv2.contourArea(cv2.convexHull(pts_all)))
+                _k = 1.0 if _area < 8000.0 else max(0.45, 8000.0 / _area)
+                _a1, _a2 = FILL_ALPHA * _k, FILL_TOP_ALPHA * _k
                 _ov = img.copy()
                 cv2.fillConvexPoly(_ov, cv2.convexHull(pts_all),
                                    tuple(int(v * 0.55) for v in col), cv2.LINE_AA)
-                cv2.addWeighted(_ov, 0.16, img, 0.84, 0, img)
+                cv2.addWeighted(_ov, _a1, img, 1.0 - _a1, 0, img)
                 _quad = [1, 3, 7, 5]
                 if all(fin[q] for q in _quad):
                     _tp = np.array([[int(round(uv[q, 0])), int(round(uv[q, 1]))] for q in _quad], np.int32)
                     _ov2 = img.copy()
                     cv2.fillConvexPoly(_ov2, _tp, tuple(int(v * 0.8) for v in col), cv2.LINE_AA)
-                    cv2.addWeighted(_ov2, 0.18, img, 0.82, 0, img)
+                    cv2.addWeighted(_ov2, _a2, img, 1.0 - _a2, 0, img)
             edges = []
             for (i, j) in EDGES:
                 if not (fin[i] and fin[j]):
@@ -398,7 +408,12 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
                                             if fin[i] else None for i in range(8)],
                         xyxy=xyxy, z_mm=round(zc_med * 1000, 1), clipped=clipped,
                         size_mm=list(b3.get("size", [])),
-                        _anchor=[round(tx, 1), round(ty, 1)])
+                        # 🏷 标签要放盒子**外面**(它是不透明底片, 压上去就把染色和棱线全盖死 ——
+                        #    2026-09-28 实测: 小盒凸包内 100% 被自己的标签盖住 ⇒ 体积感白做)。
+                        #    这里只报几何, 具体放上/放下由下面的贴标签代码决定。
+                        _anchor=None,
+                        _box=[round(float((xs.min() + xs.max()) / 2.0), 1),
+                              round(float(ys.min()), 1), round(float(ys.max()), 1)])
         # ── 2D 框(det/vlm 只有像素框): 保持矩形, 无色框材质 ──
         elif b.get("xyxy"):
             x1, y1, x2, y2 = [float(t) for t in b["xyxy"]]
@@ -417,9 +432,21 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
 
         tag = "%s%s" % (label, (" %.2f" % b["conf"]) if b.get("conf") is not None else "")
         (tw, th), _ = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-        anch = info.get("_anchor") or [info["xyxy"][0], info["xyxy"][1]]
-        ax = max(0.0, min(W - 1.0, float(anch[0])))
-        ay = max(float(th + 6), float(anch[1]))
+        _bx = info.pop("_box", None)
+        if _bx:                                   # 3D 盒: 标签放盒子外(上/下) + 引线
+            _cx, _ytop, _ybot = _bx
+            ax = max(2.0, min(W - tw - 8.0, _cx - tw / 2.0))
+            _xc = int(ax + tw / 2.0)
+            if _ytop > th + 14.0:                 # 上方有地方 ⇒ 放上面(底片底边 = ay)
+                ay = float(_ytop) - 5.0
+                cv2.line(img, (_xc, int(ay)), (_xc, int(_ytop)), col, 1, cv2.LINE_AA)
+            else:                                 # 顶到画面边(末端/TCP 常在 y≈0) ⇒ 放下面
+                ay = min(float(H) - 2.0, _ybot + th + 7.0)
+                cv2.line(img, (_xc, int(ay) - th - 6), (_xc, int(_ybot)), col, 1, cv2.LINE_AA)
+        else:
+            anch = info.get("_anchor") or [info["xyxy"][0], info["xyxy"][1]]
+            ax = max(0.0, min(W - 1.0, float(anch[0])))
+            ay = max(float(th + 6), float(anch[1]))
         info.pop("_anchor", None)
         cv2.rectangle(img, (int(ax), int(ay) - th - 6), (int(min(W, ax + tw + 6)), int(ay)), col, -1)
         cv2.putText(img, tag, (int(ax) + 3, int(ay) - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
