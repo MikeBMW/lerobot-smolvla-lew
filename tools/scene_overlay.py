@@ -306,9 +306,19 @@ def save_spec(spec: dict) -> None:
     SPEC_PATH.parent.mkdir(parents=True, exist_ok=True)
     spec["ts"] = time.time()
     spec["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    tmp = SPEC_PATH.with_suffix(".tmp")
-    tmp.write_text(json.dumps(spec, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(SPEC_PATH)
+    # 2026-09-29: 临时文件名**必须每进程/每次唯一** —— 现场有多个写方(实时检测 2s 一轮 / 轨迹发布壳
+    # 2s 一轮 / 参考点 marker / L5 校正环)同写这一个 spec; 共用 overlay_spec.tmp 时, 谁先 replace
+    # 谁就把别人的 tmp 搬走, 另一个报 FileNotFoundError 并**静默丢掉这次写入**(实测踩到)。
+    tmp = SPEC_PATH.with_name("%s.tmp.%d.%d" % (SPEC_PATH.name, os.getpid(), time.time_ns() % 1000000))
+    try:
+        tmp.write_text(json.dumps(spec, ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp.replace(SPEC_PATH)
+    except Exception:                                                        # noqa: BLE001
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 
 # ══════════════════════ 渲染 ══════════════════════
