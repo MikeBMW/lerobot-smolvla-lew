@@ -32,8 +32,25 @@ RE_SKILL = re.compile(r"\b(L2|L3|L4)\.[A-Za-z0-9_]+\b")
 RE_NUM = re.compile(r"(p[xyz]|speed|position|target_pos|d_mm|deg)\s*[:=]\s*(-?\d+\.?\d*)")
 
 
+# 现行日志格式(2026-09-29 实测): 不再出现 "ros2 service call" 字样, 而是
+#   [06:57:47] 已下发 L2.backward -> 50.0 · Δ=(-50.0,+0.0,+0.0)mm →后退(-X)
+#   [06:57:47] 受理: 已下发 / 受理: DRY-RUN(未下发)
+#   [06:57:45] 🛡 VL 安全闸: 放行|否决|**已关闭** / VL 安全闸(快层)
+#   [06:57:59] 🎯 已把本次动作告知 VL ... (等针对该动作的裁决, 上限 300s)
+# ⇒ 只认旧字样会全瞎(实测 0 条), 这里把新旧格式都收进来。
+RE_DISPATCH = re.compile(r"已下发\s+(L[234]\.\w+)\s*(?:->|第)?\s*([-\d.]*)")
+RE_ACCEPT = re.compile(r"受理:\s*(已下发|DRY-RUN[^)]*\)?)")
+RE_GATE = re.compile(r"🛡\s*VL 安全闸(?:\(快层\))?:?\s*(放行|否决|\*\*已关闭\*\*|已关闭)")
+RE_PENDING = re.compile(r"等针对该动作的裁决|复用\s*\d+s 前\*?\*?同一动作")
+RE_DELTA = re.compile(r"Δ=\(([-+\d.]+),([-+\d.]+),([-+\d.]+)\)mm")
+
+
 def parse(line: str) -> dict | None:
-    if "ros2 service call" not in line:
+    m_disp, m_acc, m_gate, m_pend = (RE_DISPATCH.search(line), RE_ACCEPT.search(line),
+                                     RE_GATE.search(line), RE_PENDING.search(line))
+    if not (m_disp or m_acc or m_gate or m_pend or "ros2 service call" in line):
+        return None
+    if "ros2 service call" not in line and not (m_disp or m_acc or m_gate or m_pend):
         return None
     m = RE_TS.match(line)
     t = m.group(1) if m else time.strftime("%H:%M:%S")
@@ -41,10 +58,15 @@ def parse(line: str) -> dict | None:
     skill = RE_SKILL.search(line)
     dry = ("DRY-RUN" in line) or ("未下发" in line)
     nums = {k: float(v) for k, v in RE_NUM.findall(line)}
-    return {"wall": t, "dry": bool(dry),
+    m_d = RE_DELTA.search(line)
+    kind = ("dispatch" if m_disp else ("accept" if m_acc else
+                                      ("verdict" if m_gate else ("pending" if m_pend else "call"))))
+    return {"wall": t, "kind": kind, "dry": bool(dry),
+            "skill": (m_disp.group(1) if m_disp else (skill.group(0) if skill else "")),
+            "verdict": (m_gate.group(1) if m_gate else ""),
+            "delta_mm": ([float(m_d.group(i)) for i in (1, 2, 3)] if m_d else None),
             "service": (srv.group(1) if srv else "?"),
             "iface": (srv.group(2) if srv else "?"),
-            "skill": (skill.group(0) if skill else ""),
             "nums": nums,
             "line": line.strip()[:400]}
 
@@ -85,9 +107,10 @@ def main():
             fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
             fout.flush()
             n += 1
-            print("[%s] %s %s %s p=%s" % (
-                rec["wall"], "DRY" if rec["dry"] else "真发", rec["service"], rec["skill"],
-                {k: rec["nums"].get(k) for k in ("px", "py", "pz") if k in rec["nums"]}), flush=True)
+            print("[%s] %-8s %-14s %s%s" % (
+                rec["wall"], rec["kind"], (rec["skill"] or rec["verdict"] or rec["service"]),
+                ("Δ=%s" % rec["delta_mm"]) if rec["delta_mm"] else "",
+                " (DRY)" if rec["dry"] else ""), flush=True)
     fout.close()
     f.close()
     print("镜像结束: 共 %d 条下发" % n, flush=True)

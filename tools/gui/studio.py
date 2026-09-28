@@ -711,7 +711,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.16.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.16.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10900,7 +10900,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.2 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.3 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10908,9 +10908,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.2 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.3 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.16.3: 控制台 v5.16.3 — 现场人机在环互动 + 场景叠加校正闭环 · 新增「HIL↔L5 互动环」(tools/l5_hil_agent.py): 只读轮询 ECS 中转的人机在环指示 → 抓臂上相机实帧 →   调**状态空间工程引擎的 L5**(left_right/state_space/scene_vlm.py :: SceneVLM)理解 → 复用严格 JSON 提示词   把框写到叠加页 vlm 层(自动标注) → 带 seq 回执给人机在环界面; 现场停顿点(P_n)自动触发同一理解环。   红线不变: 动作类指示一律只记账待授权, 绝不代发真机动作; 引擎不可用时回退并如实标明来源。 · 场景叠加新增 `trace` 层(黄 · 真机 TCP 实测轨迹) + 参考点标记 P_n; 实测轨迹按 2mm 抽稀, 每次停顿自动落参考点。 · 现场实时链工具化: live_motion_recorder(50Hz 真关节+TCP, 原子落盘) · live_pause_marker(停顿点+trace 发布) ·   live_plan_segment(同源规划段: 两端真机真值, 按执行器守卫 ≤50mm/下降≤20mm/自转≤10° 分段) ·   l2_dispatch_watch(只读镜像 l2_daemon 下发链, 替代断点; 已兼容新旧日志格式)。 · 修正: L5 槽位工具退出码语义(0=已记录/有框 · 1=待确认或0框 · 2=参数错)并在 0 框/待确认时打印原因分解;   深度判据由「查容器名 ros_depth_stream」改为按**源文件龄**(与 cam_live_stream 同口径, 修掉假离线);   project_slot 缺/非法几何不再 TypeError 崩溃(只出中心点投影, ok=False, 不编造角点)。 · 已实测: 引擎 L5 判读 0.6~1.5s(thinking 关), 带框提示词一次 4 框[光模块,光模块,标定板,托盘]; 现场抓拍-投影链路   cmd_record 返回码 0(status=已记录)。
         # v5.16.2: MoveIt「只规划」入口落地 + 同源闸判据(实测未过): 真机 6 关节喂 FK 与真 /robot/tcp_pose 差 261.5mm/137.5° ⇒ 该 URDF 与真机不同源, MoveIt 轨迹暂不能贴到真机画面; 新增 tools/moveit_real_state_probe.py(domain0 只读抓真机状态, BEST_EFFORT) + tools/moveit_same_source_check.py(判据 <5mm 且 <2°) + 证据落 reports/moveit/
         # v5.16.1: 手臂相机光模块 3D 边界框标定: 朝向改由「槽边平行族」拓扑反解 + 高低关系改「沉在槽内、顶面≈台面」 + VL 提示词强制拓扑/投影/自检修角 老倪: 「不要2D，要重画3D框」/「两个3D边界框大体上没问题，但用眼睛看还是能辨别出有偏差」/「竖着的光模块是嵌入在槽里的，上表面几乎跟槽的上边沿平齐。你画的边界框，感觉高出来了，你理解一下高低关系」/「槽位的边沿线很多是互相平行的，这个规律，你能理解么？大模型VL得先理解拓扑关系，投影原理，自己修正角度」  ① **撤 2D、重建 3D 框** (data/scene/overlay_spec.json · arm · meas 层): 2D 框清空; 两个 3D 框 = 横 110×23×12mm / 竖 106×21×12mm。 ② **朝向 ← 槽边平行族 (拓扑约束, 老倪口述规律)**: 用 Hough 量出料盘线族 —— 竖模块所在槽长边族 **75.1°**(图像系, 右邻接 76.1/73.6/74.2/77.0°), 横模块所在族 **3.3°**; 把族向**反投到台面**得 base 系方向 (-176.6° / -86.0°) 后锁进 3D 框 R 矩阵。独立验证: 模块左邻接为 86–93°(另一结构) ⇒ 拓扑归属确认。 ③ **高低关系 ← 顶面齐平 (老倪目检)**: 3D 框不再"立在台面上"(旧: 底面=台面往上长 12mm), 改为**顶面 z=0.1198(台面上表面)、箱体往槽内沉 12mm**。投影核验: 框顶沿 y=62/41 ↔ 模块可见顶沿 y=62/41 (改前 39.7/27.7 = 高出 13~22px, 即老倪所说"高出来了")。 ④ **判据纪律**: 新增「变差就不写」回归闸门 —— 本批两次拦下坏结果 (①颜色分割掩膜失真 IoU 0.605→0.280; ②单目标函数被槽沿/托盘边"骗"到, 框仍高出 13~22px), 均未落盘/已回滚。诚实口径: 「投影残差 0.00px」是 4 约束解 4 未知量的必然结果, **不作为精度证据**; 真正的独立自检是解出的**宽 20.8/17.1mm ↔ 真实光模块宽 18.4mm**(该数未喂入)。 ⑤ **撤历史框**: `sim|末端·TCP` 落 `deleted` 表(按 origin|label 稳定 id), 点"重建仿真元素"也不会再冒出。 ⑥ **VL 提示词升级** (tools/gen_overlay_from_vlm.py): 强制出框前先在 topology 字段做拓扑+投影推理, 输出 slot/slot_angle_deg, 每框带 obj_axis_deg/axis_dev_deg, 并规定 |偏差|>3° 必须先修角再出框; 真跑验证(166s)新字段全部出现, 且横模块轴向 2° ↔ Hough 实测 3.3° 一致; 同时暴露短板: VL 自报竖槽角 84° vs 实测 75.1°(差 9°) ⇒ 口径定为「拓扑/语义靠 VL, 角度/坐标靠几何实测」。 ⑦ **实测根因**: 推理型模型 reasoning_tokens=**6629** ⇒ 早前 max_tokens=900 必然被思考链吃光、空回复(非 API 抖动); 视觉调用改按 ≥4000。 ⑧ **纠错**: 旧笔记"手眼旋转 915°"作废 —— 真值 method=TSAI · n_poses=8 · 闭环残差 **1.74mm**(手眼是好的, 之前投偏是历史框数值错)。
         # v5.16.0: v5.16.0 — 中版本迭代: 绕轴旋转分次修正(绝对目标) + 深度源自愈(容器常驻) + 安全闸运行时到期开关  ① 绕轴旋转「不好使 / C 绕工具Z轴自转没反应」——三层根因, 全部实测留证:    · 页面角度档 20° > 执行器守卫 max_deg=10° ⇒ 直接被拒(日志原文「单次旋转 20.0° 超过守卫 max_deg=10°」),      而返回文案写成「位姿缓存未就绪」⇒ 误导成位姿/通道坏了(实测 5° 完全正常: 四元数算得出、走 /move_pose)。    · 上一版"逐段重读当前姿态再转一次"的分次法在现场被证伪: 腕部自转是慢动作(单段 10° 实测数十秒),      段间只等 1.5s 读到的还是**没动**的旧姿态 ⇒ 两段目标重合, 点 20° 实际只转 10°。      证据(20:55:35 rot_c_neg 第2/2 段): 第 1、2 段目标姿态 quat 都是 [0.7063 0.1470 0.6536 0.2288];      20:56:56 直采姿态正好等于该值 ⇒ 合计只转了 10°。    · 腕部自转本身慢 + 页面只回"已下发": 20:55:33 下发 → 20:55:57 姿态一位未变(22s) → 20:56:56 才到位。    修法(tools/l2_daemon.py · run_rot_chunks): 所有段都从**起转前姿态 q0** 算**绝对目标** q_i = q0 ⊗ R轴(i·per),    不依赖"上一段转完没" ⇒ 点 20° 就是 20°; 相邻两段之间仍只差 per ≤ max_deg(守卫意图不变);    下发后起后台线程用**真值**报「✅ 实测转过 X.X° (目标 Y°)」; 回执写明 轴/角度/分段数。    零动作验证: 20°→2 段、30°→3 段(dry 走通真通道); 三轴数学校验: 每段距上段 10.00°, 末段距起转姿态    20.00°/30.00° 全等于请求值, 误差 0.00°。 ② 深度图「没有反映」——根因: 深度源是**容器 ss-remote-tap 内常驻**的 ros_depth_stream.py 落的 npy,    主机只读它的结果。重启后没人拉它 ⇒ 宿主一直读 09-27 17:43 的旧图: 8791 深度格冻结 26.6h    (age_s=95802 · frames_served=1 · dead=true), 慢层拼图里那份深度也一直拿旧图给"画面异常"扣分。    修法: 按脚本官方用法在容器内分离拉起 `python3 /repo/tools/ros_depth_stream.py --hz 5`,    并把「容器深度源」纳入守护: tools/cam_stream_guard.py 新增判据 D(容器进程不在 或 源文件龄>20s ⇒ 自动拉起,    正常静默) + tools/boot_restore.sh 开机补拉(check 段新增 ②b 深度源体检)。    实测(修后): 源文件 0.1s 刷新; depth_meta 640×480 · depth_scale 0.0001 · valid 87% · near 0.235m · median 0.352m;    8791 depth: age_s 0.3~1.4s · stalled=false · dead=false · frames_served 18→24→79 递增 · 41~44KB/帧;    深度快照 640×526 · mean=121.3 · std=57.4 · 非零像素 94.3%(真伪彩图, 非空白)。    故障复现验证: 杀掉容器进程后 25s, 守护自动拉起并复核源文件龄 0.4s ✅; 修好后守护恢复静默(输出 0 字节)。 ③ 安全闸「运行时到期开关」(关闭安全用, 现场不重启就生效): ~/zmax_data/vl_guard_off.json(enabled/until/by),    _vl_disabled() 读取并在 _vl_gate_blocks 与 intent 分支生效; **到期自动恢复 fail-closed**, 不设永久关闭;    停机/复位类动作永远放行。实测: 开关后闸门不拦、审计行落盘、dry 受理「DRY-RUN(未下发)」。
