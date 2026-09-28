@@ -2368,8 +2368,9 @@ def main():
         threading.Thread(target=_aoi_worker,
                          args=(10083, "aoi_surface", args.aoi_fps, "crop", False, True),
                          daemon=True, name="aoi-surface").start()
-        print(f"   🏭 工控机检测源: 10082 金手指(原图→去死白→**原比例+去倾角+纵向3×**判据图, "
-              f"POST /capture_detect 可触发产线正常检测且工控机本地存图) + 10083 表面 "
+        print(f"   🏭 工控机检测源: 10082 金手指(**直接取它的判据图 kind=crop**: 模板法规整裁剪+去倾角, "
+              f"960×960, 与它存盘 Finger_TopView_*.png / 送检同一张; 本地零加工; "
+              f"POST /capture_detect 触发产线正常检测且工控机本地存图) + 10083 表面 "
               f"@≤{args.aoi_fps}Hz (只 GET 不触发拍照; 表面取 kind=crop = 模型看的规范图) "
               f"· 两路都推 MJPEG: /aoi_gold.mjpg · /aoi_surface.mjpg", flush=True)
     # ── 🕹 手动控制闸门 (双重: 这里 + 页面勾选) ──
