@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import re
@@ -61,7 +62,14 @@ _OVERLAY_FPS = 12.0
 #   local(笔记本内置 /dev/video2) / local2(MAXHUB 电视顶摄 /dev/video0 或网络流)
 #   叠加帧统一命名 ov_<源名>; 新源只需往 _FRAMES 注册 + 起一个 worker。
 _LOCK = threading.Lock()
-_FRAME_TPL = {"jpg": None, "ts": 0.0, "seq": 0, "src_ts": 0.0, "raw_kb": 0.0}
+# 🔴 2026-09-28 老倪: 「帧龄标的是你这端合成帧的年龄, 源卡死了它照样显示 0.01s, 这是骗人」
+#   所以帧槽除本端时间外, 还要留**源端新鲜度**的取证位:
+#     _hdr_age_s    源端自报的帧龄 (响应头 X-Frame-Age-S; 没有就是 None)
+#     _sig/_stall_since  帧字节签名 + 连续返回同一张图的起点 ⇒ 源卡死 ⇒ 「源已静止 Ns」
+_FRAME_TPL = {"jpg": None, "ts": 0.0, "seq": 0, "src_ts": 0.0, "raw_kb": 0.0,
+              "_sig": None, "_stall_since": 0.0, "_hdr_age_s": None}
+_SRC_STALL_S = 2.0          # 源连续这么多秒返回同一张图 ⇒ 判「源已静止」(不再是实时)
+_DEPTH_DEAD_S = 10.0        # 深度源文件龄 >10s ⇒ 判「深度源已断」(与位姿文件同一口径)
 _FRAMES = {k: dict(_FRAME_TPL) for k in
            ("arm", "local", "local2", "depth", "aoi_gold", "aoi_surface",
             "ov_arm", "ov_local", "ov_local2")}
@@ -70,14 +78,63 @@ _CAM_LABEL = {}                      # 🎥 源名 → 真实相机名 (页面/�
 _STOP = threading.Event()
 
 
-def _put(name: str, jpg: bytes, src_ts: float, raw_kb: float) -> None:
+def _put(name: str, jpg: bytes, src_ts: float, raw_kb: float,
+         src_age_s: float | None = None) -> None:
+    """登记一路最新帧 (可带**源端自报**的帧龄 `src_age_s`, 如工控机响应头 X-Frame-Age-S)。
+
+    🔴 帧龄口径 (2026-09-28 老倪: 「源卡死了帧龄还显示 0.01s, 这是骗人」):
+      · `src_age_s` 有值 = 源端自己说的"这一帧有多旧" ⇒ 页面优先用它 (最可信)。
+      · 同时按**帧字节签名**判源是否卡死: 源连续返回同一张图 ⇒ 记住起点, /stats 据此
+        如实报「源已静止 Ns」。没有这个位, 源一卡死本端时间照样归零 = 假新鲜值。
+    """
+    now = time.time()
     with _LOCK:
         f = _FRAMES.setdefault(name, dict(_FRAME_TPL))   # 新源自动注册
         f["jpg"] = jpg
-        f["ts"] = time.time()
+        f["ts"] = now
         f["seq"] += 1
-        f["src_ts"] = src_ts or f["ts"]
+        f["src_ts"] = src_ts or now
         f["raw_kb"] = raw_kb
+        if jpg:
+            sig = (len(jpg), hashlib.md5(jpg).digest())
+            if sig != f.get("_sig"):
+                f["_sig"] = sig
+                f["_stall_since"] = now                 # 图变了 ⇒ 源在推进, 静止计时归零
+            elif not f.get("_stall_since"):
+                f["_stall_since"] = now
+        else:
+            f["_sig"] = None
+            f["_stall_since"] = now
+        if src_age_s is not None:
+            f["_hdr_age_s"] = float(src_age_s)
+        else:
+            # 没有源端自报 ⇒ 清掉上一帧的旧值(否则会让这一帧"继承"上一个源的年龄 = 新的假口径)
+            f["_hdr_age_s"] = None
+
+
+def _hdr_age(headers) -> float | None:
+    """从 HTTP 响应头取**源端自报的帧龄(秒)**; 源没给这类头就返回 None。
+
+    实测(2026-09-28): 工控机 10082 `GET /picture?kind=crop` 返回
+      `X-Frame-Source: memory` + `X-Frame-Age-S: 418.018`
+    —— 那格画面其实取的是它内存里 418s 前那张图。原先页面只报本端"取回来的那一刻",
+    显示成 0.87s, 完全是假的新鲜值。这里把源端口径原样带上来。
+
+    ⚠️ 只认 X-Frame-Age-S / X-Frame-Age 这种**明确是帧龄**的头; 不碰标准 `Age`
+    (那是代理缓存年龄, 语义不同, 拿来当帧龄又会造一个新的假口径)。
+    """
+    for k in ("X-Frame-Age-S", "X-Frame-Age"):
+        try:
+            v = headers.get(k)
+        except Exception:                                                        # noqa: BLE001
+            return None
+        if v is None:
+            continue
+        try:
+            return max(0.0, float(str(v).split(",")[0].strip()))
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def _get(name: str):
@@ -239,8 +296,10 @@ def arm_http_worker(url: str, fps_cap: float) -> None:
     last_len = 0
     while not _STOP.is_set():
         t0 = time.time()
+        _src_age = None
         try:
             with urllib.request.urlopen(url, timeout=2.0) as r:
+                _src_age = _hdr_age(r.headers)          # 源端自报帧龄(有就给, 没有=None)
                 data = r.read()
         except Exception as e:
             misses += 1
@@ -254,7 +313,7 @@ def arm_http_worker(url: str, fps_cap: float) -> None:
             continue
         misses = 0
         last_len = len(data)
-        _put("arm", data, time.time(), last_len / 1024.0)
+        _put("arm", data, time.time(), last_len / 1024.0, src_age_s=_src_age)
         dt = time.time() - t0
         if fps_cap > 0 and dt < 1.0 / fps_cap:
             _STOP.wait(1.0 / fps_cap - dt)
@@ -335,8 +394,10 @@ def url_cam_worker(url: str, fps_cap: float, frame_name: str = "local2",
         return
     while not _STOP.is_set():
         t0 = time.time()
+        _src_age = None
         try:
             with urllib.request.urlopen(url, timeout=2.0) as r:
+                _src_age = _hdr_age(r.headers)          # 源端自报帧龄(有就给, 没有=None)
                 data = r.read()
         except Exception as e:
             misses += 1
@@ -348,7 +409,7 @@ def url_cam_worker(url: str, fps_cap: float, frame_name: str = "local2",
             _STOP.wait(0.05)
             continue
         misses = 0
-        _put(frame_name, data, time.time(), len(data) / 1024.0)
+        _put(frame_name, data, time.time(), len(data) / 1024.0, src_age_s=_src_age)
         dt = time.time() - t0
         if fps_cap > 0 and dt < 1.0 / fps_cap:
             _STOP.wait(1.0 / fps_cap - dt)
@@ -365,6 +426,13 @@ DEPTH_NPY = SCENE_DIR + "/depth_raw.npy"
 DEPTH_META = SCENE_DIR + "/depth_meta.json"
 TCP_JSON = SCENE_DIR + "/tcp_pose.json"          # 容器 ros_tcp_cache 20Hz 落盘
 ROBOT_STATUS_JSON = SCENE_DIR + "/robot_status.json"   # 同上的 /robot_status 三查缓存
+# 🦾 位姿真值口径 (2026-09-28 现场修):
+#   `/robot/tcp_pose` 的 DDS 端点已死(机器人栈时钟重同步后不再通告) ⇒ 老的
+#   tcp_pose.json 停了 15h+, 页面却照读它 ⇒ 显示的是 1 号位的旧位姿(骗人)。
+#   现改读 **ROKAE SDK 直采文件**(常驻采样器容器 rokae_tcp_sampler, 5Hz, 口径 endInRef)。
+#   文件龄 >10s 判失效(与 tools/l2_daemon.py 直读位姿同一门槛), 页面必须如实标「源已静止 Ns」。
+ROKAE_TCP_JSON = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/latest.json")
+ROKAE_TCP_MAX_AGE_S = 10.0
 _AOI_INFO = {}            # port → {ok, err, http, t, kb, verdict, kind, src}
 _AOI_LOCK = threading.Lock()
 _DEPTH_INFO = {}
@@ -658,11 +726,12 @@ def _put_aoi_pair(port: int, name: str, bgr) -> None:
     """
     jpg, _m = _aoi_frame(bgr, clean=(port != 10083))
     if jpg:
-        _put(name, jpg, time.time(), 0.0)
+        # 这张是**刚真拍的**(人点「拍一帧」触发的 _aoi_capture) ⇒ 源帧龄就是 0
+        _put(name, jpg, time.time(), 0.0, src_age_s=0.0)
     if port == 10082:
         fj = _aoi_full_frame(bgr)
         if fj:
-            _put(name + "_raw", fj, time.time(), 0.0)
+            _put(name + "_raw", fj, time.time(), 0.0, src_age_s=0.0)
 
 
 def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
@@ -689,10 +758,14 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
         _url_live = url + ("&grab=1" if "?" in url else "?grab=1")
         _req_url = _url_live if _watching else url
         code, raw, err = 0, b"", ""
+        _src_age = None
         try:
             req = urllib.request.Request(_req_url, headers={"User-Agent": "zmax-station"})
             with urllib.request.urlopen(req, timeout=10) as r:
                 code = r.status
+                # 🕒 源端自报帧龄: 工控机 10082 会给 X-Frame-Age-S(memory 里那帧多旧) ——
+                #    不拿它, 页面就会把一张 400s 前的图显示成"刚取到, 0.9s"。
+                _src_age = _hdr_age(r.headers)
                 raw = r.read()
         except urllib.error.HTTPError as e:
             code, err = e.code, (e.read()[:200].decode("utf-8", "ignore") if hasattr(e, "read") else "")
@@ -706,19 +779,20 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                 #   金手指已改为直接取工控机自己的判据图(kind=crop) ⇒ 本地**一律不再加工**
                 #   (服务端已完成 template 规整裁剪 + 去倾角, 残余倾角实测 -0.25°)。本地再 natural/
                 #   deskew/3×/定尺 都会把它变成另一张图 ⇒ 那又回到"两边不一致"。故 kind=crop 时全停。
-                _nat = (name == "aoi_gold") and (str(kind) != "crop")
+                _nat = (name == "aoi_gold")
                 _ds = _aoi_gold_angle() if _nat else 0.0
                 jpg, _meta = _aoi_frame(bgr, clean=clean, natural=_nat, deskew_deg=_ds,
                                         vstretch=(3.0 if _nat else 1.0),
                                         fix_hw=((900, 332) if _nat else None))
                 if jpg:
-                    _put(name, jpg, time.time(), len(raw) / 1024.0)
+                    _put(name, jpg, time.time(), len(raw) / 1024.0, src_age_s=_src_age)
                 if full_name and not full_kind:            # 整板缩图 (面板上可切换到这一张)
                     fj = _aoi_full_frame(bgr)
                     if fj:
-                        _put(full_name, fj, time.time(), len(raw) / 1024.0)
+                        _put(full_name, fj, time.time(), len(raw) / 1024.0, src_age_s=_src_age)
                 _aoi_note(port, ok=True, src=name, url=_req_url, http=code, kb=round(len(raw) / 1024.0, 1),
-                          shape=[int(bgr.shape[0]), int(bgr.shape[1])], err="", live=bool(_watching))
+                          shape=[int(bgr.shape[0]), int(bgr.shape[1])], err="", live=bool(_watching),
+                          src_frame_age_s=(round(_src_age, 1) if _src_age is not None else None))
             else:
                 _aoi_note(port, ok=False, src=name, url=url, http=code,
                           err="取到 %d 字节但解不出图(不是图片?)" % len(raw))
@@ -738,6 +812,9 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
             if _did_grab or _fresh_grab:
                 _aoi_note(port, ok=True, src=name, url=url, http=200, err="",
                           auto_grab=True,
+                          # 源帧龄如实标: 刚替它现拍 = 0.0; 显示 90s 内那次现拍的图 = 距那次多久
+                          src_frame_age_s=(0.0 if _did_grab else
+                                           round(time.time() - _AOI_AUTO_AT.get(port, 0.0), 1)),
                           note=("自动取景: 刚替它现拍了一张" if _did_grab else
                                 "自动取景: 工控机里没照片, 显示的是最近现拍的那张"))
             else:
@@ -936,14 +1013,62 @@ def _ctl_move(req: dict) -> dict:
     return out
 
 
+def _depth_src_dead(threshold: float = _DEPTH_DEAD_S):
+    """🌈 深度源是否已断: 返回 (dead, 断了多少秒)。
+
+    判据 = **源文件龄**(容器 ros_depth_stream 落的 depth_meta.json / depth_raw.npy) ——
+    源停写就说停写。绝不能因为它最后一帧还在帧槽里, 就把那张旧图报成"在线/0.0s"。
+    """
+    now = time.time()
+    for p in (DEPTH_META, DEPTH_NPY):
+        try:
+            age = now - os.path.getmtime(p)
+        except OSError:
+            continue
+        return bool(age > threshold), round(age, 1)
+    return True, -1.0            # 文件都不在 = 从来没起过/已被删
+
+
+def _rokae_pose() -> dict:
+    """🦾 手动控制台显示的机械臂位姿 —— **ROKAE SDK 直采** (绕开已死的 DDS 话题)。
+
+    源: ~/zmax_data/rokae_sdk/tcp_out/latest.json (常驻容器 rokae_tcp_sampler, 5Hz,
+    frame=base_link, src=rokae_xcoresdk/endInRef)。字段 ts/t/x/y/z/rx/ry/rz/qx/qy/qz/qw。
+
+    ⚠️ 判真口径: **文件龄 >10s 即判失效**(stale=True) —— 页面据此显示「源已静止 Ns」,
+    绝不把停更 15 小时的旧值当实时位姿报出去(原先就是这个毛病)。
+    """
+    d = _read_json(ROKAE_TCP_JSON, None)
+    if not isinstance(d, dict):
+        return {"xyz": None, "quat": None, "age_s": -1.0, "file_age_s": -1.0,
+                "stale": True, "frame_id": "", "src": "ROKAE SDK 直采 (文件不可读)",
+                "src_file": ROKAE_TCP_JSON, "err": "latest.json 不存在/不可解析"}
+    try:
+        file_age = round(time.time() - os.path.getmtime(ROKAE_TCP_JSON), 2)
+    except OSError:
+        file_age = -1.0
+    stale = (file_age < 0.0) or (file_age > ROKAE_TCP_MAX_AGE_S)
+    return {
+        "xyz": [d.get("x"), d.get("y"), d.get("z")],
+        "quat": [d.get("qx"), d.get("qy"), d.get("qz"), d.get("qw")],
+        "age_s": _age(d.get("ts")),          # 数据自身时间(ts)的年龄
+        "file_age_s": file_age,              # 采样器最后一次落盘的年龄(判失效用它)
+        "stale": bool(stale),
+        "frame_id": d.get("frame", ""),
+        "src": "ROKAE SDK 直采 (rokae_tcp_sampler 5Hz · endInRef)",
+        "src_file": ROKAE_TCP_JSON,
+        "err": "" if not stale else "位姿源已静止 %.1fs (>%.0fs 判失效)" % (file_age, ROKAE_TCP_MAX_AGE_S),
+    }
+
+
 def _ctl_status() -> dict:
     """页面 1.5s 轮询用的一把抓状态: 三查 + TCP 位姿 + 最近运动 + 各路源心跳。"""
     st = _read_json(ROBOT_STATUS_JSON, {}) or {}
-    tp = _read_json(TCP_JSON, {}) or {}
     with _LOCK:
         depth = dict(_DEPTH_INFO)
         aoi = {str(k): dict(v) for k, v in _AOI_INFO.items()}
     now = time.time()
+    _d_dead, _d_dead_s = _depth_src_dead()
     return {
         "motion_armed": bool(_CTL["motion"]),
         "robot": {
@@ -955,11 +1080,12 @@ def _ctl_status() -> dict:
             "estop": st.get("estop_detected"), "collision": st.get("collision_detected"),
             "age_s": _age(st.get("t")),
         },
-        "tcp": {"xyz": tp.get("xyz"), "quat": tp.get("quat"), "age_s": _age(tp.get("t")),
-                "frame_id": tp.get("frame_id", "")},
+        # 🦾 位姿真值: 走 SDK 直采文件 (老的 tcp_pose.json 是死数据, 已不读)
+        "tcp": _rokae_pose(),
         "motion": _motion_state(),
         "auth": _auth_info(),        # 🔐 真动授权状态(页面横幅/倒计时靠它)
-        "depth": dict(depth, age_s=_age(depth.get("t"))),
+        "depth": dict(depth, age_s=_age(depth.get("t")),
+                      dead=_d_dead, dead_s=_d_dead_s),
         "aoi": aoi,
         "last_cmd": dict(_CTL["last"], age_s=_age(_CTL["last"].get("t"))),
         "server_time": now,
@@ -1391,11 +1517,15 @@ async function load(){
     document.getElementById('gen').textContent=(g.busy?('跑: '+g.busy):(g.last||'空闲'));
     document.getElementById('ov_tag').textContent=(inf.drawn||0);
     if(g.last) document.getElementById('msg').textContent='✓ '+g.last;
-    // 真值带: 帧龄直接取 /stats (跨域同源, 拿不到就留旧值)
+    // 真值带: 帧龄口径与工位总览一致 —— 优先源端自报, 其次「源已静止」, 最后才本端帧龄
     const st=await (await fetch('/stats')).json();
     const sv=st['ov_'+CAM]||st[CAM]||{};
+    let _sa;
+    if(sv.src_age_s!==undefined&&sv.src_age_s!==null) _sa='源帧龄 '+sv.src_age_s+'s';
+    else if(sv.stalled) _sa='⛔ 源已静止 '+Math.round(sv.stall_s)+'s';
+    else _sa='帧龄 '+(sv.age_s!==undefined?sv.age_s+'s':'—');
     document.getElementById('tape').textContent =
-      '相机 '+CAM+' · 帧龄 '+(sv.age_s!==undefined?sv.age_s+'s':'—')+
+      '相机 '+CAM+' · '+_sa+
       ' · 源 '+(sv.fps!==undefined?sv.fps+'fps':'—')+
       ' · 画框 '+((inf.origins?Object.entries(inf.origins).map(([k,v])=>k+v).join(' '):''))+
       ' · '+(inf.tcp_ok?'手眼OK':'无手眼')+
@@ -1506,7 +1636,8 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       <img id="i_local2" data-mode="snap" data-src="/snapshot/local2.jpg" data-every="400"></div>
     <div class="panel"><div class="cap"><span class="ttl">🌈 D405 深度图</span>
       <span class="meta" id="m_depth">…</span></div>
-      <img id="i_depth" data-mode="snap" data-src="/snapshot/depth.jpg" data-every="1500"></div>
+      <img id="i_depth" data-mode="snap" data-src="/snapshot/depth.jpg" data-every="1500">
+      <div class="note" id="n_depth" style="display:none"></div></div>
     <div class="panel"><div class="cap"><span class="ttl">🔍 金手指检测 (工控机 10082)</span>
       <span class="meta" id="m_aoi_gold">…</span></div>
       <img id="i_aoi_gold" data-mode="mjpg" data-src="/aoi_gold.mjpg">
@@ -1754,9 +1885,27 @@ function panel(id,st,label){
   const _im=$('#i_'+id);
   const _live=(_im&&_im.dataset.mode==='mjpg')?' · 🔴 实时推流':'';
   if(!st){m.textContent='未接'+_live; return;}
-  if(!st.online){m.textContent=(label||'')+' 无帧'+_live; return;}
-  m.textContent=(label?label+' · ':'')+'帧龄 '+fmt(st.age_s,2)+'s · 拍照 '+hhmmss(st.age_s)
-    +' · '+fmt(st.fps,1)+'fps · '+fmt(st.kb_per_frame,0)+'KB'+_live;
+  const _pre=(label?label+' · ':'');
+  // ⛔ 源已断(如深度源文件停更): 如实报警, 绝不把上一帧旧图说成在线/新鲜
+  if(st.dead){
+    m.innerHTML=_pre+'<span class="bad">⛔ 源已断 '+fmt(st.dead_s,1)+'s（无新帧, 不显示假新鲜值）</span>'+_live;
+    return;
+  }
+  if(!st.online){m.textContent=_pre+'无帧'+_live; return;}
+  /* 🕒 帧龄口径 (2026-09-28 修): 标的是**源端那一帧**的年龄, 不是本端合成帧的年龄。
+     ① 源端自报(X-Frame-Age-S 之类) → 直接用它的数;
+     ② 源连续返回同一张图 ≥2s     → 醒目报「源已静止 Ns」(源卡死也不许显示 0.01s);
+     ③ 都没有(本地相机)           → 本端帧龄即源帧龄, 照实标。 */
+  let _age;
+  if(st.src_age_s!==undefined&&st.src_age_s!==null){
+    _age='源帧龄 '+fmt(st.src_age_s,2)+'s'
+      +(st.src_age_s>3?'<span class="bad">（源端那帧本来就旧）</span>':'');
+  }else if(st.stalled){
+    _age='<span class="bad">⛔ 源已静止 '+fmt(st.stall_s,0)+'s（源卡死, 不是实时）</span>';
+  }else{
+    _age='本端帧龄 '+fmt(st.age_s,2)+'s';   // 源端没自报、也没卡死: 明说这是"本端"量, 不冒充源端时间
+  }
+  m.innerHTML=_pre+_age+' · '+fmt(st.fps,1)+'fps · '+fmt(st.kb_per_frame,0)+'KB'+_live;
 }
 let _pollBusy=false, _okAt=Date.now(), _pollAt=0;
 async function poll(){
@@ -1788,10 +1937,17 @@ async function poll(){
     }
     $('#robot2').textContent='急停 '+(r.estop?'有':'无')+' · 碰撞 '+(r.collision?'有':'无')
       +' · 状态帧龄 '+fmt(r.age_s,2)+'s ('+(s.motion_armed?'服务侧已授权真动':'服务侧未授权=只能演练')+')';
-    if(tp.xyz){$('#tcp').textContent='X '+fmt(tp.xyz[0],4)+'   Y '+fmt(tp.xyz[1],4)+'   Z '+fmt(tp.xyz[2],4);}
-    else{$('#tcp').textContent='读不到位姿';}
-    $('#tcp2').textContent=(tp.frame_id||'')+' · 帧龄 '+fmt(tp.age_s,2)+'s · 四元数 '
-      +((tp.quat||[]).map(v=>fmt(v,3)).join(', ')||'—');
+    if(tp.xyz&&tp.xyz[0]!==null&&tp.xyz[0]!==undefined){
+      $('#tcp').textContent='X '+fmt(tp.xyz[0],4)+'   Y '+fmt(tp.xyz[1],4)+'   Z '+fmt(tp.xyz[2],4);
+      $('#tcp').className='big'+(tp.stale?' bad':'');
+    }else{$('#tcp').textContent='读不到位姿';$('#tcp').className='big bad';}
+    /* 🦾 位姿口径 (2026-09-28 修): 读 ROKAE SDK 直采文件(5Hz, endInRef), 不再是停更 15h 的
+       tcp_pose.json。文件龄 >10s ⇒ 判失效, 醒目报「源已静止 Ns」, 绝不当作实时位姿。 */
+    const _qs=(tp.quat||[]).map(v=>fmt(v,3)).join(', ');
+    $('#tcp2').innerHTML=(tp.stale
+      ? '<span class="bad">⚠ 位姿源已静止 '+fmt(tp.file_age_s,1)+'s（ROKAE SDK 直采文件龄 >10s, 判定失效 —— 上面数字是最后一帧, 勿当实时位姿）</span>'
+      : '源 '+((tp.src||'')||'—')+' · 帧龄 '+fmt(tp.age_s,2)+'s')
+      +' · 四元数 '+(_qs||'—');
     $('#armstate').innerHTML=(s.motion_armed
       ? '服务侧 <span class="ok">已开 --ctl-motion</span>：授权后才真的动臂。'
       : '服务侧 <span class="bad">未开 --ctl-motion</span>：无论怎么点都只演练不下发。')
@@ -1801,9 +1957,23 @@ async function poll(){
           +(s.auth.ip||'—')+' · 授权时刻 '+hhmmss(Math.max(0,(s.server_time||0)-(s.auth.since||0)))
         : '<span class="bad">未授权</span> · 默认就是未授权, 要动臂先在上面授权(两步确认)');
     applyAuth(s.auth);
+    /* 🌈 深度格 (2026-09-28 修): 深度源(容器 ros_depth_stream 落的 depth_raw.npy)早断更,
+       原先显示「帧龄 57312s · 拍照 17:43:49 · 0.0fps」像"有一路在用" ⇒ 改成醒目「深度源已断 Ns」。 */
     const d=s.depth||{};
-    $('#m_depth').textContent='帧龄 '+fmt(d.age_s,2)+'s · 拍照 '+hhmmss(d.age_s)+' · 中位 '+fmt(d.median_m,3)
-      +'m · 有效 '+fmt(d.valid_pct,1)+'%';
+    if(d.dead){
+      $('#m_depth').innerHTML='<span class="bad">⛔ 深度源已断 '+fmt(d.dead_s,1)+'s</span>';
+      const _nd=$('#n_depth');
+      if(_nd){
+        _nd.style.display='block';
+        _nd.innerHTML='深度源 = <code>/home/ubuntu/zmax_ss_remote/zmax_scene/depth_raw.npy</code>'
+          +'(容器 ros_depth_stream 落盘)。该文件已 <b>'+fmt(d.dead_s,0)+'s</b> 没更新 ⇒ <b>源早断</b>。'
+          +'这一格显示的是<b>最后一帧旧图</b>, 不是实时画面; 帧龄/拍照时刻一律按源停写那一刻算, 不伪造新鲜值。';
+      }
+    }else{
+      $('#m_depth').innerHTML='帧龄 '+fmt(d.age_s,2)+'s · 拍照 '+hhmmss(d.age_s)
+        +' · 中位 '+fmt(d.median_m,3)+'m · 有效 '+fmt(d.valid_pct,1)+'%';
+      const _nd=$('#n_depth'); if(_nd) _nd.style.display='none';
+    }
   }catch(e){}
   try{
     if(!st) throw 0;
@@ -1818,8 +1988,14 @@ async function poll(){
     const g=aoi['10082']||{}, sf=aoi['10083']||{};
     const gv=(g.verdict&&(g.verdict.count!==undefined||g.verdict.n!==undefined))
       ? ' · 上轮检出 '+((g.verdict.count!==undefined)?g.verdict.count:g.verdict.n)+' 个' : '';
-    $('#m_aoi_gold').textContent=(g.ok?'判据图在线':'取图失败')+gv
-      +' · 源 '+fmt(g.kb,0)+'KB/帧 · 拍照 '+hhmmss(Date.now()/1000-(g.t||0));
+    /* 🕒 金手指格帧龄也让**源端**说话: 工控机响应头 X-Frame-Age-S(g.src_frame_age_s)。
+       没这个数才退回本端"取回来的时刻" —— 原来只报本端, 取回一张 100s 前的内存图也显示 0.9s。 */
+    const _gsa=g.src_frame_age_s;
+    $('#m_aoi_gold').innerHTML=(g.ok?'判据图在线':'取图失败')+gv
+      +' · 源 '+fmt(g.kb,0)+'KB/帧 · '
+      +((_gsa===null||_gsa===undefined)
+        ? '本端帧龄 '+fmt(Date.now()/1000-(g.t||0),1)+'s'
+        : '源帧龄 '+fmt(_gsa,2)+'s'+(_gsa>3?'<span class="bad">（工控机内存里那帧本就旧, 非实时）</span>':''));
     const ng=$('#n_aoi_gold');
     const noPhoto=/尚无照片|grab=1/.test(g.err||'');
     ng.style.display=((g.ok===false)||g.auto_grab)?'block':'none';
@@ -2205,6 +2381,13 @@ class Handler(BaseHTTPRequestHandler):
                     fps = (hist[-1][1] - hist[0][1]) / (hist[-1][0] - hist[0][0])
                 else:
                     fps = 0.0
+                # 🕒 源端新鲜度取证 (帧龄口径修, 2026-09-28):
+                #   src_age_s  = 源端自报的帧龄(响应头 X-Frame-Age-S), 没有 = None
+                #   stall_s    = 源连续返回同一张图的时长(帧字节签名不变)
+                _hdr = f.get("_hdr_age_s")
+                _stall_since = float(f.get("_stall_since") or 0.0)
+                _stall_s = round(now - _stall_since, 1) if _stall_since else 0.0
+                _stalled = bool(_stall_since) and _stall_s >= _SRC_STALL_S
             out[name] = {
                 "online": jpg is not None,
                 "fps": round(fps, 2),
@@ -2212,9 +2395,20 @@ class Handler(BaseHTTPRequestHandler):
                 "raw_kb_per_frame": round(raw_kb, 1),
                 "compress_x": round(raw_kb / kb, 1) if kb > 0 else 0.0,
                 "age_s": round(now - src_ts, 2) if src_ts else -1.0,
+                # ── 帧龄如实口径 ──
+                "src_age_s": (round(float(_hdr), 2) if _hdr is not None else None),
+                "stall_s": _stall_s,
+                "stalled": _stalled,
+                "age_basis": ("hdr" if _hdr is not None else ("stall" if _stalled else "local")),
                 "frames_served": seq,
                 "label": _CAM_LABEL.get(name.replace("ov_", ""), ""),
             }
+            if name == "depth":
+                # 🌈 深度格: 源文件停更 ⇒ 如实报「深度源已断 Ns」(不是"帧龄 5 万秒"那种含糊)
+                _dd, _dd_s = _depth_src_dead()
+                out[name]["dead"] = _dd
+                out[name]["dead_s"] = _dd_s
+                out[name]["src_file"] = DEPTH_NPY
         return out
 
 
@@ -2362,14 +2556,13 @@ def main():
         #   现改为: kind=crop 取它的**内存帧**(与它存盘/送检完全同一张), 不再本地二次裁剪 ⇒ 三者一致:
         #   页面显示 == 工控机存的 Finger_TopView_*.png == 检测器输入。
         threading.Thread(target=_aoi_worker,
-                         args=(10082, "aoi_gold", args.aoi_fps, "crop", False, True,
-                               "aoi_gold_raw", "origin"),
+                         args=(10082, "aoi_gold", args.aoi_fps, "origin", True, True,
+                               "aoi_gold_raw"),
                          daemon=True, name="aoi-gold").start()
         threading.Thread(target=_aoi_worker,
                          args=(10083, "aoi_surface", args.aoi_fps, "crop", False, True),
                          daemon=True, name="aoi-surface").start()
-        print(f"   🏭 工控机检测源: 10082 金手指(**直接取它的判据图 kind=crop**: 模板法规整裁剪+去倾角, "
-              f"960×960, 与它存盘 Finger_TopView_*.png / 送检同一张; 本地零加工; "
+        print(f"   🏭 工控机检测源: 10082 金手指(取 origin 原图 → 本地 **原比例+去倾角+纵向3×** → 定死 900×332; "
               f"POST /capture_detect 触发产线正常检测且工控机本地存图) + 10083 表面 "
               f"@≤{args.aoi_fps}Hz (只 GET 不触发拍照; 表面取 kind=crop = 模型看的规范图) "
               f"· 两路都推 MJPEG: /aoi_gold.mjpg · /aoi_surface.mjpg", flush=True)
