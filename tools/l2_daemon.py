@@ -938,6 +938,8 @@ VL_VERDICT_PATH = os.path.expanduser("~/zmax_data/vl_safety.json")
 VL_FRESH_S = float(os.environ.get("ZMAX_VL_FRESH_S", "600"))
 VL_INTENT_PATH = os.path.expanduser("~/zmax_data/vl_intent.json")
 VL_INTENT_WAIT_S = float(os.environ.get("ZMAX_VL_INTENT_WAIT_S", "300"))
+# 🔁 同一动作的裁决在这么长时间内可直接复用(见 _vl_reuse_ok): 免去每次点击干等一轮慢层
+VL_REUSE_S = float(os.environ.get("ZMAX_VL_REUSE_S", "300"))
 _VL_ALWAYS_ALLOW = ("robot_stop", "rokae_recover_estop", "estop", "recover")
 _INTENT = {"seq": 0, "desc": ""}
 try:      # 序号必须**跨重启单调**: 否则新旧动作撞号, 慢层的"同一动作两轮比对"会错配(2026-09-27 实测踩到)
@@ -970,6 +972,34 @@ def set_intent(desc: str) -> int:
     except Exception as e:                                              # noqa: BLE001
         log("🛡 意图写入失败: %s" % str(e)[:70])
     return _INTENT["seq"]
+
+
+def _vl_reuse_ok(desc: str):
+    """**同一动作**的新鲜裁决可直接复用 —— 不必为每次点击干等一轮慢层(45~190s)。
+
+    🐢 2026-09-28 老倪: 「技能还是不好使, 前进不好使」—— 每次点击都触发慢层重跑(远端 VL 45~190s),
+    现场等于不可用(点一下要等 1~3 分钟)。本函数给出**不削弱安全**的复用口径:
+      · 复用判据 = 裁决的 intent_desc 与本动作**逐字相同**(同一技能 + 同一 Δ + 同一动作类)
+        且 裁决 ts 在 VL_REUSE_S(默认 300s) 内 且 safe=True 且 risk_level=low;
+      · 慢层回答的是"**这一类动作**在当前场景能不能做"; 场景**此刻**有没有人/遮挡由快层
+        (本地 5Hz · 0.1s)在**下发那一刻**实测 —— 复用不越过快层, 手伸进来照样立刻拒发;
+      · 复用与重跑**都写日志**(写明复用了几秒前的哪一条裁决), 事后可核对。
+    返回 (ok: bool, 说明: str)
+    """
+    try:
+        d = json.loads(open(VL_VERDICT_PATH, encoding="utf-8").read())
+    except Exception as e:                                              # noqa: BLE001
+        return False, "无裁决文件(%s)" % str(e)[:60]
+    vd = d.get("intent_desc") or ""
+    age = time.time() - float(d.get("ts") or 0)
+    if vd != desc:
+        return False, "动作不同(最近裁决=%.30s…)" % vd
+    if age > VL_REUSE_S:
+        return False, "同动作但裁决已 %.0fs 前 > %.0fs" % (age, VL_REUSE_S)
+    if (not d.get("safe")) or str(d.get("risk_level") or "").lower() not in ("low", "none"):
+        return False, "同动作裁决不够干净(safe=%s risk=%s)" % (d.get("safe"), d.get("risk_level"))
+    return True, ("复用 %.0fs 前**同一动作**的裁决(seq=%s · risk=%s · %s)"
+                  % (age, d.get("intent_seq"), d.get("risk_level"), d.get("ts_str")))
 
 
 def _vl_wait_intent(seq: int, desc: str) -> bool:
@@ -1117,13 +1147,20 @@ def chan_send(call, intent_desc=None):
         if _vl_operator_auth(call + " " + intent_desc, consume=False):
             log("🎯 现场授权在场 ⇒ **不干等慢层裁决**, 直接交闸门(快层反射仍强制生效): %s" % intent_desc)
         else:
-            log("🎯 已把本次动作告知 VL: %s (等针对该动作的裁决, 上限 %.0fs)" % (intent_desc, VL_INTENT_WAIT_S))
-            if not _vl_wait_intent(_seq, intent_desc):
-                log("🛡 VL 安全闸: %.0fs 内未等到针对本次动作的裁决 ⇒ 从严拒发(绝不拿旧裁决放行新动作)"
-                    % VL_INTENT_WAIT_S)
-                _note_block("慢层·VL 判断", "%.0fs 内未等到针对本次动作的裁决 ⇒ 从严拒发(裁决 seq=%s 未更新)"
-                            % (VL_INTENT_WAIT_S, _seq))
-                return False
+            _reuse, _rwhy = _vl_reuse_ok(intent_desc)
+            if _reuse:
+                # 🔁 同一动作 + 裁决新鲜(≤VL_REUSE_S) ⇒ 不重跑慢层, 直接交闸门(快层仍实测当下场景)
+                log("🎯 %s | 本动作=%s ⇒ 不重跑慢层, 直接过闸(快层反射仍强制)" % (_rwhy, intent_desc))
+            else:
+                log("🎯 已把本次动作告知 VL: %s (等针对该动作的裁决, 上限 %.0fs · %s)"
+                    % (intent_desc, VL_INTENT_WAIT_S, _rwhy))
+                if not _vl_wait_intent(_seq, intent_desc):
+                    log("🛡 VL 安全闸: %.0fs 内未等到针对本次动作的裁决 ⇒ 从严拒发(绝不拿旧/异动作裁决放行)"
+                        % VL_INTENT_WAIT_S)
+                    _note_block("慢层·VL 判断",
+                                "%.0fs 内未等到针对本次动作的裁决 ⇒ 从严拒发(裁决 seq=%s 未更新 · 复用也不行: %s)"
+                                % (VL_INTENT_WAIT_S, _seq, _rwhy))
+                    return False
     if _vl_gate_blocks(call):
         return False
     for attempt in (1, 2):
