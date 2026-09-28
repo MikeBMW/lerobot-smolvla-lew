@@ -1582,10 +1582,19 @@ def _gen_worker(kind: str, cam: str = "", hint: str = "") -> None:
             if cam != "arm":
                 r = "✗ %s 只支持臂上相机（仿真框要手眼真几何, 本机/USB 相机未标定）" % _GEN_KINDS[kind]
             else:
-                spec = _SO.build_from_sim() if kind == "sim" else _SO.build_from_scene_state()
+                # ⚠️ 2026-09-28 修: 这里是 save_spec(build_from_sim()) **整体覆盖** ——
+                #   会把 vlm/det 的框与"已删清单"一起抹掉(页面上表现=点一次「重建仿真元素」,
+                #   别家的框全没了, 老倪点一下就能撞上)。改为**按 origin 合并**: 只换 sim。
+                fresh = _SO.build_from_sim() if kind == "sim" else _SO.build_from_scene_state()
+                fboxes = ((fresh.get("cameras") or {}).get("arm", {}).get("boxes")) or []
+                spec = _SO.merge_origin(_SO.load_spec(), "arm", "sim", fboxes,
+                                        {"at": time.strftime("%H:%M:%S"), "by": "重建仿真元素",
+                                         "src": str(fresh.get("source", ""))[:120], "n": len(fboxes)})
                 _SO.save_spec(spec)
-                r = "%s: %d 框 (源 %s)" % (_GEN_KINDS[kind],
-                                          len(spec["cameras"]["arm"]["boxes"]), spec["source"])
+                _kept = sorted({b.get("origin") for c in (spec.get("cameras") or {}).values()
+                                for b in (c.get("boxes") or [])})
+                r = "%s: %d 框 (源 %s) · 保留其它来源 %s" % (
+                    _GEN_KINDS[kind], len(fboxes), fresh.get("source"), _kept)
         else:
             mod = __import__("gen_overlay_from_" + ("vlm" if kind == "vlm" else "det"))
             if kind == "vlm":

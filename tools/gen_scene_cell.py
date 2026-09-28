@@ -93,6 +93,119 @@ def build_elements(pts, geo):
     return els
 
 
+# ─────────────────────────────────────────────────────────────
+# 状态空间 3D 视图 (tools/gui/ss_dreamview.py, 参考 dreamview) 的**元素清单** → 真机锚点实现
+# 老倪 2026-09-28: 「你看 3D视图, 状态空间 3D 分层视图, 参考 dreamview 做的仿真环境,
+#   这里就可以看到所有元素的边界框; 你要把这些边界框叠加到手臂相机上」
+# 口径(为什么不直接投仿真坐标):
+#   仿真世界(metaworld 几何) 与真机 base 之间**没有可信的相似变换** —— 三点刚体解残差
+#   7.1/20.4/25.7mm (sim2base_anchor.json validated=false), 且同一件东西尺度差 5 倍
+#   (仿真光模块长 0.20m, 真机 ~0.04m; 仿真孔口→终点 66mm, 真机 40.9mm)
+#   ⇒ 照 3D 视图的**元素清单**逐件用真机可测/可查的锚点实现; 量不出的如实标"未测/无锚点"。
+# ─────────────────────────────────────────────────────────────
+DREAMVIEW = REPO / "tools" / "gui" / "ss_dreamview.py"
+_SIM_CONSTS = ("_HOLE", "_HOLE_MOUTH", "_BOX_CENTER", "_BOX_SIZE", "_TABLE_CENTER",
+               "_TABLE_SIZE", "_PEG_SIZE", "_PEG_CENTER_OFF", "_ARM_H_BASE", "_AOI_FOCUS")
+
+
+def read_dreamview_consts():
+    """AST 读 3D 视图场景常量 (同源取数; 不 import 该模块, 免拉起重型 Qt/GL)。np.array([...]) 取内层。"""
+    import ast
+    out = {}
+    try:
+        tree = ast.parse(DREAMVIEW.read_text(encoding="utf-8"))
+    except Exception as e:
+        return out, "读不到 %s: %s" % (DREAMVIEW.name, e)
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or not isinstance(node.targets[0], ast.Name):
+            continue
+        name = node.targets[0].id
+        if name not in _SIM_CONSTS:
+            continue
+        v = node.value
+        if isinstance(v, ast.Call) and getattr(v.func, "attr", "") == "array" and v.args:
+            v = v.args[0]
+        try:
+            out[name] = ast.literal_eval(v)
+        except Exception:
+            pass
+    return out, "同源常量 %d/%d (%s)" % (len(out), len(_SIM_CONSTS), DREAMVIEW.name)
+
+
+def measure_table_plane(K, tcp7, X, pts, band_mm=15.0, span_m=0.5):
+    """台面/料盘上表面 = 深度图里「示教槽位平面 ±band_mm 且在槽位附近 span」的像素范围 (数据驱动)。"""
+    if not DEPTH_NPY.exists():
+        return None, "无深度文件"
+    meta = json.loads(DEPTH_META.read_text(encoding="utf-8")) if DEPTH_META.exists() else {}
+    dep = np.load(str(DEPTH_NPY))
+    scale = float(meta.get("depth_scale", 0.0001))
+    H, W = dep.shape
+    zs = [p for p in (_pos(pts.get(k)) for k in ("slot1", "slot2")) if p]
+    if not zs:
+        return None, "无示教槽位点"
+    cx0 = float(np.mean([p[0] for p in zs]))
+    cy0 = float(np.mean([p[1] for p in zs]))
+    zref = float(np.mean([p[2] for p in zs]))
+    R_x, t_x = X[:3, :3], X[:3, 3]
+    R_g, t_g = SO.quat_to_R(tcp7[3:7]), np.array(tcp7[:3])
+    sel = []
+    for v in range(0, H, 4):
+        for u in range(0, W, 4):
+            zz = float(dep[v, u]) * scale
+            if not (0.15 <= zz <= 1.0):
+                continue
+            p_cam = np.array([(u - K["cx"]) / K["fx"] * zz, (v - K["cy"]) / K["fy"] * zz, zz])
+            pb = R_g @ (R_x @ p_cam + t_x) + t_g
+            if abs(pb[2] - zref) <= band_mm / 1000.0 and np.hypot(pb[0] - cx0, pb[1] - cy0) <= span_m:
+                sel.append((float(pb[0]), float(pb[1]), float(pb[2])))
+    if len(sel) < 200:
+        return None, "平面像素太少(%d)" % len(sel)
+    A = np.array(sel)
+    px = np.percentile(A[:, 0], [2, 98])
+    py = np.percentile(A[:, 1], [2, 98])
+    c = [float((px[0] + px[1]) / 2), float((py[0] + py[1]) / 2), float(np.median(A[:, 2]))]
+    size = [round(float(px[1] - px[0]) * 1000, 1), round(float(py[1] - py[0]) * 1000, 1), 10.0]
+    return ({"name": "台面·工作台面", "center": [round(v, 5) for v in c], "size": size,
+             "source": "深度图: 示教槽位平面±%.0fmm 的像素范围(数据驱动)" % band_mm,
+             "note": "台面上表面 z=%.1fmm(中位) · %d 像素(P2~P98 定范围) · z 离散 %.1fmm · 厚度=标称" % (
+                 c[2] * 1000, len(sel), float(np.std(A[:, 2])) * 1000)},
+            "选中 %d 像素 · z 中位 %.1fmm" % (len(sel), c[2] * 1000))
+
+
+def build_view_elements(K, tcp7, X, pts):
+    """3D 视图元素清单 → 真机锚点实现。→ (els, 对照表, note)"""
+    sim, cnote = read_dreamview_consts()
+    els, mapping = [], []
+
+    tab, tnote = measure_table_plane(K, tcp7, X, pts)
+    if tab:
+        els.append(tab)
+    mapping.append(("台面 _TABLE_SIZE=%s" % (tuple(sim.get("_TABLE_SIZE", ())) or "?",),
+                    "台面·工作台面" if tab else "—(未画出)", tnote))
+
+    tcp = np.array(tcp7[:3])
+    els.append({"name": "末端·TCP", "center": [round(float(v), 5) for v in tcp], "size": [40, 40, 60],
+                "source": "实时 TCP 真值 (tcp_pose 50Hz)",
+                "note": "位置=真值; 外廓尺寸标称(夹爪未单独测)"})
+    mapping.append(("腕/爪连杆(轨迹实时位姿)", "末端·TCP", "位置=TCP 真值 · 尺寸标称"))
+
+    h = float(sim.get("_ARM_H_BASE", 0.317))
+    els.append({"name": "臂底座", "center": [0.0, 0.0, round(h / 2, 5)],
+                "size": [400, 400, round(h * 1000, 1)],
+                "source": "base 原点(定义) + 视图肩高 %.3fm" % h,
+                "note": "位置=base 原点(定义真值); 底座外廓尺寸标称"})
+    mapping.append(("臂底座 _ARM_BASE+肩高 %.3fm" % h, "臂底座", "base 原点=定义真值"))
+
+    mapping.append(("孔口 _HOLE_MOUTH=%s" % (sim.get("_HOLE_MOUTH"),), "插孔·孔口", "现场示教真值"))
+    mapping.append(("插到底 _HOLE=%s" % (sim.get("_HOLE"),), "插孔·插到底", "现场示教真值"))
+    mapping.append(("光模块 _PEG_SIZE=%s" % (sim.get("_PEG_SIZE"),), "光模块·实测1/2", "检测框+深度实测"))
+    mapping.append(("带孔盒 _BOX_SIZE=%s" % (sim.get("_BOX_SIZE"),), "—(未画)",
+                    "真机夹具外廓未测; 孔口/插到底已单独标"))
+    mapping.append(("AOI 设备 _AOI_FOCUS=%s" % (sim.get("_AOI_FOCUS"),), "—(未画)",
+                    "真机 AOI 工位不在本相机视场 · 无锚点"))
+    return els, mapping, cnote
+
+
 def measure_from_depth(els, K, tcp7, X):
     """深度实测: 画面里已检出的框 (det/vlm) → 中位深度 → base 3D, 作为"实测"元素附上"""
     if not DEPTH_NPY.exists():
@@ -266,6 +379,13 @@ def main() -> int:
                   "source": m["source"] + " (槽位=该模块所在槽, 同 XY)",
                   "note": "槽口在模块下方(未单独测) · " + m.get("note", "")} for m in mods]
         els = els + mods + slots
+
+    # ── 状态空间 3D 视图元素清单 → 真机锚点 (台面/末端/TCP/底座) ──
+    view_els, view_map, vnote = build_view_elements(K, tcp7, X, pts)
+    print("══ 3D 视图元素清单 → 真机锚点 ══ %s" % vnote)
+    for src, dst, how in view_map:
+        print("   %-42s → %-14s %s" % (src[:42], dst, how[:60]))
+    els = els + view_els
 
     print("══ TCP 真值 ══ (%.4f, %.4f, %.4f) quat=(%.3f,%.3f,%.3f,%.3f)" % tuple(tcp7))
     print("══ 手眼 %s · 闭环 std=%.2fmm · X_t=%.1f,%.1f,%.1f mm" % (

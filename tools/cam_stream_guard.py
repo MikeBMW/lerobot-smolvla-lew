@@ -16,6 +16,9 @@
   D. 🌈 深度源: 容器 ss-remote-tap 里的 ros_depth_stream.py 不在, 或宿主读到的 depth_raw.npy 龄 >20s
      → 深度格会一直显示**旧图**(2026-09-28 实测冻了 26.6h / frames_served=1, 慢层拼图一直拿它扣分)
      ⇒ 按脚本官方用法在容器内拉起 `python3 /repo/tools/ros_depth_stream.py --hz 5`
+  E. 🦾 TCP 真值: 容器 rokae_tcp_sampler 的 SDK 直采 latest.json 龄 >10s (或读不到)
+     → 叠加里**所有 3D 框都会集体消失**(只剩大模型的 2D 框), 老倪会当成"框丢了"
+     → 重启该采样容器; 宿主读法见 scene_overlay.read_tcp (SDK 文件优先, 死掉的 tcp_pose.json 只作回退)
 正常时 **一个字都不打**(老倪 2026-09-27: 没请求不要刷屏); 只有动作/失败才输出。
 
 用法:
@@ -39,6 +42,11 @@ TOP_KEY = "MAXHUB"                  # 顶视相机
 DEPTH_NPY = "/home/ubuntu/zmax_ss_remote/zmax_scene/depth_raw.npy"
 DEPTH_DEAD_S = float(os.environ.get("ZMAX_DEPTH_DEAD_S", "20"))
 DEPTH_CONTAINER = os.environ.get("ZMAX_TAP_CONTAINER", "ss-remote-tap")
+# 🦾 TCP 真值源: 容器 rokae_tcp_sampler 里 tcp_direct_sampler.py 5Hz 写 latest.json (珞石 SDK 直采,
+#   口径 endInRef = 与产线 /robot/tcp_pose 同口径)。宿主挂载见下。
+TCP_LATEST = "/home/ubuntu/zmax_data/rokae_sdk/tcp_out/latest.json"
+TCP_DEAD_S = float(os.environ.get("ZMAX_TCP_DEAD_S", "10"))
+TCP_CONTAINER = os.environ.get("ZMAX_TCP_CONTAINER", "rokae_tcp_sampler")
 
 
 def resolve_devs():
@@ -156,6 +164,27 @@ def start_depth():
         return False
 
 
+def tcp_stale():
+    """TCP 真值文件龄 → (是否失效, 说明)。读不到也判失效(3D 框会集体消失)。"""
+    try:
+        d = json.load(open(TCP_LATEST, encoding="utf-8"))
+        age = time.time() - float(d.get("ts", 0))
+        return (age > TCP_DEAD_S), "SDK 直采 latest.json 龄 %.1fs (阈 %.0fs, 值=(%.4f,%.4f,%.4f))" % (
+            age, TCP_DEAD_S, d.get("x", 0), d.get("y", 0), d.get("z", 0))
+    except Exception as e:                                                        # noqa: BLE001
+        return True, "读不到 TCP 真值 %s: %s" % (TCP_LATEST, str(e)[:80])
+
+
+def start_tcp_sampler():
+    """重启 SDK 直采容器 (只读采样, 不发动作) —— 它自带 Restart=unless-stopped, 这是最后一道"""
+    try:
+        r = subprocess.run(["sudo", "-n", "docker", "restart", TCP_CONTAINER],
+                           capture_output=True, text=True, timeout=40)
+        return r.returncode == 0
+    except Exception:                                                             # noqa: BLE001
+        return False
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cmdline", default="", help="自测: 假装的进程命令行")
@@ -198,6 +227,21 @@ def main():
                      " ✅" if (d2 is not None and d2 <= DEPTH_DEAD_S) else " ❌ 仍不新鲜, 需看容器日志 /tmp/depth_stream.log"))
             return 0 if (d2 is not None and d2 <= DEPTH_DEAD_S) else 1
         print("🌈 深度源守护: 拉起失败(sudo -n docker exec 返回非 0) — 需人工看容器 %s" % DEPTH_CONTAINER)
+        return 1
+
+    t_bad, t_note = tcp_stale()
+    if t_bad:
+        if a.dry_run:
+            print("🦾 TCP 真值守护(dry-run): %s → 需要拉起容器 %s" % (t_note, TCP_CONTAINER))
+            return 3
+        if start_tcp_sampler():
+            time.sleep(6)
+            t_bad2, t_note2 = tcp_stale()
+            print("🦾 TCP 真值守护: %s → 已重启容器 %s\n   复核: %s %s"
+                  % (t_note, TCP_CONTAINER, t_note2,
+                     "✅" if not t_bad2 else "❌ 仍不新鲜, 看 sudo docker logs " + TCP_CONTAINER))
+            return 0 if not t_bad2 else 1
+        print("🦾 TCP 真值守护: 重启 %s 失败 — 需人工看容器" % TCP_CONTAINER)
         return 1
 
     if ok:

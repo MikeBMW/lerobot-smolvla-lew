@@ -104,7 +104,13 @@ def load_handeye() -> dict:
 
 
 TCP_CACHE = Path("/home/ubuntu/zmax_ss_remote/zmax_scene/tcp_pose.json")
-TCP_CACHE_MAX_AGE = 1.5      # 秒; 超过就认为缓存停了 → 回退 ssh
+# 🦾 2026-09-28: 上面那份 tcp_pose.json 是**死数据**(最后一个写者 17:43 就没了, 页面照读会显示
+#   1 号位旧位姿)。真值现在走珞石 SDK 直采: 容器 rokae_tcp_sampler 里的 tcp_direct_sampler.py
+#   5Hz 写 /sdk/tcp_out/latest.json, 宿主挂载 = ~/zmax_data/rokae_sdk/tcp_out/latest.json
+#   (带 ts, 口径 endInRef = 与产线 /robot/tcp_pose 同口径)。所以这里**先读它**, 过龄即判失效。
+TCP_SDK_LATEST = Path("/home/ubuntu/zmax_data/rokae_sdk/tcp_out/latest.json")
+TCP_SDK_MAX_AGE = 3.0        # 秒; 5Hz 采样 ⇒ 3s 已经很宽了
+TCP_CACHE_MAX_AGE = 1.5      # 秒; 超过就认为该缓存停了 → 回退下一级
 
 
 def read_tcp(timeout: int = 25, allow_ssh: bool = True) -> np.ndarray | None:
@@ -114,6 +120,13 @@ def read_tcp(timeout: int = 25, allow_ssh: bool = True) -> np.ndarray | None:
     优先读容器写的缓存文件 (ros_tcp_cache.py, 微秒级) —— `ssh ros2 topic echo --once`
     单次要 ~3s, 每次渲染都走它会把叠加帧率拖到 0.3fps。缓存不可用才回退 ssh。
     """
+    try:
+        if TCP_SDK_LATEST.exists():
+            d = json.loads(TCP_SDK_LATEST.read_text(encoding="utf-8"))
+            if time.time() - float(d.get("ts", 0)) <= TCP_SDK_MAX_AGE:
+                return np.array([d["x"], d["y"], d["z"], d["qx"], d["qy"], d["qz"], d["qw"]], float)
+    except Exception:
+        pass
     try:
         if TCP_CACHE.exists():
             d = json.loads(TCP_CACHE.read_text(encoding="utf-8"))
