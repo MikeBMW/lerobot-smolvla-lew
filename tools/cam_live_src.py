@@ -19,10 +19,10 @@ import urllib.request
 DEFAULT_BASE = os.environ.get("ZMAX_STREAM", "http://127.0.0.1:8791")
 
 LABELS = {
-    "arm": "现场实时流 · 臂上 D405 (Orin)",
-    "local": "现场实时流 · 笔记本相机",
-    "local2": "现场实时流 · 顶视 MAXHUB",
-    "depth": "现场实时流 · 深度图",
+    "arm": "手臂相机 · 随臂 D405 (Orin, 硬连接)",
+    "local": "笔记本相机 (本机 USB)",
+    "local2": "MAXHUB 电视机摄像头 (本机 USB)",
+    "depth": "手臂相机深度图 (D405)",
 }
 
 

@@ -7029,12 +7029,12 @@ class HardwareModule(SubModuleWidget):
         # 🔀 2026-09-20 老倪: 「怎么在我的本机摄像头, 和 realsense 摄像头, 来回切换呢?」
         #   本面板加「来源」切换 (切换立即生效: 已连接时下一轮轮询即换源, 未连接时点连接即按所选来源)
         self.cb_cam_src = QComboBox()
-        self.cb_cam_src.addItems(["🔁 自动 (现场实时流·顶视 → 远端快照 → 产线RealSense)",
+        self.cb_cam_src.addItems(["🔁 自动 (手臂相机 → 其余现场源 → 产线RealSense)",
                                   "🎥 产线 RealSense (cam_rs.png)",
                                   "💻 本机工位相机 (cam_local.png)",
-                                  "📡 现场实时流 · 顶视 MAXHUB (真实工位俯视)",
-                                  "📡 现场实时流 · 笔记本相机",
-                                  "📡 现场实时流 · 臂上 D405 (Orin)"])
+                                  "🦾 手臂相机 · 随臂 D405 (Orin, 硬连接)",
+                                  "🖥 MAXHUB 电视机摄像头 (本机 USB)",
+                                  "💻 笔记本相机 (本机 USB)"])
         self.cb_cam_src.setStyleSheet(f"QComboBox{{background:#161b22; color:{C_WHITE}; border:1px solid {C_BORDER};"
                                       f" border-radius:6px; padding:4px; font-size:18px;}}")
         self.cb_cam_src.currentIndexChanged.connect(self._cam_src_changed)
@@ -7194,13 +7194,14 @@ class HardwareModule(SubModuleWidget):
         ("cam_local.png", "本机工位相机 (备用·非产线视角)"),
     )
     _CAM_SRC_NAMES = ("自动", "产线 RealSense", "本机工位相机",
-                      "现场实时流·顶视 MAXHUB", "现场实时流·笔记本", "现场实时流·臂上 D405")
-    # 📡 2026-09-28 老倪: 「摄像头实时画面, 也不是现场摄像头, 怎么回事?」——
-    #   原来这个面板只认 ① 远端 ECS 快照 ② Docker tap 落的 cam_rs.png/cam_local.png,
-    #   **都不是本机直连的现场相机**。真实现场画面在 8791 (cam_live_stream 的 6 路)
-    #   ⇒ 加进来源下拉, 并让「自动」优先用现场实时流; 状态栏照样标 **来源 + 相机出帧帧龄**。
-    _CAM_LIVE_IDX = {3: "local2", 4: "local", 5: "arm"}
-    _CAM_LIVE_DEFAULT = "local2"          # 「自动」优先: 顶视 MAXHUB = 真实工位俯视
+                      "手臂相机 · 随臂 D405 (Orin)", "MAXHUB 电视机摄像头", "笔记本相机")
+    # 📡 2026-09-28 老倪两条现场口径:
+    #   ① 「也不是现场摄像头」= 原来本面板只认远端 ECS 快照 + Docker tap 落盘图, 都不是现场相机
+    #      ⇒ 真实现场画面在 8791 (cam_live_stream 6 路), 加进来源下拉, 状态栏标 来源+相机出帧帧龄。
+    #   ② 「怎么变成笔记本USB连接MAXHUB的电视机摄像头了? 要手臂相机的」= 「自动」必须优先 **手臂相机**,
+    #      本机那两个 USB 摄像头(笔记本 / MAXHUB 电视)只作为可选项, 不许抢默认。
+    _CAM_LIVE_IDX = {3: "arm", 4: "local2", 5: "local"}
+    _CAM_LIVE_DEFAULT = "arm"             # 「自动」优先: 手臂相机 (随臂 D405, Orin 硬连接)
 
     def _cam_live_frame(self, name):
         """取一帧**现场实时流** (8791 → 本机直连真机相机) → (bytes, 标签, 帧龄s) 或 None。
@@ -7249,10 +7250,11 @@ class HardwareModule(SubModuleWidget):
         pref = self._cam_src_pref()
         if pref in self._CAM_LIVE_IDX:                 # 明确选了现场实时流某一路
             return self._cam_live_frame(self._CAM_LIVE_IDX[pref])
-        if pref == 0:                                  # 自动: 现场实时流优先
-            _live = self._cam_live_frame(self._CAM_LIVE_DEFAULT)
-            if _live is not None:
-                return _live
+        if pref == 0:                                  # 自动: 手臂相机优先 → 其余现场源 → 落盘文件
+            for _nm in ("arm", "local2", "local"):
+                _live = self._cam_live_frame(_nm)
+                if _live is not None:
+                    return _live
         base = _os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
         cands = self._CAM_LOCAL_CANDS
         if pref == 1:
