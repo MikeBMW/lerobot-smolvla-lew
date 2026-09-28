@@ -1,0 +1,63 @@
+Orin=192.168.23.66(tashan/ts123); 产线.23.50/24无网关(enx00e04c0c32a0); 两机达工控机.23.23
+§
+NTP回拨8h(勿动RTC)→节拍用monotonic, 负帧龄拒用
+§
+分层(老倪): L5定方向造数据/L4认知预测/L3状态调度/L2检测反馈; 主干=SigLIP768d+四头; from-scratch主干必崩
+§
+交付前先自跑通; GPU不许空转; 改文件必回读核验; 新增接线/脚本须真导入真跑(语法≠导入, 字段先查存在)
+§
+Hermes: 长命令写/tmp/*.sh(巨型内联被拦); sudo免密; 网络优化=zmax-net-optimize
+§
+L5=DeepSeek视觉: max_tokens≥3000; 单次29~137s⇒调用方timeout须≥300(短则content空被判不安全)
+§
+飞书99991663=token缓存过期→重启gateway;长文≥1.5k字须拆条
+§
+引擎tr['obs']39D≠h5原生o[:39]; L3须env原生obs+128图+post反归一化
+§
+L4=INTACT直驱; 反归一化按ckpt训练集同源; L2收口闸逐轴corr<0.5全veto; 真模型默认生效
+§
+守卫: 模型参与>30%掉分; insert_depth=0.002
+§
+🔴 工具内存≈8GB: 超则OOM杀; 同刻仅一模型进程
+§
+评估铁律: 口径=训练同源零回退; loss低≠有效→留出集+平凡基线
+§
+Orin ROS=domain0; tcp_pose 50Hz真值; 几何须ss_geom_calib; Orin政策宽(只读遥测桥禁装包); 真机动作默认慢速speed=8
+§
+真机3D须K+手眼+plane_z; D405深度0.1mm/单位(SDK 4013=401mm; 旧'depth勿用'是尺度误读)
+§
+YOLO在役=软链yolo_peg_live.pt; 瓶颈是数据
+§
+真机画面: 老倪面板=180°翻转; 报方向说'朝画面中心'
+§
+真机: rt后必下电; move_joint/line不下电; 30s超时success=False勿重发; collision_detection=False
+§
+真机视: 只起camera/realsense_source(参抄launch); tap→cam_rs.png
+§
+记忆五层: L2/L3/L4+总装Qwen(SS_MACRO); 势场喂obs[0:3]
+§
+真源: calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2; LoRA=lora_inject.py
+§
+L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT稳态101ms冷6.7s→须常驻
+§
+阶段MOE: 门控必硬先验路由; 枚举不匹配会静默降级吞阶段; 判据=单射性
+§
+LoRA需merge(否则零动作伪装'没提升'): merge_lora_ckpt.py; 判假A/B=逐位同
+§
+AOI: 10082金手指/10083表面; 200=受理, 判决读/last_result; 判据图=手选框>原图自裁>拉长图
+§
+老倪APP: 手机=WebView壳·桌面studio.py·hw/ZMAX-Hardware.apk
+§
+ECS relay: /agent/{prompt,reply} + /hil/state + /orin/status; 站点根=/www/wwwroot/datadrive.world; 新网页必挂首页入口; 免密不通→ZMAX_ECS_PW口令可用; 公网只读: /ov/叠加+/st/工位总览, nginx须^~
+§
+遥测DDS: 只测试/标定/诊断,量产关; 开关 env>运行时>文件~/.zmax_telemetry_mode; 守护=zmax-dds-ss.service
+§
+GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音逐步日志+workers↑;负载用窗口平均判
+§
+main线真源=worktree /home/ubuntu/zmax_rel (共享检出lerobot-smolvla-lew 会被切到mac-hw分支→main脚本全缺); 服务一律指worktree+软链venv
+§
+控制台: 禁反复重启GUI(老倪投诉2次;改码攒批+先问); 字体一次到位(≈2×,硬件卡34/28px)
+§
+场景叠加: overlay_spec.json按origin存框(deleted按origin|label抑制); 手眼TSAI闭环1.74mm是准的(旧'915°'错)
+§
+我=主节点+自主进化系统(章程zmax_rel/docs): 工控机+Orin全归我; **AOI禁10084/10085只用10082/10083**; 工控机任务 ZMAX_Agent(开机)+ZMAX_AOI_KeepAlive(每分自愈); 更新=tools/aoi_remote_deploy.py

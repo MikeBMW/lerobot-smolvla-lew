@@ -36,6 +36,14 @@
   integrity_check 的 EXPECTED_VERSION)。按各自格式改, 别一把 sed。
 - 摘要里有引号/换行时: 用 `-F 文件` 提交; shell 里 `-m "…\"…\""` 会被引号截断 (报
   `pathspec '…' did not match any file`)。
+- **推送 helper 的第一个参数是*仓库路径*, 不是分支名**: 助手脚本 `push_via_ghproxy.sh` 默认指另一个检出,
+  传 `main` 会报「仓库不存在: main」; 一律 `bash <helper> <repo_dir>`(发布从 main 真源 worktree 出)。
+- **tag 要单独推一条**: 小版本只 commit+push 不会带 tag ⇒ 出包时打完 tag 必须单独推
+  (镜像 URL + `-c http.sslVerify=false` + token 头), 再 `git ls-remote --tags origin | grep <t>`
+  核到 **tag 对象 + `^{}` 指向的 commit** 与 `git log -1 origin/main`。
+- **`git check-ignore` 过一遍“要归档的状态文件”**: 关键真源可能被 .gitignore 吃棹
+  (实测 `data/scene/overlay_spec.json` 被 `data/` 规则忽略) ⇒ 归档必须单独收它,
+  否则“保存数据”实际漏掉现场唯一真源。
 
 ## 「保存数据」= 现场批次归档 (用户口径: 验收后 保存数据+更新代码+共享技能)
 
