@@ -31,6 +31,10 @@ check() {
   done
   echo "=== ② docker 常驻 ==="
   sudo -n docker ps --format "  {{.Names}}\t{{.Status}}" 2>/dev/null || echo "  (读不到 docker，需 sudo)"
+  echo "=== ②b 深度源 (容器 ros_depth_stream → 8791 深度格) ==="
+  _dage=$(python3 -c "import os,time;p='/home/ubuntu/zmax_ss_remote/zmax_scene/depth_raw.npy';print('%.0f'%(time.time()-os.path.getmtime(p)) if os.path.exists(p) else 'NA')" 2>/dev/null)
+  _dproc=$(sudo -n docker exec ss-remote-tap bash -lc "ps -eo cmd 2>/dev/null | grep -c '[r]os_depth_stream.py'" 2>/dev/null | tail -1)
+  echo "  源文件龄 ${_dage}s (≤20s 新鲜) · 容器进程数 ${_dproc:-?} (需 ≥1)"
   echo "=== ③ systemd Z-MAX 服务 ==="
   systemctl list-units --type=service --state=running 2>/dev/null | grep -iE "zmax|hermes" | awk '{print "  "$1}' || true
   echo "=== ④ Orin :8792 arm 取流 ==="
@@ -68,6 +72,14 @@ local_up() {
       > /tmp/cam_live_stream.out 2>&1 &
     echo "  ✓ 起了推流服务"
   else echo "  · 推流服务已在跑"; fi
+  # 🌈 深度源(容器内常驻 ros_depth_stream) — 少了它 8791 深度格会一直显示旧图
+  #    (2026-09-28 现场: 重启后没人拉, 深度格冻结 26.6h, frames_served=1, 慢层拼图一直在给"画面异常"扣分)
+  if [ "$(sudo -n docker exec ss-remote-tap bash -lc "ps -eo cmd 2>/dev/null | grep -c '[r]os_depth_stream.py'" 2>/dev/null | tail -1)" != "0" ]; then
+    echo "  · 深度源(容器 ros_depth_stream)已在跑"
+  else
+    sudo -n docker exec -d ss-remote-tap bash -lc 'source /opt/ros/humble/setup.bash && export ROS_DOMAIN_ID=0 && python3 /repo/tools/ros_depth_stream.py --hz 5 >> /tmp/depth_stream.log 2>&1' \
+      && echo "  ✓ 起了深度源(容器 ros_depth_stream @5Hz)" || echo "  ✗ 深度源起不来(看容器)"
+  fi
   # 实时标注器(守护壳, 5Hz)
   if ! pgrep -f "[l]5_live_mark_run.sh" >/dev/null; then
     nohup bash tools/l5_live_mark_run.sh > /tmp/l5_live_mark_run.out 2>&1 &

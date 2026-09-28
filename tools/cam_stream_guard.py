@@ -13,6 +13,9 @@
   A. 8791 不可达                              → 用 tools/start_station_stream.sh 拉起
   B. 进程 cmdline 的 --local-dev/--local2-dev ≠ 解析结果 → 映射错, 重启纠正  (抓"选了 IR 路/串线"这一类)
   C. /stats 里 local 的 label 不含 "Integrated RGB" 或 local2 的 label 不含 "MAXHUB" → 同上
+  D. 🌈 深度源: 容器 ss-remote-tap 里的 ros_depth_stream.py 不在, 或宿主读到的 depth_raw.npy 龄 >20s
+     → 深度格会一直显示**旧图**(2026-09-28 实测冻了 26.6h / frames_served=1, 慢层拼图一直拿它扣分)
+     ⇒ 按脚本官方用法在容器内拉起 `python3 /repo/tools/ros_depth_stream.py --hz 5`
 正常时 **一个字都不打**(老倪 2026-09-27: 没请求不要刷屏); 只有动作/失败才输出。
 
 用法:
@@ -25,12 +28,17 @@ import json
 import os
 import subprocess
 import sys
+import time
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PORT = int(os.environ.get("ZMAX_STREAM_PORT", "8791"))
 RGB_KEY = "Integrated RGB"          # 笔记本彩色相机的卡名关键字
 TOP_KEY = "MAXHUB"                  # 顶视相机
+# 🌈 深度源: 由**容器内常驻**的 ros_depth_stream.py 落盘 (宿主只读它的 npy)
+DEPTH_NPY = "/home/ubuntu/zmax_ss_remote/zmax_scene/depth_raw.npy"
+DEPTH_DEAD_S = float(os.environ.get("ZMAX_DEPTH_DEAD_S", "20"))
+DEPTH_CONTAINER = os.environ.get("ZMAX_TAP_CONTAINER", "ss-remote-tap")
 
 
 def resolve_devs():
@@ -113,6 +121,41 @@ def restart(reason):
     return 0 if ok else 1
 
 
+def depth_age():
+    """深度源文件龄(s); 读不到返回 None"""
+    try:
+        return time.time() - os.path.getmtime(DEPTH_NPY)
+    except OSError:
+        return None
+
+
+def depth_proc():
+    """容器里 ros_depth_stream.py 还在不在 → True/False/None(查不了)"""
+    try:
+        r = subprocess.run(["sudo", "-n", "docker", "exec", DEPTH_CONTAINER, "bash", "-lc",
+                            "ps -eo cmd 2>/dev/null | grep -c '[r]os_depth_stream.py'"],
+                           capture_output=True, text=True, timeout=20)
+    except Exception:                                                            # noqa: BLE001
+        return None
+    # 注意: grep -c 命中 0 条时退出码是 1(不是错误) ⇒ 只看 stdout, 别被 returncode 误导
+    try:
+        return int((r.stdout or "").strip().splitlines()[-1]) > 0
+    except Exception:                                                            # noqa: BLE001
+        return None
+
+
+def start_depth():
+    """按脚本官方用法把常驻深度流拉进容器(分离运行)"""
+    try:
+        r = subprocess.run(["sudo", "-n", "docker", "exec", "-d", DEPTH_CONTAINER, "bash", "-lc",
+                            "source /opt/ros/humble/setup.bash && export ROS_DOMAIN_ID=0 && "
+                            "python3 /repo/tools/ros_depth_stream.py --hz 5 >> /tmp/depth_stream.log 2>&1"],
+                           capture_output=True, text=True, timeout=40)
+        return r.returncode == 0
+    except Exception:                                                            # noqa: BLE001
+        return False
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cmdline", default="", help="自测: 假装的进程命令行")
@@ -134,8 +177,31 @@ def main():
 
     cd, exp, st = proc_cmdline(), resolve_devs(), stats()
     ok, why = judge(cd, exp, st)
+
+    # 🌈 深度格自愈 (2026-09-28 现场): 深度源 = **容器内常驻** ros_depth_stream.py 落的 npy。
+    #    重启/容器重建后没人拉它 ⇒ 宿主只读到 09-27 的旧图: 深度格冻结 26.6h(frames_served=1),
+    #    慢层拼图里那份深度一直是旧的, 一直在给"画面异常"扣分。这里连"文件龄"和"容器进程"一起兜。
+    d_age, d_proc = depth_age(), depth_proc()
+    d_bad = (d_proc is False) or (d_age is None) or (d_age > DEPTH_DEAD_S)
+    if d_bad:
+        if a.dry_run:
+            print("🌈 深度源守护(dry-run): 容器进程=%s · 源文件龄=%s → 需要拉起"
+                  % (d_proc, ("%.0fs" % d_age) if d_age is not None else "读不到"))
+            return 3
+        if start_depth():
+            time.sleep(8)
+            d2 = depth_age()
+            print("🌈 深度源守护: 容器内 ros_depth_stream 不在(进程=%s) 或源文件龄过大(%s) → 已按官方用法拉起"
+                  "\n   复核: 源文件龄 %s%s"
+                  % (d_proc, ("%.0fs" % d_age) if d_age is not None else "读不到",
+                     ("%.1fs" % d2) if d2 is not None else "读不到",
+                     " ✅" if (d2 is not None and d2 <= DEPTH_DEAD_S) else " ❌ 仍不新鲜, 需看容器日志 /tmp/depth_stream.log"))
+            return 0 if (d2 is not None and d2 <= DEPTH_DEAD_S) else 1
+        print("🌈 深度源守护: 拉起失败(sudo -n docker exec 返回非 0) — 需人工看容器 %s" % DEPTH_CONTAINER)
+        return 1
+
     if ok:
-        return 0                                                 # 正常: 静默
+        return 0                                                 # 全正常: 静默
     if a.dry_run:
         print("🛰 工位推流守护(dry-run): %s — 需要重启纠正" % why)
         return 3

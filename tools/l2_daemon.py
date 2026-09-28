@@ -279,6 +279,80 @@ def build_pose_rot(sk, spec, cur, curq):
             "label": "绕%s %+.1f°" % (_cn, deg)}
 
 
+def _quat_angle_deg(a, b):
+    """两个四元数之间的夹角(度) —— 用真值判"到底转了多少" """
+    import math
+    d = abs(sum(float(x) * float(y) for x, y in zip(a, b)))
+    return math.degrees(2.0 * math.acos(max(-1.0, min(1.0, d))))
+
+
+def run_rot_chunks(sk, spec, sid, chan):
+    """🔄 绕轴旋转: **单次 ≤max_deg 的守卫不变**, 一次点击**自动分次转到位**。
+
+    2026-09-28 现场(老倪)「绕轴旋转怎么不好使」→ 页面角度档 20° > 守卫 max_deg=10° 直接被拒, 且返回文案写成
+    "位姿缓存未就绪"(误导成位姿/通道坏了)。第一次修法(逐段"重读姿态再转一次")**又被现场证伪**:
+    腕部转动是慢动作(实测单段 10° 要几十秒), 段间读到的还是没动的旧姿态 ⇒ 两段目标重合,
+    合计只转了 10°。现修法: 全部段都从**起转前姿态 q0** 算**绝对目标** (q_i = q0 ⊗ R_axis(i·per)),
+    相邻两次下发之间仍只差 per ≤ max_deg(守卫意图不变); 发完起个后台线程等终态, 用**真值**报"实测转过多少度"。
+    """
+    import math
+    import threading
+    total = abs(float(spec.get("deg") or ((sk.get("param") or {}).get("deg") or {}).get("default", 5) or 5))
+    g = dict(sk.get("guard") or {})
+    g.update(spec.get("guard") or {})
+    gmax = abs(float(g.get("max_deg", 30.0)))
+    ax = {"a": "x", "b": "y", "c": "z"}.get(str(sk.get("axis", "")).lower())
+    if ax is None:
+        msg = "🛡 拒绝: 技能 %s 的 axis=%r 不是 a/b/c (绕工具轴旋转只认这三个)" % (sid, sk.get("axis"))
+        log(msg)
+        return msg
+    _pos0, _q0, _csrc = _pose_best()
+    if not _pos0 or not _q0:
+        msg = "🛡 拒绝: 姿态读不到(直读失败且常驻缓存过期) — 旋转需要真实当前姿态"
+        log(msg)
+        return msg
+    n = max(1, int(math.ceil(total / gmax - 1e-9)))
+    per = total / n
+    _sign = -1.0 if str(sk.get("id", "")).endswith(("_neg", "_minus", "-")) else 1.0
+    sp = float(spec.get("speed", 60))
+    _cn = {"x": "A(工具X·俯仰)", "y": "B(工具Y·倾侧)", "z": "C(工具Z·自转)"}[ax]
+    log("🔄 %s 起转: 绕%s %+.1f° · 分 %d 段(每段 %.1f° ≤ 守卫 %.0f°) · 位置不动(%.4f, %.4f, %.4f) · 起转姿态 quat [%.4f %.4f %.4f %.4f]"
+        % (sid, _cn, _sign * total, n, per, gmax, _pos0[0], _pos0[1], _pos0[2], *_q0))
+    for i in range(1, n + 1):
+        _deg = _sign * per * i                 # 绝对目标: 从 q0 复合, 不依赖"上一段转完了没"
+        _q_new = _qnorm(_qmul(list(_q0), _axis_q(ax, _deg)))
+        _to = int(max(90, 20 + abs(per) * 3))
+        call = ('timeout %d ros2 service call /move_pose interfaces/srv/TargetPose "{speed: %s, joint_state: {name: [], '
+                'position: []}, pose: {position: {x: %s, y: %s, z: %s}, orientation: {x: %s, y: %s, z: %s, w: %s}}}"'
+                % (_to, sp, _pos0[0], _pos0[1], _pos0[2], *_q_new))
+        if spec.get("dry"):
+            log("DRY-RUN %s 第 %d/%d 段(绝对 %+.1f°) → %s" % (sid, i, n, _deg, call[:200]))
+            return "DRY-RUN(未下发): %s" % call[:170]
+        if not chan_send(call, _intent_desc(sid, 0.0, 0.0, 0.0, "绕%s %+.1f° · 第 %d/%d 段" % (_cn, _deg, i, n))):
+            _bm = _block_msg()
+            log(_bm)
+            return _bm
+        log("已下发 %s 第 %d/%d 段 → 绝对 %+.1f° (目标姿态 quat [%.4f %.4f %.4f %.4f])"
+            % (sid, i, n, _deg, *_q_new))
+        if i < n:
+            time.sleep(1.5)
+
+    def _report():                              # 后台等终态, 用真值报"实测转了多少" —— 不堵主循环
+        t0 = time.time()
+        best = 0.0
+        _s = ""
+        while time.time() - t0 < 90:
+            _p, _q, _s = _pose_best()
+            if _q:
+                best = _quat_angle_deg(_q0, _q)
+                if abs(best - total) <= 2.0:
+                    break
+            time.sleep(2.0)
+        log("✅ %s 实测转过 %.1f° (目标 %.1f° · 起转姿态→当前姿态, 真值 %s)" % (sid, best, total, _s or "?"))
+    threading.Thread(target=_report, daemon=True).start()
+    return "已下发 %d 段 · 合计 %.1f°(腕部转动较慢, 到位实测随后写日志)" % (n, total)
+
+
 def _args_to_yaml(a):
     """dict → ROS2 CLI 的服务请求串 {k: v, k2: [..]} (只支持 标量/布尔/数值数组)"""
     def val(v):
@@ -806,14 +880,13 @@ def dispatch(reg, spec, chan):
             return run_stages(sk, spec, chan, pts)
         # 相对运动(前进/后退/向左/向右/抬升/下降)的落点 = **真实当前位姿** + 偏移
         # → 位姿直读, 不用滞后缓存(缓存滞后会把每一步的误差累加成错落点); 与 Δ 日志共用同一次读。
-        _cur, _cq, _csrc = _pose_best()
         # 🔄 2026-09-27 老倪(手动控制区): A/B/C = 原地姿态旋转, 位置不动 → 不走 build_move 的平移分支
-        _rot = None
+        # 🔧 2026-09-28: 页面角度档(20°) > 技能守卫(max_deg=10°) 会被拒且文案误导 ⇒ 交 run_rot_chunks 自动分次
         if sk.get("ros") == "pose_rot":
-            _rot = build_pose_rot(sk, spec, _cur, _cq)
-            r = _rot["tq"] if _rot else None
-        else:
-            r = build_move(sk, spec, pts, _cur, _cq)
+            return run_rot_chunks(sk, spec, sid, chan)
+        _cur, _cq, _csrc = _pose_best()
+        _rot = None
+        r = build_move(sk, spec, pts, _cur, _cq)
         if not r:
             log("拒绝: 位姿读不到(直读失败且常驻缓存过期)或点位不存在")
             return "位姿缓存未就绪"
@@ -933,7 +1006,8 @@ def _spawn_chan(force=False):
 # 老倪: 「你现在有三个相机，还有深度信号，你的大模型，要负责安全保护。把 deepseek VL 加入控制循环」
 # 形态: VL 单次 40~150s ⇒ 当**慢传感器**(vl_safety_monitor.py 常驻维持带时间戳的裁决),
 #       执行层每次运动下发前读最新裁决: 缺失/过期/不安全 ⇒ **一律拒发**(fail-closed, 看不清也拒)。
-#       关闸只能显式 ZMAX_VL_GUARD=0; 停机/复位类**永远放行**(闸门不许挡急停)。
+#       关闸: env ZMAX_VL_GUARD=0, 或运行时文件 ~/zmax_data/vl_guard_off.json(带 until 到期即自动恢复) —— 见 _vl_disabled()。
+#       停机/复位类**永远放行**(闸门不许挡急停)。
 VL_VERDICT_PATH = os.path.expanduser("~/zmax_data/vl_safety.json")
 VL_FRESH_S = float(os.environ.get("ZMAX_VL_FRESH_S", "600"))
 VL_INTENT_PATH = os.path.expanduser("~/zmax_data/vl_intent.json")
@@ -941,6 +1015,29 @@ VL_INTENT_WAIT_S = float(os.environ.get("ZMAX_VL_INTENT_WAIT_S", "300"))
 # 🔁 同一动作的裁决在这么长时间内可直接复用(见 _vl_reuse_ok): 免去每次点击干等一轮慢层
 VL_REUSE_S = float(os.environ.get("ZMAX_VL_REUSE_S", "300"))
 _VL_ALWAYS_ALLOW = ("robot_stop", "rokae_recover_estop", "estop", "recover")
+# 🔓 关闸的运行时开关 (2026-09-28 现场: 老倪「关闭安全」)
+#   除 env 外再给一个**带到期时间的文件**: 现场不重启就能开关, 且到期**自动恢复**安全(fail-closed),
+#   避免"关了忘了开"; 每次下发都把开关状态写进审计日志(可追是谁什么时候关的)。
+VL_GUARD_OFF_PATH = os.path.expanduser("~/zmax_data/vl_guard_off.json")
+
+
+def _vl_disabled():
+    """(disabled, why): 安全闸是否被显式关掉。env ZMAX_VL_GUARD=0 优先, 其次看运行时文件。"""
+    if os.environ.get("ZMAX_VL_GUARD", "1").strip().lower() in ("0", "off", "false", "no"):
+        return True, "env ZMAX_VL_GUARD=0"
+    try:
+        d = json.loads(open(VL_GUARD_OFF_PATH, encoding="utf-8").read())
+    except Exception:                                                       # noqa: BLE001
+        return False, ""
+    if not d.get("enabled"):
+        return False, ""
+    _u = d.get("until")
+    if _u and time.time() > float(_u):
+        return False, ""                    # ⏰ 到期即自动恢复安全 —— 不需要任何人操作
+    _left = ("到期 %s" % time.strftime("%H:%M:%S", time.localtime(float(_u)))) if _u else "**无到期时间(需手动关)**"
+    return True, "%s · by=%s · %s" % (_left, str(d.get("by") or "-")[:24], str(d.get("note") or "")[:44])
+
+
 _INTENT = {"seq": 0, "desc": ""}
 try:      # 序号必须**跨重启单调**: 否则新旧动作撞号, 慢层的"同一动作两轮比对"会错配(2026-09-27 实测踩到)
     _INTENT["seq"] = int(json.loads(open(VL_INTENT_PATH, encoding="utf-8").read()).get("seq") or 0)
@@ -1077,7 +1174,9 @@ def _vl_gate_blocks(call: str) -> bool:
     c = call or ""
     if any(k in c for k in _VL_ALWAYS_ALLOW):
         return False
-    if os.environ.get("ZMAX_VL_GUARD", "1").strip().lower() in ("0", "off", "false", "no"):
+    _d_off, _w_off = _vl_disabled()
+    if _d_off:
+        log("🛡 VL 安全闸: **已关闭** ⇒ 本条直接放行 (%s)" % _w_off)
         return False
 
     def _slow_block(why: str) -> bool:
@@ -1144,7 +1243,11 @@ def chan_send(call, intent_desc=None):
         log("🎯 夹爪类动作 ⇒ 免意图等待(非臂运动), 仍过快层反射闸门: %s" % intent_desc)
     if intent_desc and not _is_grip:
         _seq = set_intent(intent_desc)
-        if _vl_operator_auth(call + " " + intent_desc, consume=False):
+        _d_off, _w_off = _vl_disabled()
+        if _d_off:
+            # 🔓 安全闸关了(现场调试) ⇒ 不审议、不等待, 直接下发; 下面 _vl_gate_blocks 同样整体放行
+            log("🎯 安全闸已关闭 ⇒ 不进入本轮审议, 直接下发: %s (%s)" % (intent_desc, _w_off))
+        elif _vl_operator_auth(call + " " + intent_desc, consume=False):
             log("🎯 现场授权在场 ⇒ **不干等慢层裁决**, 直接交闸门(快层反射仍强制生效): %s" % intent_desc)
         else:
             _reuse, _rwhy = _vl_reuse_ok(intent_desc)
