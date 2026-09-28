@@ -88,7 +88,11 @@ def publish(pts, clear=False):
     cam = spec.setdefault("cameras", {}).setdefault(CAM, {})
     if clear or not pts:
         # 清层: 过滤 boxes + 清 by_origin + 落 deleted(见技能: merge_origin([]) 是空操作)
-        cam["boxes"] = [b for b in cam.get("boxes", []) if b.get("origin") != ORIGIN]
+        # 只清"轨迹路径"这一条, **保留**同 origin 的参考点标记(P1/P2/... —— marker 写的),
+        # 否则每 2s 重发布一次就会把参考点刷掉/来回闪(实测踩到)
+        def _is_path(b):
+            return str(b.get("origin")) == ORIGIN and str(b.get("label") or "").startswith("实测轨迹")
+        cam["boxes"] = [b for b in cam.get("boxes", []) if not _is_path(b)]
         cam.get("by_origin", {}).pop(ORIGIN, None)
         SO.save_spec(spec)
         return 0
