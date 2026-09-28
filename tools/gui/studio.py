@@ -711,7 +711,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.15.43")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.15.44")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10900,7 +10900,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.43 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.44 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10908,9 +10908,12 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.43 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.44 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.15.44: 现场修复批次: 原子技能可用性 + 相机口径 + 硬件工具箱画面  ① 原子技能「又不好使了 / 前进不好使」——根因两条, 都已修并留证:    · 喂错相机: 推流写死 --local-dev 2 --local2-dev 0, 而 video2 是笔记本相机的 GREY(IR) 路      (无红外照明 ⇒ mean=6.0 / median=0 / 96% 像素<20), 快层(本地 5Hz)永远判「遮挡/糊化」⇒ 运动技能全拒。      新增 tools/cam_dev_resolve.py 按卡名+能力解析设备(彩色=MJPG / 顶视=MAXHUB), boot_restore.sh 接线。      换后实测 快层 safe=True · 慢层 safe=True risk=low · 闸门放行。    · 每次点击都重跑一轮远端 VL 慢层(实测 45~190s, 空回复重试再 +55s) ⇒ 点一下要等 1~3 分钟。      新增「同一动作复用新鲜裁决」(_vl_reuse_ok): 裁决 desc 与本动作逐字相同 + ≤300s + safe + risk=low      ⇒ 不重跑慢层直接过闸; 快层仍在下发那一刻实测(手伸进来照样拒发), 复用/重跑都写日志可核。      实测判据 6/6 + 端到端(假命令通道,零运动) chan_send 0.00s 返回、通道写入 1 条命令。    · 慢层单轮上限 150s → 300s(与实际单轮 137~190s 对齐, 原先每轮都落"未给出裁决"降级裁决)。    · 点完的反馈: 技能清单底部终端「✓ 已下发」立即出现, 回执/被拦原因后台补打, 等裁决期间每 15s      报一行「⏳ 已等 Ns · 原因」; 执行器被拦时写明**哪一层闸 + 为什么**(不再写"A 或 B 见日志")。  ② 硬件工具箱「摄像头实时画面」:    · 原来只认远端 ECS 快照 + Docker tap 落盘图 ⇒ 老倪: 「也不是现场摄像头」; 「自动」一度被我设成      本机 USB 的 MAXHUB 电视摄像机 ⇒ 「怎么变成…电视机摄像头了? 要手臂相机的」。    · 现口径: 自动 = **手臂相机(随臂 D405, Orin 硬连接)** → 其余现场源 → 远端快照 → 落盘图;      下拉分列 手臂相机 / MAXHUB 电视机摄像头(本机USB) / 笔记本相机(本机USB);      状态栏每次轮询标 **来源 + 相机自己的出帧帧龄**(取不到写「帧龄 —」, 不冒充)。    · 新增 tools/cam_live_src.py 统一取帧口(8791 /snapshot/*.jpg + /stats.age_s)。  ③ 打开状态空间工程不再播报上次 L5 失败(旧失败静音, 只留一行日志; 点过运行/见过 running 之后的失败照报)。
+        # v5.15.43: v5.15.43 — 金手指判据口径对齐/回退 + 三处显示口径如实化 + 工控机启动脚本 + 状态数据 (补录: 发布时漏写本行)
+        # v5.15.42: v5.15.42 — 金手指判据图原比例/去倾角/纵向3× + 请求检测按钮 + TCP位姿源改SDK直读 + VL闸摇摆误杀修复 (补录: 发布时漏写本行)
         # v5.15.41 (2026-09-27): 现场实况交付 —— 场景叠加页手机化(9格/帧龄/拍照时间) + 手机 APP
         #   (com.zmax.live v1.1, 双网口自动切换) + 公网入口 datadrive.world/zmax-live.html;
         #   arm(D405) 路恢复(rs_fast_node 不在 launch 里, 栈重启必挂 → 补回后 29.9fps);
