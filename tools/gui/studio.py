@@ -711,7 +711,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.15.44")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.15.45")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10900,7 +10900,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.44 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.45 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10908,9 +10908,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.44 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.45 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.15.45: v5.15.45 — 工位总览相机纠偏 + AOI 两路无图修复 + 手动控制台"授权后不动"定性  ① 相机(笔记本太黑/MAXHUB 串线): 根因是控制台「工位总览·场景叠加」按钮把设备号写死 `--local-dev 2 --local2-dev 0`,    现场 /dev/video2 实为笔记本相机的 GREY(IR) 路(逐帧 mean≈6) ⇒ 该格近全黑且两路串线。    改为按「卡名+能力」动态解析(tools/cam_dev_resolve.py), 并新增 tools/start_station_stream.sh 稳定启动器    与 tools/cam_stream_guard.py(每 5 分钟自愈: 没跑就拉起 / 映射与实测不符就按解析结果重启, 正常静默)。    实测: i_local=Integrated RGB Camera 640×480·0.06s 帧龄·15.1fps; i_local2=WT15: MAXHUB-Camera 1280×720·26.5fps。  ② AOI 金手指/表面检测"没有图像": 根因1 服务端状态端点在 json.dumps 上撞 numpy 标量 ⇒ TypeError ⇒ 500,    页面轮询取不到状态、两格 MJPEG 不刷新; 根因2 工控机 /last_result 的 caliber_meta.natural 是整图像素列表(5164.6KB)    被原样塞进状态 ⇒ /station/status 单轮 10.4MB, 页面 1.5s 轮询必卡死。    修法: 序列化统一 _json_safe()/_jbytes() 兜底 + _slim() 状态瘦身(超长数组换摘要, 字段名不变)。    实测(修后): /station/status 10.4MB→7500B·1.8ms, /aoi/status 5.04MB→1462B, /ctl/status 5.29MB→3232B;    两格真出图: i_aoi_gold 900×332/1.11fps/18帧, i_aoi_surface 1280×1280/0.78fps/15帧, 两路 ok=true。    另: 页面 MJPEG 加断线/停帧自愈(onerror 重连 + 每 6s 比对 /stats 帧序号, 连续 2 轮不推进换 src)。  ③ 手动控制台"授权后机器人不动": 审计口径逐时刻——17:54:08 授权 → 17:54:13 点 L2.forward 10mm speed8 dry=false    → 17:54:23 VL 慢层 safe=True/risk=low(20s) → 17:54:43 放行并下发 → 17:54:59 ROS 回 success=True;    但 SDK 直采 TCP x=0.723906 逐 2s 采样一位未变 ⇒ 控制器回成功而臂未动(待现场允许后最小复测定性)。    另一独立成因(本批次引入并已修/已说明): "已授权"是推流服务**进程内状态**, 重启服务即清空(复核 armed=false),    之后点击只会演练 ⇒ 重启后必须重新两步授权。控制器实时三查(topic): power=on/operation=idle/has_error=false。  ④ 现场体检: 飞书 gateway active(WS 17:46:38 重连成功, 近 1h 99991663=0 次, 无需重启);    DNS flush 清掉两条长尾(hf-mirror 1294→11ms, dataworld 1163→13ms), 现场设备 0.04~0.62ms 全 0% 丢包。
         # v5.15.44: 现场修复批次: 原子技能可用性 + 相机口径 + 硬件工具箱画面  ① 原子技能「又不好使了 / 前进不好使」——根因两条, 都已修并留证:    · 喂错相机: 推流写死 --local-dev 2 --local2-dev 0, 而 video2 是笔记本相机的 GREY(IR) 路      (无红外照明 ⇒ mean=6.0 / median=0 / 96% 像素<20), 快层(本地 5Hz)永远判「遮挡/糊化」⇒ 运动技能全拒。      新增 tools/cam_dev_resolve.py 按卡名+能力解析设备(彩色=MJPG / 顶视=MAXHUB), boot_restore.sh 接线。      换后实测 快层 safe=True · 慢层 safe=True risk=low · 闸门放行。    · 每次点击都重跑一轮远端 VL 慢层(实测 45~190s, 空回复重试再 +55s) ⇒ 点一下要等 1~3 分钟。      新增「同一动作复用新鲜裁决」(_vl_reuse_ok): 裁决 desc 与本动作逐字相同 + ≤300s + safe + risk=low      ⇒ 不重跑慢层直接过闸; 快层仍在下发那一刻实测(手伸进来照样拒发), 复用/重跑都写日志可核。      实测判据 6/6 + 端到端(假命令通道,零运动) chan_send 0.00s 返回、通道写入 1 条命令。    · 慢层单轮上限 150s → 300s(与实际单轮 137~190s 对齐, 原先每轮都落"未给出裁决"降级裁决)。    · 点完的反馈: 技能清单底部终端「✓ 已下发」立即出现, 回执/被拦原因后台补打, 等裁决期间每 15s      报一行「⏳ 已等 Ns · 原因」; 执行器被拦时写明**哪一层闸 + 为什么**(不再写"A 或 B 见日志")。  ② 硬件工具箱「摄像头实时画面」:    · 原来只认远端 ECS 快照 + Docker tap 落盘图 ⇒ 老倪: 「也不是现场摄像头」; 「自动」一度被我设成      本机 USB 的 MAXHUB 电视摄像机 ⇒ 「怎么变成…电视机摄像头了? 要手臂相机的」。    · 现口径: 自动 = **手臂相机(随臂 D405, Orin 硬连接)** → 其余现场源 → 远端快照 → 落盘图;      下拉分列 手臂相机 / MAXHUB 电视机摄像头(本机USB) / 笔记本相机(本机USB);      状态栏每次轮询标 **来源 + 相机自己的出帧帧龄**(取不到写「帧龄 —」, 不冒充)。    · 新增 tools/cam_live_src.py 统一取帧口(8791 /snapshot/*.jpg + /stats.age_s)。  ③ 打开状态空间工程不再播报上次 L5 失败(旧失败静音, 只留一行日志; 点过运行/见过 running 之后的失败照报)。
         # v5.15.43: v5.15.43 — 金手指判据口径对齐/回退 + 三处显示口径如实化 + 工控机启动脚本 + 状态数据 (补录: 发布时漏写本行)
         # v5.15.42: v5.15.42 — 金手指判据图原比例/去倾角/纵向3× + 请求检测按钮 + TCP位姿源改SDK直读 + VL闸摇摆误杀修复 (补录: 发布时漏写本行)

@@ -436,6 +436,48 @@ ROKAE_TCP_MAX_AGE_S = 10.0
 _AOI_INFO = {}            # port → {ok, err, http, t, kb, verdict, kind, src}
 _AOI_LOCK = threading.Lock()
 _DEPTH_INFO = {}
+_JSON_WARNED = set()
+
+
+def _json_safe(o):
+    """json.dumps 兜底: numpy 标量/数组 → 原生类型。
+
+    🐛 2026-09-28 现场: `/station/status`(页面**唯一**那条状态请求) 与 /ctl/status /aoi/status
+       都在 json.dumps 里抛 `TypeError: Object of type ndarray is not JSON serializable`
+       ⇒ HTTP 处理器整个崩掉(实测 curl 返回 **000 空回复**) ⇒ 控制台面板永远「读取中…」、
+       位姿/三查/授权全部看不到(老倪:「金手指和表面检测怎么没有图像」那轮一起暴露的)。
+    这里兜底转换 **并且** 打一行带类型的告警(第一次遇到才打), 便于回头把源头改干净。
+    """
+    t = type(o).__name__
+    try:
+        import numpy as np
+        if isinstance(o, np.ndarray):
+            _warn_json_once(t, o)
+            return o.tolist()
+        if isinstance(o, np.generic):
+            _warn_json_once(t, o)
+            return o.item()
+    except Exception:                                                             # noqa: BLE001
+        pass
+    _warn_json_once(t, o)
+    return str(o)
+
+
+def _warn_json_once(t, o):
+    if t in _JSON_WARNED:
+        return
+    _JSON_WARNED.add(t)
+    try:
+        print("⚠️ [json] payload 里出现非原生类型 %s → 已自动转换; 源头该改成原生类型 (repr=%r)"
+              % (t, str(o)[:80]), flush=True)
+    except Exception:                                                             # noqa: BLE001
+        pass
+
+
+def _jbytes(obj) -> bytes:
+    """统一出口: 任何响应体都走这里 ⇒ 不会再因为一个 numpy 值整条请求崩掉。"""
+    return json.dumps(obj, ensure_ascii=False, default=_json_safe).encode("utf-8")
+
 # 🕹 手动控制: **服务级开关** —— 不加 --ctl-motion 时本进程只演练(dry), 真动需要
 #   ①启动参数 --ctl-motion ②页面勾「授权真动」, 双重闸门(防止推流服务被当成遥控器)。
 _CTL = {"motion": False, "min_gap": 1.5, "last_real": 0.0,
@@ -762,10 +804,35 @@ def _aoi_set_caliber(port: int = 10082, mode: str = "canonical") -> dict:
     return out
 
 
+def _slim(o, max_items: int = 64, max_depth: int = 6):
+    """状态响应瘦身: 绝不让"整张图的像素数组"进 JSON。
+
+    为什么(2026-09-28 实测): 工控机 /last_result 的 caliber_meta.natural 是 2448×2048×3 的整图
+    列表 = 5.16MB; 页面每 1.5s 轮询 /station/status ⇒ 一轮 10MB+, 页面直接拖死/假无图。
+    只替换"超长数组"为摘要, 标量/短列表/字典原样保留 ⇒ 页面字段名不变, 改动对前端透明。
+    """
+    if isinstance(o, dict):
+        return {k: (_slim(v, max_items, max_depth - 1) if max_depth > 0 else v) for k, v in o.items()}
+    if hasattr(o, "shape") and hasattr(o, "size"):          # numpy ndarray(会被 default= 序列化成巨list)
+        try:
+            if int(o.size) > max_items:
+                return {"_omitted": True, "_shape": [int(x) for x in o.shape], "_dtype": str(o.dtype),
+                        "_why": "超长数组(疑似图像像素), 状态响应不带"}
+        except Exception:                                                                   # noqa: BLE001
+            return {"_omitted": True, "_why": "不可摘要数组"}
+        return o
+    if isinstance(o, (list, tuple)):
+        if len(o) > max_items:
+            return {"_omitted": True, "_len": len(o), "_why": "超长数组(疑似图像像素), 状态响应不带",
+                    "_head": [_slim(v, max_items, max_depth - 1) for v in list(o)[:8]] if max_depth > 0 else []}
+        return [_slim(v, max_items, max_depth - 1) if max_depth > 0 else v for v in o]
+    return o
+
+
 def _aoi_note(port: int, **kw) -> None:
     with _AOI_LOCK:
         d = _AOI_INFO.setdefault(port, {})
-        d.update(kw)
+        d.update({k: _slim(v) for k, v in kw.items()})       # ⚠️ 一律瘦身后再进状态(页面轮询很轻)
         d["t"] = time.time()
 
 
@@ -2115,6 +2182,7 @@ async function poll(){
   try{
     const j=await getj('/station/status?t='+Date.now(),6000);
     s=j.ctl; aoi=j.aoi; st=j.stats; _okAt=Date.now();
+    try{ window.__stats=st||{}; }catch(_e){}
     const a82=$('#auto82');
     if(a82){const want=((j.aoi_auto||{})['10082']!==false); if(a82.checked!==want) a82.checked=want;}
   }catch(e){}
@@ -2253,6 +2321,24 @@ const SNAPS=[...document.querySelectorAll('img[data-mode=snap]')].map(im=>({
 document.querySelectorAll('img[data-mode=mjpg]').forEach(im=>{
   im.classList.add('live'); im.src=im.dataset.src+'?t='+Date.now();
 });
+/* 🔁 MJPEG 断线/停帧自愈 (2026-09-28 老倪: 「金手指和表面检测怎么没有图像」)
+   根因: 推流进程一重启(换相机 / 守护纠正映射 / 控制台重新拉流), 这两格的长连接会**停在死连接**上
+   —— 快照格每轮自己再请求所以自动恢复, MJPEG 不会 ⇒ 那两格永远空着(实测: 服务侧 /stats 帧序号在涨、
+   curl 取流有真帧, 页面却是空的 ⇒ 问题在**页面连接**这一层)。
+   判据(不猜, 都有数): ① img.onerror 立刻重连 ② 每 6s 比对 /stats 的 frames_served:
+   在涨=连接活着; 连续 2 轮不涨 ⇒ 换 src(新时间戳)强制重连。 */
+const MJPG=[...document.querySelectorAll('img[data-mode=mjpg]')].map(im=>({im:im, url:im.dataset.src, seen:-1, still:0}));
+MJPG.forEach(rec=>{ rec.im.onerror=()=>setTimeout(()=>{ rec.im.src=rec.url+'?t='+Date.now(); rec.still=0; },1500); });
+setInterval(()=>{
+  const st=window.__stats||{};
+  MJPG.forEach(rec=>{
+    const v=st[rec.im.id.replace(/^i_/,'')]; if(!v) return;
+    const n=v.frames_served; if(n===undefined||n===null) return;
+    if(rec.seen<0){ rec.seen=n; return; }
+    if(n>rec.seen){ rec.seen=n; rec.still=0; return; }
+    if(++rec.still>=2){ rec.im.src=rec.url+'?t='+Date.now(); rec.still=0; }
+  });
+}, 6000);
 document.querySelectorAll('#gview button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#gview button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on');
@@ -2407,24 +2493,20 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "application/json; charset=utf-8",
                        json.dumps(self._stats(), ensure_ascii=False).encode("utf-8"))
         elif p == "/motion":
-            self._send(200, "application/json; charset=utf-8",
-                       json.dumps(_motion_state(), ensure_ascii=False).encode("utf-8"))
+            self._send(200, "application/json; charset=utf-8", _jbytes(_motion_state()))
         elif p == "/ctl/status":
-            self._send(200, "application/json; charset=utf-8",
-                       json.dumps(_ctl_status(), ensure_ascii=False).encode("utf-8"))
+            self._send(200, "application/json; charset=utf-8", _jbytes(_ctl_status()))
         elif p == "/station/status":
             # 🛰 页面只发**一条**状态请求 (3 条合并成 1) —— 见页面注释里的 HTTP/1.1 六连接坑
             payload = {"stats": self._stats(), "ctl": _ctl_status(),
                        "aoi_auto": _aoi_auto_status()}
             with _AOI_LOCK:
                 payload["aoi"] = {str(k): dict(v) for k, v in _AOI_INFO.items()}
-            self._send(200, "application/json; charset=utf-8",
-                       json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+            self._send(200, "application/json; charset=utf-8", _jbytes(payload))
         elif p == "/aoi/status":
             with _AOI_LOCK:
                 d = {str(k): dict(v) for k, v in _AOI_INFO.items()}
-            self._send(200, "application/json; charset=utf-8",
-                       json.dumps(d, ensure_ascii=False).encode("utf-8"))
+            self._send(200, "application/json; charset=utf-8", _jbytes(d))
         else:
             # 🎥 2026-09-27: 通用路由 —— 任意相机源自动可用 (加相机不用改路由表)
             #   /<cam>.mjpg · /overlay/<cam>.mjpg · /snapshot/<cam>.jpg · /snapshot/overlay_<cam>.jpg

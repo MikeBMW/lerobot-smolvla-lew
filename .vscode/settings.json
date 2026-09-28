@@ -9,7 +9,7 @@
   },
   "explorer.excludeGitIgnore": false,
   "explorer.sortOrder": "mixed",
-  "python.defaultInterpreterPath": "/home/ubuntu/lerobot-smolvla-lew/gui-venv311/bin/python",
+  "python.defaultInterpreterPath": "/home/ubuntu/zmax_rel/gui-venv311/bin/python",
   "python.terminal.activateEnvironment": true,
   "files.watcherExclude": {
     "**/.git/objects/**": true,
