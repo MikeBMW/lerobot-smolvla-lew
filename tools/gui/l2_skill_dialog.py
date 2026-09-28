@@ -368,9 +368,29 @@ class L2SkillDialog(QDialog):
         return "安全闸 " + _one(_rd("~/zmax_data/vl_safety_fast.json"), "快层") + " · " \
             + _one(_rd("~/zmax_data/vl_safety.json"), "慢层")
 
+    def _wait_reason(self):
+        """等回执期间说清"在等什么" —— 老倪 2026-09-28: 点了要能看懂卡在哪, 不能静默等两分钟。
+
+        关键口径: 慢层(VL)为**本次动作**重跑的裁决没到之前, 执行器**故意不下发**
+        (绝不拿旧裁决放行新动作) —— 单轮实测 45~190s, 这段等待是设计, 不是卡死。
+        """
+        try:
+            _rd = lambda p: json.loads(open(os.path.expanduser(p), encoding="utf-8").read())  # noqa: E731
+            it = _rd("~/zmax_data/vl_intent.json")
+            vd = _rd("~/zmax_data/vl_safety.json")
+            seq_i = int(it.get("seq") or 0)
+            seq_v = int(vd.get("intent_seq") or 0)
+            age = max(0, int(time.time() - float(vd.get("ts") or 0)))
+            if seq_i and seq_v == seq_i:
+                return "本动作的 VL 裁决已到 (safe=%s) — 正在下发/等 ROS 回执" % ("是" if vd.get("safe") else "否")
+            return ("VL 慢层正在为**本次动作**重跑一轮 (本动作 seq=%s / 最近裁决 seq=%s · 上轮 %ds 前 · 单轮实测 45~190s) "
+                    "⇒ 裁决到之前故意不下发" % (seq_i, seq_v, age))
+        except Exception:                                                       # noqa: BLE001
+            return "等执行器回执"
+
     def _watch_reply(self, n0, sid):
         """后台轮询执行器日志, 把回执/被拦原因补打到下面的终端 (不卡界面)。"""
-        self._w = {"n0": n0, "t0": time.time(), "sid": sid, "done": False, "seen": []}
+        self._w = {"n0": n0, "t0": time.time(), "sid": sid, "done": False, "seen": [], "tick": 0.0}
         if not hasattr(self, "_wtmr"):
             self._wtmr = QTimer(self)
             self._wtmr.setInterval(800)
@@ -381,6 +401,8 @@ class L2SkillDialog(QDialog):
         w = getattr(self, "_w", None)
         if not w or w.get("done"):
             return
+        _tmr = getattr(self, "_wtmr", None)       # 防御: 无计时器时也不能炸 (测试/异常重入)
+        _stop = (lambda: _tmr.stop()) if _tmr is not None else (lambda: None)
         for x in _read_new(w["n0"]):
             if x in w["seen"]:
                 continue
@@ -389,14 +411,18 @@ class L2SkillDialog(QDialog):
             self._echo("← " + x[:180])
         if any("受理:" in x for x in w["seen"]):
             w["done"] = True
-            self._wtmr.stop()
+            _stop()
             if any("被拦" in x or "拒发" in x or "拒绝" in x for x in w["seen"]):
                 self._echo("   ↑ 这一条就是「技能没动」的原因 · 现状: " + self._safety_line())
             return
-        if time.time() - w["t0"] > 90:
-            self._echo("… 90s 没等到回执 (执行器可能在等安全裁决或排队) · 现状: " + self._safety_line())
+        _el = time.time() - w["t0"]
+        if _el - float(w.get("tick") or 0) >= 15:      # 每 15s 报一次进度: 在等什么、等了多久
+            w["tick"] = _el
+            self._echo("⏳ 已等 %.0fs · %s" % (_el, self._wait_reason()))
+        if _el > 320:                                  # 上限对齐执行器等 VL 裁决的 300s
             w["done"] = True
-            self._wtmr.stop()
+            _stop()
+            self._echo("… 320s 没等到回执 (执行器可能仍在等安全裁决或排队) · 现状: " + self._safety_line())
 
     def _skill_image_url(self, s):
         """按技能推断该显示哪张图 (老倪: 表面检测也要能看到图)。
