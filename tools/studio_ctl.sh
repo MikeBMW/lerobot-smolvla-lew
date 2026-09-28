@@ -44,17 +44,35 @@ case "${1:-status}" in
   status)
     P=$(pids); [ -n "$P" ] && echo "running: $P" || echo "stopped"
     ;;
-  stop)
+  stop|restart)
+    # 🛑 2026-09-28 老倪两次问「控制台怎么自己重启呢」——真因不是自启(Restart=no, 无 cron 碰它),
+    #   而是 **agent 改完代码就重启它**, 现场只看到窗口闪来闪去。加硬闸: 起不到 5 分钟的实例,
+    #   stop/restart 一律拒绝, 要重启必须显式 --force; 每次动作都记进 /tmp/studio_ctl.log 可追溯。
     P=$(pids)
-    if [ -n "$P" ]; then kill $P; sleep 4; echo "stopped: $P"; else echo "already stopped"; fi
+    if [ -n "$P" ]; then
+      _age=$(ps -o etimes= -p $P 2>/dev/null | tr -d ' ')
+      if [ -n "${_age:-}" ] && [ "$_age" -lt 300 ] && [ "${2:-}" != "--force" ] && [ "${2:-}" != "-f" ]; then
+        echo "⛔ 拒绝: 控制台才起了 ${_age}s (<300s)。反复重启会让现场看到窗口闪来闪去 (老倪已投诉 2 次)。"
+        echo "   确实要重启(比如必须加载新代码): bash $0 restart --force"
+        echo "$(date '+%F %T') REFUSED stop pid=$P age=${_age}s arg=${1:-}" >> /tmp/studio_ctl.log
+        exit 3
+      fi
+      echo "$(date '+%F %T') $1 pid=$P age=${_age:-?}s force=${2:-no}" >> /tmp/studio_ctl.log
+      kill $P; sleep 4
+    fi
+    if [ "$1" = "restart" ]; then
+      [ -n "$(pids)" ] && { echo "already running: $(pids)"; exit 0; }
+      cd "$GUI_DIR" && DISPLAY=:0 setsid bash launch_studio.sh >/tmp/studio_launch.log 2>&1 < /dev/null &
+      sleep 25; echo "started: $(pids)"
+    else
+      echo "stopped: ${P:-none}"
+    fi
     ;;
   start)
     [ -n "$(pids)" ] && { echo "already running: $(pids)"; exit 0; }
+    echo "$(date '+%F %T') start" >> /tmp/studio_ctl.log
     cd "$GUI_DIR" && DISPLAY=:0 setsid bash launch_studio.sh >/tmp/studio_launch.log 2>&1 < /dev/null &
     sleep 25; echo "started: $(pids)"
     ;;
-  restart)
-    bash "$0" stop; bash "$0" start
-    ;;
-  *) echo "用法: $0 {status|stop|start|restart}"; exit 2 ;;
+  *) echo "用法: $0 {status|stop|start|restart} [--force]" ; exit 2 ;;
 esac
