@@ -209,10 +209,11 @@ def _correct_msg(pfx: str, r: dict) -> str:
         return "%s · L5 校正未出判定: %s" % (pfx, r.get("why"))
     c = r.get("counts") or {}
     ap = r.get("applied") or {}
-    return ("%s · L5 校正 %.0fs · 判定 删%d 改%d 补%d 保留%d → 应用 删%d 改%d 补%d\n   %s"
+    _why = " | ".join(r.get("reasons") or []).strip()
+    _tail = ("\n   理由: %s" % _why[:260]) if _why else "\n   (没有要改的: 现有框它都认)"
+    return ("%s · L5 校正 %.0fs · 判定 删%d 改%d 补%d 保留%d → 应用 删%d 改%d 补%d%s"
             % (pfx, r.get("secs") or 0, c.get("junk", 0), c.get("fix", 0), c.get("missing", 0),
-               c.get("ok", 0), ap.get("junk", 0), ap.get("fix", 0), ap.get("missing", 0),
-               " | ".join(r.get("reasons") or [])[:260]))
+               c.get("ok", 0), ap.get("junk", 0), ap.get("fix", 0), ap.get("missing", 0), _tail))
 
 
 # ───────────────────────────── 触发源 ─────────────────────────────────────
