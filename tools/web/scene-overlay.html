@@ -110,10 +110,10 @@
   <div class="card">
     <h2>📲 手机 APP（安卓） <span id="apkSize">24.8KB</span></h2>
     <div class="pane">
-      <a class="dl" href="/dl/ZMAX-Live.apk">⬇ 下载 ZMAX-Live.apk</a>
+      <a class="dl" href="dl/ZMAX-Live.apk">⬇ 下载 ZMAX-Live.apk</a>
       <div class="note">装完桌面出现「Z-MAX 实况」图标，打开即本页（顶层直连工位机 http，不越混合内容红线）。</div>
       <div class="kv" style="margin-top:10px"><span class="k">sha256</span>
-        <code id="apkSha">b9c2f055bf3571305762016021dc88e3264a1ef58a600c078fbb4d9fbe749b3d</code></div>
+        <code id="apkSha">b2c377eb5f28b199388dbd92fd4eb38532d3f50c05a25d71808df4e937300e4e</code></div>
       <div class="row"><button class="sm" onclick="copyText($('apkSha').textContent,'sha256 已复制')">📋 复制校验串</button></div>
       <div class="warn">
         装不上看报错原文：<br>
@@ -253,9 +253,13 @@ window.addEventListener('error', function(e){
 
 // ── 视频源自动判定: 本页由工位机自己服务 ⇒ 用 location.host (零硬编码) ──
 //    file:// 打开或换设备时才需要 ?host=<IP>&port=<端口> 覆盖
+//    🛰 2026-09-28: 被 **子路径反代**(ECS 端口转发, 如 https://datadrive.world/ov/overlay) 时,
+//       接口路径必须跟着页面所在目录走 —— 否则 /stats、/wall.mjpg 全打到站点根(404)。
+//       所以 API = 源 + 页面所在目录(站点根时就是 '/', 行为与原来完全一致)。
 var Q = new URLSearchParams(location.search);
+var PDIR = location.pathname.replace(/[^/]*$/, '');          // '/' 或 '/ov/'
 var API = (location.protocol === 'http:' || location.protocol === 'https:')
-  ? (location.protocol + '//' + location.host)
+  ? (location.protocol + '//' + location.host + PDIR)
   : ('http://' + (Q.get('host') || '192.168.23.50') + ':' + (Q.get('port') || '8791'));
 
 var $ = function(id){ return document.getElementById(id); };

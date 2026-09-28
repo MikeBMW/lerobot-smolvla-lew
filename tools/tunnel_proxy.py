@@ -280,7 +280,7 @@ setInterval(clock,1000);clock();
 function play(){
   n++;
   var q=location.search||('?k=__TOKEN__');
-  img.src='/wall.mjpg'+q+(q.indexOf('?')>=0?'&':'?')+
+  img.src='wall.mjpg'+q+(q.indexOf('?')>=0?'&':'?')+
           'w=320&q=48&fps=2&layout=v&_='+Date.now();
   st.textContent=n===1?'拉流中…':('重连中…(第'+n+'次)');
 }
