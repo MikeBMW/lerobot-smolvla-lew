@@ -8399,8 +8399,9 @@ class SimulinkModule(QWidget):
             if _ok:
                 self.log_signal.emit("🧩 场景叠加页已打开（浏览器）: %s" % _how)
                 self.log_signal.emit("   地址（可复制）: %s" % url)
-                self.log_signal.emit("   页内: 🧩叠加图 / 📷原始图 / ▣并排 / ⛶全屏 · 三路相机按钮 · "
-                                     "点画面=全屏 · 底部真值带含帧龄/手眼/TCP")
+                self.log_signal.emit("   页内: 🧩叠加图 / 📷原始图 / ▣并排 / ⛶全屏 · **只有臂上相机 D405 这一路**"
+                                     "(唯一有手眼标定) · 点画面=全屏 · 底部真值带含帧龄/拍照时间/速率 · "
+                                     "其它通道看「🛰 工位总览」")
             else:
                 self.log_signal.emit("⚠️ 浏览器没起来 (%s) — 地址自取: %s" % (_how, url))
 
