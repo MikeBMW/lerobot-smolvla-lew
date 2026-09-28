@@ -1,0 +1,318 @@
+{
+ "ts": "2026-09-28 10:05:12",
+ "src": "/home/ubuntu/aoi_v4/cam_finger_10082_work_v6.py",
+ "samples": [
+  {
+   "file": "live_origin_0_100512.jpg",
+   "src_hw": [
+    2448,
+    2048
+   ],
+   "canonical": {
+    "stats": {
+     "口径": "canonical",
+     "尺寸": "960x960",
+     "均值": 152.6,
+     "std": 57.0,
+     "饱和%": 10.64,
+     "死白行": 0,
+     "Tenengrad": 264.0
+    },
+    "ms": 281.4,
+    "method": "template",
+    "score": 0.4528,
+    "caliber": "canonical",
+    "natural": [
+     1455,
+     70
+    ]
+   },
+   "same": {
+    "stats": {
+     "口径": "same",
+     "尺寸": "900x332",
+     "均值": 170.0,
+     "std": 55.4,
+     "饱和%": 13.71,
+     "死白行": 0,
+     "Tenengrad": 234.0
+    },
+    "ms": 206.6,
+    "method": "same_caliber_page_render",
+    "caliber": "same",
+    "natural": [
+     1454,
+     131
+    ],
+    "deskew_deg": -0.25,
+    "kept_rows": [
+     728,
+     859
+    ],
+    "canvas_trim": {
+     "rows_dropped": [
+      0,
+      0
+     ],
+     "cols_dropped": [
+      0,
+      0
+     ],
+     "white_frac_before": 0.1382,
+     "white_frac_after": 0.1382
+    },
+    "x_trim": {
+     "trimmed": true,
+     "x_span": [
+      543,
+      1997
+     ],
+     "col_sat_max": 1.0
+    },
+    "fallback": null
+   },
+   "anno_demo": {
+    "diff_vs_判据图": {
+     "平均绝对差": 10.355,
+     "最大差": 227.0,
+     "变化像素占比%": 9.719,
+     "变化行区间": [
+      0,
+      206
+     ],
+     "变化行数": 148
+    },
+    "objects": [
+     {
+      "id": 1,
+      "class_id": 1,
+      "class_name": "demo_scratch",
+      "label": "demo_scratch",
+      "confidence": 0.87,
+      "bbox_xyxy": [
+       162,
+       99,
+       342,
+       205
+      ],
+      "bbox_xywh_cxcy": [
+       252.0,
+       152.0,
+       180,
+       106
+      ],
+      "coord": "demo",
+      "judge": "NG"
+     },
+     {
+      "id": 2,
+      "class_id": 2,
+      "class_name": "demo_stain",
+      "label": "demo_stain",
+      "confidence": 0.61,
+      "bbox_xyxy": [
+       495,
+       83,
+       648,
+       182
+      ],
+      "bbox_xywh_cxcy": [
+       571.5,
+       132.5,
+       153,
+       99
+      ],
+      "coord": "demo",
+      "judge": "NG"
+     }
+    ]
+   },
+   "anno_ok0": {
+    "diff_vs_判据图": {
+     "平均绝对差": 6.936,
+     "最大差": 227.0,
+     "变化像素占比%": 6.928,
+     "变化行区间": [
+      0,
+      22
+     ],
+     "变化行数": 23
+    }
+   },
+   "page_render": {
+    "stats": {
+     "口径": "页面(canonical)",
+     "尺寸": "900x332",
+     "均值": 170.0,
+     "std": 55.4,
+     "饱和%": 13.71,
+     "死白行": 0,
+     "Tenengrad": 234.0
+    },
+    "diff_vs_工控机同口径": {
+     "平均绝对差": 0.0,
+     "最大差": 0.0,
+     "变化像素占比%": 0.0,
+     "变化行区间": null,
+     "变化行数": 0
+    }
+   }
+  },
+  {
+   "file": "live_origin_1_100512.jpg",
+   "src_hw": [
+    2448,
+    2048
+   ],
+   "canonical": {
+    "stats": {
+     "口径": "canonical",
+     "尺寸": "960x960",
+     "均值": 149.8,
+     "std": 57.1,
+     "饱和%": 10.61,
+     "死白行": 0,
+     "Tenengrad": 261.0
+    },
+    "ms": 181.7,
+    "method": "template",
+    "score": 0.4528,
+    "caliber": "canonical",
+    "natural": [
+     1455,
+     70
+    ]
+   },
+   "same": {
+    "stats": {
+     "口径": "same",
+     "尺寸": "900x332",
+     "均值": 170.0,
+     "std": 55.4,
+     "饱和%": 13.71,
+     "死白行": 0,
+     "Tenengrad": 234.0
+    },
+    "ms": 195.5,
+    "method": "same_caliber_page_render",
+    "caliber": "same",
+    "natural": [
+     1454,
+     131
+    ],
+    "deskew_deg": -0.25,
+    "kept_rows": [
+     728,
+     859
+    ],
+    "canvas_trim": {
+     "rows_dropped": [
+      0,
+      0
+     ],
+     "cols_dropped": [
+      0,
+      0
+     ],
+     "white_frac_before": 0.1382,
+     "white_frac_after": 0.1382
+    },
+    "x_trim": {
+     "trimmed": true,
+     "x_span": [
+      543,
+      1997
+     ],
+     "col_sat_max": 1.0
+    },
+    "fallback": null
+   },
+   "anno_demo": {
+    "diff_vs_判据图": {
+     "平均绝对差": 10.355,
+     "最大差": 227.0,
+     "变化像素占比%": 9.719,
+     "变化行区间": [
+      0,
+      206
+     ],
+     "变化行数": 148
+    },
+    "objects": [
+     {
+      "id": 1,
+      "class_id": 1,
+      "class_name": "demo_scratch",
+      "label": "demo_scratch",
+      "confidence": 0.87,
+      "bbox_xyxy": [
+       162,
+       99,
+       342,
+       205
+      ],
+      "bbox_xywh_cxcy": [
+       252.0,
+       152.0,
+       180,
+       106
+      ],
+      "coord": "demo",
+      "judge": "NG"
+     },
+     {
+      "id": 2,
+      "class_id": 2,
+      "class_name": "demo_stain",
+      "label": "demo_stain",
+      "confidence": 0.61,
+      "bbox_xyxy": [
+       495,
+       83,
+       648,
+       182
+      ],
+      "bbox_xywh_cxcy": [
+       571.5,
+       132.5,
+       153,
+       99
+      ],
+      "coord": "demo",
+      "judge": "NG"
+     }
+    ]
+   },
+   "anno_ok0": {
+    "diff_vs_判据图": {
+     "平均绝对差": 6.936,
+     "最大差": 227.0,
+     "变化像素占比%": 6.928,
+     "变化行区间": [
+      0,
+      22
+     ],
+     "变化行数": 23
+    }
+   },
+   "page_render": {
+    "stats": {
+     "口径": "页面(canonical)",
+     "尺寸": "900x332",
+     "均值": 170.0,
+     "std": 55.4,
+     "饱和%": 13.71,
+     "死白行": 0,
+     "Tenengrad": 234.0
+    },
+    "diff_vs_工控机同口径": {
+     "平均绝对差": 0.0,
+     "最大差": 0.0,
+     "变化像素占比%": 0.0,
+     "变化行区间": null,
+     "变化行数": 0
+    }
+   }
+  }
+ ]
+}

@@ -695,6 +695,73 @@ def _aoi_auto_status() -> dict:
     return {str(p): bool(_AOI_AUTO.get(p)) for p in (10082, 10083)}
 
 
+# ────────────────── 🎚 判据口径开关 (canonical / same) ──────────────────
+# 老倪 2026-09-28: 「改成一样的, 产线可以切换」
+#   canonical(默认) = 工控机用模板法规整裁剪 960x960 送检; 页面按老口径本地渲染(origin→原比例+去倾角+3×→900x332)
+#   same            = 工控机**直接吃**与页面同一口径的那张(原比例+去倾斜+定尺 900x332), 这张同时是送检输入 +
+#                     落盘判据图 + kind=crop 内存帧 ⇒ 本页**取回来就用**(零本地加工), 页面显示 == 模型吃的那张。
+_AOI_CAL = {"mode": None, "t": 0.0, "port": 0, "src": "还没读", "raw": {}}
+
+
+def _aoi_caliber(port: int = 10082, ttl: float = 8.0) -> dict:
+    """读工控机的判据口径 (GET /caliber)。读不到就沿用上次值, 并在 src 里如实写"读失败"。"""
+    now = time.time()
+    if _AOI_CAL.get("mode") and (now - float(_AOI_CAL.get("t") or 0.0)) < ttl:
+        return dict(_AOI_CAL)
+    try:
+        with urllib.request.urlopen("http://192.168.23.23:%d/caliber" % int(port), timeout=4) as r:
+            d = json.loads(r.read().decode("utf-8", "ignore"))
+        c = d.get("caliber") or {}
+        _AOI_CAL.update({"mode": str(c.get("mode") or "canonical"), "t": now, "port": int(port),
+                         "raw": c, "err": "",
+                         "src": "工控机 GET /caliber 实测 @%s" % time.strftime("%H:%M:%S")})
+    except Exception as e:                                                        # noqa: BLE001
+        _AOI_CAL["t"] = now                      # 失败也记时间, 别每轮都去试
+        _AOI_CAL["err"] = str(e)[:80]
+        _AOI_CAL["src"] = "读失败(%s) ⇒ 沿用 %s" % (str(e)[:50], _AOI_CAL.get("mode") or "canonical(默认)")
+        if not _AOI_CAL.get("mode"):
+            _AOI_CAL["mode"] = "canonical"
+    return dict(_AOI_CAL)
+
+
+def _aoi_set_caliber(port: int = 10082, mode: str = "canonical") -> dict:
+    """页面「判据口径」开关 → 转发工控机 POST /caliber?mode=... (回执带 mode/切换时刻/累计次数)。"""
+    m = str(mode or "").strip().lower()
+    if m not in ("canonical", "same"):
+        return {"ok": False, "code": 400, "msg": "mode 只能是 canonical(规范) 或 same(同一口径)"}
+    url = "http://192.168.23.23:%d/caliber?mode=%s" % (int(port), m)
+    t0 = time.time()
+    try:
+        req = urllib.request.Request(url, data=b"", method="POST",
+                                     headers={"User-Agent": "zmax-station",
+                                              "Content-Type": "application/x-www-form-urlencoded"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            code = r.status
+            d = json.loads(r.read().decode("utf-8", "ignore"))
+    except urllib.error.HTTPError as e:                                           # noqa: BLE001
+        try:
+            d = json.loads(e.read().decode("utf-8", "ignore"))
+        except Exception:                                                         # noqa: BLE001
+            d = {}
+        d.setdefault("ok", False)
+        d.setdefault("msg", "HTTP %s" % e.code)
+        code = e.code
+    except Exception as e:                                                        # noqa: BLE001
+        return {"ok": False, "code": 0, "mode": m, "ms": round((time.time() - t0) * 1000),
+                "msg": "切不了: 工控机 /caliber 打不通(%s)" % str(e)[:120]}
+    c = d.get("caliber") or {}
+    _AOI_CAL.update({"mode": str(c.get("mode") or m), "t": time.time(), "port": int(port),
+                     "raw": c, "err": "", "src": "页面切换 %s @%s" % (m, time.strftime("%H:%M:%S"))})
+    out = {"ok": bool(d.get("ok", code == 200)), "code": int(d.get("code") or code), "mode": c.get("mode") or m,
+           "switched_at": c.get("t"), "switched_at_str": (time.strftime("%H:%M:%S", time.localtime(float(c["t"])))
+                                                          if c.get("t") else ""),
+           "switches": c.get("switches"), "by": c.get("by"), "changed": d.get("changed"),
+           "input": d.get("input"), "ms": round((time.time() - t0) * 1000),
+           "msg": d.get("msg") or ("口径=%s" % m)}
+    _aoi_note(port, caliber_out=out)
+    return out
+
+
 def _aoi_note(port: int, **kw) -> None:
     with _AOI_LOCK:
         d = _AOI_INFO.setdefault(port, {})
@@ -846,6 +913,140 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
             _STOP.wait(0.01)          # 🔴 实时模式: 不等, 立刻下一轮(节奏 = OPT 取图耗时 0.6~0.7s/帧)
         else:
             time.sleep(max(0.05, max(0.2, 1.0 / max(0.1, fps)) - (time.time() - t0)))
+
+
+def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0,
+                     full_name: str = "aoi_gold_raw", anno_name: str = "aoi_gold_anno") -> None:
+    """🔍 金手指格 —— **口径感知**: 让"页面显示的那张"必然等于"检测吃的那张"。
+
+      口径 canonical (默认, 产线现状):
+        取 kind=origin 原图 → **本地**原比例(不压方)+去倾角+纵向3× → 定死 900x332 (老口径, 一字未改)
+      口径 same (同一口径):
+        取 kind=crop 的**内存帧** —— 工控机那张已经做完"原比例+去倾斜+定尺 900x332"并**送检/落盘的同一张**
+        ⇒ 本服务**零本地加工**直接上屏 ⇒ 页面 == 模型输入 (不是"看起来像", 是同一张)
+      另外: kind=anno (判据图 + YOLO 框 + 判决文字, 工控机端画好) 走 /aoi_gold_anno.mjpg 给现场看结果。
+    """
+    raw_every = 3          # same 口径下, "整板原图"这格低频单独取(省带宽, 不拖累判据图)
+    vurl = "http://192.168.23.23:%d/last_result" % port
+    n = 0
+    while not _STOP.is_set():
+        t0 = time.time()
+        n += 1
+        cal = _aoi_caliber(port)
+        mode = cal["mode"]
+        kind = "crop" if mode == "same" else "origin"
+        url = "http://192.168.23.23:%d/picture?kind=%s" % (port, kind)
+        # 有人在看这一格 ⇒ 每轮带 grab 顶到 OPT 上限 (~1.4/1.7fps); 没人看就只读内存帧(不占产线相机)
+        _watching = any((time.time() - _AOI_VIEW_TS.get(k, 0.0)) < _AOI_LIVE_WIN_S
+                        for k in (name, full_name, anno_name))
+        _req_url = url + ("&grab=1" if _watching else "")
+        code, raw, err, _src_age = 0, b"", "", None
+        try:
+            req = urllib.request.Request(_req_url, headers={"User-Agent": "zmax-station"})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                code = r.status
+                _src_age = _hdr_age(r.headers)
+                raw = r.read()
+        except urllib.error.HTTPError as e:
+            code = e.code
+            err = (e.read()[:200].decode("utf-8", "ignore") if hasattr(e, "read") else "")
+        except Exception as e:                                                    # noqa: BLE001
+            err = str(e)[:140]
+
+        if code == 200 and raw:
+            bgr = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+            if bgr is not None:
+                if mode == "same":
+                    # 🎯 同一口径: 工控机那张就是判据图 ⇒ **一律不再本地加工**(再裁/再拉都会变成另一张图)
+                    jpg, meta = _aoi_frame(bgr, clean=False, natural=False, deskew_deg=0.0,
+                                           vstretch=1.0, fix_hw=None, quality=92)
+                    meta = dict(meta or {})
+                    meta["caliber"] = "same"
+                else:
+                    jpg, meta = _aoi_frame(bgr, clean=True, natural=True,
+                                           deskew_deg=_aoi_gold_angle(port), vstretch=3.0,
+                                           fix_hw=(900, 332))
+                    meta = dict(meta or {})
+                    meta["caliber"] = "canonical"
+                if jpg:
+                    _put(name, jpg, time.time(), len(raw) / 1024.0, src_age_s=_src_age)
+                # 整板原图那格: canonical 下复用同一张 origin; same 下另取一次(低频)
+                if full_name and (mode == "canonical" or (n % raw_every == 0)
+                                  or (time.time() - _AOI_VIEW_TS.get(full_name, 0.0)) < _AOI_LIVE_WIN_S):
+                    if mode == "canonical":
+                        fj = _aoi_full_frame(bgr)
+                        if fj:
+                            _put(full_name, fj, time.time(), len(raw) / 1024.0, src_age_s=_src_age)
+                    else:
+                        try:
+                            with urllib.request.urlopen(
+                                    urllib.request.Request("http://192.168.23.23:%d/picture?kind=origin" % port,
+                                                           headers={"User-Agent": "zmax-station"}),
+                                    timeout=20) as r2:
+                                if r2.status == 200:
+                                    b2 = cv2.imdecode(np.frombuffer(r2.read(), np.uint8), cv2.IMREAD_COLOR)
+                                    if b2 is not None:
+                                        fj = _aoi_full_frame(b2)
+                                        if fj:
+                                            _put(full_name, fj, time.time(), 0.0, src_age_s=_hdr_age(r2.headers))
+                        except Exception:                                         # noqa: BLE001
+                            pass
+                _aoi_note(port, ok=True, src=name, url=_req_url, http=code, kb=round(len(raw) / 1024.0, 1),
+                          shape=[int(bgr.shape[0]), int(bgr.shape[1])], err="", live=bool(_watching),
+                          caliber=mode, caliber_src=cal.get("src"), caliber_mode_src=kind,
+                          caliber_meta=meta,
+                          src_frame_age_s=(round(_src_age, 1) if _src_age is not None else None))
+            else:
+                _aoi_note(port, ok=False, src=name, url=url, http=code, caliber=mode,
+                          err="取到 %d 字节但解不出图(不是图片?)" % len(raw))
+        else:
+            _no_photo = (code == 404 and ("grab=1" in err or "尚无" in err))
+            _did_grab = False
+            if (_no_photo and _AOI_AUTO.get(port)
+                    and (time.time() - _AOI_AUTO_AT.get(port, 0.0)) >= _AOI_AUTO_MIN_S):
+                _AOI_AUTO_AT[port] = time.time()
+                g = _aoi_capture(port, name, timeout=60.0)
+                _did_grab = bool(g.get("ok"))
+            _fresh_grab = _no_photo and (time.time() - _AOI_AUTO_AT.get(port, 0.0)) < 90.0
+            if _did_grab or _fresh_grab:
+                _aoi_note(port, ok=True, src=name, url=url, http=200, err="", auto_grab=True, caliber=mode,
+                          src_frame_age_s=(0.0 if _did_grab else
+                                           round(time.time() - _AOI_AUTO_AT.get(port, 0.0), 1)),
+                          note=("自动取景: 刚替它现拍了一张" if _did_grab else
+                                "自动取景: 工控机里没照片, 显示的是最近现拍的那张"))
+            else:
+                _aoi_note(port, ok=False, src=name, url=url, http=code, caliber=mode,
+                          err=("HTTP %d %s" % (code, err)).strip() or "取图失败")
+
+        # 🧾 检测结果叠加 (kind=anno): 有人看那一格才取(内存帧, 8~11ms); 字节直传, 本地零加工
+        if (time.time() - _AOI_VIEW_TS.get(anno_name, 0.0)) < _AOI_LIVE_WIN_S:
+            try:
+                au = "http://192.168.23.23:%d/picture?kind=anno" % port
+                with urllib.request.urlopen(
+                        urllib.request.Request(au, headers={"User-Agent": "zmax-station"}), timeout=10) as r3:
+                    if r3.status == 200:
+                        ab = r3.read()
+                        _put(anno_name, ab, time.time(), len(ab) / 1024.0, src_age_s=_hdr_age(r3.headers))
+                        _aoi_note(port, anno={"http": 200, "kb": round(len(ab) / 1024.0, 1),
+                                              "boxes": r3.headers.get("X-Anno-Boxes"),
+                                              "verdict": r3.headers.get("X-Anno-Verdict"),
+                                              "age_s": r3.headers.get("X-Anno-Age-S"),
+                                              "mem_key": r3.headers.get("X-Frame-Mem-Key"),
+                                              "note": r3.headers.get("X-Anno-Note") or "",
+                                              "url": au})
+            except Exception as e:                                                # noqa: BLE001
+                _aoi_note(port, anno={"http": 0, "err": str(e)[:100], "url": "GET %s" % (port,)})
+
+        if _watching:
+            _STOP.wait(0.01)
+        else:
+            time.sleep(max(0.05, max(0.2, 1.0 / max(0.1, fps)) - (time.time() - t0)))
+        try:
+            with urllib.request.urlopen(vurl, timeout=6) as r:
+                v = json.loads(r.read().decode("utf-8", "ignore"))
+            _aoi_note(port, verdict=v)
+        except Exception as e:                                                    # noqa: BLE001
+            _aoi_note(port, verdict_err=str(e)[:100])
 
 
 def _aoi_capture(port: int, name: str, timeout: float = 90.0) -> dict:
@@ -2548,23 +2749,22 @@ def main():
     if not args.no_aoi:
         _aoi_note_init()
         _CAM_LABEL["aoi_gold"] = "🔍 金手指检测 (工控机 OPT)"
+        _CAM_LABEL["aoi_gold_anno"] = "🧾 金手指检测框 (叠加结果)"
         _CAM_LABEL["aoi_surface"] = "🔍 表面检测 (工控机 OPT)"
-        # 2026-09-28 老倪: 「工控机拍摄的照片与你的金手指判据图不一样, 要跟判据图保持一致」
-        #   核对工控机源码(cam_finger_10082_work_v6.py:477-483): 它存下来的 Finger_TopView_W*_H*
-        #   **就是** crop_goldfinger_regular() 的输出(模板法规整裁剪, 去倾斜居中), 即检测器真正吃的判据图;
-        #   而本服务原先取 kind=origin 后用 aoi_exposure_fix 又自己裁了一遍 ⇒ 两边不一致(错在本服务)。
-        #   现改为: kind=crop 取它的**内存帧**(与它存盘/送检完全同一张), 不再本地二次裁剪 ⇒ 三者一致:
-        #   页面显示 == 工控机存的 Finger_TopView_*.png == 检测器输入。
-        threading.Thread(target=_aoi_worker,
-                         args=(10082, "aoi_gold", args.aoi_fps, "origin", True, True,
-                               "aoi_gold_raw"),
+        # 2026-09-28 老倪: 「工控机拍摄的照片与你的金手指判据图不一样, 要跟判据图保持一致」+
+        #   「改成一样的, 产线可以切换」⇒ 金手指格改**口径感知** (见 _aoi_gold_worker 文档):
+        #     口径 canonical(默认) = 老口径(kind=origin → 本地原比例+去倾角+3× → 900x332)
+        #     口径 same           = 工控机送检那张(kind=crop 内存帧) 本地零加工直显 ⇒ 页面 == 模型输入
+        #   页面上的「判据口径：规范/同一」按钮 = POST /api/aoi/caliber → 转发工控机 POST /caliber。
+        threading.Thread(target=_aoi_gold_worker,
+                         args=(10082, "aoi_gold", args.aoi_fps, "aoi_gold_raw", "aoi_gold_anno"),
                          daemon=True, name="aoi-gold").start()
         threading.Thread(target=_aoi_worker,
                          args=(10083, "aoi_surface", args.aoi_fps, "crop", False, True),
                          daemon=True, name="aoi-surface").start()
-        print(f"   🏭 工控机检测源: 10082 金手指(取 origin 原图 → 本地 **原比例+去倾角+纵向3×** → 定死 900×332; "
-              f"POST /capture_detect 触发产线正常检测且工控机本地存图) + 10083 表面 "
-              f"@≤{args.aoi_fps}Hz (只 GET 不触发拍照; 表面取 kind=crop = 模型看的规范图) "
+        print(f"   🏭 工控机检测源: 10082 金手指(**口径感知**: canonical=本地 原比例+去倾角+3×→900×332 · "
+              f"same=直接显示工控机送检那张 kind=crop, 零本地加工; 另推 /aoi_gold_anno.mjpg = 判据图+检测框) "
+              f"+ 10083 表面 @≤{args.aoi_fps}Hz (只 GET 不触发拍照) "
               f"· 两路都推 MJPEG: /aoi_gold.mjpg · /aoi_surface.mjpg", flush=True)
     # ── 🕹 手动控制闸门 (双重: 这里 + 页面勾选) ──
     _CTL["motion"] = bool(args.ctl_motion)

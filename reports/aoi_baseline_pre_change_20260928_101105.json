@@ -1,0 +1,110 @@
+{
+ "ts": "2026-09-28 10:11:05",
+ "runs": [
+  {
+   "i": 1,
+   "capture": {
+    "code": 200,
+    "msg": "success"
+   },
+   "capture_s": 1.33,
+   "n": 14,
+   "verdict": "OK",
+   "count": 0,
+   "ms": 1595.3,
+   "defects": [],
+   "topview": "./goldfinger_images\\Finger_TopView_W960_H960_No_27616.png",
+   "origin": "./goldfinger_images\\Finger_Image_W2448_H2048_No_27616.png",
+   "saved_incoming": "D:\\AOI_images\\gf\\incoming\\20260928_101057_027.png",
+   "crop_file": "Finger_TopView_W960_H960_No_27619.png",
+   "score": 0.4677,
+   "warn": "模板匹配弱 score=0.468 < 0.55 → 需人工复核",
+   "natural": [
+    1455,
+    70
+   ],
+   "stripe": {
+    "angle": -0.25,
+    "cx": 1056.0,
+    "cy": 759.5,
+    "h": 70.0,
+    "scale": 1.0,
+    "w": 1455.0
+   },
+   "canonical": [
+    960,
+    960
+   ]
+  },
+  {
+   "i": 2,
+   "capture": {
+    "code": 200,
+    "msg": "success"
+   },
+   "capture_s": 1.24,
+   "n": 15,
+   "verdict": "OK",
+   "count": 0,
+   "ms": 1673.3,
+   "defects": [],
+   "topview": "./goldfinger_images\\Finger_TopView_W960_H960_No_27621.png",
+   "origin": "./goldfinger_images\\Finger_Image_W2448_H2048_No_27621.png",
+   "saved_incoming": "D:\\AOI_images\\gf\\incoming\\20260928_101100_029.png",
+   "crop_file": "Finger_TopView_W960_H960_No_27624.png",
+   "score": 0.4673,
+   "warn": "模板匹配弱 score=0.467 < 0.55 → 需人工复核",
+   "natural": [
+    1455,
+    70
+   ],
+   "stripe": {
+    "angle": -0.25,
+    "cx": 1056.0,
+    "cy": 759.5,
+    "h": 70.0,
+    "scale": 1.0,
+    "w": 1455.0
+   },
+   "canonical": [
+    960,
+    960
+   ]
+  },
+  {
+   "i": 3,
+   "capture": {
+    "code": 200,
+    "msg": "success"
+   },
+   "capture_s": 1.31,
+   "n": 16,
+   "verdict": "OK",
+   "count": 0,
+   "ms": 1616.6,
+   "defects": [],
+   "topview": "./goldfinger_images\\Finger_TopView_W960_H960_No_27626.png",
+   "origin": "./goldfinger_images\\Finger_Image_W2448_H2048_No_27626.png",
+   "saved_incoming": "D:\\AOI_images\\gf\\incoming\\20260928_101103_031.png",
+   "crop_file": "Finger_TopView_W960_H960_No_27628.png",
+   "score": 0.4675,
+   "warn": "模板匹配弱 score=0.467 < 0.55 → 需人工复核",
+   "natural": [
+    1455,
+    70
+   ],
+   "stripe": {
+    "angle": -0.25,
+    "cx": 1056.0,
+    "cy": 759.5,
+    "h": 70.0,
+    "scale": 1.0,
+    "w": 1455.0
+   },
+   "canonical": [
+    960,
+    960
+   ]
+  }
+ ]
+}

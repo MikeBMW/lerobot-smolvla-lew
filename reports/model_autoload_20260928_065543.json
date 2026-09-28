@@ -1,0 +1,34 @@
+{
+ "ts": "2026-09-28 06:55:43",
+ "trigger": "startup_autoload",
+ "registry": "models/active_models.json",
+ "deep": false,
+ "layers": {
+  "L2": {
+   "resolve": {
+    "layer": "L2",
+    "kind": "yolo",
+    "name": "L2 · YOLO 光模块检测 (真机域在役)",
+    "declared": "models/yolo_peg_live.pt",
+    "path": "/home/ubuntu/zmax_rel/models/yolo_peg_live.pt",
+    "exists": true,
+    "realpath": "/home/ubuntu/lerobot-smolvla-lew/runs/detect/outputs/yolo_annot/annot_0919_1814/weights/best.pt",
+    "symlink": true,
+    "sha16": "e0d84ed83da74497",
+    "size_mb": 6.2
+   },
+   "name": "L2 · YOLO 光模块检测 (真机域在役)",
+   "layer": "L2",
+   "loader": "ultralytics.YOLO(models/yolo_peg_live.pt)",
+   "ok": true,
+   "classes": [
+    "peg",
+    "OPT_Gold"
+   ],
+   "n_classes": 2,
+   "loaded_relpath": "../lerobot-smolvla-lew/runs/detect/outputs/yolo_annot/annot_0919_1814/weights/best.pt",
+   "secs": 0.89
+  }
+ },
+ "ok": true
+}

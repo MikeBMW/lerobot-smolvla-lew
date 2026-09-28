@@ -1,0 +1,34 @@
+{
+ "generated_at": "2026-09-28 07:54:11",
+ "steps": 40,
+ "lora": {
+  "L4": true,
+  "L3": true,
+  "r": 8
+ },
+ "gpu_free_mb_at_end": 7514,
+ "rows": [
+  {
+   "stage": "L3",
+   "layer": "L3 SmolVLA (长程序列规划)",
+   "desc": "SmolVLA+LEW 续训 + LoRA(local 引擎)",
+   "cmd": [
+    "/home/ubuntu/lerobot-venv/bin/python",
+    "-m",
+    "lerobot.scripts.lerobot_train",
+    "--config_path=/home/ubuntu/zmax_rel/config_smolvla_lew_lora_40_l5260928_074730_074730.yaml"
+   ],
+   "rc": 0,
+   "secs": 65.0,
+   "log": "/home/ubuntu/zmax_rel/reports/joint_train_20260928_075306/L3.log",
+   "evidence": [
+    {
+     "path": "/home/ubuntu/zmax_rel/outputs/train/smolvla_lew_lora_40_l5260928_074730",
+     "exists": true,
+     "size_mb": null
+    }
+   ],
+   "ts": "2026-09-28 07:54:11"
+  }
+ ]
+}
