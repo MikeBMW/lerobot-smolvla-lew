@@ -3264,7 +3264,7 @@ _reg("n_eng_mem", ["工程记忆", "技能与经验库"], "📚 工程记忆 · 
 _reg("n_dsvl", ["DeepSeek", "视觉语言", "VLM 判读"], "🧿 DeepSeek-V4-Flash 视觉语言 (人机在环) — 场景判读+建议; 右键=判读结果窗口 (源码 scene_vlm.py)", node_dsvl)
 
 # 🌐 2026-09-25 老倪: L5「Web 智能体桥」— web 上的 agent 用提示词远程调用状态空间**只读功能** (源码 web_agent_bridge.py)
-_EXTERNAL_LOC["n_web_agent"] = (os.path.join(_SS_DIR, "web_agent_bridge.py"), 1, "class WebAgentBridge")
+_EXTERNAL_LOC["n_web_agent"] = (os.path.join(_SS_DIR, "web_agent_bridge.py"), 93, "class WebAgentBridge")  # 行号按真源实测(2026-09-29)
 
 _reg("n_web_agent", ["Web 智能体桥", "远程提示词", "web agent", "web_agent", "网页智能体"],
      "🌐 Web 智能体桥 · 远程提示词 — web agent 提示词 → 只读功能派发(状态/画布/报告/记忆/技能/仿真/网络/AOI/真机只读/飞书) → 回执到 web; 动作类提示词一律拒答 (源码 web_agent_bridge.py)", node_web_agent)
@@ -3274,7 +3274,7 @@ _ARM_DIR = os.path.join(_paths.REPO_ROOT, "src", "lerobot", "arm")
 
 _EXTERNAL_LOC["n_moveit"] = (os.path.join(_ARM_DIR, "arm_control.py"), 133, "class ArmController")   # 🦾 2026-09-26: MoveIt 规划 + 双后端 (Orin SDK 桥默认 / ROS2 SRV 兼容)
 
-_EXTERNAL_LOC["n_hil"] = (os.path.join(_SS_DIR, "hil_bridge.py"), 1, "build_snapshot")
+_EXTERNAL_LOC["n_hil"] = (os.path.join(_SS_DIR, "hil_bridge.py"), 157, "build_snapshot")  # 行号按真源实测(2026-09-29)
 
 _reg("n_moveit", ["MoveIt", "运动规划", "moveit"], "🧭 MoveIt 运动规划 · SDK 直驱桥(Orin) — MoveIt2 规划 + 双后端执行(Orin SDK 桥 默认 / ROS2 SRV 兼容); 安全闸 dry-run 默认 (源码 arm_control.py)", node_moveit)
 

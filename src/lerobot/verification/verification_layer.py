@@ -113,19 +113,36 @@ FEATURES = [
 ]
 
 
+# 节点逻辑迁移映射 (2026-09-28): 老路径(兼容壳, 不含逻辑) → 新真源
+#   审计/映射类断言会同时扫这两处, 命中任一即算命中, 避免"迁移完成但测试桩过期"的假失败。
+_MIGRATED_SRC = {
+    "tools/gui/node_logic.py": "src/lerobot/engineering/nodes/library.py",
+}
+
+
 class VerificationLayer:
     """🧩 验证层 — feature 清单 + test 套件执行 (真源)"""
 
 
     def _audit(self, checks, np=None):
-        """源码审计: 每个 (相对路径, [必须子串], 说明) 真实读文件检查 — 自动用例防造假"""
+        """源码审计: 每个 (相对路径, [必须子串], 说明) 真实读文件检查 — 自动用例防造假
+
+        迁移兼容(2026-09-28 节点逻辑迁 src/lerobot/engineering/): 老路径 tools/gui/node_logic.py
+        现在是**兼容壳**(不含逻辑)。审计若仍给旧路径, 则把新真源一并读进来, 子串命中任一即算命中 ——
+        否则"代码迁对了、测试桩还指旧文件", 会把真实能力误判成失败。
+        """
         bad = []
         for rel, needles, note in checks:
-            p = os.path.join(self.root, rel)
-            if not os.path.isfile(p):
+            paths = [os.path.join(self.root, rel)]
+            _alt = _MIGRATED_SRC.get(str(rel).replace("\\", "/"))
+            if _alt:
+                paths.append(os.path.join(self.root, _alt))
+            texts = [open(x, encoding="utf-8", errors="ignore").read()
+                     for x in paths if os.path.isfile(x)]
+            if not texts:
                 bad.append(f"{rel} 文件缺")
                 continue
-            txt = open(p, encoding="utf-8", errors="ignore").read()
+            txt = "\n".join(texts)
             for nd in needles:
                 if nd not in txt:
                     bad.append(f"{rel} 缺「{nd}」")
