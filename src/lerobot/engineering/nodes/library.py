@@ -4421,7 +4421,7 @@ _reg("ss_lora_l3", ["L3 LoRA 微调", "L3 LoRA", "SmolVLA LoRA"],
      "🎛 L3 · SmolVLA LoRA 微调 (VLM 注意力 + action expert · 200 步 loss 0.192)",
      node_ss_lora_l3)
 
-_EXTERNAL_LOC["ss_moe"] = (os.path.join(_REPO_ROOT, "tools", "stage_moe_backbone.py"), 42, "class StageMoE")
+_EXTERNAL_LOC["ss_moe"] = (os.path.join(_REPO_ROOT, "tools", "stage_moe_backbone.py"), 50, "class StageMoE")
 
 _EXTERNAL_LOC["ss_lora_l4"] = (os.path.join(_REPO_ROOT, "tools", "lora_inject.py"), 105, "def inject_lora")
 
@@ -4612,7 +4612,7 @@ _reg("ss_mani_eng", ["流形引擎", "Manifold Engine"],
      node_ss_mani_eng)
 
 _EXTERNAL_LOC["ss_mani_eng"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py"),
-                                395, "class ManifoldEngine")
+                                403, "class ManifoldEngine")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 🎥 真实场景叠加 · 双眼 (sim2real) — 画布节点内实时出画面 (2026-09-27 老倪)
