@@ -2029,7 +2029,7 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
           m.textContent='⏳ 已发出检测命令, 等判决…'; o.style.display='block'; o.textContent='';
           try{
             const t0=performance.now();
-            const r=await fetch('/api/aoi/detect?port='+port,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+            const r=await fetch(_u('/api/aoi/detect?port='+port),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
             const j=await r.json();
             m.textContent=(j.ok===true?'✅ ':'❌ ')+(j.msg||j.err||j.err2||'见下方 JSON')
                           +'  · 用时 '+((performance.now()-t0)/1000).toFixed(1)+'s';
@@ -2129,6 +2129,11 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
 </main>
 <script>
 const $=(s)=>document.querySelector(s);
+// 页面基址: 根目录访问(/station)时为空; 走子路径反代(/st/station, ECS 转发)时为 '/st'。
+// 所有站内相对地址一律经 _u() 过一遍 —— 否则子路径反代下图片/接口都会打到站点根(404)。
+// (2026-09-28 老倪: 「8793 这个通道推流到 ECS」)
+const B=(location.pathname.replace(/\/[^/]*$/,'')||'');
+const _u=(u)=>(typeof u==='string'&&u.charAt(0)==='/')?(B+u):u;
 let STEP_MM=10, STEP_DEG=5;
 /* 🔐 ARMED 不再写死: 由**服务端授权状态**决定(默认 false=未授权), 见 applyAuth()。
    老倪 2026-09-27: 「页面的授权真动 / 现场安全 / 授权」 —— 默认必须是未授权, 真动要人显式两步确认。 */
@@ -2146,7 +2151,7 @@ function fmt(x,n){return (x===null||x===undefined)?'—':Number(x).toFixed(n);}
 async function post(url,body,ms){
   const ac=new AbortController(); const t=setTimeout(()=>ac.abort(), ms||20000);
   try{
-    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+    const r=await fetch(_u(url),{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify(body||{}),signal:ac.signal});
     return await r.json();
   } finally { clearTimeout(t); }
@@ -2154,7 +2159,7 @@ async function post(url,body,ms){
 async function getj(url,ms){
   const ac=new AbortController(); const t=setTimeout(()=>ac.abort(), ms||8000);
   try{
-    const r=await fetch(url,{cache:'no-store',signal:ac.signal});
+    const r=await fetch(_u(url),{cache:'no-store',signal:ac.signal});
     return await r.json();
   } finally { clearTimeout(t); }
 }
@@ -2416,7 +2421,7 @@ function _pump(){ if(_busy||!_q.length) return; _busy=true;
   const f=_q.shift(); f(()=>{_busy=false;_pump();}); }
 function _enq(f){_q.push(f);_pump();}
 const SNAPS=[...document.querySelectorAll('img[data-mode=snap]')].map(im=>({
-  im:im, url:im.dataset.src, every:parseInt(im.dataset.every||'2000'), due:0, miss:0}));
+  im:im, url:_u(im.dataset.src), every:parseInt(im.dataset.every||'2000'), due:0, miss:0}));
 /* 🔴 2026-09-27 老倪: 「金手指和表面检测要实时推流」 —— 这两格改走 MJPEG 长连接
    (各占 1 条连接; 加上 1 条状态轮询 + 1 条串行快照 = ≤4 条, 仍在本机 6 条名额内)。
    源侧本身是"每次检测才有一张", 所以看起来是"有新图就立刻推" + 帧龄如实标。 */
@@ -2429,7 +2434,7 @@ document.querySelectorAll('img[data-mode=mjpg]').forEach(im=>{
    curl 取流有真帧, 页面却是空的 ⇒ 问题在**页面连接**这一层)。
    判据(不猜, 都有数): ① img.onerror 立刻重连 ② 每 6s 比对 /stats 的 frames_served:
    在涨=连接活着; 连续 2 轮不涨 ⇒ 换 src(新时间戳)强制重连。 */
-const MJPG=[...document.querySelectorAll('img[data-mode=mjpg]')].map(im=>({im:im, url:im.dataset.src, seen:-1, still:0}));
+const MJPG=[...document.querySelectorAll('img[data-mode=mjpg]')].map(im=>({im:im, url:_u(im.dataset.src), seen:-1, still:0}));
 MJPG.forEach(rec=>{ rec.im.onerror=()=>setTimeout(()=>{ rec.im.src=rec.url+'?t='+Date.now(); rec.still=0; },1500); });
 setInterval(()=>{
   const st=window.__stats||{};
@@ -2445,7 +2450,7 @@ document.querySelectorAll('#gview button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#gview button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on');
   const im=$('#i_aoi_gold');                    // 现在是 MJPEG 流: 换 src 就等于换源(旧连接自动断)
-  if(im) im.src=b.dataset.stream+'?t='+Date.now();
+  if(im) im.src=_u(b.dataset.stream)+'?t='+Date.now();
 });
 const _a82=$('#auto82');
 if(_a82) _a82.onchange=async()=>{

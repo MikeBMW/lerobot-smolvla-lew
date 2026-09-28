@@ -26,15 +26,40 @@ set -uo pipefail
 ECS_HOST="${ECS_HOST:-39.102.211.79}"
 ECS_USER="${ECS_USER:-root}"
 ECS_DOMAIN="${ECS_DOMAIN:-datadrive.world}"
-PREFIX="${ZMAX_OV_PREFIX:-/ov/}"          # 公网路径前缀
-REMOTE_PORT="${ZMAX_OV_REMOTE_PORT:-18791}"  # ECS 侧本机回环端口(nginx 反代用)
-GATE="${ZMAX_OV_GATE:-127.0.0.1:8891}"    # 只读闸门
-UP="${ZMAX_OV_UP:-127.0.0.1:8791}"
+# ── 通道: overlay(叠加页 8791) | station(工位总览 8793) ──────────────────────────
+# 老倪 2026-09-28: 「http://10.163.146.78:8793/station 把这个通道, 推流到 ECS」
+# 两条通道共用同一套拓扑与安全口径(只读闸门 + 反向隧道 + nginx 子路径), 只是端口/前缀/unit 不同。
+CH="${ZMAX_OV_CHANNEL:-overlay}"
+if [ "$CH" = "station" ]; then
+  PREFIX="${ZMAX_OV_PREFIX:-/st/}"
+  REMOTE_PORT="${ZMAX_OV_REMOTE_PORT:-18793}"
+  GATE="${ZMAX_OV_GATE:-127.0.0.1:8893}"
+  UP="${ZMAX_OV_UP:-127.0.0.1:8793}"
+  UNIT=zmax-ecs-station.service
+  ENVF_PATH=/etc/zmax-ecs-station.env
+  LOGF=/var/log/zmax-ecs-station.log
+  MARK="zmax-station-forward"
+  VPROBE="${PREFIX}station?k=${ZMAX_OV_TOKEN:-zmax-live}"
+  VEXTRA="${PREFIX}station/status?k=${ZMAX_OV_TOKEN:-zmax-live} ${PREFIX}snapshot/overlay_arm.jpg?k=${ZMAX_OV_TOKEN:-zmax-live} ${PREFIX}aoi_gold.mjpg?k=${ZMAX_OV_TOKEN:-zmax-live}"
+  VPOST="${PREFIX}station/arm?k=${ZMAX_OV_TOKEN:-zmax-live}"
+  HINT="手机/浏览器开: ${ZMAX_OV_DOMAIN:-datadrive.world}"
+else
+  PREFIX="${ZMAX_OV_PREFIX:-/ov/}"          # 公网路径前缀
+  REMOTE_PORT="${ZMAX_OV_REMOTE_PORT:-18791}"  # ECS 侧本机回环端口(nginx 反代用)
+  GATE="${ZMAX_OV_GATE:-127.0.0.1:8891}"    # 只读闸门
+  UP="${ZMAX_OV_UP:-127.0.0.1:8791}"
+  UNIT=zmax-ecs-ov.service
+  ENVF_PATH=/etc/zmax-ecs-ov.env
+  LOGF=/var/log/zmax-ecs-ov.log
+  MARK="zmax-overlay-forward"
+  VPROBE="${PREFIX}overlay?k=${ZMAX_OV_TOKEN:-zmax-live}"
+  VEXTRA="${PREFIX}live?k=${ZMAX_OV_TOKEN:-zmax-live} ${PREFIX}live.json?k=${ZMAX_OV_TOKEN:-zmax-live} ${PREFIX}wall.jpg?k=${ZMAX_OV_TOKEN:-zmax-live}&w=240&q=45"
+  VPOST="${PREFIX}boxes/delete?k=${ZMAX_OV_TOKEN:-zmax-live}"
+fi
 TOKEN="${ZMAX_OV_TOKEN:-zmax-live}"
-UNIT=zmax-ecs-ov.service
 VHOST="/www/server/panel/vhost/nginx/${ECS_DOMAIN}.conf"   # 宝塔 nginx vhost
-MARK_BEGIN="# >>> zmax-overlay-forward (auto) >>>"
-MARK_END="# <<< zmax-overlay-forward (auto) <<<"
+MARK_BEGIN="# >>> ${MARK} (auto) >>>"
+MARK_END="# <<< ${MARK} (auto) <<<"
 PW="${ZMAX_ECS_PW:-}"
 SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=12 -o ServerAliveInterval=20 -o ServerAliveCountMax=3"
 if [ -n "$PW" ]; then SSH="sshpass -p $PW ssh $SSH_OPTS"; else SSH="ssh $SSH_OPTS"; fi
@@ -43,13 +68,12 @@ PUB="https://${ECS_DOMAIN}${PREFIX%/}"
 ok(){ echo "  ✅ $*"; }; bad(){ echo "  ❌ $*"; }
 
 check() {
-  echo "── 本地体检 ──"
-  ss -tlnp 2>/dev/null | grep -q ":8891" && ok "只读闸门在听 127.0.0.1:8891" || bad "闸门没在听 8891 (systemctl status zmax-tunnel-proxy)"
-  curl -s -o /dev/null -w "     闸门 /live → HTTP %{http_code}\n" -m 12 "http://127.0.0.1:8891/live?k=$TOKEN"
-  curl -s -o /dev/null -w "     闸门 /overlay → HTTP %{http_code}\n" -m 12 "http://127.0.0.1:8891/overlay?k=$TOKEN"
-  curl -s -o /dev/null -w "     闸门 POST(应 403) → HTTP %{http_code}\n" -m 12 -X POST "http://127.0.0.1:8891/boxes/delete?k=$TOKEN"
-  ss -tlnp 2>/dev/null | grep -q ":8791" && ok "上游 8791 在听" || bad "上游 8791 没在听"
-  echo "── ECS 侧 ──"
+  echo "── 本地体检 (通道=$CH) ──"
+  ss -tlnp 2>/dev/null | grep -q ":${GATE##*:}" && ok "只读闸门在听 $GATE" || bad "闸门没在听 $GATE (overlay: zmax-tunnel-proxy / station: zmax-station-gate)"
+  curl -s -o /dev/null -w "     闸门 ${VPROBE} → HTTP %{http_code}\n" -m 15 "http://${GATE}${VPROBE}"
+  curl -s -o /dev/null -w "     闸门 POST(应 403) → HTTP %{http_code}\n" -m 15 -X POST "http://${GATE}${VPOST}"
+  ss -tlnp 2>/dev/null | grep -q ":${UP##*:}" && ok "上游 $UP 在听" || bad "上游 $UP 没在听"
+  echo "── ECS 侧 ($ECS_USER@$ECS_HOST) ──"
   if timeout 25 $SSH "$ECS_USER@$ECS_HOST" 'echo SSH_OK; nginx -v 2>&1 | head -1' 2>&1 | head -3 | sed 's/^/     /'; then
     :
   fi
@@ -59,18 +83,18 @@ apply_local_unit() {
   echo "── ① 本地反向隧道 (systemd: $UNIT) ──"
   # 口令不进 unit 文件(644) —— 单独 600 的 EnvironmentFile; 免密时 SSH 走 key, 该文件不写
   if [ -n "$PW" ]; then
-    printf 'SSHPASS=%s\n' "$PW" | sudo tee /etc/zmax-ecs-ov.env >/dev/null
-    sudo chmod 600 /etc/zmax-ecs-ov.env
+    printf 'SSHPASS=%s\n' "$PW" | sudo tee $ENVF_PATH >/dev/null
+    sudo chmod 600 $ENVF_PATH
     SSH_CMD="/usr/bin/sshpass -e /usr/bin/ssh"
-    ENVF="EnvironmentFile=/etc/zmax-ecs-ov.env"
+    ENVF="EnvironmentFile=$ENVF_PATH"
   else
     SSH_CMD="/usr/bin/ssh"
     ENVF="# (免密: 用 ubuntu 的 ~/.ssh key, 无口令文件)"
   fi
   sudo tee /etc/systemd/system/$UNIT >/dev/null <<EOF
 [Unit]
-Description=Z-MAX ECS 反向隧道 (只读闸门 8891 → ECS 127.0.0.1:${REMOTE_PORT})
-After=network-online.target zmax-tunnel-proxy.service
+Description=Z-MAX ECS 反向隧道 [$CH] (只读闸门 $GATE → ECS 127.0.0.1:${REMOTE_PORT})
+After=network-online.target
 Wants=network-online.target
 
 [Service]
@@ -79,8 +103,8 @@ ${ENVF}
 ExecStart=${SSH_CMD} -NT -o StrictHostKeyChecking=no -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R 127.0.0.1:${REMOTE_PORT}:${GATE} ${ECS_USER}@${ECS_HOST}
 Restart=always
 RestartSec=10
-StandardOutput=append:/var/log/zmax-ecs-ov.log
-StandardError=append:/var/log/zmax-ecs-ov.log
+StandardOutput=append:${LOGF}
+StandardError=append:${LOGF}
 
 [Install]
 WantedBy=multi-user.target
@@ -125,21 +149,21 @@ PYEOF
       echo 'nginx -t 失败 → 回滚'; sed -i '/$MARK_BEGIN/,/$MARK_END/d' '$VHOST'; /www/server/nginx/sbin/nginx -t
       exit 3
     fi
-    curl -s -o /dev/null -w '   ECS 本机回环: HTTP %{http_code}\n' --max-time 15 'http://127.0.0.1:${REMOTE_PORT}/live?k=$TOKEN'
+    curl -s -o /dev/null -w '   ECS 本机回环: HTTP %{http_code}\n' --max-time 20 'http://127.0.0.1:${REMOTE_PORT}${VPROBE}'
   " 2>&1 | sed 's/^/     /'
 }
 
 verify() {
-  echo "── ③ 公网端到端 ──"
-  for p in "${PREFIX}live?k=$TOKEN" "${PREFIX}overlay?k=$TOKEN" "${PREFIX}live.json?k=$TOKEN" \
-           "${PREFIX}wall.jpg?k=$TOKEN&w=240&q=45"; do
-    printf "  %-42s → " "$p"
+  echo "── ③ 公网端到端 (通道=$CH, 前缀=$PREFIX) ──"
+  for p in "$VPROBE" $VEXTRA; do
+    printf "  %-46s → " "$p"
     curl -s -o /tmp/ovf.out -w "HTTP %{http_code} · %{size_download}B\n" -m 40 "${PUB}/${p#$PREFIX}"
   done
-  printf "  %-42s → " "POST ${PREFIX}boxes/delete (应 403)"
+  printf "  %-46s → " "POST ${VPOST} (应 403)"
   curl -s -o /dev/null -w "HTTP %{http_code}\n" -m 25 -X POST -H 'Content-Type: application/json' \
-       -d '{"cam":"arm","ids":[]}' "${PUB}/boxes/delete?k=$TOKEN"
-  echo "  手机 APP 里填: ${PUB}/overlay?k=$TOKEN"
+       -d '{}' "${PUB}/${VPOST#$PREFIX}"
+  echo "  手机 APP 里填: ${PUB}/${VPROBE#$PREFIX}"
+  [ -n "${HINT:-}" ] && echo "  $HINT"
 }
 
 case "${1:---check}" in

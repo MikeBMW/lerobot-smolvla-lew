@@ -56,7 +56,39 @@ DENY = [r"/ctl/(arm|move)", r"/api/ctl/(arm|move)", r"/station.*", r"/gen.*", r"
         r"/move.*", r"/api/relay/.*", r"/api/ctl/.*"]
 DENY_RE = [re.compile("^" + p + "$") for p in DENY]
 
-STATE = {"token": "", "blocked": 0, "served": 0, "up": ("127.0.0.1", 8791)}
+# ── 模式 2: 工位总览 /station (2026-09-28 老倪: 「8793 这个通道推流到 ECS」) ──────────
+# 8793 的 /station 页面上有**手动控制区**(会真动机器人)。所以外放的口径与叠加页一致:
+#   · 页面本体 + 6 路只读画面(4 快照 + 2 AOI MJPEG) 放行
+#   · 一切 POST 403(手动控制按钮在公网下点了会报错 —— 这是**故意**的)
+#   · /ctl/*、/gen(触发拍照烧钱)、/tap、/move*、/api/aoi/detect 永不外放
+ALLOW_STATION = [
+    r"/", r"/index\.html",
+    r"/station", r"/station\.html", r"/board", r"/station/status",
+    r"/snapshot/[A-Za-z0-9_]+\.jpg",
+    r"/[A-Za-z0-9_]+\.mjpg",
+    r"/wall[A-Za-z0-9_]*\.jpg", r"/wall\.mjpg",
+    r"/scene\.json", r"/stats", r"/robot_status", r"/motion", r"/ctl/status",
+    r"/aoi/status", r"/aoi_status",
+    r"/dl/[A-Za-z0-9_.-]+", r"/lib/[A-Za-z0-9_./-]+",
+    r"/live", r"/live\.html", r"/live\.json",
+]
+ALLOW_STATION_RE = [re.compile("^" + p + "$") for p in ALLOW_STATION]
+DENY_STATION = [
+    r"/ctl/(arm|move)", r"/api/ctl/.*", r"/api/aoi/detect.*", r"/api/aoi/.*",
+    r"/gen.*", r"/tap.*", r"/move.*", r"/cmd.*", r"/skill.*", r"/teach.*",
+    r"/api/relay/.*", r"/api/train.*", r"/hil/.*", r"/agent/.*",
+]
+DENY_STATION_RE = [re.compile("^" + p + "$") for p in DENY_STATION]
+
+
+def _filters():
+    """按模式取 (白名单, 黑名单)。"""
+    if STATE.get("mode") == "station":
+        return ALLOW_STATION_RE, DENY_STATION_RE
+    return ALLOW_RE, DENY_RE
+
+
+STATE = {"token": "", "blocked": 0, "served": 0, "up": ("127.0.0.1", 8791), "mode": "overlay"}
 
 
 def _up(path, timeout=6):
@@ -242,12 +274,13 @@ class H(http.server.BaseHTTPRequestHandler):
             STATE["blocked"] += 1
             self._deny(403, "403: 需要口令 —— 用带 ?k=<token> 的链接打开一次即可")
             return
-        for r in DENY_RE:
+        _allow_re, _deny_re = _filters()
+        for r in _deny_re:
             if r.match(path):
                 STATE["blocked"] += 1
                 self._deny(403, "403: 该路径不对外(控制类/触发类)")
                 return
-        if not any(r.match(path) for r in ALLOW_RE):
+        if not any(r.match(path) for r in _allow_re):
             STATE["blocked"] += 1
             self._deny(403, "403: 不在只读白名单内")
             return
@@ -401,11 +434,15 @@ def main():
     ap.add_argument("--upstream", default="127.0.0.1:8791")
     ap.add_argument("--token", default="", help="共享口令; 空=不校验(不建议对公网开放)")
     ap.add_argument("--wall-fps", type=float, default=2.0, help="三相机拼图流默认帧率")
+    ap.add_argument("--mode", default="overlay", choices=("overlay", "station"),
+                    help="overlay=叠加页闸门(默认, 上游 8791); station=工位总览闸门(上游 8793, "
+                         "放行 /station 与 6 路只读画面, 控制类仍全挡)")
     a = ap.parse_args()
     H.upstream = tuple(a.upstream.split(":"))
     H.upstream = (H.upstream[0], int(H.upstream[1]))
     STATE["up"] = H.upstream
     STATE["token"] = a.token
+    STATE["mode"] = a.mode
     WALL["fps"] = float(a.wall_fps)
     srv = Srv((a.bind, a.port), H)
 
@@ -415,10 +452,10 @@ def main():
             print("[proxy] 60s: 放行 %d 次, 挡掉 %d 次" % (STATE["served"], STATE["blocked"]), flush=True)
 
     threading.Thread(target=beat, daemon=True).start()
-    print("[proxy] 只读闸门: %s:%d -> %s  口令=%s" % (
-        a.bind, a.port, a.upstream, "开" if a.token else "关(仅内网用)"), flush=True)
-    print("[proxy] 放行: %s" % ", ".join(ALLOW), flush=True)
-    print("[proxy] 永不放行: %s" % ", ".join(DENY), flush=True)
+    print("[proxy] 只读闸门: %s:%d -> %s  口令=%s 模式=%s" % (
+        a.bind, a.port, a.upstream, "开" if a.token else "关(仅内网用)", a.mode), flush=True)
+    print("[proxy] 放行: %s" % ", ".join(ALLOW_STATION if a.mode == "station" else ALLOW), flush=True)
+    print("[proxy] 永不放行: %s" % ", ".join(DENY_STATION if a.mode == "station" else DENY), flush=True)
     srv.serve_forever()
 
 
