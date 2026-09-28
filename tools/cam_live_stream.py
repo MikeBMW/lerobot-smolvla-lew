@@ -513,6 +513,16 @@ def _aoi_frame(bgr, clean: bool = True, out: int = 900, quality: int = 78, natur
                旋转用白底填充(金手指区背景是亮底), 避免黑角干扰判据。
     """
     img, meta = bgr, {}
+    # 2026-09-28 老倪: 「工控机拍摄的照片与你的金手指判据图不一样, 要跟判据图保持一致」
+    #   工控机 kind=crop 取回来的**就是它自己的判据图**(crop_goldfinger_regular: 模板法规整裁剪 +
+    #   去倾斜居中, 960×960 画布; method=template, 残余倾角实测 -0.25°), 与它存盘/送检同一张。
+    #   这种"服务端已裁好"的情形必须**原样透传** —— 本地再 clean、再 resize 到 out 都会把它变成
+    #   另一张图(960→900 方图), 那就又是"两边不一致"。所以这里直接编码返回, 不碰尺寸/比例。
+    if not clean and not natural and fix_hw is None and abs(float(vstretch) - 1.0) < 0.01:
+        ok, buf = cv2.imencode(".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)])
+        return (buf.tobytes() if ok else b""), {
+            "passthrough": True, "src": "工控机判据图(kind=crop, 未本地二次处理)",
+            "size": [int(bgr.shape[1]), int(bgr.shape[0])]}
     if clean:
         try:
             from aoi_exposure_fix import clean_judge_frame
@@ -692,7 +702,11 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
             bgr = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
             if bgr is not None:
                 # 2026-09-28: 金手指那格走"原比例 + 去倾角"(老倪: 要矩形、不能有角度)
-                _nat = (name == "aoi_gold")
+                # 2026-09-28 老倪: 「工控机拍摄的照片与你的金手指判据图不一样, 要跟判据图保持一致」
+                #   金手指已改为直接取工控机自己的判据图(kind=crop) ⇒ 本地**一律不再加工**
+                #   (服务端已完成 template 规整裁剪 + 去倾角, 残余倾角实测 -0.25°)。本地再 natural/
+                #   deskew/3×/定尺 都会把它变成另一张图 ⇒ 那又回到"两边不一致"。故 kind=crop 时全停。
+                _nat = (name == "aoi_gold") and (str(kind) != "crop")
                 _ds = _aoi_gold_angle() if _nat else 0.0
                 jpg, _meta = _aoi_frame(bgr, clean=clean, natural=_nat, deskew_deg=_ds,
                                         vstretch=(3.0 if _nat else 1.0),
@@ -1398,8 +1412,12 @@ STATION_PAGE = r"""<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <title>Z-MAX 工位总览 · 6 路同屏 + 手动控制</title>
 <style>
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;background:#0d1117;color:#e6edf3;
-  font:16px/1.45 system-ui,"Noto Sans CJK SC","Microsoft YaHei",sans-serif}
+html,body{margin:0;min-height:100%;background:#0d1117;color:#e6edf3;
+  font:16px/1.45 system-ui,"Noto Sans CJK SC","Microsoft YaHei",sans-serif;
+  /* 2026-09-28 老倪: 「工位总览这个页面怎么无法上下移动？只能看到6个视频窗口，下面的用鼠标无法滚动」
+     原布局把整页锁成 height:100% + main 固定 calc(100% - 62px) ⇒ 内容超出就永远滚不到
+     (3 倍高的判据图把它撑破，下面的面板/按钮全都够不着) ⇒ 改成整页可滚动：只留最小高度。 */
+  overflow-y:auto;overflow-x:hidden}
 header{display:flex;align-items:center;gap:14px;padding:10px 16px;background:#161b22;
   border-bottom:1px solid #30363d;position:sticky;top:0;z-index:9}
 h1{font-size:24px;margin:0;letter-spacing:.5px}
@@ -1408,10 +1426,8 @@ h1{font-size:24px;margin:0;letter-spacing:.5px}
 .clk{font-variant-numeric:tabular-nums;color:#8b949e;font-size:17px}
 .warnbar{background:#4b2b1a;border:1px solid #d29922;color:#f0c674;padding:5px 10px;
   border-radius:8px;font-size:15px;max-width:60vw}
-main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12px;
-  height:calc(100% - 62px)}
-.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-content:start;
-  overflow:auto;min-height:0}
+main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12px}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-content:start}
 .panel{background:#161b22;border:1px solid #30363d;border-radius:12px;overflow:hidden;
   display:flex;flex-direction:column;min-height:0}
 .cap{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:7px 10px;
@@ -2339,8 +2355,15 @@ def main():
         _aoi_note_init()
         _CAM_LABEL["aoi_gold"] = "🔍 金手指检测 (工控机 OPT)"
         _CAM_LABEL["aoi_surface"] = "🔍 表面检测 (工控机 OPT)"
+        # 2026-09-28 老倪: 「工控机拍摄的照片与你的金手指判据图不一样, 要跟判据图保持一致」
+        #   核对工控机源码(cam_finger_10082_work_v6.py:477-483): 它存下来的 Finger_TopView_W*_H*
+        #   **就是** crop_goldfinger_regular() 的输出(模板法规整裁剪, 去倾斜居中), 即检测器真正吃的判据图;
+        #   而本服务原先取 kind=origin 后用 aoi_exposure_fix 又自己裁了一遍 ⇒ 两边不一致(错在本服务)。
+        #   现改为: kind=crop 取它的**内存帧**(与它存盘/送检完全同一张), 不再本地二次裁剪 ⇒ 三者一致:
+        #   页面显示 == 工控机存的 Finger_TopView_*.png == 检测器输入。
         threading.Thread(target=_aoi_worker,
-                         args=(10082, "aoi_gold", args.aoi_fps, "origin", True, True, "aoi_gold_raw"),
+                         args=(10082, "aoi_gold", args.aoi_fps, "crop", False, True,
+                               "aoi_gold_raw", "origin"),
                          daemon=True, name="aoi-gold").start()
         threading.Thread(target=_aoi_worker,
                          args=(10083, "aoi_surface", args.aoi_fps, "crop", False, True),
