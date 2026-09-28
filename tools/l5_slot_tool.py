@@ -15,7 +15,9 @@ L2层要进行训练并更新。」
      的 quat_to_R/module_corners/project (同一套数学, 不重写)。
   ③ 大模型(VLM)复核投影框是否落在槽位/光模块边沿上; 不一致 ⇒ 标"待确认", **不默默改成对的**.
   ④ 只读: 本工具只读 TCP / 抓图 / 记录 / 标注 —— 任何真机动作都不在这里。
-  ⑤ 深度那一路当前是死的 (容器 ros_depth_stream 未起) ⇒ 如实记 depth_online=false, 不当活的用。
+  ⑤ 深度那一路: 判据=**源文件龄**(~/zmax_ss_remote/zmax_scene/depth_raw.npy, ss-remote-tap 里
+     ros_depth_stream.py 落的)。2026-09-29 实测该链路**在流**(5Hz, 文件龄 ~2s) —— 旧版查容器名
+     ros_depth_stream 是假离线, 已修。
 
 用法:
   ./gui-venv311/bin/python tools/l5_slot_tool.py --init                 # 建 14 槽位登记表
@@ -44,7 +46,11 @@ HANDEYE = os.path.join(ROOT, "models", "handeye_state.json")
 DS_ROOT = os.path.join(ROOT, "data", "yolo_annot_l5slots")
 N_SLOTS = 14
 CAMS3 = ("arm", "local", "local2")          # 三个场景相机 (arm=D405 / local=笔记本 / local2=MAXHUB)
-DEPTH_CAM = "depth"                          # 深度那一路 (当前未上线, 如实标)
+DEPTH_CAM = "depth"                          # 深度那一路
+SCENE_DIR = "/home/ubuntu/zmax_ss_remote/zmax_scene"      # = 容器 ss-remote-tap 的 /out/zmax_scene
+DEPTH_NPY = SCENE_DIR + "/depth_raw.npy"
+DEPTH_META = SCENE_DIR + "/depth_meta.json"
+DEPTH_DEAD_S = 10.0                          # 源文件龄 >10s ⇒ 判「深度源已断」(与 cam_live_stream 同口径)
 
 
 # ─────────────────────────── 真值读取 (只读) ───────────────────────────
@@ -71,17 +77,37 @@ def live_tcp(max_age_s: float = 5.0) -> dict:
         return {"ok": False, "reason": "%s: %s" % (type(e).__name__, e)}
 
 
-def depth_online() -> dict:
-    """深度那一路是否在线 (容器 ros_depth_stream)"""
-    try:
-        import subprocess
-        o = subprocess.run(["docker", "ps", "--format", "{{.Names}}"], capture_output=True, text=True,
-                           timeout=8).stdout
-        names = [x for x in o.split() if "depth" in x.lower()]
-        return {"ok": bool(names), "containers": names,
-                "reason": None if names else "容器 ros_depth_stream 未在运行 → 深度信号未上线 (如实标)"}
-    except Exception as e:                                                       # noqa: BLE001
-        return {"ok": False, "reason": "docker 查询失败: %s" % e}
+def depth_online(max_age_s: float = DEPTH_DEAD_S) -> dict:
+    """深度那一路是否在线 —— 判据 = **源文件龄**(与 tools/cam_live_stream.py 同口径)。
+
+    实测坑(2026-09-29): 旧实现去 `docker ps` 找名字含 depth 的**容器**, 但深度实际是
+    **ss-remote-tap 容器里的一个进程**(`python3 /repo/tools/ros_depth_stream.py --hz 5`),
+    落的文件是 `/out/zmax_scene/depth_raw.npy` (= host `~/zmax_ss_remote/zmax_scene/`)
+    ⇒ 旧判据永远 false(假离线), 会把"深度其实在流"误报成"深度未上线"。
+    现在按源文件龄判: 新鲜就是在线(带上 age), 停写就如实说停写。
+    """
+    import subprocess                                                          # noqa: PLC0415
+    age, src = None, None
+    for p in (DEPTH_META, DEPTH_NPY):
+        try:
+            a = time.time() - os.path.getmtime(p)
+        except OSError:
+            continue
+        if age is None or a < age:
+            age, src = a, p
+    alive = []
+    try:                        # 附带上游进程信息(仅作说明, 不参与判据)
+        o = subprocess.run(["docker", "ps", "--format", "{{.Names}}"], capture_output=True,
+                           text=True, timeout=8).stdout
+        alive = [x for x in o.split() if "remote-tap" in x or "depth" in x.lower()]
+    except Exception:                                                          # noqa: BLE001
+        pass
+    if age is None:
+        return {"ok": False, "age_s": None, "containers": alive,
+                "reason": "深度源文件不存在 (%s) → 深度未上线 (如实标)" % DEPTH_NPY}
+    ok = age <= max_age_s
+    return {"ok": ok, "age_s": round(age, 1), "src": src, "containers": alive,
+            "reason": None if ok else "深度源已停写 %.1fs (>%.0fs) → 未上线 (如实标)" % (age, max_age_s)}
 
 
 # ─────────────────────── 投影链 (K + 手眼 + 实时 TCP) ───────────────────────
@@ -119,16 +145,18 @@ def project_slot(center, quat, size_mm, frame_wh, tcp, tcp_quat) -> dict:
     """槽位 3D(中心) + 工件几何(角点) → 图像角点/框。角点 = 中心 ± R·(±sx/2,±sy/2,±sz/2) 8 角投图。"""
     import numpy as np
     import real_autolabel as RA
-    out = {"center_base": [round(float(x), 6) for x in center], "size_mm": list(size_mm)}
-    if not size_mm or len(size_mm) != 3 or min(size_mm) <= 0:
+    # 实测坑(2026-09-29): 原来先 `list(size_mm)` 再判空 ⇒ `--record` 不带 `--size` 时
+    # 直接 TypeError 崩掉, 本意是给"缺几何"提示。改为先归一化再判。
+    _sz = [float(v) for v in size_mm] if (size_mm and len(size_mm) == 3 and min(size_mm) > 0) else None
+    out = {"center_base": [round(float(x), 6) for x in center], "size_mm": _sz}
+    if _sz is None:
         out.update({"ok": False, "reason": "缺工件/槽位几何 (--size W,H,T mm) → 只出中心点投影, 角点不编造"})
-        size_mm = None
     pm = proj_matrix(frame_wh, tcp, tcp_quat)
     out["proj"] = {k: pm[k] for k in ("calib_wh", "frame_wh", "scale", "handeye_resid", "calib_reason")}
     c = RA.project(pm["P"], center)
     out["center_uv"] = [round(float(c[0]), 1), round(float(c[1]), 1)]
-    if size_mm:
-        size_m = [float(v) / 1000.0 for v in size_mm]
+    if _sz:
+        size_m = [float(v) / 1000.0 for v in _sz]
         corners = RA.module_corners(center, quat, size_m)
         uv = [RA.project(pm["P"], x) for x in corners]
         out["corners_base"] = [[round(float(v), 6) for v in p] for p in corners]
@@ -169,6 +197,10 @@ def cmd_init() -> int:
     d["depth"] = depth_online()
     save_reg(d)
     n_rec = sum(1 for v in d["slots"].values() if v.get("status") != "未演示")
+    _dep = depth_online()
+    print("🌊 深度源(实时探): %s%s" % ("在线" if _dep["ok"] else "未上线",
+                                   (" · 文件龄 %ss · %s" % (_dep.get("age_s"), os.path.basename(_dep.get("src") or "")))
+                                   if _dep.get("ok") else " · %s" % _dep.get("reason")))
     print("✅ 槽位登记表 %s: %d 槽位 (已记录 %d / 未演示 %d) · 深度 %s"
           % (os.path.relpath(REG, ROOT), N_SLOTS, n_rec, N_SLOTS - n_rec,
              "在线" if d["depth"].get("ok") else "未上线 (%s)" % d["depth"].get("reason")))
@@ -177,8 +209,13 @@ def cmd_init() -> int:
 
 def cmd_status() -> int:
     d = load_reg()
-    print("🧿 L5 槽位登记表 (%s) · 深度: %s" % (os.path.relpath(REG, ROOT),
-          "在线" if (d.get("depth") or {}).get("ok") else "未上线"))
+    _dep = depth_online()
+    print("🌊 深度源(实时探): %s" % ("在线 · 文件龄 %ss · %s" % (_dep.get("age_s"),
+                                                  os.path.basename(_dep.get("src") or ""))
+                                  if _dep["ok"] else "未上线 · %s" % _dep.get("reason")))
+    print("🧿 L5 槽位登记表 (%s) · 深度(记录当时): %s"
+          % (os.path.relpath(REG, ROOT),
+             "在线" if (d.get("depth") or {}).get("ok") else "未上线"))
     for i in range(1, N_SLOTS + 1):
         k = "slot_%02d" % i
         s = (d["slots"] or {}).get(k) or {}
