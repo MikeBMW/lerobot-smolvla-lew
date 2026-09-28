@@ -13157,6 +13157,56 @@ def main():
                   flush=True)
     except Exception as _e:                                                     # noqa: BLE001
         print("⚠️ 重启自动加载挂钩异常(不影响控制台): %s" % _e, flush=True)
+    # 🐛 2026-09-28 现场: 关机/kill 时控制台以 **SIGABRT 收场** —— 实测 kill(SIGTERM) 后进程直接死在
+    #   in-process DDS 线程上("QThread: Destroyed while thread is still running" → Fatal Python error: Aborted,
+    #   退出码 134 + core dump)。关机时 systemd 先发 SIGTERM ⇒ 每次下电都脏退。
+    #   ⚠️ 第一版用 `signal.signal(SIGTERM, py_handler)` **没用**(实测处理器根本没跑: 主线程在 Qt 的
+    #      C++ 事件循环里, Python 字节码没机会执行 ⇒ 处理器挂不上)。改用 C 级机制:
+    #      `signal.set_wakeup_fd` 由 C 处理器**立即**把信号号写进管道 → 看门狗线程收到 →
+    #      主线程 QTimer 轮询到标记 → `win.close()`(走 closeEvent: 停定时器/Rerun 线程/DDS) → **os._exit(0)**
+    #      (跳过解释器 finalize ⇒ 不再 abort/不留 core)。看门狗线程 6s 兜底(事件循环万一卡死也能干净退)。
+    try:
+        import signal as _sig
+        import threading as _th
+        from PyQt5.QtCore import QTimer as _QTq
+
+        _rq, _wq = os.pipe()
+        os.set_blocking(_wq, False)
+        _sig.set_wakeup_fd(_wq)                            # C 级: 信号到达即写字节, 不等 Python 字节码
+        _sig.signal(_sig.SIGTERM, lambda *_a: None)         # 拦住默认"硬终止"动作
+        _sig.signal(_sig.SIGINT, lambda *_a: None)
+        _ASK = {"quit": False}
+
+        def _watch_sig():
+            while True:
+                try:
+                    _b = os.read(_rq, 1)
+                except Exception:                                          # noqa: BLE001
+                    time.sleep(0.5)
+                    continue
+                if not _b:
+                    continue
+                print("📴 收到信号 %d → 正常关闭界面后退出" % _b[0], flush=True)
+                _ASK["quit"] = True
+                time.sleep(6.0)                    # 兜底: 主线程 6s 内没退就硬退(仍不 abort)
+                os._exit(0)
+
+        _th.Thread(target=_watch_sig, daemon=True).start()
+
+        def _poll_quit():
+            if _ASK["quit"]:
+                try:
+                    win.close()                    # 触发 closeEvent 清理(同步执行完)
+                except Exception:                                          # noqa: BLE001
+                    pass
+                os._exit(0)                        # 跳过 finalize ⇒ 不掉 DDS 线程 abort
+
+        _qtimer_q = _QTq()
+        _qtimer_q.setInterval(200)
+        _qtimer_q.timeout.connect(_poll_quit)
+        _qtimer_q.start()
+    except Exception as _e:                                                  # noqa: BLE001
+        print("⚠️ 信号处理挂钩异常(不影响控制台): %s" % _e, flush=True)
     sys.exit(app.exec_())
 
 
