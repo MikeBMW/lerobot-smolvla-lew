@@ -169,6 +169,52 @@ def l5_annotate(cam: str, hint: str, negatives=None, keep=None) -> dict:
             "summary": str(txt)[:300] if txt else ""}
 
 
+def l5_correct(cam: str = "arm", hint: str = "") -> dict:
+    """让**引擎 L5 负责判定「哪里不对、该怎么样」**并校正叠加:
+    overlay 里已有框 ⇒ 逐框判 keep/junk/fix + 找漏检 → 应用(台账+spec备份, 可回退);
+    没有框 ⇒ 退回「标注」模式(先标再说)。"""
+    import l5_overlay_correct as C
+    import scene_overlay as SO
+    spec = SO.load_spec()
+    if not (spec["cameras"][cam].get("boxes") or []):
+        r = l5_annotate(cam, hint)
+        return {"mode": "annotate", **r}
+    neg = list((spec.get("deleted") or {}).get(cam) or [])
+    os.environ["L5CORR_THINK"] = "1"                     # 判定要细 ⇒ 开思考(慢层)
+    t0 = time.time()
+    r = C.ask_l5(cam, hint, neg)
+    out = {"mode": "correct", "ok": bool(r.get("ok")), "secs": round(time.time() - t0, 1),
+           "why": r.get("why"), "hint": hint}
+    v = r.get("verdict") or {}
+    if r.get("ok") and v:
+        out["counts"] = {"junk": len(v.get("junk") or []), "fix": len(v.get("fix") or []),
+                         "missing": len(v.get("missing") or []), "ok": len(v.get("ok") or [])}
+        out["reasons"] = [str(x.get("why"))[:90] for x in ((v.get("junk") or []) + (v.get("missing") or []))][:4]
+        out["applied"] = C.apply_verdict(cam, v)
+        with open(os.path.join(os.path.dirname(LOG), "l5_overlay_corrections.jsonl"), "a",
+                  encoding="utf-8") as f:
+            f.write(json.dumps({"ts": time.strftime("%F %T"), "cam": cam, "hint": hint,
+                                "verdict": v, "secs": out["secs"], "applied": out["applied"],
+                                "via": "hil_loop"}, ensure_ascii=False) + "\n")
+    return out
+
+
+def _correct_msg(pfx: str, r: dict) -> str:
+    if r.get("mode") == "annotate":
+        return ("%s · L5 标注(叠加里原本没有框) · %.0fs · 框 %d 个%s\n   场景: %s"
+                % (pfx, r.get("secs") or 0, r.get("n_boxes") or 0,
+                   ("[" + ", ".join(r.get("labels") or []) + "]") if r.get("labels") else "",
+                   (r.get("summary") or "")[:200]))
+    if not r.get("ok"):
+        return "%s · L5 校正未出判定: %s" % (pfx, r.get("why"))
+    c = r.get("counts") or {}
+    ap = r.get("applied") or {}
+    return ("%s · L5 校正 %.0fs · 判定 删%d 改%d 补%d 保留%d → 应用 删%d 改%d 补%d\n   %s"
+            % (pfx, r.get("secs") or 0, c.get("junk", 0), c.get("fix", 0), c.get("missing", 0),
+               c.get("ok", 0), ap.get("junk", 0), ap.get("fix", 0), ap.get("missing", 0),
+               " | ".join(r.get("reasons") or [])[:260]))
+
+
 # ───────────────────────────── 触发源 ─────────────────────────────────────
 _SEEN_SKIP = set()
 _MAX_SEEN = [0]          # 本进程见过的最大 seq(含被过滤的; 用于推进游标, 否则每次轮询重读)
@@ -224,12 +270,9 @@ def handle_instruction(it: dict, st: dict) -> str:
                "我可以同时做的: 对这个视角跑一次 L5 理解 + 自动标注(不出动作)。" % text[:60])
         rec = {"ts": time.strftime("%F %T"), "kind": "motion_refused", "text": text}
     else:
-        r = l5_annotate("arm", hint=text)
-        msg = ("🧠 L5(引擎) 理解完毕 · %.0fs · 框 %d 个%s\n   场景: %s"
-               % (r["secs"], r["n_boxes"],
-                  ("[" + ", ".join(r["labels"]) + "]") if r["labels"] else "",
-                  (r["summary"] or "(空)")[:220]))
-        rec = {"ts": time.strftime("%F %T"), "kind": "l5_annotate", "text": text, "result": r}
+        r = l5_correct("arm", hint=text)
+        msg = _correct_msg("📩 按你说的校正(你的话=最高优先级)", r)
+        rec = {"ts": time.strftime("%F %T"), "kind": "l5_correct", "text": text, "result": r}
     rep = reply(msg, prompt_seq=it.get("seq"))
     rec["reply_ok"] = bool(rep.get("ok"))
     with open(LOG, "a", encoding="utf-8") as f:
@@ -243,10 +286,8 @@ def handle_pause(p: dict, st: dict) -> str:
     hint = ("现场示教停顿点 %s: 机械臂停在这个位姿(关节 %s, TCP %s)。"
             "请理解此刻臂上相机里看到什么: 有哪些工件/槽位/标记, 光模块在哪、朝向如何, "
             "并把能确认的东西标出来。" % (n, p.get("joints"), p.get("tcp")))
-    r = l5_annotate("arm", hint=hint)
-    msg = ("📍 参考点 %s 的 L5 理解 · %.0fs · 框 %d 个%s\n   场景: %s"
-           % (n, r["secs"], r["n_boxes"],
-              ("[" + ", ".join(r["labels"]) + "]") if r["labels"] else "", (r["summary"] or "")[:220]))
+    r = l5_correct("arm", hint=hint)
+    msg = _correct_msg("📍 参考点 %s" % n, r)
     rep = reply(msg)
     with open(LOG, "a", encoding="utf-8") as f:
         f.write(json.dumps({"ts": time.strftime("%F %T"), "kind": "pause_annotate",

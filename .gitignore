@@ -279,3 +279,7 @@ data/scene/overlay_spec.json.bak_planseg_*
 # HIL↔L5 互动环运行态(游标/互动台账)
 reports/l5_hil_agent_state.json
 reports/l5_hil_interact.jsonl
+
+data/scene/overlay_spec.json.bak_l5corr_*
+reports/l5_overlay_corrections.jsonl
+reports/session_archive/
