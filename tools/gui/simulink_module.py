@@ -12713,6 +12713,7 @@ class SimulinkModule(QWidget):
         # 🚩 2026-09-28 老倪第 3 次投诉「点击运行没反馈」: **画布一打开就挂 L5 状态轮询**。
         #   原来只有"从画布点运行"那条路才建 QTimer ⇒ 闭环是在别处/上一个进程起的时,
         #   画布(他正看的界面)永远不刷新, 他当然什么都看不见。常驻 1s, 幂等。
+        self._l5_mark_open()      # 🚫 打开工程这一刻记基线: 打开时就有的旧失败不播报 (老倪 2026-09-28)
         self._l5_start_poll(1000)
 
     def open_ss_3d(self, on_top=True, level=None):
@@ -14186,6 +14187,7 @@ class SimulinkModule(QWidget):
         # 🚩 2026-09-28 老倪第 3 次投诉「点击运行没反应」⇒ **点击瞬间先给反馈**, 不等 2s 轮询;
         #    即使后台随后立刻失败, 也要先让他看到"已收到"。
         self._l5_click_ts = time.time()
+        self._l5_run_seen = True              # 他点了 ▶运行 ⇒ 之后的失败必须正常播报 (不再算"旧记录")
         self._l5_banner_show("⏳ 已收到 ▶运行 — L5 标注→训练闭环 启动中…", "running")
         self._log("════ 🟡 已收到 ▶运行 (L5 标注→训练闭环) ════")
         self._l5_btn_sync("running", "已收到", 0, 0)
@@ -14228,6 +14230,27 @@ class SimulinkModule(QWidget):
         except Exception:                                                       # noqa: BLE001
             pass
 
+    def _l5_mark_open(self):
+        """画布**打开这一刻**记基线 —— 打开时就存在的旧失败不播报。
+
+        老倪 2026-09-28: 「打开状态空间工程后不要显示上次 L5 失败, 太明显了, 很丑, 删掉」。
+        口径: 记下打开时的 run_ts/started 当"旧记录指纹" + 清零"本次见过它跑"的标志;
+        之后只有**本次界面里真见过它跑**(state=running 或点过 ▶运行)之后的失败才播报。"""
+        st = self._l5_state()
+        self._l5_base_key = str(st.get("run_ts") or st.get("started") or "")
+        self._l5_run_seen = False
+        self._l5_stale_logged = None
+
+    def _l5_is_stale_fail(self, st: dict) -> bool:
+        """status=failed 是否为「打开画布之前」留下的旧失败 (是 → 界面上不显示)。
+        state.json 原文一字不动 (证据保留), 只是不铺红横幅/不进窗口标题/徽章回 idle。"""
+        if str(st.get("status")) != "failed":
+            return False
+        if getattr(self, "_l5_run_seen", False):
+            return False
+        return (str(st.get("run_ts") or st.get("started") or "")
+                == str(getattr(self, "_l5_base_key", "") or ""))
+
     def _l5_poll(self, force=False):
         """把 L5 闭环状态画到画布 (阶段结束后自动停轮询)
         2026-09-28 老倪: 「点击运行没反应」⇒ 反馈必须显眼: 阶段变化大喊一次 + 窗口标题常显横幅"""
@@ -14236,10 +14259,20 @@ class SimulinkModule(QWidget):
         state = "idle"
         if pid:
             state = "running"
+            self._l5_run_seen = True          # 本次界面里见过它跑 ⇒ 之后的失败要正常播报
         elif st.get("status") == "done":
             state = "ok"
         elif st.get("status") == "failed":
             state = "error"
+        if state == "error" and self._l5_is_stale_fail(st):
+            # 🚫 打开工程就看到的旧失败: 不铺红横幅、不进标题、徽章回 idle (只在日志留一行安静的实话)
+            _sk = str(st.get("run_ts") or st.get("started") or "")
+            if getattr(self, "_l5_stale_logged", None) != _sk:
+                self._l5_stale_logged = _sk
+                self._log("· 上次 L5 闭环未跑完 (阶段 %s · %s) — 旧记录, 画布上不播报; 点 ▶运行 会重新开始"
+                          % (str(st.get("stage") or "-"), (str(st.get("started") or "")[5:16] or "-")))
+            state = "idle"
+            st = {}                            # 徽章/进度文案也走 idle 版
         _lines = self._l5_lines_from_state(st)
         self._l5_badge(state=state, lines=_lines)
         # ── 显眼反馈 (老倪点运行要立刻看得见; 三处同显, 全部非阻塞) ─────────────────
