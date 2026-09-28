@@ -305,7 +305,45 @@ def cmd_record(slot: int, size_mm, demo: str, use_vlm: bool, tcp_override=None) 
                                      ensure_ascii=False))
     print("   VLM 复核: %s" % json.dumps(out.get("vlm"), ensure_ascii=False)[:200])
     print("   record.json: %s" % s["record"])
+    if s["status"] != "已记录":
+        print("")
+        print("❌ 槽位 %s 判为 %s ⇒ 退出码 1 (记录**已落盘**, 只是按'不默默改成对的'口径没标 已记录)"
+              % (k, s["status"]))
+        print("   投影 ok=%s · TCP=%s(age %ss) · 深度上线=%s · VLM=%s"
+              % ((out.get("projection") or {}).get("ok"), t.get("tcp"), t.get("age_s"),
+                 s.get("depth_online"), (out.get("vlm") or {}).get("verdict")))
+        if (out.get("vlm") or {}).get("verdict") == "不一致":
+            print("   VLM 说的话: %s" % str((out.get("vlm") or {}).get("why") or
+                                           (out.get("vlm") or {}).get("note") or "")[:160])
     return 0 if s["status"] == "已记录" else 1
+
+
+def _explain_zero() -> list:
+    """0 框时把"为什么"逐条讲清楚(避免 SystemExit:1 被误当成代码报错)。"""
+    out = []
+    try:
+        d = load_reg()
+        sl = d.get("slots") or {}
+        st = {}
+        no_tcp = no_proj = vlm_bad = 0
+        for k, v in sl.items():
+            st[v.get("status")] = st.get(v.get("status"), 0) + 1
+            if not v.get("tcp"):
+                no_tcp += 1
+            if not v.get("corners_uv"):
+                no_proj += 1
+            if (v.get("vlm") or {}).get("verdict") == "不一致":
+                vlm_bad += 1
+        out.append("原因: 默认只收 status=已记录 的槽位; 登记表现状 = %s"
+                   % json.dumps(st, ensure_ascii=False))
+        out.append("     其中 无TCP真值 %d 个 · 无角点投影 %d 个 · VLM复核判不一致 %d 个"
+                   % (no_tcp, no_proj, vlm_bad))
+        dep = d.get("depth") or {}
+        if not dep.get("ok"):
+            out.append("     深度: 未上线 (%s)" % str(dep.get("reason") or "")[:110])
+    except Exception as e:                                                        # noqa: BLE001
+        out.append("(读登记表失败: %s)" % e)
+    return out
 
 
 # ─────────────────────────── 数据集落盘 (14 类) ───────────────────────────
@@ -394,6 +432,15 @@ def cmd_build_dataset(include_pending: bool = False) -> int:
         print("   %s → %s (xywhn %s)" % (r["slot"], os.path.relpath(r["label"], ROOT), r["xywhn"]))
     print("   data.yaml: %s · 体检: %s" % (os.path.relpath(yaml_p, ROOT),
                                           json.dumps(chk, ensure_ascii=False)[:200] if chk else "—"))
+    if n_box == 0:
+        _why = _explain_zero()
+        print("")
+        print("❌ 0 框 ⇒ 退出码 1 (**不是崩溃**: 是本工具按判据拒绝, SystemExit: 1 就是这么来的)")
+        for _l in _why:
+            print("   %s" % _l)
+        print("   解法①(想把管线跑通, 产物仅供冒烟): --build-dataset --include-pending")
+        print("   解法②(要真标签): 现场放好工件 → --record --slot N")
+        print("          判据: 投影 ok + TCP 真值 ≤3s + VLM 复核一致 ⇒ 才写 '已记录'(退出码 0)")
     return 0 if n_box > 0 else 1
 
 
@@ -404,7 +451,11 @@ def _parse_size(s):
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="L5 槽位记录/TCP真值投影/14类数据集")
+    ap = argparse.ArgumentParser(
+        description="L5 槽位记录/TCP真值投影/14类数据集",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="退出码语义(重要): 0=已记录/有框 · 1=待确认 或 0框(上面会打印❌及原因) · 2=参数错\n"
+               "也就是说 SystemExit: 1 **不是崩溃**, 是本工具按判据拒绝(见'不把没核实的框当标签'口径)。")
     ap.add_argument("--init", action="store_true", help="建 14 槽位登记表 (models/l5_slots.json)")
     ap.add_argument("--status", action="store_true", help="打印 14 槽位状态")
     ap.add_argument("--record", action="store_true", help="记录一次槽位演示 (TCP真值+三相机帧+角点投影)")

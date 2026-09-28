@@ -269,3 +269,9 @@ outputs
 
 # 审计日志(持续增长, 不进库)
 reports/web_agent_bridge_audit.jsonl
+
+# 现场实时链路的运行态产物(每秒刷新, 不进库; pause_points 作为本次会话证据单独留痕在报告里)
+reports/moveit/live_head.json
+reports/moveit/live_trace.json
+reports/l2_dispatch.jsonl
+data/scene/overlay_spec.json.bak_planseg_*
