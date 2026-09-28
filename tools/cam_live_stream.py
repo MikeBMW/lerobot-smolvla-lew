@@ -498,7 +498,7 @@ def _aoi_gold_angle(port: int = 10082, ttl: float = 60.0) -> float:
 
 
 def _aoi_frame(bgr, clean: bool = True, out: int = 900, quality: int = 78, natural: bool = False,
-               deskew_deg: float = 0.0, vstretch: float = 1.0):
+               deskew_deg: float = 0.0, vstretch: float = 1.0, fix_hw=None):
     """工控机原图(BGR) → 判据图 JPEG。
 
     ⚠️ 色彩顺序坑: `aoi_exposure_fix.clean_judge_frame` 内部按 **RGB** 加权算灰度(过曝/边缘),
@@ -535,7 +535,15 @@ def _aoi_frame(bgr, clean: bool = True, out: int = 900, quality: int = 78, natur
                     meta["deskew_deg"] = round(float(deskew_deg), 3)
                 # 2026-09-28 老倪: 「能再纵向拉伸成 3 倍长度么」—— 判据图是细长条(≈8:1),
                 #   纵向放大便于肉眼分辨金手指间距/缺陷; 只拉高不拉宽(横向比例不动)。
-                if abs(float(vstretch) - 1.0) > 0.01:
+                # 2026-09-28 老倪: 「判据图为什么总是一会儿大一会儿小？不要跳动」
+                #   根因: 去死白自动裁的条带每帧高度不同(相机/曝光/白带判定都在动) ⇒ 输出高度逐帧变。
+                #   修: 金手指这格**输出尺寸定死**(fix_hw), 内容按比例适配 ⇒ 画面不再跳动。
+                if fix_hw:
+                    img = cv2.resize(img, (int(fix_hw[0]), int(fix_hw[1])),
+                                     interpolation=cv2.INTER_LINEAR)
+                    meta = dict(meta or {})
+                    meta["fix_hw"] = [int(fix_hw[0]), int(fix_hw[1])]
+                elif abs(float(vstretch) - 1.0) > 0.01:
                     _h1, _w1 = img.shape[:2]
                     img = cv2.resize(img, (_w1, max(1, int(round(_h1 * float(vstretch))))),
                                      interpolation=cv2.INTER_LINEAR)
@@ -687,7 +695,8 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                 _nat = (name == "aoi_gold")
                 _ds = _aoi_gold_angle() if _nat else 0.0
                 jpg, _meta = _aoi_frame(bgr, clean=clean, natural=_nat, deskew_deg=_ds,
-                                        vstretch=(3.0 if _nat else 1.0))
+                                        vstretch=(3.0 if _nat else 1.0),
+                                        fix_hw=((900, 332) if _nat else None))
                 if jpg:
                     _put(name, jpg, time.time(), len(raw) / 1024.0)
                 if full_name and not full_kind:            # 整板缩图 (面板上可切换到这一张)
