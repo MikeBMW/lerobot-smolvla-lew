@@ -41,7 +41,19 @@ if [ -n "$p" ]; then echo "  · 停旧推流 pid=$p (按端口找, 不用 pkill 
 
 cd "$ROOT" || exit 1
 echo "  · 相机映射: 笔记本彩色 /dev/video$_ld · MAXHUB 顶视 $([ "$_l2" -ge 0 ] && echo "/dev/video$_l2" || echo '(未找到)')"
-nohup "$PY" tools/cam_live_stream.py --port $PORT --quality 72 --fps 30 \
+# ── 2026-09-29 根治: 先抬 fd 上限 + 清掉从父进程继承来的 fd 表 ────────────────
+# 事故: 22:47 那个实例"一出生 fd 表就是满的"(日志第 15 行即 Errno 24) —— 它继承了
+#       父进程的 1024 个 fd + 1024 的软上限, 于是连 accept 都做不了, 整个服务僵死 7 小时。
+#       这里 ulimit 抬上限, closerange 丢弃 3 号以上的继承 fd, setrlimit 顶到硬上限。
+ulimit -n 65535 2>/dev/null || ulimit -n 4096 2>/dev/null || true
+nohup "$PY" -c 'import os,sys,resource
+try:
+  _s,_h=resource.getrlimit(resource.RLIMIT_NOFILE)
+  resource.setrlimit(resource.RLIMIT_NOFILE,(_h,_h))
+except Exception:
+  pass
+os.closerange(3,65536)
+os.execv(sys.argv[1], sys.argv[1:])' "$PY" tools/cam_live_stream.py --port $PORT --quality 72 --fps 30 \
   --arm-http "http://$ORIN_HOST:8792/frame.jpg" --arm-fps 30 \
   --local-dev "$_ld" --local2-dev "$_l2" \
   --depth-fps 4 --aoi-fps 0.25 --ctl-motion --station-port $STATION \

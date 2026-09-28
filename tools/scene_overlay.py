@@ -74,6 +74,7 @@ ORIGIN_STYLE = {
     "human": ((200, 200, 200), "人工"),
     "l5corners": ((0, 200, 255), "L5 四角+槽位"),   # 橙黄(2026-09-28 四角光模块/14槽位几何标注)
     "meas": ((230, 0, 230), "实测长方体"),          # 紫(2026-09-28 深度实测的 3D 长方体: 光模块)
+    "plan": ((255, 255, 255), "规划路径"),          # 亮白(2026-09-28 规划的末端位姿轨迹: 路点+连线)
 }
 
 
@@ -431,6 +432,12 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
             skipped.append((label, "无几何"))
             continue
 
+        if b.get("no_label"):                 # 纯几何元素(路径插值段等)不打标签芯片, 否则白底黑字糊满画面
+            info.pop("_box", None); info.pop("_anchor", None)
+            drawn.append({"id": bid, "label": label, "origin": b.get("origin"),
+                          "xyxy": info["xyxy"], "clipped": info["clipped"], "kind": info["kind"]})
+            out_boxes.append(info)
+            continue
         tag = "%s%s" % (label, (" %.2f" % b["conf"]) if b.get("conf") is not None else "")
         (tw, th), _ = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         _bx = info.pop("_box", None)
