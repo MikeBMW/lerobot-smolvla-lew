@@ -356,6 +356,22 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
                 skipped.append((label, "整盒在画面外(视锥外)"))
                 continue
             zc_med = float(np.median(zc[fin]))
+            # 🎨 面染色 (2026-09-28): 这台相机近乎正俯视 ⇒ 只画线框时**零斜边/零透视收敛**
+            #   (外部视觉复核实测: 全图斜向像素占比 0.0~0.1%), 读起来仍像"歪了一点的双线矩形"。
+            #   照仿真 3D 视图的做法给"体"上色: 整体轮廓淡填 + 顶面加浓 → 两色调出体积感。
+            #   顶面 = k=1 的四个角点 (index = 4i+2j+k ⇒ 1,3,7,5); 该面朝上, 俯视时一定看得见。
+            pts_all = uv[fin].astype(np.int32)
+            if len(pts_all) >= 4:
+                _ov = img.copy()
+                cv2.fillConvexPoly(_ov, cv2.convexHull(pts_all),
+                                   tuple(int(v * 0.55) for v in col), cv2.LINE_AA)
+                cv2.addWeighted(_ov, 0.16, img, 0.84, 0, img)
+                _quad = [1, 3, 7, 5]
+                if all(fin[q] for q in _quad):
+                    _tp = np.array([[int(round(uv[q, 0])), int(round(uv[q, 1]))] for q in _quad], np.int32)
+                    _ov2 = img.copy()
+                    cv2.fillConvexPoly(_ov2, _tp, tuple(int(v * 0.8) for v in col), cv2.LINE_AA)
+                    cv2.addWeighted(_ov2, 0.18, img, 0.82, 0, img)
             edges = []
             for (i, j) in EDGES:
                 if not (fin[i] and fin[j]):
@@ -427,7 +443,7 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
     n3 = sum(1 for d in drawn if d.get("kind") == "3d")
     band.append("3D 线框 %d · 2D 框 %d · 用户已删 %d %s"
                 % (n3, len(drawn) - n3, len(deleted),
-                   ("(可点框选中/删除)" if drawn else "")))
+                   ("(点框选中 · Delete 删除 · Ctrl+Z 撤销)" if drawn else "")))
     if deleted:
         band.append("已删: " + ", ".join(sorted(x.split("|")[-1] for x in deleted))[:110])
     y = H - 8 - 16 * (len(band) - 1)

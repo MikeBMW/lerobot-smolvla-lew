@@ -61,6 +61,14 @@
   /* 🖱 3D 框交互层: SVG 精确覆盖在图像渲染区上, 坐标=图像像素 ⇒ 点框命中就是所见即所选 */
   .cellwrap svg.bx{position:absolute;left:0;top:0;pointer-events:auto;touch-action:manipulation}
   .cellwrap svg.bx text{pointer-events:none;font-family:inherit}
+  /* 选中后在画面上直接给出的操作条 —— 老倪: 「不要再向下找屏幕上的按钮了, 太麻烦」 */
+  .cellwrap .bxbar{position:absolute;left:8px;top:30px;display:none;align-items:center;gap:7px;z-index:9;
+                   background:rgba(8,16,22,.88);border:1px solid #ffd400;border-radius:10px;padding:6px 8px;
+                   font-size:12.5px;color:#ffd400;box-shadow:0 4px 14px rgba(0,0,0,.45)}
+  .cellwrap .bxbar.on{display:flex}
+  .cellwrap .bxbar kbd{background:#25313c;border:1px solid #3c4b58;border-radius:5px;padding:0 4px;
+                       font-size:10.5px;color:#cfe3f0;font-family:inherit;margin-left:3px}
+  .cellwrap .bxbar button{padding:4px 8px;font-size:12.5px}
   .bxlist{margin-top:7px;display:flex;flex-wrap:wrap;gap:6px;max-height:126px;overflow-y:auto}
   .bxlist .it{font-size:12.5px;padding:5px 8px;border:1px solid #2b3946;border-radius:8px;background:#111a24;cursor:pointer}
   .bxlist .it.sel{border-color:#ffd400;color:#ffd400;background:#2a2405}
@@ -120,11 +128,17 @@
 <div class="wrap">
   <div class="card" id="cardStage">
     <h2>🦾 臂上 D405 <span id="camName">—</span></h2>
-    <div class="stage" id="stage" onclick="toggleFull()">
+    <div class="stage" id="stage" onclick="stageClick()">
       <div class="cellwrap" id="wrapOv">
-        <div class="tag">叠加图（3D 线框/2D 框画在真图上 · 点框可选中）</div>
+        <div class="tag">叠加图（3D 线框 · 点框选中 → 按 Delete 删除）</div>
         <img id="imgOv" alt="叠加图">
         <svg class="bx" id="svgOv" viewBox="0 0 640 480" preserveAspectRatio="none"></svg>
+        <div class="bxbar" id="bxBar" hidden>
+          <span id="bxBarN">已选 0</span>
+          <button class="sm" onclick="bxAct('delete')">🗑 删除 <kbd>Del</kbd></button>
+          <button class="sm" onclick="bxAct('restore')">↩ 恢复</button>
+          <button class="sm" onclick="bxClear()">✖ <kbd>Esc</kbd></button>
+        </div>
       </div>
       <div class="cellwrap" id="wrapRaw" style="display:none">
         <div class="tag">原始图（相机裸画面）</div>
@@ -196,7 +210,9 @@
       <div class="kv"><span class="k">结果</span><span id="bxMsg" style="color:#8b98a5;font-size:13px">—</span></div>
       <div class="kv"><span class="k">上轮指示</span><span id="vlmHint" style="color:#8b98a5;font-size:13px">—</span></div>
       <div class="note">
-        · 点画面上任意框(或下面列表里的编号)=选中，再点一次取消；选中的框在图上变黄虚线<br>
+        · 点画面上任意框（或下面列表里的编号）= 选中，再点一次取消；选中的框变黄虚线，画面左上角随即出现操作条<br>
+        · <b>选中后直接按 Delete 键就删掉</b>（不用往下找按钮）；Esc 取消选择 · Ctrl+Z 撤销最近一次删除 ·
+          点画面空白处也会先取消选择（不会一下跳全屏）<br>
         · 删除只作用于叠加层(真机物体没动)；被删的 label 会在重新标注时作为“不要再给”的指示传给大模型<br>
         · 3D 线框 = 物体 base 系 3D 盒的 8 角点按手眼+实时 TCP 投到像素（近粗远细，所以能看出进深）；<br>
         &nbsp;&nbsp;2D 框 = 大模型/YOLO 只给了像素框（没有 3D，不假装有线框）
@@ -454,7 +470,7 @@ function copyUrls(){
 // 口径: 叠加线程每帧把"这帧实际画出来的框 + 像素几何 + 稳定 id"写进 /boxes;
 //       本层用 SVG **精确覆盖在渲染出的图像区**上(坐标=图像像素) ⇒ 点框命中即所见即所选。
 //       3D 框点击区用 8 角点的凸包(形状跟画在 JPEG 里的线框一致), 2D 框用矩形。
-var BX = [], BXINFO = {}, SEL = {};
+var BX = [], BXINFO = {}, SEL = {}, LASTDEL = [];   // LASTDEL = 本次会话删除顺序(供 Ctrl+Z)
 
 // id/标签会被塞进 HTML 属性 ⇒ 先过一道白名单, 别让模型给的怪字符把页面搞坏
 function safeId(s){ return String(s == null ? '' : s).replace(/[^\w\u4e00-\u9fa5#·\-|. ]/g, ''); }
@@ -540,7 +556,13 @@ function paintPick(){
   }
   $('bxList').innerHTML = html.join('');
   $('bxDel').disabled = !ids.length;
+  var n = byId('bxDel2'); if (n) n.disabled = !ids.length;
+  var bar = $('bxBar');
+  if (bar){ bar.className = 'bxbar' + (ids.length ? ' on' : ''); }
+  var bn = $('bxBarN'); if (bn) bn.textContent = '已选 ' + ids.length + ' 个';
+  var dn = $('bxDelN'); if (dn) dn.textContent = del.length;
 }
+function byId(x){ return document.getElementById(x); }
 async function loadBoxes(){
   try {
     var r = await fetch(API + '/boxes?cam=' + encodeURIComponent(CAM) + '&t=' + Date.now(), { cache: 'no-store' });
@@ -560,7 +582,7 @@ function pick(id, ev){
 function bxClear(){ SEL = {}; renderSvg(); paintPick(); }
 async function bxAct(kind, ids){
   ids = ids || selIds();
-  if (kind !== 'restore_all' && !ids.length){ toast('先点画面上的框选中(或点列表编号)', 4200); return; }
+  if (kind !== 'restore_all' && !ids.length){ toast('先点画面上的框选中 —— 选中后直接按 Delete 就能删(或 Ctrl+Z 撤销)', 4200); return; }
   $('bxMsg').textContent = '下发中…';
   try {
     var r = await fetch(API + '/boxes/' + kind, {
@@ -570,6 +592,13 @@ async function bxAct(kind, ids){
     var j = await r.json();
     $('bxMsg').textContent = (j.msg || ('HTTP ' + r.status)) + (j.note ? (' · ' + j.note) : '');
     toast(j.msg || ('HTTP ' + r.status), 5000);
+    // 会话内撤销栈: 记住"我这次删了哪些", 供 Ctrl+Z 按**实际删除顺序**回退。
+    // (规格里的 deleted 清单是排序去重的, 拿"最后一个"当"最近一次"会撤错东西 —— 实测踩过)
+    if ((j.ok !== false) && /^🗑/.test(j.msg || '')){
+      LASTDEL = LASTDEL.concat(ids);
+    } else if ((j.ok !== false) && /^↩/.test(j.msg || '')){
+      LASTDEL = LASTDEL.filter(function(x){ return ids.indexOf(x) < 0; });
+    }
     SEL = {};
     setTimeout(loadBoxes, 700);                    // 叠加线程下一帧就按新清单画
   } catch (e) {
@@ -591,6 +620,38 @@ async function bxRehint(){
   }
   setTimeout(function(){ b.disabled = false; b.textContent = old; loadBoxes(); pollSpec(); }, 12000);
 }
+
+// ⌨️ 键盘直操 —— 老倪 2026-09-28: 「选择边界框后, 点击 delete 按键即可删除,
+//    不要再向下找屏幕上的按钮了, 太麻烦」
+//      Delete/Backspace = 删掉选中的框 · Esc = 取消选择 · Ctrl+Z = 撤销最近一次删除
+function stageClick(){
+  // 有选中时, 点空白先取消选择(不跳全屏) —— 避免"选好了想点别处却进了全屏"
+  if (selIds().length){ bxClear(); return; }
+  toggleFull();
+}
+document.addEventListener('keydown', function(ev){
+  var t = ev.target || {}, tag = (t.tagName || '').toUpperCase();
+  var typing = (tag === 'INPUT' || tag === 'TEXTAREA' || t.isContentEditable);
+  if (typing){                                    // 正在写提示词 ⇒ 键盘归输入框, 不误删框
+    if (ev.key === 'Escape'){ t.blur(); ev.preventDefault(); }
+    return;
+  }
+  if ((ev.key === 'Delete' || ev.key === 'Backspace') && selIds().length){
+    ev.preventDefault();
+    bxAct('delete');
+  } else if (ev.key === 'Escape'){
+    if (selIds().length){ ev.preventDefault(); bxClear(); }
+  } else if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'z' || ev.key === 'Z')){
+    ev.preventDefault();
+    var last = LASTDEL.length ? LASTDEL[LASTDEL.length - 1] : null;
+    if (last) bxAct('restore', [last]);            // 撤销**本次会话最近一次**删除
+    else {
+      var del = (BXINFO.deleted || []);
+      if (del.length) bxAct('restore', [del[del.length - 1]]);   // 本会话没删过 → 退而撤清单里最后一个
+      else toast('没有可撤销的删除', 2600);
+    }
+  }
+});
 
 $('jumpStation').href = stationUrl();
 $('jumpStation2').href = stationUrl();
