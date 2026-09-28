@@ -39,10 +39,11 @@ if [ "$CH" = "station" ]; then
   ENVF_PATH=/etc/zmax-ecs-station.env
   LOGF=/var/log/zmax-ecs-station.log
   MARK="zmax-station-forward"
-  VPROBE="${PREFIX}station?k=${ZMAX_OV_TOKEN:-zmax-live}"
-  VEXTRA="${PREFIX}station/status?k=${ZMAX_OV_TOKEN:-zmax-live} ${PREFIX}snapshot/overlay_arm.jpg?k=${ZMAX_OV_TOKEN:-zmax-live} ${PREFIX}aoi_gold.mjpg?k=${ZMAX_OV_TOKEN:-zmax-live}"
-  VPOST="${PREFIX}station/arm?k=${ZMAX_OV_TOKEN:-zmax-live}"
-  HINT="手机/浏览器开: ${ZMAX_OV_DOMAIN:-datadrive.world}"
+  # 注意: VPROBE/VEXTRA/VPOST 是**闸门/上游侧的路径**(不含公网前缀) —— 前缀由 nginx 剥掉。
+  VPROBE="/station?k=${ZMAX_OV_TOKEN:-zmax-live}"
+  VEXTRA="/station/status?k=${ZMAX_OV_TOKEN:-zmax-live} /snapshot/overlay_arm.jpg?k=${ZMAX_OV_TOKEN:-zmax-live} /aoi_gold.mjpg?k=${ZMAX_OV_TOKEN:-zmax-live}"
+  VPOST="/station/arm?k=${ZMAX_OV_TOKEN:-zmax-live}"
+  HINT="手机/浏览器开: https://${ZMAX_OV_DOMAIN:-datadrive.world}${ZMAX_OV_PREFIX:-/st/}station?k=${ZMAX_OV_TOKEN:-zmax-live}"
 else
   PREFIX="${ZMAX_OV_PREFIX:-/ov/}"          # 公网路径前缀
   REMOTE_PORT="${ZMAX_OV_REMOTE_PORT:-18791}"  # ECS 侧本机回环端口(nginx 反代用)
@@ -52,9 +53,9 @@ else
   ENVF_PATH=/etc/zmax-ecs-ov.env
   LOGF=/var/log/zmax-ecs-ov.log
   MARK="zmax-overlay-forward"
-  VPROBE="${PREFIX}overlay?k=${ZMAX_OV_TOKEN:-zmax-live}"
-  VEXTRA="${PREFIX}live?k=${ZMAX_OV_TOKEN:-zmax-live} ${PREFIX}live.json?k=${ZMAX_OV_TOKEN:-zmax-live} ${PREFIX}wall.jpg?k=${ZMAX_OV_TOKEN:-zmax-live}&w=240&q=45"
-  VPOST="${PREFIX}boxes/delete?k=${ZMAX_OV_TOKEN:-zmax-live}"
+  VPROBE="/overlay?k=${ZMAX_OV_TOKEN:-zmax-live}"
+  VEXTRA="/live?k=${ZMAX_OV_TOKEN:-zmax-live} /live.json?k=${ZMAX_OV_TOKEN:-zmax-live} /wall.jpg?k=${ZMAX_OV_TOKEN:-zmax-live}&w=240&q=45"
+  VPOST="/boxes/delete?k=${ZMAX_OV_TOKEN:-zmax-live}"
 fi
 TOKEN="${ZMAX_OV_TOKEN:-zmax-live}"
 VHOST="/www/server/panel/vhost/nginx/${ECS_DOMAIN}.conf"   # 宝塔 nginx vhost
@@ -157,12 +158,12 @@ verify() {
   echo "── ③ 公网端到端 (通道=$CH, 前缀=$PREFIX) ──"
   for p in "$VPROBE" $VEXTRA; do
     printf "  %-46s → " "$p"
-    curl -s -o /tmp/ovf.out -w "HTTP %{http_code} · %{size_download}B\n" -m 40 "${PUB}/${p#$PREFIX}"
+    curl -s -o /tmp/ovf.out -w "HTTP %{http_code} · %{size_download}B\n" -m 40 "${PUB}${p}"
   done
   printf "  %-46s → " "POST ${VPOST} (应 403)"
   curl -s -o /dev/null -w "HTTP %{http_code}\n" -m 25 -X POST -H 'Content-Type: application/json' \
-       -d '{}' "${PUB}/${VPOST#$PREFIX}"
-  echo "  手机 APP 里填: ${PUB}/${VPROBE#$PREFIX}"
+       -d '{}' "${PUB}${VPOST}"
+  echo "  手机 APP 里填: ${PUB}${VPROBE}"
   [ -n "${HINT:-}" ] && echo "  $HINT"
 }
 
