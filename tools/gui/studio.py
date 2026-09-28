@@ -7029,9 +7029,12 @@ class HardwareModule(SubModuleWidget):
         # 🔀 2026-09-20 老倪: 「怎么在我的本机摄像头, 和 realsense 摄像头, 来回切换呢?」
         #   本面板加「来源」切换 (切换立即生效: 已连接时下一轮轮询即换源, 未连接时点连接即按所选来源)
         self.cb_cam_src = QComboBox()
-        self.cb_cam_src.addItems(["🔁 自动 (远端 → 产线RealSense → 本机相机)",
+        self.cb_cam_src.addItems(["🔁 自动 (现场实时流·顶视 → 远端快照 → 产线RealSense)",
                                   "🎥 产线 RealSense (cam_rs.png)",
-                                  "💻 本机工位相机 (cam_local.png)"])
+                                  "💻 本机工位相机 (cam_local.png)",
+                                  "📡 现场实时流 · 顶视 MAXHUB (真实工位俯视)",
+                                  "📡 现场实时流 · 笔记本相机",
+                                  "📡 现场实时流 · 臂上 D405 (Orin)"])
         self.cb_cam_src.setStyleSheet(f"QComboBox{{background:#161b22; color:{C_WHITE}; border:1px solid {C_BORDER};"
                                       f" border-radius:6px; padding:4px; font-size:18px;}}")
         self.cb_cam_src.currentIndexChanged.connect(self._cam_src_changed)
@@ -7190,7 +7193,31 @@ class HardwareModule(SubModuleWidget):
         ("cam_fp.png", "FoundationPose 调试图 (Docker tap 落盘)"),
         ("cam_local.png", "本机工位相机 (备用·非产线视角)"),
     )
-    _CAM_SRC_NAMES = ("自动", "产线 RealSense", "本机工位相机")
+    _CAM_SRC_NAMES = ("自动", "产线 RealSense", "本机工位相机",
+                      "现场实时流·顶视 MAXHUB", "现场实时流·笔记本", "现场实时流·臂上 D405")
+    # 📡 2026-09-28 老倪: 「摄像头实时画面, 也不是现场摄像头, 怎么回事?」——
+    #   原来这个面板只认 ① 远端 ECS 快照 ② Docker tap 落的 cam_rs.png/cam_local.png,
+    #   **都不是本机直连的现场相机**。真实现场画面在 8791 (cam_live_stream 的 6 路)
+    #   ⇒ 加进来源下拉, 并让「自动」优先用现场实时流; 状态栏照样标 **来源 + 相机出帧帧龄**。
+    _CAM_LIVE_IDX = {3: "local2", 4: "local", 5: "arm"}
+    _CAM_LIVE_DEFAULT = "local2"          # 「自动」优先: 顶视 MAXHUB = 真实工位俯视
+
+    def _cam_live_frame(self, name):
+        """取一帧**现场实时流** (8791 → 本机直连真机相机) → (bytes, 标签, 帧龄s) 或 None。
+        帧龄取相机自己的出帧时间 (cam_live_src.fetch 里读 /stats.age_s), 不拿 HTTP 耗时冒充。"""
+        try:
+            # 本文件在 <repo>/tools/gui/studio.py ⇒ 上两级就是 <repo>/tools (cam_live_src.py 所在)
+            _tools = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if _tools not in sys.path:
+                sys.path.insert(0, _tools)
+            from cam_live_src import fetch as _clf, label as _cll
+            b, age = _clf(name, timeout=3.0)
+            if not b:
+                return None
+            return (b, _cll(name), (age if age is not None else -1.0))
+        except Exception as _e:                                                # noqa: BLE001
+            self._log("⚠️ 现场实时流取帧异常(%s): %s" % (name, _e))
+            return None
 
     def _cam_src_pref(self):
         """当前来源偏好 (读下拉实时值, 切换立即生效): 0=自动 1=产线RealSense 2=本机相机"""
@@ -7206,15 +7233,27 @@ class HardwareModule(SubModuleWidget):
         self._log(f"🔀 摄像头来源切换为: {nm}")
 
     def _cam_local_frame(self):
-        """本地新鲜帧回退: 返回 (bytes, 来源标签, 帧龄s) 或 None。
+        """按来源偏好取一帧 → (bytes, 标签, 帧龄s) 或 None。
 
-        纪律同输入图像面板: 只上新鲜帧 (mtime 年龄 ≤10s), 时钟回拨负龄一律拒用, 旧帧不冒充实时。
-        🔀 2026-09-20: 按「来源」下拉过滤候选 (自动=全链 · 产线RealSense=不含本机相机 · 本机=只本机相机)。
+        📡 2026-09-28 (老倪: 「也不是现场摄像头」) 口径改为:
+          0 自动  → **现场实时流·顶视 MAXHUB** (8791, 真实工位俯视) → 产线 RealSense 落盘
+                    → FoundationPose 落盘 → 本机工位相机
+          1/2     → 只走对应 Docker tap 落盘文件
+          3/4/5   → 只走对应**现场实时流**那一路 (顶视 / 笔记本 / 臂上 D405)
+
+        纪律同输入图像面板: 落盘文件只认新鲜帧 (mtime 年龄 ≤10s), 时钟回拨负龄一律拒用;
+        实时流那几路的帧龄取相机自己的出帧时间 (/stats.age_s), 如实写进状态栏。
         """
         import os as _os
         import time as _tm
-        base = _os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
         pref = self._cam_src_pref()
+        if pref in self._CAM_LIVE_IDX:                 # 明确选了现场实时流某一路
+            return self._cam_live_frame(self._CAM_LIVE_IDX[pref])
+        if pref == 0:                                  # 自动: 现场实时流优先
+            _live = self._cam_live_frame(self._CAM_LIVE_DEFAULT)
+            if _live is not None:
+                return _live
+        base = _os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
         cands = self._CAM_LOCAL_CANDS
         if pref == 1:
             cands = tuple(c for c in cands if c[0] != "cam_local.png")
@@ -7255,9 +7294,16 @@ class HardwareModule(SubModuleWidget):
         self.btn_cam_connect.setEnabled(False)
 
         def _probe():
+            # 📡 2026-09-28 老倪: 「也不是现场摄像头」——「自动」原来直接吃远端 ECS 快照,
+            #   改成 **现场实时流优先** (8791 本机直连真机相机), 远端快照只作兜底。
+            _pref = self._cam_src_pref()
+            if _pref == 0:
+                _lv = self._cam_live_frame(self._CAM_LIVE_DEFAULT)
+                if _lv is not None:
+                    return ("LIVE", _lv[1], _lv[0], _lv[2])
             # 🔀 2026-09-20: 来源下拉 = 产线RealSense / 本机相机 时**跳过远端快照探测** (直接走本地链)
-            if self._cam_src_pref() != 0:
-                return (None, None, None, f"来源={self._CAM_SRC_NAMES[self._cam_src_pref()]} (已跳过远端快照)")
+            if _pref != 0:
+                return (None, None, None, f"来源={self._CAM_SRC_NAMES[_pref]} (已跳过远端快照)")
             try:
                 import requests as _rq
                 r = _rq.get("https://datadrive.world/api/snapshot/latest", timeout=4)
@@ -7268,13 +7314,25 @@ class HardwareModule(SubModuleWidget):
         def _apply(res):
             code, ctype, content, err = res
             self.btn_cam_connect.setEnabled(True)
+            if code == "LIVE":      # 📡 现场实时流命中 (8791): 真实现场相机画面 + 相机出帧帧龄
+                _lab = str(ctype)
+                _age = float(err)
+                _a = ("帧龄 %.1fs" % _age) if _age >= 0 else "帧龄 —"
+                self.cam_status.setText(f"🟢 已连接 · 现场实时流: {_lab} · {_a}")
+                self.cam_status.setStyleSheet(f"color:{C_GREEN}; font-size:19px; background:transparent; border:none;")
+                self.btn_cam_connect.setText("⏹ 断开摄像头")
+                self._show_cam_frame(content)
+                self._cam_timer.start(1500)
+                self._log(f"📷 摄像头已连接 — 现场实时流 {_lab} · {_a} (8791 cam_live_stream)")
+                return
             ok_remote = (not err) and code == 200 and (ctype or "").startswith("image")
             if not ok_remote:
                 # 🩹 远端快照不可达/无图 → 本地新鲜帧回退 (来源与帧龄如实写在状态栏, 不冒充远端)
                 loc = self._cam_local_frame()
                 if loc is not None:
                     data, label, age = loc
-                    self.cam_status.setText(f"🟡 已连接 · 远端快照不可达 → 本地源: {label} · 帧龄 {age:.1f}s")
+                    _a = ("帧龄 %.1fs" % age) if (age is not None and float(age) >= 0) else "帧龄 —"
+                    self.cam_status.setText(f"🟡 已连接 · 远端快照不可达 → 本地源: {label} · {_a}")
                     self.cam_status.setStyleSheet(f"color:{C_YELLOW}; font-size:19px; background:transparent; border:none;")
                     self.btn_cam_connect.setText("⏹ 断开摄像头")
                     self._show_cam_frame(data)
@@ -7319,24 +7377,35 @@ class HardwareModule(SubModuleWidget):
         self._cam_polling = True
 
         def _fetch():
-            # 🔀 2026-09-20: 来源=产线RealSense/本机相机 → 跳过远端, 直接读本地链
+            # 📡 2026-09-28: 「现场实时流」优先 (8791 本机直连真机相机); 远端 ECS 快照只作兜底。
+            #   老倪: 「摄像头实时画面, 也不是现场摄像头」= 原来自动档直接吃远端快照。
+            loc = self._cam_local_frame()          # 内部按来源偏好: 自动→实时流·顶视→落盘文件
+            if loc is not None:
+                return ("LOCAL", loc[0], loc[1], loc[2])
             if self._cam_src_pref() == 0:
                 try:
                     import requests as _rq
                     r = _rq.get("https://datadrive.world/api/snapshot/latest?t=" + str(int(__import__("time").time())),
                                 timeout=4)
                     if r.status_code == 200 and r.headers.get("Content-Type", "").startswith("image"):
-                        return r.content
+                        return ("REMOTE", r.content, "远端 ECS 快照 (Orin)", None)
                 except Exception:
                     pass  # 单帧失败不中断轮询
-            # 🩹 2026-09-20: 远端不可达 → 本地新鲜帧兜底 (与连接探测同一条候选链), 远端恢复后自动切回
-            loc = self._cam_local_frame()
-            return loc[0] if loc is not None else None
+            return None
 
-        def _apply(data):
+        def _apply(res):
             self._cam_polling = False
-            if data:
-                self._show_cam_frame(data)
+            if not res:
+                return
+            try:
+                _kind, _data, _lab, _age = res
+            except Exception:                                                   # noqa: BLE001
+                return
+            if _data:
+                self._show_cam_frame(_data)
+            if _lab:                                # 实时数据必须自带来源 + 帧龄 (老倪口径)
+                _a = ("帧龄 %.1fs" % _age) if (_age is not None and float(_age) >= 0) else "帧龄 —"
+                self.cam_status.setText(f"🟢 已连接 · {_lab} · {_a}")
         import threading as _th
         _th.Thread(target=lambda: self._cam_apply_later(_fetch, _apply), daemon=True).start()
 
