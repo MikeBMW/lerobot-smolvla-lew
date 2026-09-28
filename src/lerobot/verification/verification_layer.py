@@ -2643,14 +2643,25 @@ class VerificationLayer:
         # 布局已确定化 (seed 决定布局, 复现实锤见 state_space_sim_real._reset 注释)。
         # 单集必完成不是稳定契约 (seed100 布局 = 控制器难例, 500 步插不进, 基线 6/12
         # 的布局敏感性) → 2 集 ≥1 完成 = 真实化闭环可重复跑通。
-        import io
-        import contextlib
+        import subprocess as _sp
+        import sys as _sys
         try:
-            from tools.gui.state_space_sim_real import quick_run
-            buf = io.StringIO()
-            with contextlib.redirect_stdout(buf):
-                n_ok = quick_run(n_episodes=2, vision=False)
-            out = buf.getvalue()
+            # 2026-09-29: 改为**独立子进程**跑 R0 —— 同进程内跑过前面一堆用例后, 这条会因进程状态
+            # 污染变成 0/2(实测: 单跑 1/2 判据满足, 套件内 0/2; 静机复跑同样如此 ⇒ 与资源无关)。
+            # 子进程隔离 + xvfb 保证"真跑/真渲染/env.step"强度不变, 同时消掉顺序敏感性。
+            _code = ("import sys; sys.path.insert(0, '.');\n"
+                     "from tools.gui.state_space_sim_real import quick_run\n"
+                     "print('N_OK=%d' % quick_run(n_episodes=2, vision=False))\n")
+            _r = _sp.run(["xvfb-run", "-a", _sys.executable, "-c", _code], cwd=self.root,
+                         capture_output=True, text=True, timeout=900)
+            out = (_r.stdout or "") + (_r.stderr or "")
+            n_ok = 0
+            for _ln in out.splitlines():
+                if _ln.startswith("N_OK="):
+                    try:
+                        n_ok = int(_ln.split("=", 1)[1])
+                    except Exception:                                            # noqa: BLE001
+                        n_ok = 0
             eps = [ln for ln in out.splitlines() if ln.startswith("  ep")]
             tail = eps[-1][:80] if eps else ""
             return n_ok >= 1, f"R0 真实化闭环 2 集完成 {n_ok}/2 (布局 seed 决定·确定性) · {tail}"
