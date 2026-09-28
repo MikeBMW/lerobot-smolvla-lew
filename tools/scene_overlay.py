@@ -345,8 +345,46 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
         info = {"id": bid, "label": label, "origin": b.get("origin"), "conf": b.get("conf"),
                 "color": [int(c) for c in col]}
 
+        # ── 3D 折线(路径/轨迹): 逐段投影后一次画成连通笔画 ⇒ 是"一条线", 不是一串小盒 ──
+        #    规格元素: {"kind":"path3d", "pts3d":[[x,y,z],...], "width":3, "origin":...}
+        if b.get("pts3d"):
+            if not he_ok:
+                skipped.append((label, "无手眼/TCP")); continue
+            try:
+                P = np.asarray(b["pts3d"], float).reshape(-1, 3)
+            except Exception:
+                skipped.append((label, "折线点解析失败")); continue
+            if len(P) < 2:
+                skipped.append((label, "折线点不足 2")); continue
+            Pcam = base_to_cam(P, he["X"], tcp7)
+            zc = Pcam[:, 2]
+            uv = cam_to_px(Pcam, K)
+            # 投影合理性限幅: 贴近相机的点会投到画面外"极远处", 连线会糊满整帧(实测曾糊 64% 画面) ⇒ 必须限幅
+            good = (np.isfinite(uv).all(1) & (zc > 0.12) &
+                    (uv[:, 0] > -1.5 * W) & (uv[:, 0] < 2.5 * W) &
+                    (uv[:, 1] > -1.5 * H) & (uv[:, 1] < 2.5 * H))
+            pts, nseg = [], 0
+            lw = int(b.get("width", 3))
+            _dmax = float(np.hypot(W, H)) * 1.2      # 单段像素长上限(防"视锥外投影"拉出横贯全帧的长条)
+            for i in range(len(P) - 1):
+                if not (good[i] and good[i + 1]):
+                    continue
+                if float(np.hypot(uv[i][0] - uv[i + 1][0], uv[i][1] - uv[i + 1][1])) > _dmax:
+                    skipped.append((label, "折线段超长(投影出画面)已跳过")); continue
+                p1 = (int(round(float(uv[i][0]))), int(round(float(uv[i][1]))))
+                p2 = (int(round(float(uv[i + 1][0]))), int(round(float(uv[i + 1][1]))))
+                cv2.line(img, p1, p2, col, lw, cv2.LINE_AA)
+                pts += [p1, p2]; nseg += 1
+            if nseg == 0:
+                skipped.append((label, "折线整段在视锥外")); continue
+            A = np.asarray(pts, float)
+            info.update(kind="path3d", corners=None, z_mm=None, n_seg=int(nseg),
+                        xyxy=[float(A[:, 0].min()), float(A[:, 1].min()),
+                              float(A[:, 0].max()), float(A[:, 1].max())],
+                        clipped=bool(((A[:, 0] < 0) | (A[:, 0] > W) | (A[:, 1] < 0) | (A[:, 1] > H)).any()))
+
         # ── 3D 盒: 画真三维线框(12 条棱), 近粗远细 ⇒ 人眼能看出进深 ──
-        if b.get("box3d"):
+        elif b.get("box3d"):
             if not he_ok:
                 skipped.append((label, "无手眼/TCP"))
                 continue
