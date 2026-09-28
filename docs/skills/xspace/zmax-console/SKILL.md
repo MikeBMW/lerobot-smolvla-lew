@@ -7,8 +7,23 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 # Z-MAX Console — 维护指南
 
-> 📌 refs: veh-id-system,ssh-remote-gpu,config-center-excel,relay-middleware,simulink-id-and-skill-tokens,wsl-display-links,simulink-flow-json,gui-navigation,devflow-panel-pdf-2026-08-15
+> 📌 refs: veh-id-system,ssh-remote-gpu,config-center-excel,relay-middleware,simulink-id-and-skill-tokens,wsl-display-links,simulink-flow-json,gui-navigation,devflow-panel-pdf-2026-08-15,gui-debug-and-crash-forensics
+> 🐛 「断点进不去」不是代码没跑: 先 `ss -ltnp | grep 5678` —— **无监听 = 控制台是非调试模式**(studio.py 只在 `ZMAX_DEBUG=1` 时 listen), 要用 `ZMAX_DEBUG=1` 起或 F5「🚀 全新调试进程」;
+> 再确认节点"逐行执行"链 `_trace_exec` 的 `sys.settrace` 没顶掉调试器(`debugpy.is_client_connected()` 为假时它会装 —— 判据必须在**执行过程中**读 `sys.gettrace()`, 返回后再读被 finally 清成 None)。
+> 💥 崩溃(窗口消失/Aborted)的取证清单、QThread 自查点: 见 `references/gui-debug-and-crash-forensics.md`。
+> 🛑 2026-09-28 老倪两次问「控制台怎么自己重启呢」——查证: 控制台**本身没有自启机制**
+> (systemd 用户单元 zmax-studio.service 是 Restart=no, 退出后一直 dead; crontab 11 条没一条碰它),
+> 是 **agent 改完 GUI 代码就重启它** ⇒ 现场只看到窗口闪来闪去。
+> 纪律: **改 GUI 代码攒成一批, 重启前先问老倪**; 确需重启走 `bash tools/studio_ctl.sh restart --force`
+> (起不到 300s 的实例会被硬闸拒, 退出码 3), 每次动作记 /tmp/studio_ctl.log 可追谁在重启。
+> 🔌 另: 关机/kill 走 SIGTERM —— 老版本会 "QThread: Destroyed while thread is still running" → SIGABRT + core dump;
+> 现 studio.py main() 用 `signal.set_wakeup_fd` + 看门狗线程 + QTimer → win.close() → os._exit(0) 干净退
+> ⚠️ 这句只覆盖 kill/关机路径 —— **无信号时也会出现同一组签名**(实测日志里「收到信号」0 条, 仍 `QThread: Destroyed while thread is still running` + `Fatal Python error: Aborted`)
+> ⇒ 见到这组话别默认归因 kill: 按 `references/gui-debug-and-crash-forensics.md` 的清单逐条排除后再定性。
+> (⚠️ 用普通 `signal.signal(SIGTERM, py_handler)` **无效**: 主线程在 Qt 的 C++ 循环里, 处理器根本跑不到)。
 > ⚠️纪律: 只patch改; kill-9重启(pkill 用 "gui-venv311/bin/python studio" 别用 studio.py, 会打死 Hermes 自己的 shell); --gpus all本地/--runtime nvidia远程; -o Port; 主线程禁网络请求(摄像头坑); 启动/黑屏见 launch-guide.md; 训练入口/状态见 gui-navigation.md; 控件小/字挤/面板窄见 ui-sizing-hidpi.md; refs: gui-discipline, simulink-flow-and-buttons, simulink-flow-authoring, help-menu-doc-open
+> 🔖 版本迭代/发布归档 → `references/release-version-bump.md` (**bump 先 `--dry`, 任一行 ❌/`旧命中 0` = 历史漏同步, 先补齐再写盘**; 含「保存数据」现场批次归档目录模式)
+> 🔖 重启/启动崩溃排查/无显示离线取证 → `references/gui-restart-and-offscreen-verify.md` (launch_studio.sh 已有实例时 exit 0 不干活; `QT_QPA_PLATFORM=offscreen` 起真类调真方法)
 
 ## 🖵 工具栏按钮 → 开浏览器页 (studio.py / simulink_module.py)
 - 开浏览器**必须用独立 profile**, 且 profile 要放 **snap 可写**目录 `~/snap/chromium/common/<用途名>`
