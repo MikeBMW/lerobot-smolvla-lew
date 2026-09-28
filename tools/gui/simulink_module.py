@@ -112,6 +112,9 @@ NODE_SUB_PT = 8                  # 次要文字固定 8pt
 NODE_PAD_L = 14                  # 标题左内边距
 NODE_PAD_R = 56                  # 标题右内边距 (给状态徽章留位)
 NODE_TITLE_LINES = 2             # 标题最多两行 (超出 → 最后一行省略号, 悬停看全名) 
+# 🟡🟢🔴 画布顶部通栏状态横幅 (L5 闭环进度) — 2026-09-28 老倪: 节点小字读不出来 ⇒ 通栏大字
+BANNER_FONT_FAMILY = "Noto Sans CJK SC"
+BANNER_FONT_PT = 15              # 15pt Bold (比状态栏 11pt 大一档, 画布顶部一眼可读)
 
 
 def _node_font(pt, bold=False):
@@ -2951,19 +2954,22 @@ class SimNodeItem(QGraphicsObject):
         painter.drawRoundedRect(QRectF(0, 0, self.w, self.h), 6, 6)
         # 🧭 能力档位开关 (2026-09-09 重新设计: 数据源层 radio 三档 L2/L3/L4,
         #   单击圆钮直选 / 双击循环 — 档位存 params.cap_level + module._cap_level)
+        # 🧿 2026-09-28 老倪: 增加 **L5 档** (大模型视觉语言自动标注 → L2/L3/L4 监督 + 自动训练)
+        #   → 四档 radio; 单选钮几何/hit-test/set 三处必须同步 (canvas_add_l5_node.py 有断言)
         if params.get("cap_switch"):
             _cap_cur = str(params.get("cap_level", "L2") or "L2").upper()
-            # 🎯 2026-09-10: L4D 档并入 L4 (90° 抗干扰演示); 只保留三档
-            _cap_cur = {"L4D": "L4"}.get(_cap_cur, _cap_cur if _cap_cur in ("L2", "L3", "L4") else "L2")
+            # 🎯 2026-09-10: L4D 档并入 L4 (90° 抗干扰演示); 2026-09-28 增 L5
+            _cap_cur = {"L4D": "L4"}.get(_cap_cur, _cap_cur if _cap_cur in ("L2", "L3", "L4", "L5") else "L2")
             painter.setPen(QColor(pal["title"]))
             painter.setFont(QFont("Arial", 9, QFont.Bold))
             painter.drawText(QRectF(12, 6, self.w - 24, 18), Qt.AlignVCenter | Qt.AlignLeft,
-                             "🧭 能力档位 (数据源层)")
+                             "🧭 能力档位 (数据源层 · 单击直选/双击循环)")
             # 🎯 2026-09-10: L4 = 抗干扰 90° 演示全链 (老倪: 点 L4 要看到来料转台把光模块
             #   水平转90°→绕z抓横→治具回正→插入→AOI→光耦合; 原 L4D 演示并入, 原 L4 自主恢复
             #   真实链 (±15° 干扰重试) 由 CLI/测试可达)
-            _caps = [("L2", "插装"), ("L3", "插拔+AOI"), ("L4", "抗干扰90°")]
-            _cw = (self.w - 24) / 3.0
+            # 🧿 2026-09-28: L5 = 大模型视觉语言自动标注 (L2/L3/L4 监督数据) + 标注完自动训练
+            _caps = [("L2", "插装"), ("L3", "全链"), ("L4", "抗干扰"), ("L5", "标注训")]
+            _cw = (self.w - 24) / 4.0
             for _i, (_k, _kd) in enumerate(_caps):
                 _on = (_k == _cap_cur)
                 _cc = QColor("#ffd700") if _on else QColor("#57606a")
@@ -2981,12 +2987,28 @@ class SimNodeItem(QGraphicsObject):
                 painter.setFont(_node_font(NODE_SUB_PT))
                 painter.setPen(QColor("#8b949e"))
                 painter.drawText(QRectF(_cx + 20, 44, _cw - 12, 14), Qt.AlignVCenter | Qt.AlignLeft, _kd)
+            # 🧿 2026-09-28 老倪: **L5 档的运行进度直接画在"能力档位"节点上**
+            #   他点的就是这个节点 → 不打开任何日志就能看见阶段在动。
+            #   (只写 /tmp/simulink_log.txt = 他眼里"点了没反应" —— 现场实锤过)
+            _l5l = [str(x)[:58] for x in (params.get("l5_lines") or [])][:2]
+            if _l5l:
+                _st = params.get("l5_state")
+                for _i, _tx in enumerate(_l5l):
+                    _c = (QColor("#ff7b72") if (_st == "error" and _i == 0) else
+                          QColor("#ffd700") if (_i == 0 and _st == "running") else
+                          QColor("#3fb950") if (_i == 0 and _st == "ok") else QColor("#8b949e"))
+                    painter.setPen(_c)
+                    painter.setFont(_node_font(NODE_SUB_PT, bold=(_i == 0)))
+                    painter.drawText(QRectF(12, 58 + _i * 16, self.w - 24, 15),
+                                     Qt.AlignVCenter | Qt.AlignLeft, _tx)
             # desc (当前档说明, 底部小字) — 统一 8pt + 省略号 (不越框)
             painter.setFont(_node_font(NODE_SUB_PT))
             painter.setPen(QColor("#8b949e"))
             _capdesc = {"L2": "基础: 插装即完成 (insert 8段)",
                         "L3": "L3 全链: 插→拔→AOI→放回 (13段)",
-                        "L4": "L4 抗干扰 90°: 来料转90°→绕z抓横→回正→插拔→AOI→光耦合 (全真物理)"}.get(_cap_cur, "")
+                        "L4": "L4 抗干扰 90°: 来料转90°→绕z抓横→回正→插拔→AOI→光耦合 (全真物理)",
+                        "L5": "L5 标注→训练: VLM 自动标注(6路) → L2/L3/L4 监督 → 自动训练(L2全量/L3·L4 LoRA→merge) "
+                              "(▶运行启动, 后台异步)"}.get(_cap_cur, "")
             _cfm = painter.fontMetrics()
             painter.drawText(QRectF(12, self.h - 22, self.w - 24, 16), Qt.AlignVCenter | Qt.AlignLeft,
                              _cfm.elidedText(_capdesc, Qt.ElideRight, self.w - 24))
@@ -3175,6 +3197,20 @@ class SimNodeItem(QGraphicsObject):
             painter.setPen(QPen(_col, 1.0))
             painter.drawText(_r.adjusted(18, 0, -4, 0), Qt.AlignVCenter | Qt.AlignLeft,
                              f"数据源: {_st}")
+        elif params.get("l5_loop"):
+            # 🧿 2026-09-28 L5 标注→训练闭环节点: **把闭环进度画在画布上**
+            #   (老倪口径: 点运行后用户正看的界面必须变 —— 只写日志 = 用户眼里"没反应")
+            _lines = [str(x)[:64] for x in (params.get("l5_lines") or [])][:3]
+            if not _lines:
+                _lines = ["待启动: 选 L5 档 → 点 ▶运行", "(双击本节点看闭环状态/产物)"]
+            _bad = params.get("l5_state") == "error"
+            painter.setRenderHint(QPainter.Antialiasing)
+            for _i, _tx in enumerate(_lines):
+                painter.setPen(QColor("#ff7b72") if (_bad and _i == 0) else
+                               (QColor("#a371f7") if _i == 0 else QColor("#8b949e")))
+                painter.setFont(_node_font(NODE_SUB_PT, bold=(_i == 0)))
+                painter.drawText(QRectF(12, self.h - 62 + _i * 18, self.w - 24, 16),
+                                 Qt.AlignVCenter | Qt.AlignLeft, _tx)
         elif t == "mode_switch":
             # 🔀 训练/推理模式开关: 圆点指示 (绿=训练 蓝=推理 橙=真机数据 L2 训练)
             md = params.get("mode", "train")
@@ -3596,6 +3632,71 @@ class SimCanvas(QGraphicsView):
         self._sc_undo = QShortcut(QKeySequence("Ctrl+Z"), self)
         self._sc_undo.setContext(Qt.WidgetWithChildrenShortcut)
         self._sc_undo.activated.connect(self.module.undo)
+        # ── 🟡🟢🔴 「L5 运行状态」通栏横幅 (2026-09-28 老倪现场实锤) ──────────────
+        #   起因: 「选 L5 后点运行没反应」。功能其实在跑 (闭环 pid 真起来了), 但状态只画在
+        #   87 节点密集画布里的**节点小字**上 —— 老倪自己看截图都读不出来 ⇒ 小字方案不成立。
+        #   做法: 横幅 = **viewport 的子控件** (不是场景项) ⇒ 永远贴在可视区顶部居中,
+        #   **任何缩放/平移都不动** (viewport 坐标), 且 grab()/截屏一定带上它。
+        #   鼠标穿透 (WA_TransparentForMouseEvents) 不挡画布拖拽/点选; 未运行时 hide() 不占地方。
+        self._banner = QLabel(self.viewport())
+        self._banner.setAlignment(Qt.AlignCenter)
+        self._banner.setWordWrap(False)
+        self._banner.setTextInteractionFlags(Qt.NoTextInteraction)
+        self._banner.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._banner.setFont(QFont(BANNER_FONT_FAMILY, BANNER_FONT_PT, QFont.Bold))
+        self._banner.hide()
+
+    # ───────── 🟡🟢🔴 画布顶部通栏状态横幅 ─────────
+    BANNER_STYLE = {
+        "running": ("#3a2a00", "#ffd700", "#ffb000"),   # 黄 = 运行中
+        "ok":      ("#0a2612", "#3fb950", "#2ea043"),   # 绿 = 完成
+        "error":   ("#3a0e0e", "#ff7b72", "#f85149"),   # 红 = 失败
+        "note":    ("#14243a", "#79c0ff", "#1f6feb"),   # 蓝 = 提示 (已在运行等)
+    }
+
+    def set_banner(self, text, kind="running"):
+        """设置顶部通栏横幅。text 为空 → 隐藏 (未运行时不占地方)"""
+        try:
+            b = getattr(self, "_banner", None)
+            if b is None:
+                return False
+            _t = str(text or "")
+            if not _t:
+                b.hide()
+                return True
+            bg, fg, bd = self.BANNER_STYLE.get(kind, self.BANNER_STYLE["running"])
+            b.setFont(QFont(BANNER_FONT_FAMILY, BANNER_FONT_PT, QFont.Bold))
+            b.setStyleSheet(
+                "QLabel{background:%s; color:%s; border:3px solid %s; border-radius:10px;"
+                " padding:6px 22px;}" % (bg, fg, bd))
+            if b.text() != _t:
+                b.setText(_t)
+            b.show()
+            self.banner_place()
+            b.raise_()
+            return True
+        except Exception:                                                       # noqa: BLE001
+            return False
+
+    def banner_place(self):
+        """横幅定位 (viewport 坐标, 顶部居中; 缩放/平移/滚动都不影响)"""
+        try:
+            b = getattr(self, "_banner", None)
+            if b is None or not b.isVisible():
+                return
+            vp = self.viewport()
+            vw, vh = max(1, vp.width()), max(1, vp.height())
+            fm = b.fontMetrics()
+            w = int(fm.horizontalAdvance(b.text()) + 64)
+            w = max(360, min(w, vw - 20))
+            h = int(fm.height() + 22)
+            b.setGeometry(int((vw - w) / 2), 10, w, min(h, max(40, vh - 20)))
+        except Exception:                                                       # noqa: BLE001
+            pass
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self.banner_place()
 
     def drawBackground(self, painter, rect):
         # 网格点 (Simulink 画布风格) — 颜色走主题 (2026-08-05 修复: 硬编码 #f0f2f5 浅色
@@ -3673,11 +3774,12 @@ class SimCanvas(QGraphicsView):
                     self._tmp_line = self._scene.addLine(0, 0, 0, 0,
                         QPen(QColor(COLORS.get(n.node["type"], "#58a6ff")), 2, Qt.DashLine))
                     return
-                # 🧭 能力档位 radio: 单击圆钮直选 L2/L3/L4 (2026-09-09 老倪: 要有开关可选择)
+                # 🧭 能力档位 radio: 单击圆钮直选 L2/L3/L4/L5 (2026-09-09 老倪: 要有开关可选择;
+                #   🧿 2026-09-28 增 L5 — 几何必须与 paint 完全一致: _cw=(w-24)/4, 圆心 x=+12+i*_cw+8)
                 if n.node.get("params", {}).get("cap_switch"):
                     rp = n.scenePos()
-                    _cw = (n.w - 24) / 3.0
-                    for _i, _k in enumerate(("L2", "L3", "L4")):
+                    _cw = (n.w - 24) / 4.0
+                    for _i, _k in enumerate(("L2", "L3", "L4", "L5")):
                         _cx = rp.x() + 12 + _i * _cw + 8
                         _cy = rp.y() + 37
                         if abs(p.x() - _cx) < 14 and abs(p.y() - _cy) < 14:
@@ -6501,6 +6603,14 @@ class SimulinkModule(QWidget):
             if self._tutorial_active:
                 self._tutorial_hint_mismatch("run", "pipeline")
             return
+        # 🧿 2026-09-28 老倪: 能力档位 = **L5** → 「▶ 运行」= 启动 L5 标注→训练闭环
+        #   (大模型视觉语言自动标注 → L2/L3/L4 监督数据 → 标注完自动接力训练)
+        #   ⚠️ 必须在 real_l2 模式/引擎真实化之前分流: 档位是用户显式选择, 优先
+        if self._cap_level_now() == "L5":
+            self.btn_run.setText("▶ 运行")
+            self.btn_run.setEnabled(True)
+            self.on_l5_annotate_train(None)
+            return
         # 🎯 2026-09-18 老倪: 模式 = 🎯 真机数据 L2 训练 → 「▶ 运行」= 启动真机数据边干边学闭环
         #   (不跑仿真: 该模式的运行物 = 真机帧采集 + 自动标注 + 训练闭环, 见 on_real_l2_train)
         if self._current_mode() == "real_l2":
@@ -7309,10 +7419,10 @@ class SimulinkModule(QWidget):
         return 0
 
     def _ss_cap_num(self):
-        """当前能力档位 → 数值 (L2=2/L3=3/L4=4; L4D 已并入 L4; 默认 2=插装)"""
+        """当前能力档位 → 数值 (L2=2/L3=3/L4=4/L5=5; L4D 已并入 L4; 默认 2=插装)"""
         _cl = str(getattr(self, "_cap_level", "") or "").upper()
         _cl = {"L4D": "L4"}.get(_cl, _cl)
-        return {"L2": 2, "L3": 3, "L4": 4}.get(_cl, 2)
+        return {"L2": 2, "L3": 3, "L4": 4, "L5": 5}.get(_cl, 2)
 
     def _by_id(self, nid):
         for n in self.nodes:
@@ -11162,6 +11272,11 @@ class SimulinkModule(QWidget):
             self._log(f"🔭 双击可视化节点「{node.get('name', '')}」→ 打开 {params['viz_kind']} 窗口")
             self._open_viz_node(params.get("viz_kind"))
             return
+        # 🧿 2026-09-28 老倪: L5 标注→训练闭环节点 → 双击 = 查看闭环状态(阶段/pid/产物) + 刷画布
+        #   (必须放"数据源切换/能力档位"分支之前: 与 verif/viz/bypass 家族同一个教训)
+        if params.get("l5_loop"):
+            self.on_l5_loop_node(node)
+            return
         # 📡 2026-09-16 老倪: 旁路真机传感器 (数据源层) → 读真机感知流 + 切换画布数据源到真机旁路;
         #   带 bypass_sensor 标记, 必须放"数据源切换"分支之前 (同 verif/viz 家族教训)
         if params.get("bypass_sensor"):
@@ -12595,6 +12710,10 @@ class SimulinkModule(QWidget):
         self._log("执行层: 🤖机器人执行器 → 🌍物理世界 → z_k传感器反馈 → 🧪状态校正器 (卡尔曼校正闭环)")
         self._relayout_row_gaps()      # 2026-08-25 老倪: 节点放大后按行重排, 避免紧贴/重叠
         _oneshot(self, 300, self._state_space_hint)
+        # 🚩 2026-09-28 老倪第 3 次投诉「点击运行没反馈」: **画布一打开就挂 L5 状态轮询**。
+        #   原来只有"从画布点运行"那条路才建 QTimer ⇒ 闭环是在别处/上一个进程起的时,
+        #   画布(他正看的界面)永远不刷新, 他当然什么都看不见。常驻 1s, 幂等。
+        self._l5_start_poll(1000)
 
     def open_ss_3d(self, on_top=True, level=None):
         """🧭 打开 Apollo 风格 3D 分层视图 (2026-08-25 老倪)
@@ -13782,19 +13901,454 @@ class SimulinkModule(QWidget):
                 return (True, f"YOLO 开关: {'开 (39D)' if n.get('params', {}).get('yolo_enabled', True) else '关 (3D)'}")
         return (True, f"YOLO 开关: 状态 {yolo_enabled}")
 
+    # ───────────────── 🧿 L5 标注→训练闭环 (2026-09-28 老倪) ─────────────────
+    # 「能力档位节点增加 L5 档位; 选 L5 + 点运行 → 大模型视觉语言自动标注 (为 L2/L3/L4
+    #   提供监督标注数据) + 自动启动训练流程 (L2 YOLO 全量 / L3·L4 LoRA → merge)」
+    # 编排真源 = tools/l5_annotate_train_loop.py (后台异步, GUI 不阻塞);
+    # 状态真源 = ~/zmax_data/l5_loop/state.json (CLI --status 与画布徽章读同一份, 不造第二套数字)
+    L5_STATE = "/home/ubuntu/zmax_data/l5_loop/state.json"
+
+    def _cap_level_now(self):
+        """当前能力档位 (以画布节点 params.cap_level 为准 — radio 持久/重启不丢; 兜底内存档位)"""
+        try:
+            for _n in self.nodes:
+                if _n.get("params", {}).get("cap_switch"):
+                    _v = _n["params"].get("cap_level")
+                    if _v:
+                        return str(_v).upper()
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return str(getattr(self, "_cap_level", "") or "").upper()
+
+    def _l5_state(self):
+        """读 L5 闭环状态 (与 CLI 同源; 缺失返回 {})"""
+        try:
+            return json.load(open(self.L5_STATE, encoding="utf-8"))
+        except Exception:                                                       # noqa: BLE001
+            return {}
+
+    def _l5_pid(self):
+        """L5 编排进程 pid (存活才返回)。
+        ⚠️ 2026-09-28 现场坑 (draft ①): 原实现只看 `stage_detail.pid` = **当前阶段的子进程** pid
+        —— 阶段切换间隙 (子进程刚退、下一个还没起) 会误判"没在跑" → 画布徽章/横幅停更、
+        再点运行还会重复启动。口径改宽: state.pid (编排自身 pid) → stage_detail.pid →
+        最后 status==running 且 state.json 新鲜 (<180s) 也算在跑 (返回 -1 = 在跑但 pid 不可得)。"""
+        st = self._l5_state()
+        if st.get("status") != "running":
+            return None
+        for _cand in (st.get("pid"), (st.get("stage_detail") or {}).get("pid")):
+            try:
+                _p = int(_cand)
+                os.kill(_p, 0)
+                return _p
+            except Exception:                                                   # noqa: BLE001
+                pass
+        try:
+            if time.time() - os.path.getmtime(self.L5_STATE) < 180:
+                return -1                      # 在跑但 pid 不可得 (仍算运行中, 不重复启动)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return None
+
+    def _l5_node(self):
+        """L5 闭环节点定位 —— ⚠️ 按 **params.l5_loop** 找, 不能按 id="ss_l5":
+        load_flow_file 会重新分配节点 id (现场实测: JSON 里 ss_l5 → 加载后 n1790550749722aby),
+        按 id 查会永远 None → 画布徽章/状态全都不更新 (2026-09-28 实测踩到)。"""
+        for n in self.nodes:
+            if n.get("params", {}).get("l5_loop"):
+                return n
+        for n in self.nodes:
+            if "L5 ·" in str(n.get("name", "")) and "标注" in str(n.get("name", "")):
+                return n
+        return None
+
+    def _l5_paths(self):
+        """L5 编排脚本/解释器/状态目录 (不靠 import: studio 的 cwd=tools/gui 时
+        `import l5_annotate_train_loop` 会 ModuleNotFoundError —— 2026-09-28 实测第一版
+        只在日志里写了 ❌, 用户点了没反应)。"""
+        try:
+            root = self._repo_root()
+        except Exception:                                                       # noqa: BLE001
+            root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        work = os.path.join(os.path.expanduser("~"), "zmax_data", "l5_loop")
+        return {"root": root, "py": os.path.join(root, "gui-venv311", "bin", "python"),
+                "script": os.path.join(root, "tools", "l5_annotate_train_loop.py"),
+                "work": work, "state": os.path.join(work, "state.json")}
+
+    def _l5_badge(self, state=None, lines=None):
+        """把 L5 状态写回**画布节点** (用户正看的界面) — 边框色 + 三行进度 + update()
+        2026-09-28: 内容没变就**不重绘** —— 常驻 1s 轮询才不会让画布每秒闪一次 (也不烧 GPU)。"""
+        n = self._l5_node()
+        if n is None:
+            return False
+        p = n.setdefault("params", {})
+        _same = (p.get("l5_state") == state) and (list(p.get("l5_lines") or []) == list(lines or []))
+        if state:
+            p["l5_state"] = state
+            n["status"] = {"running": "running", "ok": "success", "error": "error",
+                           "idle": "idle"}.get(state, "idle")
+        if lines is not None:
+            p["l5_lines"] = list(lines)[:3]
+        if _same:
+            return True                                                        # 无变化 → 不重绘
+        it = self._items.get(n["id"])
+        if it is not None:
+            try:
+                it.update()
+            except Exception:                                                   # noqa: BLE001
+                pass
+        try:
+            self.canvas._scene.update()
+            self.canvas.viewport().update()
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return True
+
+    # L5 闭环阶段全集 (与 tools/l5_annotate_train_loop.py:STAGES 同源, 只用于"完 N/M"的分母)
+    L5_STAGES = ("interact", "annotate", "supervision", "slots", "L2_full", "L3_lora", "L4_lora",
+                 "merge", "verify")
+
+    def _l5_progress(self, st: dict):
+        """(已完成数, 总数) —— 总数取"阶段全集"与"已跑过"的较大者 (--only 子集也不会出现 8/7 这种假数)"""
+        done = len(st.get("stages_done") or [])
+        return done, max(len(self.L5_STAGES), done)
+
+    def _l5_banner_text(self, st: dict):
+        """状态 → **画布顶部通栏横幅**文案 + 颜色档 (running/ok/error/note)。
+        判据 (老倪 2026-09-28): 不打开日志栏, 一眼就能读出"L5 在哪个阶段/跑没跑完/为什么失败"。"""
+        if not st:
+            return "", "note"
+        status = st.get("status")
+        done, total = self._l5_progress(st)
+        cur = st.get("stage") or "-"
+        r = st.get("last_result") or {}
+        res = st.get("results") or {}
+        note = ""
+        try:
+            if time.time() < float(getattr(self, "_l5_note_until", 0)):
+                note = str(getattr(self, "_l5_note", "")) + " · "
+        except Exception:                                                       # noqa: BLE001
+            note = ""
+        if status == "running":
+            _secs = 0
+            try:
+                _t0 = time.strptime(str(st.get("started") or ""), "%Y-%m-%d %H:%M:%S")
+                _secs = max(0, int(time.time() - time.mktime(_t0)))
+            except Exception:                                                   # noqa: BLE001
+                _secs = 0
+            return ("%s🟡 L5 运行中 · 阶段 %s (%d/%d) · 已跑 %ds"
+                    % (note, cur, done, total, _secs), "running")
+        if status == "failed":
+            why = (r.get("reason") or r.get("error") or "")
+            if not why:
+                for _k in self.L5_STAGES:
+                    _v = res.get(_k) or {}
+                    if _v and not _v.get("ok"):
+                        why = "%s: %s" % (_k, _v.get("reason") or "失败")
+                        break
+            return "🔴 L5 ❌ 失败: %s" % (str(why)[:90] or "未知原因"), "error"
+        if status == "done":
+            _ticks = []
+            for _k, _lab in (("L2_full", "L2 全量"), ("L3_lora", "L3 LoRA"),
+                             ("L4_lora", "L4 LoRA"), ("merge", "merge")):
+                _v = res.get(_k)
+                if _v is not None:
+                    _ticks.append("%s %s" % (_lab, "✓" if _v.get("ok") else "✗"))
+            return ("🟢 L5 ✅ 完成 · " + (" ".join(_ticks) if _ticks else "全链已跑完 (%d/%d)"
+                                         % (done, total)), "ok")
+        return "", "note"
+
+    def _l5_lines_from_state(self, st: dict) -> list:
+        """状态 → 画布三行文案 (阶段进度/标注批次/训练阶段)"""
+        if not st:
+            return ["L5 闭环: 未启动 — 点 ▶运行 启动", "(自动标注 6 路 → L2/L3/L4 监督 → 训练)"]
+        done = st.get("stages_done") or []
+        cur = st.get("stage") or "-"
+        badge = {"running": "运行中", "done": "已完成", "failed": "失败"}.get(st.get("status"), st.get("status"))
+        d = st.get("stage_detail") or {}
+        _dn, _tt = self._l5_progress(st)
+        l1 = "L5 %s · 阶段 %s · 完 %d/%d" % (badge, cur, _dn, _tt)
+        if d.get("pid"):
+            l1 += " · pid %s" % d["pid"]
+        r = st.get("last_result") or {}
+        l2 = ("批 %s" % os.path.basename((st.get("results", {}).get("annotate") or {}).get("batch_dir") or "")
+              ) if (st.get("results", {}).get("annotate") or {}).get("batch_dir") else (r.get("reason") or r.get("stage") or "")
+        if st.get("results", {}).get("supervision", {}).get("stats"):
+            _s = st["results"]["supervision"]["stats"]
+            l2 = "监督: 框 %s 映射 / %s 跳过 · 图 %s" % (_s.get("mapped_boxes"), _s.get("skipped_boxes"),
+                                                        _s.get("images_written"))
+        l3 = ""
+        for k in ("L2_full", "L3_lora", "L4_lora", "merge"):
+            v = (st.get("results") or {}).get(k)
+            if v:
+                l3 = "%s: %s" % (k, "OK" if v.get("ok") else (v.get("reason") or "失败"))
+        return [str(l1)[:64], str(l2)[:64], str(l3 or r.get("reason") or "")[:64]]
+
+    # ── 🚩 L5 反馈常显通道 (2026-09-28 老倪第 3 次投诉「点击运行还是没反馈」) ──
+    # 判据: 点 ▶运行 的**那一刻**就要看得见 (不依赖 2s 轮询); 三处同显, 全部非阻塞:
+    #   ① 画布正上方大横幅 (15pt 粗体高对比, 鼠标事件穿透) — 他盯的就是画布
+    #   ② 运行按钮文字 = 他点的那颗按钮自己就是反馈面
+    #   ③ 窗口标题 — 横幅放**最前**, 防 GNOME 超长省略号把它截掉
+    def _l5_overlay(self):
+        """画布顶部通栏大横幅 (懒建; WA_TransparentForMouseEvents → 绝不阻塞画布操作)"""
+        lab = getattr(self, "_l5_banner_lab", None)
+        if lab is not None:
+            return lab
+        try:
+            from PyQt5.QtWidgets import QLabel
+            from PyQt5.QtCore import Qt as _Qt
+            cv = getattr(self, "canvas", None)
+            if cv is None:
+                return None
+            lab = QLabel(cv)
+            lab.setAttribute(_Qt.WA_TransparentForMouseEvents, True)   # 🔴 不阻塞: 点击照常穿透
+            lab.setAlignment(_Qt.AlignCenter)
+            lab.hide()
+            self._l5_banner_lab = lab
+            return lab
+        except Exception:                                                       # noqa: BLE001
+            return None
+
+    def _l5_banner_show(self, text, kind="note"):
+        """把 L5 状态铺到画布正上方大横幅 (高对比; 不吃鼠标事件, 不弹模态框 → 不阻塞)"""
+        try:
+            if not text:
+                return False
+            lab = self._l5_overlay()
+            if lab is None:
+                return False
+            _bg, _fg, _bd = {"running": ("#3a2c00", "#ffd700", "#ffd700"),
+                             "ok": ("#06301a", "#3fb950", "#3fb950"),
+                             "error": ("#3a0a0a", "#ff6b6b", "#ff6b6b"),
+                             "note": ("#0d1117", "#e6edf3", "#30363d")}.get(
+                                 kind, ("#0d1117", "#e6edf3", "#30363d"))
+            lab.setStyleSheet(
+                "QLabel{background-color:%s;color:%s;border:2px solid %s;border-radius:8px;"
+                "padding:8px 20px;font-size:15pt;font-weight:bold;font-family:Consolas;}"
+                % (_bg, _fg, _bd))
+            lab.setText(str(text))
+            cv = lab.parentWidget()
+            lab.adjustSize()
+            _w = max(360, min(lab.sizeHint().width() + 46, max(360, cv.width() - 40)))
+            _h = max(44, lab.sizeHint().height())
+            lab.setGeometry(int((cv.width() - _w) / 2), 12, int(_w), int(_h))
+            lab.show()
+            lab.raise_()
+            self._l5_banner_on = True
+            return True
+        except Exception:                                                       # noqa: BLE001
+            return False
+
+    def _l5_banner_hide(self):
+        """收掉 L5 大横幅 (只收自己, 不动别的界面)"""
+        try:
+            lab = getattr(self, "_l5_banner_lab", None)
+            if lab is not None and lab.isVisible():
+                lab.hide()
+            self._l5_banner_on = False
+        except Exception:                                                       # noqa: BLE001
+            pass
+
+    def _l5_start_poll(self, interval_ms: int = 1000):
+        """挂**常驻** L5 状态轮询 (幂等: 重复调用不重复建表)。
+        2026-09-28: 画布一打开就调 (open_state_space) —— 闭环不管是画布点的还是别处起的,
+        画布都能看到阶段在动 (老倪判据: 不打开日志就能看见)。"""
+        try:
+            t = getattr(self, "_l5_timer", None)
+            if t is None:
+                t = QTimer(self)
+                t.timeout.connect(self._l5_poll)
+                self._l5_timer = t
+            t.setInterval(int(interval_ms))
+            if not t.isActive():
+                t.start()
+            self._l5_poll(force=True)
+            return True
+        except Exception:                                                       # noqa: BLE001
+            return False
+
+    def _l5_btn_sync(self, state, stage="", done=0, total=0):
+        """运行按钮文字随状态走 (他点的那颗按钮自己就是反馈面)。
+        ⚠️ 不 disable —— 常按常新, 绝不把界面卡在他手里。"""
+        try:
+            b = getattr(self, "btn_run", None)
+            if b is None:
+                return
+            b.setText("⏳ L5 · %s · %d/%d" % (stage or "启动中", done, total)
+                      if state == "running" else "▶ 运行")
+            if not b.isEnabled():
+                b.setEnabled(True)
+        except Exception:                                                       # noqa: BLE001
+            pass
+
+    def on_l5_annotate_train(self, node=None):
+        """▶运行(档位=L5) / 双击 L5 节点 → 启动/查看 L5 标注→训练闭环 (后台异步)"""
+        # 🚩 2026-09-28 老倪第 3 次投诉「点击运行没反应」⇒ **点击瞬间先给反馈**, 不等 2s 轮询;
+        #    即使后台随后立刻失败, 也要先让他看到"已收到"。
+        self._l5_click_ts = time.time()
+        self._l5_banner_show("⏳ 已收到 ▶运行 — L5 标注→训练闭环 启动中…", "running")
+        self._log("════ 🟡 已收到 ▶运行 (L5 标注→训练闭环) ════")
+        self._l5_btn_sync("running", "已收到", 0, 0)
+        _p = self._l5_paths()
+        pid = self._l5_pid()
+        st = self._l5_state()
+        if pid:
+            self._log(f"🧿 L5 闭环已在运行 (pid {pid} · 阶段 {st.get('stage')}) → 画布显示当前进度, 不重复启动")
+        elif not (os.path.isfile(_p["py"]) and os.path.isfile(_p["script"])):
+            self._log("❌ L5 闭环缺文件: %s / %s" % (_p["py"], _p["script"]))
+        else:
+            import subprocess as _sp                                              # noqa: PLC0415
+            cmd = [_p["py"], _p["script"], "--run"]
+            try:
+                os.makedirs(_p["work"], exist_ok=True)
+                p = _sp.Popen(cmd, cwd=_p["root"], start_new_session=True,
+                              stdout=open(os.path.join(_p["work"], "gui_launch.log"), "a"),
+                              stderr=_sp.STDOUT)
+                self._log(f"🧿 L5 标注→训练闭环已启动 (后台异步 · 编排 pid {p.pid})")
+                self._log("   ├ ① 自动标注: 6 路实拍 → DeepSeek-V4-Flash 视觉语言理解 (每路 ~120s, 不阻塞 GUI)")
+                self._log("   ├ ② 监督数据: L2 YOLO 数据集(data/yolo_annot_l5vlm) + L3/L4 监督 manifest")
+                self._log("   └ ③ 自动训练(串行): L2 YOLO 全量 → L3 SmolVLA LoRA → L4 INTACT LoRA → merge")
+                self._log("   状态: ~/zmax_data/l5_loop/state.json · 日志 ~/zmax_data/l5_loop/*.log")
+            except Exception as e:                                              # noqa: BLE001
+                self._log(f"❌ L5 闭环启动失败: {type(e).__name__}: {e}")
+        # 🔁 画布徽章轮询 (主线程 QTimer; 每 1s 把 state.json 画到 L5 节点 + 画布大横幅 + 标题 + 按钮)
+        self._l5_start_poll(1000)
+        try:
+            _n = self._l5_node()
+            if _n is not None and _n["id"] in self._items:
+                _it = self._items[_n["id"]]
+                # 🐛 2026-09-28 修: 原来直接把 **scenePos()** 当全局屏幕坐标喂 _show_bubble
+                #   (scene 坐标 ≠ 屏幕像素) → 气泡飘到别的窗口/画布外, 老倪根本没看见。
+                #   正确口径同 _state_space_hint: scene → viewport → global。
+                gp = self.canvas.mapToGlobal(
+                    self.canvas.mapFromScene(_it.sceneBoundingRect().center()))
+                _msg = ("🧿 L5 闭环已在运行 · 阶段 %s\n看画布顶部大横幅" % (st.get("stage") or "-")
+                        if pid else "🧿 L5 标注→训练闭环已启动\n看画布顶部大横幅 + 运行按钮")
+                self._show_bubble(gp, _msg, ms=5000)
+        except Exception:                                                       # noqa: BLE001
+            pass
+
+    def _l5_poll(self, force=False):
+        """把 L5 闭环状态画到画布 (阶段结束后自动停轮询)
+        2026-09-28 老倪: 「点击运行没反应」⇒ 反馈必须显眼: 阶段变化大喊一次 + 窗口标题常显横幅"""
+        st = self._l5_state()
+        pid = self._l5_pid()
+        state = "idle"
+        if pid:
+            state = "running"
+        elif st.get("status") == "done":
+            state = "ok"
+        elif st.get("status") == "failed":
+            state = "error"
+        _lines = self._l5_lines_from_state(st)
+        self._l5_badge(state=state, lines=_lines)
+        # ── 显眼反馈 (老倪点运行要立刻看得见; 三处同显, 全部非阻塞) ─────────────────
+        try:
+            stage = str(st.get("stage") or "")
+            done_n, total_n = self._l5_progress(st)
+            _key = "%s|%s|%s" % (state, stage, done_n)
+            _banner = {
+                "running": "🟡 L5 运行中 · 阶段 %s · 完成 %d/%d" % (stage or "启动中", done_n, total_n),
+                "ok": "🟢 L5 ✅ 完成 · 全链跑完",
+                "error": "🔴 上次 L5 失败: %s" % (str(st.get("fail_reason") or st.get("reason")
+                                                   or (st.get("last_result") or {}).get("reason")
+                                                   or st.get("stage") or "未知原因")[:56]),
+                "idle": "⚪ L5 未运行 — 点 ▶运行 启动",
+            }.get(state, "")
+            # ❶ 画布正上方大横幅: **每次轮询都重铺** (不只在状态变化时) — 换页/遮挡后不用管, 它自己回来
+            if state == "running":
+                self._l5_err_seen = None      # 新一轮跑起来 → 允许下次失败重新提示
+                self._l5_banner_show("⏳ " + _banner, "running")
+            elif state == "ok":
+                self._l5_err_seen = None
+                self._l5_banner_show("✅ " + _banner, "ok")
+            elif state == "error":
+                # 老倪: 「上次 L5 失败, 这个提示还是无法关掉」⇒ 失败横幅只闪 15s 自行收掉, 不再常驻
+                _es = getattr(self, "_l5_err_seen", None)
+                if _es is None:
+                    _es = self._l5_err_seen = time.time()
+                if time.time() - _es < 15:
+                    self._l5_banner_show("❌ " + _banner, "error")
+                else:
+                    self._l5_banner_hide()
+            elif time.time() - float(getattr(self, "_l5_click_ts", 0)) > 10:
+                # 空闲 + 点运行已过 10s → 才收横幅 (点击瞬间那条"已收到"先留 10s, 保证他看见)
+                self._l5_banner_hide()
+            # ❷ 运行按钮文字 (他点的那颗按钮自己就是反馈面; 不 disable, 不卡他)
+            self._l5_btn_sync(state, stage, done_n, total_n)
+            # ❸ 状态/阶段一变就大喊一次 (老倪盯终端 + 底部日志栏)
+            if getattr(self, "_l5_last_key", None) != _key:
+                self._l5_last_key = _key
+                if state == "running":
+                    self._log("════ %s ════" % _banner)
+                    for _l in _lines[:3]:
+                        self._log("      ├ %s" % str(_l)[:90])
+                elif state in ("ok", "error"):
+                    self._log("════ %s ════" % _banner)
+                    for _k in ("annotate", "supervision", "slots", "L2_full", "L3_lora", "L4_lora", "merge"):
+                        _v = (st.get("results") or {}).get(_k)
+                        if _v:
+                            self._log("      %s %-12s %s" % ("✅" if _v.get("ok") else "❌", _k,
+                                                             str(_v.get("reason") or (("%.0fs" % (_v.get("secs") or 0)) if _v.get("secs") else ""))[:70]))
+            # ❹ 窗口标题: **横幅放最前** —— GNOME 标题居中且超长省略号, 放末尾会被截成看不见
+            _w = self.window()
+            if _w is not None:
+                _base = getattr(self, "_win_title_base", None)
+                if not _base:
+                    _base = _w.windowTitle() or "XSpace Studio"
+                    self._win_title_base = _base
+                if state == "idle":
+                    _w.setWindowTitle(_base)
+                else:
+                    _w.setWindowTitle("%s   —   %s" % (_banner, _base))
+        except Exception:                                                       # noqa: BLE001
+            pass
+        # 🔁 2026-09-28: **不再停表**。旧逻辑跑完就 t.stop() → 画布/标题/按钮冻结在最后一次状态上,
+        #   而老倪的判据是"任何时候点运行都看得见" ⇒ 画布开着就常驻轮询 (只读一份 json, 开销可忽略;
+        #   内容没变时不重绘, 见 _l5_badge)。
+
+    def on_l5_loop_node(self, node):
+        """双击 L5 节点 → 画布刷新状态 + 日志打印闭环产物 (状态真源=state.json)"""
+        st = self._l5_state()
+        if not st:
+            self._log("🧿 L5 闭环: 尚无运行记录 (~/zmax_data/l5_loop/state.json 不存在) — "
+                      "选 L5 档后点 ▶运行 启动")
+            self._l5_badge(state="idle")
+            return
+        pid = self._l5_pid()
+        self._log(f"🧿 L5 闭环状态: {st.get('status')} · 阶段 {st.get('stage')} · "
+                  f"完成 {len(st.get('stages_done') or [])}/7 · " + (f"运行中 pid {pid}" if pid else "无在跑进程"))
+        for k in ("annotate", "supervision", "L2_full", "L3_lora", "L4_lora", "merge", "verify"):
+            v = (st.get("results") or {}).get(k)
+            if not v:
+                continue
+            extra = ""
+            if k == "annotate":
+                extra = " 批次 %s" % os.path.basename(v.get("batch_dir") or "")
+            if k == "supervision" and v.get("stats"):
+                extra = " 框 %s→映射%s / 跳过%s · L2 数据集 %s" % (
+                    v["stats"].get("mapped_boxes"), v["stats"].get("images_written"),
+                    v["stats"].get("skipped_boxes"), (v.get("build") or {}).get("n_train"))
+            self._log("   %s %-12s %s%s" % ("✅" if v.get("ok") else "❌", k,
+                                            v.get("reason") or ("%.0fs" % (v.get("secs") or 0)), extra))
+        if (st.get("results") or {}).get("supervision", {}).get("supdir"):
+            self._log("   监督产物: %s" % st["results"]["supervision"]["supdir"])
+        self._l5_poll(force=True)
+
     def _toggle_cap(self, node, level=None):
-        """🧭 能力档位三档 radio 开关 (2026-09-09 重新设计): level=None → 循环下一档
-        (双击); 指定 L2/L3/L4 → 单击圆钮直选。档位写 node.params.cap_level (画布重绘)
-        + self._cap_level (▶运行消费), ▶运行 按档位配置任务链"""
+        """🧭 能力档位 radio 开关 (2026-09-09 设计 / 2026-09-28 增 L5): level=None → 循环下一档
+        (双击); 指定 L2/L3/L4/L5 → 单击圆钮直选。档位写 node.params.cap_level (画布重绘)
+        + self._cap_level (▶运行消费), ▶运行 按档位配置任务链。
+        L5 = 大模型视觉语言自动标注 → L2/L3/L4 监督数据 + 标注完自动训练 (on_l5_annotate_train)"""
         p = node.setdefault("params", {})
         cur = str(p.get("cap_level") or getattr(self, "_cap_level", None) or "L2").upper()
         # 🎯 2026-09-10: L4D 并入 L4
-        cur = {"L4D": "L4"}.get(cur, cur if cur in ("L2", "L3", "L4") else "L2")
+        cur = {"L4D": "L4"}.get(cur, cur if cur in ("L2", "L3", "L4", "L5") else "L2")
         if level is None:
-            level = {"L2": "L3", "L3": "L4", "L4": "L2"}.get(cur, "L2")
+            level = {"L2": "L3", "L3": "L4", "L4": "L5", "L5": "L2"}.get(cur, "L2")
         else:
             level = str(level).upper()
-            level = {"L4D": "L4"}.get(level, level if level in ("L2", "L3", "L4") else "L2")
+            level = {"L4D": "L4"}.get(level, level if level in ("L2", "L3", "L4", "L5") else "L2")
         p["cap_level"] = level
         self._cap_level = level
         # 🐛 2026-09-09: 切档后重置单步/播放序 — 旧序按上一档位过滤 (L2 35节点),
@@ -13813,8 +14367,13 @@ class SimulinkModule(QWidget):
         self.canvas._scene.update()
         desc = {"L2": "基础: 插装即完成 (insert 8段)",
                 "L3": "L3 全链: 插→拔→AOI→放回 (13段)",
-                "L4": "L4 抗干扰 90°: 来料转台90°外力干扰+绕z抓横回正+插拔闭环+AOI镜头对焦点+光耦合η (全真物理)"}.get(level, level)
+                "L4": "L4 抗干扰 90°: 来料转台90°外力干扰+绕z抓横回正+插拔闭环+AOI镜头对焦点+光耦合η (全真物理)",
+                "L5": "L5 大模型视觉语言自动标注 → L2/L3/L4 监督数据 → 自动训练 (L2 YOLO 全量 / L3 SmolVLA LoRA / "
+                      "L4 INTACT LoRA→merge); 点 ▶运行 后台异步跑, 画布 L5 节点显示进度"}.get(level, level)
         self._log(f"🧭 能力档位 → **{level}** [{desc}] (下次 ▶运行生效)")
+        if level == "L5":
+            self._log("   └ L5 = 标注→训练闭环: 选 L5 后点 ▶运行 即启动 "
+                      "(tools/l5_annotate_train_loop.py; 异步后台, GUI 不阻塞)")
         try:
             self._sync()
         except Exception:

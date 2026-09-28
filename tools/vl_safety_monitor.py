@@ -208,11 +208,32 @@ def run_once(feishu=False, save_img=True) -> dict:
                 break
         if (_prev is not None and _prev.get("raw_safe") is not None
                 and bool(_prev["raw_safe"]) != bool(rec["raw_safe"]) and not rec.get("degraded")):
+            # 2026-09-28 老倪现场「合爪技能怎么又不好使了」的根因修复。
+            # 旧行为: 相邻两轮原始结论摇摆 ⇒ 一律按不安全拒发。实测后果(08:39:01)把一条
+            #   **当轮裁决自己写着安全、hazards 为空** 的结论也否掉了(日志里 why 还留着"未见人手/人员在外围观察")。
+            # 语义纠偏: 一次动作安全与否取决于**当轮画面**, 上一轮的结论只是旁证;
+            #   ⇒ 摇摆时不再一律拒, 而是看当轮:
+            #     ① 当轮=安全 且 危害列表为空 ⇒ 放行(记 flip_flop_resolved, 供审计)
+            #     ② 当轮=不安全 ⇒ 维持从严拒发(fail-closed 方向不变)
+            #     ③ degraded(空 content / 调用异常)不参与摇摆判定, 仍走各自拒绝路径
             rec["flip_flop"] = True
-            rec["why"] = "同一动作相邻两轮结论不一致(上轮原始=%s) ⇒ 从严当不安全: %s" % (
-                "安全" if _prev["raw_safe"] else "不安全", rec.get("why"))
-            rec["safe"] = False
-            rec["risk_level"] = "high"
+            _prev_txt = "安全" if _prev["raw_safe"] else "不安全"
+            _haz = rec.get("hazards") or []
+            rec["rounds"] = [
+                {"ts": _prev.get("ts_str"), "raw_safe": bool(_prev["raw_safe"]),
+                 "why": str(_prev.get("why") or "")[:160]},
+                {"ts": rec.get("ts_str"), "raw_safe": bool(rec.get("raw_safe")),
+                 "why": str(rec.get("why") or "")[:160]},
+            ]
+            if bool(rec["raw_safe"]) and not _haz:
+                rec["flip_flop_resolved"] = True
+                rec["why"] = ("相邻两轮摇摆(上轮原始=%s), 但**当轮=安全且危害列表为空** ⇒ 放行 · 当轮理由: %s"
+                              % (_prev_txt, rec.get("why")))
+            else:
+                rec["why"] = "同一动作相邻两轮结论不一致(上轮原始=%s) ⇒ 从严当不安全: %s" % (
+                    _prev_txt, rec.get("why"))
+                rec["safe"] = False
+                rec["risk_level"] = "high"
     except Exception:                                                   # noqa: BLE001
         pass
     rec["elapsed_s"] = round(time.time() - t0, 1)

@@ -88,10 +88,22 @@ def annotate(cam: str, outdir: Path, send_w: int = SEND_W) -> dict:
         sm = cv2.resize(img, (int(W * k), int(H * k)), interpolation=cv2.INTER_AREA) if k < 1.0 else img
         h2, w2 = sm.shape[:2]
         ok, enc = cv2.imencode(".jpg", sm, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
-        r = G.call_vlm(enc.tobytes(), w2, h2, timeout=300)
-        txt = (r.get("txt") or "").strip()
+        # 实测(2026-09-28): DeepSeek 视觉**偶发**返回空 content —— finish_reason=stop 却无内容,
+        # 46s / 137s 都会出现, 同一张图立刻重调即正常 ⇒ 空了就重试(最多 3 次)。
+        # 旧逻辑一次空就落 err ⇒ L5 标注整环变空、手臂图上红/蓝框全为 0。
+        r = {}
+        txt = ""
+        for _try in range(3):
+            r = G.call_vlm(enc.tobytes(), w2, h2, timeout=300)
+            txt = (r.get("txt") or "").strip()
+            if txt:
+                break
+            print("[%s] 标注空 content(第%d次, %.0fs) ⇒ 2s 后重试" % (
+                time.strftime("%H:%M:%S"), _try + 1, r.get("latency_s") or 0), flush=True)
+            time.sleep(2)
         if not txt:
-            rec["err"] = "大模型 content 空(推理额度吃满?) · model=%s · %.0fs" % (r.get("model"), r.get("latency_s") or 0)
+            rec["err"] = ("大模型连续 3 次 content 空(API 侧偶发, 非额度) · model=%s · %.0fs"
+                          % (r.get("model"), r.get("latency_s") or 0))
             rec["reasoning_head"] = (r.get("reasoning") or "")[:300]
             return rec
         d = G.parse_json(txt)

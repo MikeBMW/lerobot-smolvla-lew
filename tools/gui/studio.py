@@ -711,7 +711,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.15.41")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.15.42")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10829,7 +10829,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.41 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.15.42 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10837,7 +10837,7 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.41 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.15.42 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
         # v5.15.41 (2026-09-27): 现场实况交付 —— 场景叠加页手机化(9格/帧龄/拍照时间) + 手机 APP
@@ -11349,6 +11349,13 @@ class StudioMainWindow(QMainWindow):
                         _oneshot(self, 1200, self._open_ss_3d_cmd)
                     elif line == "ss_run":
                         _oneshot(self, 300, self._run_ss_cmd)
+                    # 🧿 2026-09-28 L5 交互取证命令 (真鼠标点 L5 单选钮 + 真点 ▶运行 + 截图)
+                    elif line == "l5_interact":
+                        _oneshot(self, 300, self._l5_interact_cmd)
+                    elif line == "l5_status":
+                        _oneshot(self, 300, self._l5_status_cmd)
+                    elif line == "l5_diag":
+                        _oneshot(self, 300, self._l5_diag_cmd)
                     # 🔬 2026-09-27 给"页面按钮"也开一条命令通道 (静静自测: 反复触发按钮本体,
                     #   不必盲点鼠标坐标; 老倪: 点了没反应 → 我要能从控制台内部逐次复现)
                     elif line == "ov_page":
@@ -11379,6 +11386,259 @@ class StudioMainWindow(QMainWindow):
         if getattr(self, "simulink", None) is not None:
             self.simulink.start_sim()
             self.statusBar().showMessage("▶ 状态空间仿真已启动 (命令触发)", 2000)
+
+    # ───────────── 🧿 L5 交互取证 (2026-09-28 老倪: "用户正看的界面到底变没变") ─────────────
+    def _l5_status_cmd(self):
+        """只读: 把 L5 闭环状态 + 画布节点上的三行文案落盘 (不发命令也能查)"""
+        import json as _j
+        sim = getattr(self, "simulink", None)
+        d = "/tmp/zmax_l5_interaction"
+        os.makedirs(d, exist_ok=True)
+        out = {"ts": time.strftime("%F %T"), "cmd": "l5_status"}
+        if sim is not None:
+            n = sim._l5_node() or {}
+            p = n.get("params", {}) if isinstance(n, dict) else {}
+            out["canvas_node"] = {"id": n.get("id"), "name": n.get("name"), "status": n.get("status"),
+                                  "l5_state": p.get("l5_state"), "l5_lines": p.get("l5_lines"),
+                                  "cap_level": sim._cap_level_now()}
+        try:
+            out["loop_state"] = _j.load(open(sim.L5_STATE, encoding="utf-8")) if sim else {}
+        except Exception:                                                       # noqa: BLE001
+            out["loop_state"] = {}
+        with open(os.path.join(d, "canvas_state.json"), "w", encoding="utf-8") as f:
+            _j.dump(out, f, ensure_ascii=False, indent=1)
+        print("[l5_status] " + _j.dumps(out.get("canvas_node"), ensure_ascii=False), flush=True)
+
+    def _l5_show_canvas(self):
+        """把"用户正看的界面"切到状态空间画布: Simulink 页 + 画布 MDI 子窗最大化。
+        ⚠️ 只调 open_state_space() 不够 —— 页面不在 Simulink 页时 widget.isVisible()=False,
+        grab() 只能截到空白 (2026-09-28 实测第一版截图 9KB 空图)。"""
+        from PyQt5.QtWidgets import QApplication
+        sim = getattr(self, "simulink", None)
+        if sim is None:
+            return False
+        try:
+            self.stack.setCurrentWidget(sim)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        try:
+            sim.open_state_space()          # 幂等: clear + 重新加载 flows/state_space_obs.json
+        except Exception:                                                       # noqa: BLE001
+            pass
+        try:
+            sim._canvas_win.showMaximized()
+            sim._canvas_win.raise_()
+        except Exception:                                                       # noqa: BLE001
+            pass
+        QApplication.processEvents()
+        return True
+
+    def _l5_diag_cmd(self):
+        """🔍 画布几何自检 (L5 交互取证前置): 画布 widget 尺寸/可见性/变换/sceneRect +
+        档位节点圆钮的 viewport 坐标 + 顶层窗口清单 (防"点了没反应=点到看不见的地方")"""
+        import json as _j
+        from PyQt5.QtCore import QPointF
+        from PyQt5.QtWidgets import QApplication
+        d = "/tmp/zmax_l5_interaction"
+        os.makedirs(d, exist_ok=True)
+        sim = getattr(self, "simulink", None)
+        out = {"ts": time.strftime("%F %T")}
+        try:
+            from PyQt5.QtWidgets import QGraphicsView as _GV
+            if sim is not None:
+                self._l5_show_canvas()           # 切到 Simulink 页 + 画布最大化 (否则 grab 是空白)
+            cv = sim.canvas
+            # 🔎 找到"真正在显示节点"的那个 view (画布可能挂在 sim._canvas_win 里, 不是 sim.canvas)
+            views = []
+            for _name in ("_canvas_win", "canvas_win", "_ss_canvas_win"):
+                _w = getattr(sim, _name, None)
+                if _w is None:
+                    continue
+                _cands = [_w] + _w.findChildren(_GV)
+                for _c in _cands:
+                    try:
+                        views.append({"via": _name, "cls": type(_c).__name__, "size": [_c.width(), _c.height()],
+                                      "visible": bool(_c.isVisible()), "items": len(_c.scene().items()),
+                                      "sceneRect": [_c.sceneRect().x(), _c.sceneRect().y(),
+                                                    _c.sceneRect().width(), _c.sceneRect().height()],
+                                      "scale": round(_c.transform().m11(), 3)})
+                    except Exception:                                           # noqa: BLE001
+                        pass
+            out["views_in_canvas_win"] = views
+            cap = next((x for x in sim.nodes if x.get("params", {}).get("cap_switch")), None)
+            out["canvas"] = {"cls": type(cv).__name__, "size": [cv.width(), cv.height()],
+                             "visible": bool(cv.isVisible()), "vp_size": [cv.viewport().width(),
+                                                                           cv.viewport().height()],
+                             "sceneRect": [cv.sceneRect().x(), cv.sceneRect().y(),
+                                           cv.sceneRect().width(), cv.sceneRect().height()],
+                             "scale": [round(cv.transform().m11(), 4), round(cv.transform().m22(), 4)],
+                             "center_scene": [round(cv.mapToScene(cv.viewport().rect().center()).x(), 1),
+                                              round(cv.mapToScene(cv.viewport().rect().center()).y(), 1)],
+                             "items": len(cv.scene().items())}
+            if cap:
+                cw = (cap["w"] - 24) / 4.0
+                _it = sim._items.get(cap["id"])
+                _sp = _it.scenePos() if _it is not None else None
+                sx = (_sp.x() if _sp is not None else cap["x"]) + 12 + 3 * cw + 8
+                sy = (_sp.y() if _sp is not None else cap["y"]) + 37
+                cv.centerOn(QPointF(sx, sy))
+                QApplication.processEvents()
+                pos = cv.mapFromScene(QPointF(sx, sy))
+                out["cap_node"] = {"id": cap["id"], "xywh": [cap["x"], cap["y"], cap["w"], cap["h"]],
+                                   "item_scenePos": [_sp.x(), _sp.y()] if _sp is not None else None,
+                                   "dot_scene": [sx, sy], "dot_viewport": [int(pos.x()), int(pos.y())],
+                                   "dot_in_view": bool(cv.viewport().rect().contains(pos))}
+            # 画布所在顶层窗口 (用户实际看的那块屏)
+            ws = []
+            for w in QApplication.topLevelWidgets():
+                if w.isVisible():
+                    ws.append({"cls": type(w).__name__, "title": str(w.windowTitle())[:40],
+                               "size": [w.width(), w.height()], "xy": [w.x(), w.y()]})
+            out["windows"] = ws
+            out["canvas_win_attr"] = [a for a in ("canvas_win", "_canvas_win", "win_canvas")
+                                      if hasattr(sim, a)]
+            out["sim_visible"] = bool(sim.isVisible())
+            out["ok"] = True
+        except Exception as _e:                                                 # noqa: BLE001
+            import traceback as _tb
+            out["err"] = "%s: %s" % (type(_e).__name__, _e)
+            out["traceback"] = _tb.format_exc()[-800:]
+        with open(os.path.join(d, "diag.json"), "w", encoding="utf-8") as f:
+            _j.dump(out, f, ensure_ascii=False, indent=1)
+        print("[l5_diag] " + _j.dumps(out, ensure_ascii=False)[:900], flush=True)
+
+    def _l5_interact_cmd(self):
+        """🧿 L5 交互取证 — 在**真实运行中的控制台**里走用户那条路 (2026-09-28 老倪口径):
+
+        ① 打开状态空间画布 → ② 给画布发**真 QMouseEvent** 点「L5」单选钮 (走真实 hit-test
+        分支 → _toggle_cap) → ③ 真点 ▶运行按钮 (btn_run.click, 真信号) → ④ 截图 + 落画布
+        节点上的三行进度/状态 —— 证明"用户正看的界面"确实变了 (不是只写日志)。
+        触发: echo l5_interact > /tmp/zmax_nav_cmd
+        """
+        import json as _j
+        from PyQt5.QtCore import QEvent, QPointF
+        from PyQt5.QtGui import QMouseEvent
+        from PyQt5.QtWidgets import QApplication
+        d = "/tmp/zmax_l5_interaction"
+        os.makedirs(d, exist_ok=True)
+        ev = {"ts": time.strftime("%F %T"), "cmd": "l5_interact", "steps": []}
+        sim = getattr(self, "simulink", None)
+        if sim is None:
+            ev["err"] = "simulink 模块未创建"
+            with open(os.path.join(d, "interaction.json"), "w", encoding="utf-8") as f:
+                _j.dump(ev, f, ensure_ascii=False, indent=1)
+            return
+        try:
+            # ① 画布 (幂等打开) + 把档位节点滚到视野里, 保证点击落在可视区
+            # ① 切到用户正看的界面 (Simulink 页 + 画布最大化) + 把档位节点滚进视野
+            self._l5_show_canvas()
+            QApplication.processEvents()
+            _cap = next((x for x in sim.nodes if x.get("params", {}).get("cap_switch")), None)
+            if _cap is None:
+                raise RuntimeError("画布缺能力档位节点 (cap_switch)")
+            # ② 真鼠标事件点「L5」单选钮 (几何与 paint 同源: _cw=(w-24)/4, 圆钮 x=+12+3*_cw+8, y=+37)
+            #   ⚠️ 坐标基准取 **SimNodeItem.scenePos()** (画布真位置), 不是 JSON 里的 x/y —— 两者
+            #   在加载后有偏移时按 JSON 点会点空 (2026-09-28 实测第一版点空: 数字对不上真位置)。
+            _cw = (_cap["w"] - 24) / 4.0
+            _it = sim._items.get(_cap["id"])
+            _sp = _it.scenePos() if _it is not None else None
+            _sx = (_sp.x() if _sp is not None else _cap["x"]) + 12 + 3 * _cw + 8
+            _sy = (_sp.y() if _sp is not None else _cap["y"]) + 37
+            sim.canvas.centerOn(QPointF(_sx, _sy))
+            QApplication.processEvents()
+            ev["steps"].append({"step": "canvas_opened", "cap_node": _cap["id"],
+                                "item_scenePos": [_sp.x(), _sp.y()] if _sp is not None else None,
+                                "cap_before": _cap.get("params", {}).get("cap_level")})
+            _pos = sim.canvas.mapFromScene(QPointF(_sx, _sy))
+            _target = sim.canvas.viewport()          # 真点击落在 viewport (QGraphicsView 标准路径)
+            for _type in (QEvent.MouseButtonPress, QEvent.MouseButtonRelease):
+                _e = QMouseEvent(_type, QPointF(_pos), Qt.LeftButton, Qt.LeftButton, Qt.NoModifier)
+                QApplication.sendEvent(_target, _e)
+            QApplication.processEvents()
+            _lv = sim._cap_level_now()
+            ev["steps"].append({"step": "click_L5_radio", "scene_xy": [_sx, _sy],
+                                "viewport_xy": [int(_pos.x()), int(_pos.y())],
+                                "cap_after": _lv, "expect": "L5", "pass": _lv == "L5"})
+            # 截图: 画布 view + MDI 里的画布子窗 (用户实际看的那块)
+            _ln = sim._l5_node()
+            _ls = sim._items.get(_ln["id"]).scenePos() if (_ln is not None and _ln["id"] in sim._items) else None
+            _shot = {}
+            for _nm, _w in (("canvas", sim.canvas),
+                            ("canvas_win", getattr(sim, "_canvas_win", None)),
+                            ("mdi", getattr(sim, "_mdi", None))):
+                if _w is None:
+                    continue
+                try:
+                    _f = os.path.join(d, "01_%s.png" % _nm)
+                    _w.grab().save(_f)
+                    _shot[_nm] = [os.path.basename(_f), os.path.getsize(_f)]
+                except Exception as _ee:                                        # noqa: BLE001
+                    _shot[_nm] = "grab失败: %s" % _ee
+            # 再把画布滚到 L5 节点 (让"画布上的闭环进度三行"进画面, 供人/视觉模型逐字核对)
+            if _ls is not None:
+                sim.canvas.centerOn(QPointF(_ls.x() + _ln["w"] / 2.0, _ls.y() + _ln["h"] / 2.0))
+                QApplication.processEvents()
+                sim.canvas.grab().save(os.path.join(d, "01b_l5node_after_click.png"))
+                sim.canvas.centerOn(QPointF(_sx, _sy))
+                QApplication.processEvents()
+            ev["steps"].append({"step": "screenshot_after_click", "files": _shot,
+                                "canvas_items": len(sim.canvas.scene().items()),
+                                "l5node_shot": "01b_l5node_after_click.png" if _ls is not None else None})
+            # ③ 真点 ▶运行 (真按钮信号 → start_sim → L5 档分流 → on_l5_annotate_train)
+            #   ⚠️ 按钮在"运行中"是 disabled —— 对 disabled 按钮 .click() 会被 Qt 直接忽略
+            #   (2026-09-28 实测第一版: 点完 canvas_node_after=null, 因为上一轮测试把引擎跑起来了)。
+            #   口径: 先走真"⏹ 停止"入口回到 idle, 轮询等 enabled, 再点 —— 全程真控件。
+            _wait = []
+            try:
+                if not sim.btn_run.isEnabled():
+                    _wait.append({"t": 0, "btn": sim.btn_run.text(), "enabled": False, "act": "stop_sim"})
+                    sim.stop_sim()
+                for _i in range(30):
+                    QApplication.processEvents()
+                    time.sleep(0.4)
+                    if sim.btn_run.isEnabled():
+                        _wait.append({"t": round((_i + 1) * 0.4, 1), "btn": sim.btn_run.text(),
+                                      "enabled": True})
+                        break
+                else:
+                    _wait.append({"t": 12.0, "btn": sim.btn_run.text(), "enabled": False,
+                                  "note": "等不到 idle"})
+            except Exception as _ee:                                            # noqa: BLE001
+                _wait.append({"err": str(_ee)})
+            ev["steps"].append({"step": "wait_run_idle", "trace": _wait,
+                                "btn_enabled": bool(sim.btn_run.isEnabled()),
+                                "btn_text": sim.btn_run.text()})
+            sim.btn_run.click()
+            QApplication.processEvents()
+            ev["steps"].append({"step": "click_run_button", "btn_text": sim.btn_run.text(),
+                                "btn_enabled_after": bool(sim.btn_run.isEnabled())})
+            _oneshot(self, 900, lambda: (sim.canvas.grab().save(os.path.join(d, "02_canvas_after_run.png")),
+                                         getattr(sim, "_canvas_win", sim.canvas).grab().save(
+                                             os.path.join(d, "02_canvaswin_after_run.png"))))
+            _oneshot(self, 1500, self._l5_status_cmd)
+            _oneshot(self, 2500, lambda: sim.grab().save(os.path.join(d, "03_console_module.png")))
+            _oneshot(self, 3500, lambda: sim.canvas.grab().save(os.path.join(d, "04_canvas_late.png")))
+            # ④ 画布节点上的三行进度 + 日志里 L5 相关行 (用户眼睛能看到的)
+            _n = sim._l5_node() or {}
+            _p = _n.get("params", {}) if isinstance(_n, dict) else {}
+            ev["canvas_node_after"] = {"status": _n.get("status"), "l5_state": _p.get("l5_state"),
+                                       "l5_lines": _p.get("l5_lines")}
+            try:
+                _lb = getattr(sim, "log_box", None)
+                _txt = _lb.toPlainText() if _lb is not None else ""
+                ev["log_tail_L5"] = [l for l in _txt.splitlines()
+                                     if ("L5" in l or "标注" in l or "l5_" in l)][-12:]
+            except Exception:                                                   # noqa: BLE001
+                ev["log_tail_L5"] = []
+            ev["screenshots"] = sorted(x for x in os.listdir(d) if x.endswith(".png"))
+            ev["ok"] = all(s.get("pass", True) for s in ev["steps"])
+        except Exception as _e:                                                 # noqa: BLE001
+            import traceback as _tb
+            ev["err"] = "%s: %s" % (type(_e).__name__, _e)
+            ev["traceback"] = _tb.format_exc()[-1500:]
+        with open(os.path.join(d, "interaction.json"), "w", encoding="utf-8") as f:
+            _j.dump(ev, f, ensure_ascii=False, indent=1)
+        print("[l5_interact] " + _j.dumps(ev, ensure_ascii=False)[:1200], flush=True)
 
     def _start_auto_test_suite(self):
         """🧪 启动状态空间自动测试套件 (每用例截图)"""
@@ -12801,6 +13061,28 @@ def main():
             faulthandler.dump_traceback_later(20, repeat=True, file=sys.stderr)
     except Exception:
         pass
+    # 🧿 2026-09-28 老倪: 「下次重启, 自动加载 L2 YOLO / L3 SmolVLA / L4 INTACT 等模型」
+    #   → 真源 tools/model_autoload.py (指针登记表 → 逐层真加载 → 落报告 JSON)
+    #   ⚠️ 必须走**独立子进程**, 不是后台线程: lerobot/metaworld import 链带 gymnasium→cv2→Qt,
+    #      在 studio 进程的后台线程里 import 会 QObject::moveToThread → debugpy abort
+    #      (2026-09-02 实测崩过 GUI 启动)。子进程顺带把 8GB 卡上的 3 层加载串行化, 不抢 GUI 内存。
+    #   关闭: export ZMAX_AUTOLOAD=0 (调试用)
+    try:
+        import subprocess as _sp_al
+        _repo_al = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        _al_py = os.path.join(_repo_al, "gui-venv311", "bin", "python")
+        _al_js = os.path.join(_repo_al, "tools", "model_autoload.py")
+        if os.environ.get("ZMAX_AUTOLOAD", "1") != "0" and os.path.exists(_al_py) and os.path.exists(_al_js):
+            _al_dir = os.path.join(os.path.expanduser("~"), "zmax_data", "model_autoload")
+            os.makedirs(_al_dir, exist_ok=True)
+            _al_log = os.path.join(_al_dir, "startup_%s.log" % time.strftime("%Y%m%d_%H%M%S"))
+            _sp_al.Popen([_al_py, _al_js], cwd=_repo_al, start_new_session=True,
+                         stdout=open(_al_log, "a"), stderr=_sp_al.STDOUT,
+                         env=dict(os.environ, ZMAX_AUTOLOAD_DEEP=os.environ.get("ZMAX_AUTOLOAD_DEEP", "1")))
+            print("🧿 重启自动加载: L2 YOLO / L3 SmolVLA / L4 INTACT 后台子进程已启动 → %s" % _al_log,
+                  flush=True)
+    except Exception as _e:                                                     # noqa: BLE001
+        print("⚠️ 重启自动加载挂钩异常(不影响控制台): %s" % _e, flush=True)
     sys.exit(app.exec_())
 
 

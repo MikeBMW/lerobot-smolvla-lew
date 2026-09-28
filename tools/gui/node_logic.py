@@ -5094,3 +5094,36 @@ _reg("n_realscene_live", ["真实场景叠加", "双眼叠加"],
      "🎥 真实场景叠加 · 双眼 (sim2real) — 双击: 画布节点内实时显示 8791 叠加画面 "
      "(臂上相机真几何投影框; 画面带真值带: 源/帧龄/框数/真值链)",
      node_realscene_live)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 🧿 L5 标注→训练闭环 (2026-09-28 老倪)
+# ─────────────────────────────────────────────────────────────────────────────
+def node_l5_loop(module=None, log=print, **kw):
+    """🧿 L5 标注→训练闭环 — 只读状态 (安全: 不在"节点逻辑"对话框里误触发长跑训练)
+
+    真正的启动入口 = 画布 🧭 能力档位节点选 **L5** + 点 ▶运行
+    (simulink_module.on_l5_annotate_train → 后台异步 subprocess
+     tools/l5_annotate_train_loop.py --run)。
+    真源: 标注 tools/auto_annotate.py(6 路实拍→VLM) → 监督数据
+          → 训练 tools/joint_train_all.py / tools/yolo_annot_train.py
+          → LoRA 合并 tools/merge_lora_ckpt.py
+    状态: ~/zmax_data/l5_loop/state.json (CLI 与画布徽章同源)
+    """
+    import json
+    p = "/home/ubuntu/zmax_data/l5_loop/state.json"
+    try:
+        st = json.load(open(p, encoding="utf-8"))
+    except Exception as e:                                                      # noqa: BLE001
+        log(f"🧿 L5 闭环: 尚无运行记录 ({p}: {type(e).__name__}) — 选 L5 档后点 ▶运行")
+        return False
+    log(f"🧿 L5 闭环: {st.get('status')} · 阶段 {st.get('stage')} · 完成 {st.get('stages_done')}")
+    for k, v in (st.get("results") or {}).items():
+        log(f"   {'✅' if v.get('ok') else '❌'} {k}: {v.get('reason') or v.get('secs')}")
+    return True
+
+
+_reg("l5_loop", ["L5 · 视觉语言自动标注", "L5 标注→训练", "标注→训练", "L5 档"],
+     "🧿 L5 档 标注→训练闭环 — 选 L5 + 点 ▶运行: VLM 自动标注 6 路实拍 → L2/L3/L4 监督数据 → "
+     "自动训练 (L2 YOLO 全量 / L3 SmolVLA LoRA / L4 INTACT LoRA→merge); 双击节点看状态",
+     node_l5_loop)

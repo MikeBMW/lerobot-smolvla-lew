@@ -468,19 +468,79 @@ def _depth_worker(npy_path: str, meta_path: str, fps_cap: float) -> None:
         time.sleep(max(0.05, 1.0 / max(0.5, fps_cap)) - (time.time() - t0))
 
 
-def _aoi_frame(bgr, clean: bool = True, out: int = 900, quality: int = 78):
+_AOI_GOLD_ANGLE = {"deg": 2.75, "t": 0.0, "src": "默认值(还没从服务读到)"}
+
+
+def _aoi_gold_angle(port: int = 10082, ttl: float = 60.0) -> float:
+    """金手指条的倾角(度), 用于反向旋转去倾角。从工控机 /region 读 angle, 缓存 ttl 秒。
+
+    读不到就用上一次的值(初始 2.75°) —— 倾角是机械安装量, 变化极慢; 宁可沿用也不要 0
+    (传 0 = 不去倾角, 画面就是斜的, 那正是老倪要修的现象)。
+    """
+    now = time.time()
+    if now - float(_AOI_GOLD_ANGLE.get("t") or 0) < ttl:
+        return float(_AOI_GOLD_ANGLE.get("deg") or 0.0)
+    try:
+        import json as _json
+        import urllib.request as _ur
+        with _ur.urlopen("http://192.168.23.23:%d/region?grab=0" % port, timeout=4) as r:
+            d = _json.loads(r.read().decode("utf-8", "ignore"))
+        a = d.get("angle")
+        if a is None and isinstance(d.get("region"), dict):
+            a = d["region"].get("angle")
+        if a is not None and abs(float(a)) < 45.0:
+            _AOI_GOLD_ANGLE.update({"deg": float(a), "t": now, "src": "服务 /region 实测"})
+    except Exception as e:                                                    # noqa: BLE001
+        _AOI_GOLD_ANGLE["t"] = now      # 失败也记时间, 避免每帧都去试
+        _AOI_GOLD_ANGLE["src"] = "读失败(%s) ⇒ 沿用上次 %.3f°" % (str(e)[:40],
+                                                                float(_AOI_GOLD_ANGLE.get("deg") or 0))
+    return float(_AOI_GOLD_ANGLE.get("deg") or 0.0)
+
+
+def _aoi_frame(bgr, clean: bool = True, out: int = 900, quality: int = 78, natural: bool = False,
+               deskew_deg: float = 0.0, vstretch: float = 1.0):
     """工控机原图(BGR) → 判据图 JPEG。
 
     ⚠️ 色彩顺序坑: `aoi_exposure_fix.clean_judge_frame` 内部按 **RGB** 加权算灰度(过曝/边缘),
     喂它 BGR 会把红的过曝带判成别的 ⇒ **进出各转一次**; 传错的表现是"判据图偏色/裁错行"。
+
+    2026-09-28 老倪: 「金手指区域不是标准的长方体, 你的图像显示歪斜了, 要调整成矩形, 不能有角度」
+      · 根因1: clean_judge_frame 默认把细长条 **归一化到 out×out(正方形)** ⇒ 长宽比被破坏、
+               只有 2.75° 的机械倾角被竖向放大成肉眼很明显的斜纹。
+               ⇒ `natural=True` 走它的**原比例版** (return_natural), 保住长宽比。
+      · 根因2: 相机视角本身让金手指条在画面里带 ~2.75° 倾角 (服务 /region 的 angle)。
+               ⇒ `deskew_deg` 传实测角度, 这里按 -角度 反向旋转 ⇒ 裁出的区域**上下沿水平、左右边竖直**。
+               旋转用白底填充(金手指区背景是亮底), 避免黑角干扰判据。
     """
     img, meta = bgr, {}
     if clean:
         try:
             from aoi_exposure_fix import clean_judge_frame
-            clean_rgb, meta = clean_judge_frame(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), out=out)
+            _kw = {"out": out}
+            if natural:
+                _kw["return_natural"] = True
+            clean_rgb, meta = clean_judge_frame(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), **_kw)
             if clean_rgb is not None:
+                # 2026-09-28: return_natural 不改主返回值(它永远 resize 成 out×out 正方形),
+                #   而是把**原比例条带**放进 meta["natural"] ⇒ 要真比例就得用它。
+                if natural and isinstance(meta, dict) and meta.get("natural") is not None:
+                    clean_rgb = meta["natural"]
                 img = cv2.cvtColor(clean_rgb, cv2.COLOR_RGB2BGR)
+                if abs(float(deskew_deg)) > 0.05:
+                    h0, w0 = img.shape[:2]
+                    M = cv2.getRotationMatrix2D((w0 / 2.0, h0 / 2.0), -float(deskew_deg), 1.0)
+                    img = cv2.warpAffine(img, M, (w0, h0), flags=cv2.INTER_LINEAR,
+                                         borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255))
+                    meta = dict(meta or {})
+                    meta["deskew_deg"] = round(float(deskew_deg), 3)
+                # 2026-09-28 老倪: 「能再纵向拉伸成 3 倍长度么」—— 判据图是细长条(≈8:1),
+                #   纵向放大便于肉眼分辨金手指间距/缺陷; 只拉高不拉宽(横向比例不动)。
+                if abs(float(vstretch) - 1.0) > 0.01:
+                    _h1, _w1 = img.shape[:2]
+                    img = cv2.resize(img, (_w1, max(1, int(round(_h1 * float(vstretch))))),
+                                     interpolation=cv2.INTER_LINEAR)
+                    meta = dict(meta or {})
+                    meta["vstretch"] = float(vstretch)
             else:
                 meta = dict(meta or {})
                 meta["fallback"] = "自裁失败 → 退回原图(如实标注, 不硬裁一张错的)"
@@ -509,6 +569,40 @@ _AOI_AUTO_MIN_S = 60.0
 #   心跳(时刻)而不用引用计数: 客户端被强杀也不会泄漏计数 ⇒ 不会永久顶着重拍相机。
 _AOI_VIEW_TS = {}          # 帧槽名 → 最后一次被 MJPEG 客户端取帧的时刻
 _AOI_LIVE_WIN_S = 8.0      # 心跳在这么多秒内 ⇒ 认为"有人在看", 走实时触发模式
+
+
+def _aoi_detect(port: int = 10082, wait_s: float = 2.5) -> dict:
+    """触发工控机产线正常检测命令 POST /capture_detect, 并把判决取回来。
+
+    2026-09-28 老倪: 「增加一个请求按钮, 发出正常的检测命令, 工控机本地也可以保存图片」
+      · `/capture_detect` = 产线**正常检测那条命令**(相机拍照 + 后台 YOLO), 不是我们自造的接口;
+      · 工控机自己会落盘 incoming 原图(回执/判决里的 saved_incoming, 实测
+        `D:\AOI_images\gf\incoming\20260928_090231_003.png`) ⇒ "本地保存图片"这一条由它保证;
+      · 拍照+推理约 1.5~2s, 这里等 wait_s 再读 /last_result(读不到也如实说, 不编判决)。
+    """
+    import json as _json
+    import urllib.request as _ur
+    out = {"ok": False, "port": port, "cmd": "POST /capture_detect"}
+    try:
+        req = _ur.Request("http://192.168.23.23:%d/capture_detect" % port, data=b"", method="POST")
+        with _ur.urlopen(req, timeout=60) as r:
+            out["capture"] = _json.loads(r.read().decode("utf-8", "ignore"))
+        out["ok"] = True
+    except Exception as e:                                                        # noqa: BLE001
+        out["err"] = "触发检测失败: %s" % str(e)[:180]
+        return out
+    try:
+        time.sleep(max(0.0, float(wait_s)))
+        with _ur.urlopen("http://192.168.23.23:%d/last_result" % port, timeout=20) as r:
+            d = _json.loads(r.read().decode("utf-8", "ignore"))
+        out["last_result"] = d
+        out["saved_locally"] = d.get("saved_incoming") or ""
+        out["msg"] = ("✅ 检测完成: 判决 %s · 缺陷 %s 处 · 用时 %sms · 工控机本地存图 %s"
+                      % (d.get("verdict"), d.get("count"), d.get("ms"),
+                         d.get("saved_incoming") or "(未返回路径)"))
+    except Exception as e:                                                        # noqa: BLE001
+        out["err2"] = "取判决失败(检测可能仍在跑, 稍后看判决格): %s" % str(e)[:150]
+    return out
 
 
 def _aoi_auto_status() -> dict:
@@ -589,7 +683,11 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
         if code == 200 and raw:
             bgr = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
             if bgr is not None:
-                jpg, _meta = _aoi_frame(bgr, clean=clean)
+                # 2026-09-28: 金手指那格走"原比例 + 去倾角"(老倪: 要矩形、不能有角度)
+                _nat = (name == "aoi_gold")
+                _ds = _aoi_gold_angle() if _nat else 0.0
+                jpg, _meta = _aoi_frame(bgr, clean=clean, natural=_nat, deskew_deg=_ds,
+                                        vstretch=(3.0 if _nat else 1.0))
                 if jpg:
                     _put(name, jpg, time.time(), len(raw) / 1024.0)
                 if full_name and not full_kind:            # 整板缩图 (面板上可切换到这一张)
@@ -647,7 +745,7 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
         if _watching:
             _STOP.wait(0.01)          # 🔴 实时模式: 不等, 立刻下一轮(节奏 = OPT 取图耗时 0.6~0.7s/帧)
         else:
-            time.sleep(max(0.2, 1.0 / max(0.1, fps)) - (time.time() - t0))
+            time.sleep(max(0.05, max(0.2, 1.0 / max(0.1, fps)) - (time.time() - t0)))
 
 
 def _aoi_capture(port: int, name: str, timeout: float = 90.0) -> dict:
@@ -1374,7 +1472,7 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
   <section class="grid">
     <div class="panel"><div class="cap"><span class="ttl">🦾 机器人臂上 D405</span>
       <span class="meta" id="m_arm">…</span></div>
-      <img id="i_arm" data-mode="snap" data-src="/snapshot/arm.jpg" data-every="800"></div>
+      <img id="i_arm" data-mode="snap" data-src="/snapshot/overlay_arm.jpg" data-every="800"></div>
     <div class="panel"><div class="cap"><span class="ttl">💻 笔记本内置相机</span>
       <span class="meta" id="m_local">…</span></div>
       <img id="i_local" data-mode="snap" data-src="/snapshot/local.jpg" data-every="400"></div>
@@ -1393,6 +1491,29 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       <div class="note" id="n_aoi_gold" style="display:none"></div>
       <div class="row" style="padding:4px 10px 2px">
         <button onclick="shot(10082)">📸 拍一帧</button>
+        <button onclick="aoiDetect(10082)" style="font-weight:600">🔍 请求检测</button>
+        <span id="aoi_det_msg" style="margin-left:8px;font-size:12px;opacity:.85"></span>
+        <script>
+        /* 2026-09-28 老倪: 「增加一个请求按钮, 发出正常的检测命令, 工控机本地也可以保存图片」
+           走本服务 POST /api/aoi/detect → 转发工控机产线正常命令 POST /capture_detect
+           (相机拍照 + 后台 YOLO); 工控机自己把原图落盘(saved_incoming)。
+           结果整段 JSON 打在下面 <pre> 里 —— 可选中复制, 不弹窗、不截断。 */
+        async function aoiDetect(port){
+          const m=document.getElementById('aoi_det_msg'), o=document.getElementById('aoi_det_out');
+          m.textContent='⏳ 已发出检测命令, 等判决…'; o.style.display='block'; o.textContent='';
+          try{
+            const t0=performance.now();
+            const r=await fetch('/api/aoi/detect?port='+port,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+            const j=await r.json();
+            m.textContent=(j.ok===true?'✅ ':'❌ ')+(j.msg||j.err||j.err2||'见下方 JSON')
+                          +'  · 用时 '+((performance.now()-t0)/1000).toFixed(1)+'s';
+            o.textContent=JSON.stringify(j,null,1);
+          }catch(e){ m.textContent='❌ 请求失败: '+e; }
+        }
+        </script>
+        <pre id="aoi_det_out" style="display:none;margin:4px 10px 8px;padding:8px;max-height:220px;overflow:auto;
+             background:#0b1018;color:#cfe3ff;font-size:11px;line-height:1.45;border-radius:6px;
+             white-space:pre-wrap;word-break:break-all;user-select:text"></pre>
         <label class="arm" style="font-size:15px;color:#8b949e">
           <input type="checkbox" id="auto82" style="width:18px;height:18px" checked>
           <span>自动取景(没照片时现拍一张)</span></label></div></div>
@@ -1942,6 +2063,19 @@ class Handler(BaseHTTPRequestHandler):
                         if on else "🔒 已撤销授权: 现在点方向键只算目标, 机械臂不会动"})
         elif p in ("/ctl/move", "/api/ctl/move"):
             out = _ctl_move(body if isinstance(body, dict) else {})
+        elif p in ("/api/aoi/detect", "/aoi/detect"):
+            # 2026-09-28 老倪: 「增加一个请求按钮, 发出正常的检测命令, 工控机本地也可以保存图片」
+            #   发的是**产线正常检测命令** POST /capture_detect(触发相机拍照 + 后台 YOLO),
+            #   工控机自己会把 incoming 原图落盘(回执里的 saved_incoming) —— 这里只做转发,
+            #   再把判决(/last_result: verdict/count/defects/耗时)取回来给页面显示。
+            #   必须 POST(与点动同规矩): 预取/爬虫的 GET 绝不能触发产线相机拍照。
+            _port = 10082
+            if "port=" in self.path:
+                try:
+                    _port = int(self.path.split("port=")[1].split("&")[0])
+                except Exception:                                                # noqa: BLE001
+                    _port = 10082
+            out = _aoi_detect(_port)
         elif p in ("/api/aoi/capture", "/aoi/capture"):
             port = 10083
             for kv in (self.path.split("?", 1)[1] if "?" in self.path else "").split("&"):
@@ -2202,7 +2336,8 @@ def main():
         threading.Thread(target=_aoi_worker,
                          args=(10083, "aoi_surface", args.aoi_fps, "crop", False, True),
                          daemon=True, name="aoi-surface").start()
-        print(f"   🏭 工控机检测源: 10082 金手指(取原图→去死白判据图) + 10083 表面 "
+        print(f"   🏭 工控机检测源: 10082 金手指(原图→去死白→**原比例+去倾角+纵向3×**判据图, "
+              f"POST /capture_detect 可触发产线正常检测且工控机本地存图) + 10083 表面 "
               f"@≤{args.aoi_fps}Hz (只 GET 不触发拍照; 表面取 kind=crop = 模型看的规范图) "
               f"· 两路都推 MJPEG: /aoi_gold.mjpg · /aoi_surface.mjpg", flush=True)
     # ── 🕹 手动控制闸门 (双重: 这里 + 页面勾选) ──

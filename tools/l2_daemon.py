@@ -17,7 +17,8 @@ LOG = os.path.expanduser("~/zmax_data/l2_daemon.log")
 # 原子技能注册表路径 (v5.11.1 热加载引入 REG_PATH, 当时漏了这行定义 -> NameError 起不来)
 REG_PATH = os.path.join(REPO, "data/skills/l2_atomic/registry.json")
 PRE = ("source /opt/ros/humble/setup.bash; for ws in /home/tashan/0810/*/install/setup.bash; "
-       "do [ -f \"$ws\" ] && source \"$ws\" && break; done; export ROS_DOMAIN_ID=0; ")
+       "do [ -f \"$ws\" ] && source \"$ws\" && break; done; export ROS_DOMAIN_ID=0; "
+      "export FASTDDS_BUILTIN_TRANSPORTS=UDPv4; export ROS_LOCALHOST_ONLY=0; ")
 
 _pose = {"p": None, "q": None, "t": 0.0}
 
@@ -34,9 +35,24 @@ def _pose_direct(timeout=10):
     到位被误判("未到位"中止, 而臂其实正在走到位)。所以守卫的 Δ 与"等到位"一律直读话题,
     常驻缓存只当兜底 —— 这也是 memory 里那条"中转 state 流是缓存旧值须直读 topic"的代码化。
     """
+    # 2026-09-28 现场修: /robot/tcp_pose 的 DDS 端点已死(机器人栈 2026-09-27 20:52 起的参与者
+    # 在 06:22 时钟重同步后不再通告端点, 任何新订阅者 0 帧) ⇒ 执行器一直"位姿读不到"而拒发所有技能。
+    # 现改为**优先读 ROKAE SDK 直采文件**(绕开 DDS, 5Hz, 口径 endInRef, 2026-09-21 实测与话题逐位一致),
+    # 话题直读作兜底。文件龄 >10s 视为失效(不拿旧值当实时位姿)。
+    try:
+        import json as _json
+        _fp = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/latest.json")
+        if os.path.exists(_fp) and (time.time() - os.path.getmtime(_fp)) < 10.0:
+            _d = _json.load(open(_fp, encoding="utf-8"))
+            _v7 = [float(_d.get(k) or 0.0) for k in ("x", "y", "z", "qx", "qy", "qz", "qw")]
+            if any(abs(_v7[i]) > 1e-6 for i in range(3)):
+                return _v7
+    except Exception as e:                                                   # noqa: BLE001
+        log("SDK 直读位姿失败(退回话题): %s" % str(e)[:80])
     try:
         r = subprocess.run(["sudo", "docker", "exec", CONTAINER, "bash", "-lc",
                             "source /opt/ros/humble/setup.bash; export ROS_DOMAIN_ID=0; "
+                            "export FASTDDS_BUILTIN_TRANSPORTS=UDPv4; export ROS_LOCALHOST_ONLY=0; ",
                             "timeout 6 ros2 topic echo --once /robot/tcp_pose --field pose"],
                            capture_output=True, text=True, timeout=timeout)
     except Exception as e:                                                   # noqa: BLE001

@@ -1426,7 +1426,7 @@
    "y": 120,
    "icon": "🧭",
    "params": {
-    "desc": "[数据源层·能力档位] 双击循环切换: L2 基础(插装成功) → L3 +smolvla(插→拔→AOI→放回全链) → L4 +流形预测世界模型(失败自主恢复直到完成)。档位驱动 ▶运行任务链配置。",
+    "desc": "[数据源层·能力档位] 单击圆钮直选 / 双击循环: L2 基础(插装成功) → L3 +smolvla(插→拔→AOI→放回全链) → L4 +流形预测世界模型(失败自主恢复直到完成) → L5 大模型视觉语言自动标注(L2/L3/L4 监督数据) + 标注完成自动启动训练(L2 YOLO 全量 / L3 SmolVLA LoRA / L4 INTACT LoRA→merge)。档位驱动 ▶运行 任务链。",
     "state_space": true,
     "cap_level": "L2",
     "cap_switch": true
@@ -2042,6 +2042,36 @@
    "outputs": [
     "out1"
    ]
+  },
+  {
+   "id": "ss_l5",
+   "type": "model",
+   "name": "🧿 L5 · 视觉语言自动标注 → L2/L3/L4 监督 → 自动训练",
+   "icon": "🧿",
+   "color": "#a371f7",
+   "x": 300,
+   "y": 554,
+   "w": 430,
+   "h": 132,
+   "inputs": [
+    "in1"
+   ],
+   "outputs": [
+    "out1",
+    "out2",
+    "out3"
+   ],
+   "actions": [],
+   "params": {
+    "state_space": true,
+    "l5_loop": true,
+    "l5_capability_level": true,
+    "orchestrator": "tools/l5_annotate_train_loop.py",
+    "annotator": "tools/auto_annotate.py",
+    "trainer": "tools/joint_train_all.py",
+    "lora_inject": "tools/lora_inject.py",
+    "lora_merge": "tools/merge_lora_ckpt.py"
+   }
   }
  ],
  "links": [
@@ -3377,6 +3407,38 @@
    "f_port": "out1",
    "t_port": "in2",
    "label": "真实场景 + sim2real 映射 → 引擎同步"
+  },
+  {
+   "id": "lkl5_01",
+   "f": "ssdata",
+   "t": "ss_l5",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "6 路实拍/环境帧 → 视觉语言自动标注"
+  },
+  {
+   "id": "lkl5_02",
+   "f": "ss_l5",
+   "t": "ss_lora_l4",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "L5 监督标注数据 → L4 INTACT LoRA 微调"
+  },
+  {
+   "id": "lkl5_03",
+   "f": "ss_l5",
+   "t": "ss_lora_l3",
+   "f_port": "out2",
+   "t_port": "in1",
+   "label": "L5 监督标注数据 → L3 SmolVLA LoRA 微调"
+  },
+  {
+   "id": "lkl5_04",
+   "f": "ss_l5",
+   "t": "ssyolo",
+   "f_port": "out3",
+   "t_port": "in1",
+   "label": "L5 监督标注数据 → L2 YOLO 检测 (全量训练)"
   }
  ],
  "params_note": ""
