@@ -79,6 +79,10 @@ def _fetch_annotated(cam: str):
 
 JUDGEABLE = ("vlm", "meas", "det", "sim")          # 可判: 物体框
 PROTECTED = ("trace", "plan", "l5corners")         # 不可判: 轨迹/参考点/规划线/角点(叠加注记, 不是物体)
+AUTO_APPLY = ("vlm",)                              # 只有 vlm 层是 L5 自己的地盘 ⇒ 直接改
+#   meas(实测3D几何)/sim(画布语义)/det(检测器) ⇒ L5 只能**提案**(记台账给人看), 不可自动删改 ——
+#   理由: 2D 视觉模型不该有权抹掉传感器实测的几何(老倪: 「哪里不对由 L5 负责」是**判定**, 不等于
+#   让 L5 去删掉别人用真数据量出来的东西)。
 
 
 def inventory(spec: dict, cam: str) -> list:
@@ -142,8 +146,12 @@ def apply_verdict(cam: str, v: dict) -> dict:
     cam_obj = spec["cameras"][cam]
     dels = set((spec.setdefault("deleted", {})).setdefault(cam, []) or [])
     n_junk = n_fix = n_miss = 0
-    junk_ids = {str(x.get("id")) for x in (v.get("junk") or []) if x.get("id")}
-    fix_by_id = {str(x.get("id")): x for x in (v.get("fix") or []) if x.get("id")}
+    def _auto(bid):
+        return bid.split("|")[0] in AUTO_APPLY
+    junk_ids = {str(x.get("id")) for x in (v.get("junk") or [])
+                if x.get("id") and _auto(str(x.get("id")))}
+    fix_by_id = {str(x.get("id")): x for x in (v.get("fix") or [])
+                 if x.get("id") and _auto(str(x.get("id")))}
     keep, add = [], []
     for b in (cam_obj.get("boxes") or []):
         bid = "%s|%s" % (b.get("origin"), b.get("label"))
@@ -153,12 +161,12 @@ def apply_verdict(cam: str, v: dict) -> dict:
             f = fix_by_id[bid]
             nb = [float(t) for t in (f.get("box") or [])][:4]
             if len(nb) == 4:
-                if str(b.get("origin")) in PROTECTED:
-                keep.append(b); continue
-            b = dict(b); b["box"] = nb
+                b = dict(b)
+                b["box"] = nb
                 if f.get("label"):
                     b["label"] = str(f["label"])
-                b["corrected_by"] = "l5"; b["why"] = str(f.get("why"))[:160]
+                b["corrected_by"] = "l5"
+                b["why"] = str(f.get("why"))[:160]
                 n_fix += 1
         keep.append(b)
     for m in (v.get("missing") or []):
@@ -174,7 +182,10 @@ def apply_verdict(cam: str, v: dict) -> dict:
     cam_obj["boxes"] = keep + add
     spec["deleted"][cam] = sorted(dels)
     SO.save_spec(spec)
+    props = [x for x in (v.get("junk") or []) if x.get("id") and not _auto(str(x.get("id")))] + \
+            [x for x in (v.get("fix") or []) if x.get("id") and not _auto(str(x.get("id")))]
     return {"applied": n_junk + n_fix + n_miss, "junk": n_junk, "fix": n_fix, "missing": n_miss,
+            "proposals": [{"id": str(p.get("id")), "why": str(p.get("why"))[:120]} for p in props][:12],
             "ok_ids": len(v.get("ok") or []), "deleted_now": sorted(dels)[-6:]}
 
 
