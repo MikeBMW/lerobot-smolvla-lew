@@ -300,7 +300,11 @@ def main() -> int:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         print("[%s] 降级裁决已落盘(seq=%s): %s" % (rec["ts_str"], seq, why), flush=True)
 
-    ct = float(os.environ.get("ZMAX_VL_CYCLE_TIMEOUT_S", "150"))
+    # ⏱ 单轮上限: 文件头写"VL 单次 40~150s", 但**带 2x2 拼图的实际单轮实测 137~168s**
+    #   (2026-09-28 现场: 137/154/158.6/168s) ⇒ 默认 150s 会每轮都判"卡住"落降级裁决,
+    #   把一个"慢但正常"的 VL 说成"未给出裁决", 现场看到的就是莫名其妙的"从严当不安全"。
+    #   取值与调用方口径对齐 (l2_daemon VL_INTENT_WAIT_S=300 / 记忆: DeepSeek 单次 29~137s)。
+    ct = float(os.environ.get("ZMAX_VL_CYCLE_TIMEOUT_S", "300"))
     while True:
         box = {}
 

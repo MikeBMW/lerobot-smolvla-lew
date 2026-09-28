@@ -52,8 +52,18 @@ local_up() {
   echo "=== 拉本机进程 ==="
   # 推流服务(8791 看板 + 8793 工位总览)
   if ! pgrep -f "[c]am_live_stream.py --port 8791" >/dev/null; then
+    # 🚨 2026-09-28 现场根因(别再用写死的 2/0): 本机 video2 是笔记本相机的 **GREY(IR) 那一路**,
+    #    没红外照明时整幅近黑(实测 mean=6/median=0)。VL 安全闸把 "local" 当**笔记本相机(全局)**:
+    #    快反射层判『遮挡/糊化』⇒ **所有运动类原子技能一律拒发** (老倪:「原子技能又不好使了」)。
+    #    video0 = 同一台相机的 MJPG 彩色路(实测 mean=112/Lap=260), video4 = MAXHUB 顶视。
+    #    ⇒ 设备号一律按 **卡名+能力** 解析 (tools/cam_dev_resolve.py), 重启换号也不会再错。
+    _devs=$(python3 "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null)
+    _ld=$(printf '%s\n' "$_devs" | sed -n 's/^LOCAL=//p');  [ -n "$_ld" ] || _ld=0
+    _l2=$(printf '%s\n' "$_devs" | sed -n 's/^LOCAL2=//p'); [ -n "$_l2" ] || _l2=-1
+    [ "$_l2" = "0" ] && _l2=-1          # 别让两路撞同一台设备(会被独占打不开)
+    echo "  · 相机映射: local=/dev/video$_ld (笔记本彩色) · local2=/dev/video$_l2 (MAXHUB 顶视)"
     nohup $PY tools/cam_live_stream.py --port 8791 --station-port 8793 --quality 72 --fps 30 \
-      --arm-http http://192.168.23.66:8792/frame.jpg --arm-fps 30 --local-dev 2 --local2-dev 0 \
+      --arm-http http://192.168.23.66:8792/frame.jpg --arm-fps 30 --local-dev "$_ld" --local2-dev "$_l2" \
       --depth-fps 4 --aoi-fps 1.0 --ctl-motion --overlay --overlay-src all --overlay-fps 10 \
       > /tmp/cam_live_stream.out 2>&1 &
     echo "  ✓ 起了推流服务"

@@ -849,8 +849,9 @@ def dispatch(reg, spec, chan):
         log("DRY-RUN %s → %s" % (sid, call[:220]))
         return "DRY-RUN(未下发): %s" % call[:170]
     if not chan_send(call, _intent_desc(sid, dx, dy, dz)):
-        log("🛑 下发被拦(见上一条: 命令通道不可用 或 VL 安全闸拒发)")
-        return "🛑 下发失败: 命令通道不可用 或 VL 安全闸拒发(见日志)"
+        _bm = _block_msg()
+        log(_bm)
+        return _bm
     log("已下发 %s -> %s · Δ=(%+.1f,%+.1f,%+.1f)mm %s"
         % (sid, (spec.get("d_mm", spec.get("force", spec.get("point", "")))), dx, dy, dz, _dir))
     return "已下发"
@@ -1023,6 +1024,24 @@ def _vl_operator_auth(action: str, consume: bool = True):
     return a
 
 
+# 🗣 被拦原因要能一句话说清 (2026-09-28 老倪: 「都不知道发出了没有」+「要在下面的终端反馈问题」):
+#   旧文案"A 或 B(见日志)"界面读不出到底为什么 ⇒ 受理行现在原样带出**哪一层闸 + 为什么**。
+_LAST_BLOCK: dict = {}
+
+
+def _note_block(layer: str, why: str):
+    """记下"最近一次被拦"的层与原因 (由 dispatch 的受理行带出去给界面底部终端)"""
+    _LAST_BLOCK.clear()
+    _LAST_BLOCK.update({"layer": layer, "why": str(why), "ts": time.time()})
+
+
+def _block_msg() -> str:
+    """给上层(界面/底部终端)看的一句话: 被谁拦的 + 为什么"""
+    if _LAST_BLOCK and (time.time() - float(_LAST_BLOCK.get("ts") or 0)) < 60:
+        return "🛑 被拦(%s): %s" % (_LAST_BLOCK.get("layer"), _LAST_BLOCK.get("why"))
+    return "🛑 被拦: 命令通道不可用(自动重建后仍失败) — 看日志「🩹 命令通道」"
+
+
 def _vl_gate_blocks(call: str) -> bool:
     """True = 拦住这条下发。"""
     c = call or ""
@@ -1040,6 +1059,7 @@ def _vl_gate_blocks(call: str) -> bool:
                 % (c[:70], a.get("by"), a.get("note"), a.get("used"), a.get("max_uses"), a.get("ttl_s"), why))
             return False
         log(why)
+        _note_block("慢层·VL 判断", why)
         return True
 
     try:
@@ -1062,14 +1082,17 @@ def _vl_gate_blocks(call: str) -> bool:
         fage = time.time() - float(f.get("ts") or 0)
         if fage > _fresh:
             log("🛡 VL 安全闸(快层): 反射层裁决过期 %.1fs > %.0fs ⇒ 拒发; 确认 vl_safety_fast 在跑" % (fage, _fresh))
+            _note_block("快层·本地反射(5Hz)", "反射层裁决过期 %.1fs > %.0fs ⇒ 拒发; 确认 vl_safety_fast 在跑" % (fage, _fresh))
             return True
         if not f.get("safe"):
             log("🛡 VL 安全闸(快层): **遮挡/糊化**(%s): %s ⇒ 拒发(本地检测, 亚秒级)"
                 % (f.get("unsafe_cams"), f.get("why")))
+            _note_block("快层·本地反射(5Hz)", "遮挡/糊化 %s: %s" % (f.get("unsafe_cams"), f.get("why")))
             return True
         log("🛡 VL 安全闸(快层): 放行 (裁决 %.1fs 前 · 纹理正常无遮挡)" % fage)
     except Exception as e:                                              # noqa: BLE001
         log("🛡 VL 安全闸(快层): 反射层裁决缺失(%s) ⇒ 从严拒发" % str(e)[:60])
+        _note_block("快层·本地反射(5Hz)", "反射层裁决缺失(%s) ⇒ 从严拒发" % str(e)[:60])
         return True
     log("🛡 VL 安全闸: 放行 (risk=%s · 裁决 %.0fs 前 · %s)" % (d.get("risk_level"), age, d.get("image")))
     return False
@@ -1085,6 +1108,7 @@ def chan_send(call, intent_desc=None):
     #   被当成"臂运动" ⇒ 走"告知VL+等针对该动作的裁决"分支 ⇒ 等不到就**挂住**;
     #   而执行器是单线程 ⇒ 挂住期间后续任何技能全部排队不动(表现为"点了没反应")。
     #   夹爪不属于臂运动(位置 Δ=0) ⇒ 免意图等待; 仍走下面的 VL 闸门(快层反射强制, fail-closed 不变)。
+    _LAST_BLOCK.clear()          # 每条下发重新判定 —— 别把上一条的"被拦原因"带过来
     _is_grip = bool(intent_desc) and ("gripper" in call or "L2.grip_" in call or "grip_open" in call or "grip_close" in call)
     if _is_grip:
         log("🎯 夹爪类动作 ⇒ 免意图等待(非臂运动), 仍过快层反射闸门: %s" % intent_desc)
@@ -1097,6 +1121,8 @@ def chan_send(call, intent_desc=None):
             if not _vl_wait_intent(_seq, intent_desc):
                 log("🛡 VL 安全闸: %.0fs 内未等到针对本次动作的裁决 ⇒ 从严拒发(绝不拿旧裁决放行新动作)"
                     % VL_INTENT_WAIT_S)
+                _note_block("慢层·VL 判断", "%.0fs 内未等到针对本次动作的裁决 ⇒ 从严拒发(裁决 seq=%s 未更新)"
+                            % (VL_INTENT_WAIT_S, _seq))
                 return False
     if _vl_gate_blocks(call):
         return False

@@ -68,38 +68,56 @@ def alive():
     return False
 
 
-def send(spec):
-    """写 FIFO 给常驻执行器"""
-    if not alive():
-        return "✗ 执行器未跑 — 先启动 tools/" + DAEMON_NAME
-    if not os.path.exists(FIFO):
-        return "✗ FIFO 缺失: " + FIFO
+def _read_new(n0):
+    """读执行器日志 n0 字节之后的新行"""
     try:
-        n0 = os.path.getsize(LOG)
-    except Exception:
-        n0 = 0
-    with open(FIFO, "w", encoding="utf-8") as f:
-        f.write(json.dumps(spec, ensure_ascii=False) + "\n")
-    # 回读执行器响应 (老倪 09-19: 要看到"返回的 JSON 数据", 不是只显示已下发)
-    resp = ""
+        with open(LOG, encoding="utf-8", errors="ignore") as f:
+            f.seek(n0)
+            return [x.strip() for x in f.read().splitlines() if x.strip()]
+    except Exception:                                                       # noqa: BLE001
+        return []
+
+
+def log_size():
+    try:
+        return os.path.getsize(LOG)
+    except Exception:                                                       # noqa: BLE001
+        return 0
+
+
+def send_nowait(spec):
+    """写 FIFO 给常驻执行器, **立即返回**, 不等回执 —— 返回 (ok, msg, n0)。
+
+    🐛 2026-09-28 老倪: 「都不知道发出了没有, 用户对技能的使用没感觉」。
+    旧版在这里**死等 8s** 回读日志; 而执行器下发前要过 VL 安全闸(动辄十几~上百秒) ⇒
+    8s 内什么都没有 → 界面只写一行"(未回读, 看 l2_daemon.log)" ⇒ 点完等于没反馈。
+    现在: 立刻回"已下发", 回执/被拦原因由 _watch_reply 后台补打(不卡界面)。
+    """
+    n0 = log_size()
+    if not alive():
+        return False, "✗ 执行器未跑 — 先启动 tools/" + DAEMON_NAME, n0
+    if not os.path.exists(FIFO):
+        return False, "✗ FIFO 缺失: " + FIFO, n0
+    try:
+        with open(FIFO, "w", encoding="utf-8") as f:
+            f.write(json.dumps(spec, ensure_ascii=False) + "\n")
+    except Exception as e:                                                  # noqa: BLE001
+        return False, "✗ 写 FIFO 失败: %s" % e, n0
+    return True, "✓ 已下发到执行器 (等回执…)", n0
+
+
+def send(spec):
+    """兼容旧调用: 写 FIFO + 死等 8s 回读 (界面已改用 send_nowait + 后台轮询)"""
+    ok, msg, n0 = send_nowait(spec)
+    if not ok:
+        return msg
     t0 = time.time()
     while time.time() - t0 < 8:
         time.sleep(0.4)
-        try:
-            with open(LOG, encoding="utf-8", errors="ignore") as f:
-                f.seek(n0)
-                lines = [x.strip() for x in f.read().splitlines() if x.strip()]
-        except Exception:
-            lines = []
-        for x in reversed(lines):
-            if ("受理:" in x) or x.startswith("[") and ("HTTP" in x):
-                resp = x
-                break
-        if resp:
-            break
-    out = "→ 下发: " + json.dumps(spec, ensure_ascii=False)
-    out += ("\n← 执行器: " + resp) if resp else ("\n← 执行器: (未回读, 看 " + os.path.basename(LOG) + ")")
-    return out
+        for x in reversed(_read_new(n0)):
+            if "受理:" in x:
+                return msg + "\n← 执行器: " + x
+    return msg + "\n← 执行器: (8s 内未回执, 看 " + os.path.basename(LOG) + ")"
 
 
 class L2SkillDialog(QDialog):
@@ -297,11 +315,15 @@ class L2SkillDialog(QDialog):
                 spec[k0] = self.combo.currentText()
             else:
                 spec[k0] = float(self.spin.value())
+        self._echo("→ 已收到点击: %s · %s" % (s.get("id"), json.dumps(spec, ensure_ascii=False)))
+        self._echo("   " + self._safety_line())      # 下发前先把安全闸现状摆出来(能不能动的依据)
         try:
-            msg = send(spec)
-        except Exception as e:
-            msg = "✗ %s" % e
-        self.out.appendPlainText("[%s] %s" % (time.strftime("%H:%M:%S"), msg))
+            ok, msg, _n0 = send_nowait(spec)
+        except Exception as e:                                                  # noqa: BLE001
+            ok, msg, _n0 = False, "✗ %s" % e, log_size()
+        self._echo(msg)
+        if ok:
+            self._watch_reply(_n0, str(s.get("id")))
         if _is_aoi:
             # 🛠 2026-09-23: 只有**触发检测类**才提示"判决不回传" (看图类不提示, 免得刷屏分不清)
             if str(s.get("id")) in ("L2.aoi_gold", "L2.aoi_surface"):
@@ -309,6 +331,72 @@ class L2SkillDialog(QDialog):
                                          "或工控机终端" % time.strftime("%H:%M:%S"))
             _u, _lab = self._skill_image_url(s)
             self._refresh_image(url=_u, label=_lab)   # 图像类=自己的URL; 触发/判决类=同通道 /picture?kind=crop
+
+    # ── 下面的终端: 点完必须有反馈 (2026-09-28 老倪: 「都不知道发出了没有, 用户对技能的使用没感觉」) ──
+    def _echo(self, line):
+        """打到底部终端, 并同步到 studio 的底部日志栏 (两处都留痕, 他不用猜)"""
+        try:
+            self.out.appendPlainText("[%s] %s" % (time.strftime("%H:%M:%S"), line))
+        except Exception:                                                   # noqa: BLE001
+            pass
+        try:
+            _f = getattr(self.parent(), "_log", None)
+            if callable(_f):
+                _f("💪 " + str(line))
+        except Exception:                                                   # noqa: BLE001
+            pass
+
+    def _safety_line(self):
+        """安全闸现状一行 (快层=本地反射 5Hz · 慢层=DeepSeek VL 常驻)。
+        这一行就是"为什么技能不动"的直接依据 (老倪: 有问题要在下面的终端反馈)。"""
+        def _rd(rel):
+            try:
+                return json.loads(open(os.path.expanduser(rel), encoding="utf-8").read())
+            except Exception:                                               # noqa: BLE001
+                return {}
+
+        def _one(d, lab):
+            if not d:
+                return "%s: 无裁决(fail-closed)" % lab
+            age = max(0, int(time.time() - float(d.get("ts") or 0)))
+            if d.get("safe"):
+                return "%s ✓放行(%ds前)" % (lab, age)
+            _ex = str(d.get("unsafe_cams") or "")
+            return "%s ✗拒发(%ds前): %s%s" % (lab, age, str(d.get("why") or "")[:48],
+                                              (" ·" + _ex) if _ex else "")
+
+        return "安全闸 " + _one(_rd("~/zmax_data/vl_safety_fast.json"), "快层") + " · " \
+            + _one(_rd("~/zmax_data/vl_safety.json"), "慢层")
+
+    def _watch_reply(self, n0, sid):
+        """后台轮询执行器日志, 把回执/被拦原因补打到下面的终端 (不卡界面)。"""
+        self._w = {"n0": n0, "t0": time.time(), "sid": sid, "done": False, "seen": []}
+        if not hasattr(self, "_wtmr"):
+            self._wtmr = QTimer(self)
+            self._wtmr.setInterval(800)
+            self._wtmr.timeout.connect(self._poll_reply)
+        self._wtmr.start()
+
+    def _poll_reply(self):
+        w = getattr(self, "_w", None)
+        if not w or w.get("done"):
+            return
+        for x in _read_new(w["n0"]):
+            if x in w["seen"]:
+                continue
+            w["seen"].append(x)
+            # 闸门/通道/目标行 = "为什么"; 受理行 = 最终结果 —— 都打出来
+            self._echo("← " + x[:180])
+        if any("受理:" in x for x in w["seen"]):
+            w["done"] = True
+            self._wtmr.stop()
+            if any("被拦" in x or "拒发" in x or "拒绝" in x for x in w["seen"]):
+                self._echo("   ↑ 这一条就是「技能没动」的原因 · 现状: " + self._safety_line())
+            return
+        if time.time() - w["t0"] > 90:
+            self._echo("… 90s 没等到回执 (执行器可能在等安全裁决或排队) · 现状: " + self._safety_line())
+            w["done"] = True
+            self._wtmr.stop()
 
     def _skill_image_url(self, s):
         """按技能推断该显示哪张图 (老倪: 表面检测也要能看到图)。
