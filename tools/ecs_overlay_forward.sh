@@ -126,7 +126,7 @@ apply_ecs_vhost() {
 import io,os
 p='$VHOST'; s=io.open(p,encoding='utf-8',errors='replace').read()
 blk='''$MARK_BEGIN
-  location ${PREFIX} {
+  location ^~ ${PREFIX} {               # ^~ 必须: 否则被宝塔的 .jpg/.png 正则 location 抢走(图片路径 404)
       proxy_pass http://127.0.0.1:${REMOTE_PORT}/;
       proxy_http_version 1.1;
       proxy_set_header Host \$host;
