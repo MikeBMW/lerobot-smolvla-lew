@@ -752,7 +752,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.16.18")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.16.19")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -1396,7 +1396,7 @@ class HardwareCard(QFrame):
         v.setContentsMargins(24, 20, 24, 20)
         v.setSpacing(14)
         head = QHBoxLayout()
-        t = QLabel("🖥 硬件资源  4060（本机）")
+        t = QLabel("🖥 硬件资源")
         t.setStyleSheet(f"color:{C_WHITE};font-size:34px;font-weight:700;border:none")
         self.lb_ts = QLabel("采样中…")
         self.lb_ts.setStyleSheet(f"color:{C_GRAY};font-size:18px;border:none")
@@ -1404,6 +1404,19 @@ class HardwareCard(QFrame):
         head.addStretch()
         head.addWidget(self.lb_ts)
         v.addLayout(head)
+
+        # 🖥 2026-09-29 老倪「不要用那么多文字来表达, 换成状态条 / 圆环百分比 / 红绿灯指示灯,
+        #   重新设计 UI 参考 CANoe hardware(Vector Hardware Manager), 4060 放到最底下」
+        #   ⇒ 文本标签全部隐藏(仍继续采集, 只作 tooltip/复制用), 主区换成自绘控件:
+        #   设备灯带(本机 4060 排最后) + 4 个圆环(GPU/显存/CPU/内存) + 4 条状态条(磁盘/温度/功耗/吞吐)。
+        try:
+            from hw_widgets import HwVisual
+            self._visual = HwVisual()
+        except Exception as _e:                                                 # noqa: BLE001
+            self._visual = None
+            print("[hw] HwVisual 不可用: %r" % (_e,))
+        if self._visual is not None:
+            v.addWidget(self._visual)
 
         self.lb_gpu = QLabel("—")
         self.lb_cpu = QLabel("—")
@@ -1419,6 +1432,9 @@ class HardwareCard(QFrame):
             self.btn_refresh.clicked.connect(lambda: (setattr(self, "_src_cache", None), self.refresh()))
         except Exception:                                                       # noqa: BLE001
             self.btn_refresh = None
+        self.btn_copy = QPushButton("📋 复制参数")
+        self.btn_copy.setToolTip("把本机/远端全部硬件参数复制成纯文本(可粘到邮件/文档)")
+        self.btn_copy.clicked.connect(self.copy_params)
         self.btn_dds = QPushButton("📡 启动本机 DDS 发布")
         self.btn_dds.setToolTip("在本机启动 DDS 节点(发布 4060 硬件/训练进度, 订阅部署指令)")
         self.btn_dds.clicked.connect(self.start_local_dds)
@@ -1437,15 +1453,18 @@ class HardwareCard(QFrame):
             #   修法: 换行 + 把最小宽夹到 1px(布局不再被 sizeHint 绑架, 文字自己折行)。
             lb.setWordWrap(True)
             lb.setMinimumWidth(1)
+            lb.setVisible(False)          # 🖥 2026-09-29: 文字行退居 tooltip/复制, 版面交给可视化控件
             v.addWidget(lb)
         self.lb_nodes.setStyleSheet(f"color:{C_GRAY};font-size:24px;border:none;line-height:150%")
         self.lb_nodes.setWordWrap(True)
         self.lb_nodes.setMinimumWidth(1)
+        self.lb_nodes.setVisible(False)
         v.addWidget(self.lb_nodes)
         self.lb_remote.setStyleSheet(f"color:{C_CYAN};font-size:28px;border:none")
         self.lb_remote.setTextFormat(Qt.RichText) if hasattr(Qt, "RichText") else None
         self.lb_remote.setWordWrap(True)
         self.lb_remote.setMinimumWidth(1)
+        self.lb_remote.setVisible(False)
         v.addWidget(self.lb_remote)
         self.lb_src.setStyleSheet(f"color:{C_DIM};font-size:20px;border:none")
         self.lb_src.setWordWrap(True)
@@ -1459,6 +1478,11 @@ class HardwareCard(QFrame):
                 f"border-radius:6px;padding:3px 10px;font-size:11px}}"
                 f"QPushButton:hover{{color:{C_WHITE};border-color:{C_BLUE}}}")
             row.addWidget(self.btn_refresh)
+        self.btn_copy.setStyleSheet(
+            f"QPushButton{{background:{C_BG2};color:{C_GRAY};border:1px solid {C_BORDER};"
+            f"border-radius:6px;padding:3px 10px;font-size:11px}}"
+            f"QPushButton:hover{{color:{C_WHITE};border-color:{C_BLUE}}}")
+        row.addWidget(self.btn_copy)
         row.addWidget(self.btn_dds)
         v.addLayout(row)
 
@@ -1551,6 +1575,10 @@ class HardwareCard(QFrame):
         再由 GUI 线程的 refresh() 一次性贴上 (零 I/O)。
         """
         out = {}
+        # 🖥 2026-09-29 老倪「不要用那么多文字, 要状态条/圆环百分比/红绿灯」——
+        #    这里同时产出**数值指标**(m)给自绘控件 hw_widgets.HwVisual, 文本标签只留作 tooltip/复制。
+        m = {}
+        devs = []
 
         class _Rec:
             __slots__ = ("k",)
@@ -1575,6 +1603,14 @@ class HardwareCard(QFrame):
             if g and "," in g:
                 p = [x.strip() for x in g.split(",")]
                 mem_pct = (100.0 * float(p[2]) / float(p[3])) if p[3] and float(p[3]) > 0 else 0
+                m.setdefault("local", {}).update(gpu_name=p[0], gpu_util=float(p[1]), vram_pct=mem_pct,
+                         vram_used_mb=float(p[2]), vram_total_mb=float(p[3]),
+                         gpu_temp=float(p[4]), gpu_power=float(p[5]))
+                _pl = self._sh("nvidia-smi --query-gpu=power.limit --format=csv,noheader,nounits")
+                try:
+                    m["local"]["gpu_power_limit"] = float(_pl.split("\n")[0].strip())  # 功耗条分母=真实限值
+                except Exception:                                               # noqa: BLE001
+                    pass
                 self.lb_gpu.setText(
                     f"🎮 <b>GPU</b> {p[0]} &nbsp; 利用率 <b>{p[1]}%</b> · "
                     f"显存 <b>{p[2]}/{p[3]} MB</b> ({mem_pct:.0f}%) · "
@@ -1592,6 +1628,7 @@ class HardwareCard(QFrame):
             time.sleep(0.12)
             t1, i1 = _snap()
             cpu_pct = 100.0 * (1 - (i1 - i0) / max(1, t1 - t0))
+            m.setdefault("local", {}).update(cpu_pct=cpu_pct, cpu_cores=os.cpu_count())
             la = open("/proc/loadavg").read().split()
             self.lb_cpu.setText(f"🧠 <b>CPU</b> <b>{cpu_pct:.1f}%</b> · {os.cpu_count()} 核 · "
                                 f"load {la[0]}/{la[1]}/{la[2]}")
@@ -1602,12 +1639,17 @@ class HardwareCard(QFrame):
                 k = ln.split(":")[0]
                 mi[k] = int(ln.split()[1]) / 1048576.0
             tot, av = mi.get("MemTotal", 0), mi.get("MemAvailable", 0)
+            m.setdefault("local", {}).update(mem_total_gb=tot, mem_used_gb=tot - av,
+                                             mem_pct=(100.0 * (tot - av) / tot) if tot else None)
             self.lb_mem.setText(f"💾 <b>内存</b> <b>{tot - av:.1f}/{tot:.1f} GB</b> "
                                 f"({100 * (tot - av) / max(tot, 1):.0f}%) · 可用 {av:.1f} GB")
 
             # ── 磁盘 ──
             try:
                 du = shutil.disk_usage("/")
+                m.setdefault("local", {}).update(disk_pct=100.0 * du.used / du.total,
+                                                 disk_free_gb=du.free / 1073741824.0,
+                                                 disk_total_gb=du.total / 1073741824.0)
                 self.lb_disk.setText(f"🗄 <b>磁盘</b> <b>{du.free / 1073741824:.1f}/{du.total / 1073741824:.1f} GB 可用</b>"
                                      f"（已用 {100.0 * du.used / du.total:.0f}%）")
             except Exception:                                                   # noqa: BLE001
@@ -1629,6 +1671,8 @@ class HardwareCard(QFrame):
                 if best:
                     sps = (f" · 实测 <b>{best['sps']} 步/s</b>（{int(best['sps'] * 3600)} 步/小时）"
                            f" · 训练{'进行中' if best.get('running') else '已停'}")
+                    m.setdefault("local", {}).update(sps=float(best.get("sps") or 0),
+                                                     training=bool(best.get("running")))
             except Exception:                                                       # noqa: BLE001
                 pass
             self.lb_thr.setText(f"⚡ <b>算力</b>{sps or ' —（暂无近期训练吞吐）'}")
@@ -1648,6 +1692,10 @@ class HardwareCard(QFrame):
                             continue
                         tone = ("⚠️ 停%s" % v.get("age_s")) if v.get("stale") else ("在线%s" % v.get("age_s"))
                         be = (h2.get("backend") or "?").upper()
+                        devs.append({"name": k, "state": ("err" if v.get("stale") else "ok"),
+                                     "sub": "%s %s %s%s" % (str(h2.get("device_name") or "—")[:12],
+                                                            be, "停" if v.get("stale") else "在线",
+                                                            str(v.get("age_s") or "?") + "s")})
                         ico = "🍎" if be == "MPS" else ("🎮" if be == "CUDA" else "🖥")
                         parts.append(
                             f"{ico} <b>{k}</b>（{v.get('role') or '?'}·{be}）<b>{tone}</b>　"
@@ -1708,6 +1756,7 @@ class HardwareCard(QFrame):
                         f"盘可用 {_n2(d2.get('free_gb'), 1)}GB · "
                         f"吞吐 {_n2(cp2.get('sps'), 1)}步/s")
                     self.lb_src.setText(f"数据源: {_url}（{_lab}）· 本机行 = 运行 APP 的这台机器")
+                    m["remote_src"] = "%s (%s)" % (_lab, _url.split("//")[-1].split("/")[0])
                 else:
                     self.lb_remote.setText(
                         "🛰 <b>4060 远端真实数据</b> —（数据源不可达 → 点「🔄 刷新数据源」；"
@@ -1717,6 +1766,9 @@ class HardwareCard(QFrame):
                 self.lb_remote.setText(f"🛰 <b>4060 远端真实数据</b> —（{str(e)[:50]}）")
                 self.lb_src.setText("数据源: 探测异常")
 
+            m["devices"] = devs
+            m["ts"] = time.strftime("%H:%M:%S")
+            out["_metrics"] = m
             self.lb_ts.setText(time.strftime("%H:%M:%S 实测"))
         except Exception as e:                                                  # noqa: BLE001
             self.lb_ts.setText("采样失败: %s" % str(e)[:40])
@@ -1724,12 +1776,60 @@ class HardwareCard(QFrame):
 
 
     # ── GUI 线程侧 (零 I/O) ────────────────────────────────────────────────
+    @staticmethod
+    def _plain(s):
+        """去 HTML 标签 → 纯文本(复制用)"""
+        import re as _re
+        return _re.sub(r"<[^>]+>", " ", str(s or "")).replace("&nbsp;", " ").strip()
+
+    def copy_params(self):
+        """📋 复制硬件参数(纯文本) —— 老倪: 显示内容要可复制可导出"""
+        met = (self._last or {}).get("_metrics") or {}
+        loc, devs = met.get("local") or {}, met.get("devices") or []
+        L = ["Z-MAX 硬件参数 · %s" % (met.get("ts") or time.strftime("%H:%M:%S"))]
+        if loc:
+            L.append("本机 GPU %s | 利用率 %s%% | 显存 %s/%sMB (%s%%) | %s°C | 功耗 %s/%sW"
+                     % (loc.get("gpu_name", "—"), loc.get("gpu_util", "—"),
+                        loc.get("vram_used_mb", "—"), loc.get("vram_total_mb", "—"),
+                        loc.get("vram_pct", "—"), loc.get("gpu_temp", "—"),
+                        loc.get("gpu_power", "—"), loc.get("gpu_power_limit", "—")))
+            L.append("本机 CPU %s%% (%s核) | 内存 %s/%sGB (%s%%) | 磁盘 %s%% (可用 %sGB) | 吞吐 %s 步/s%s"
+                     % (loc.get("cpu_pct", "—"), loc.get("cpu_cores", "—"),
+                        loc.get("mem_used_gb", "—"), loc.get("mem_total_gb", "—"), loc.get("mem_pct", "—"),
+                        loc.get("disk_pct", "—"), loc.get("disk_free_gb", "—"),
+                        loc.get("sps", "—"), "(训练中)" if loc.get("training") else "(无训练)"))
+        L.append("设备: " + (" · ".join("%s[%s %s]" % (d.get("name"), d.get("state"), d.get("sub"))
+                                       for d in devs) or "—"))
+        if met.get("remote_src"):
+            L.append("远端数据源: %s" % met["remote_src"])
+        for k in ("lb_gpu", "lb_cpu", "lb_mem", "lb_disk", "lb_thr", "lb_mac", "lb_nodes",
+                  "lb_remote", "lb_src"):
+            t = self._plain((self._last or {}).get(k))
+            if t:
+                L.append("%s: %s" % (k.replace("lb_", ""), t))
+        import re as _re2
+        txt = _re2.sub(r"([0-9]\.[0-9]{2})[0-9]+", r"\1", "\n".join(L))
+        try:
+            from PyQt5.QtWidgets import QApplication
+            QApplication.clipboard().setText(txt)
+            self.btn_copy.setText("📋 已复制")
+        except Exception:                                                       # noqa: BLE001
+            pass
+        self._last_copy = txt
+        return txt
+
     def _on_fetched(self, d):
         self._last = d or {}
         self.refresh()
 
     def refresh(self):
         """把最近一次后台采集结果贴到界面 (GUI 线程, 零 I/O, 实测 <1ms)"""
+        _met = (self._last or {}).get("_metrics")
+        if _met and getattr(self, "_visual", None) is not None:
+            try:
+                self._visual.set_data(_met)
+            except Exception:                                                   # noqa: BLE001
+                pass
         for k, v in (self._last or {}).items():
             lb = getattr(self, k, None)
             if lb is None:
@@ -1872,9 +1972,8 @@ class HomeWidget(QWidget):
         hero = self._hero()
         layout.addWidget(hero)
 
-        # 🖥 硬件资源卡（老倪 2026-09-25: 首页要看到 4060 硬件参数; 2 秒自动刷新）
-        layout.addWidget(HardwareCard())
-
+        # 🖥 硬件资源卡: 老倪 2026-09-29「硬件资源 4060 放到最底下」⇒ 由 Hero 之后**移到页面最底**。
+        #    (2026-09-25 起放在首位; 现在首页先看功能模块/路线图, 硬件仪表压轴)
         # --- 架构流程 ---
         layout.addWidget(ArchFlowBar())
 
@@ -1898,6 +1997,9 @@ class HomeWidget(QWidget):
         lbl3.setStyleSheet(f"color:{C_GRAY};")
         layout.addWidget(lbl3)
         layout.addWidget(self._stats_bar())
+
+        # 🖥 硬件资源卡（4060 仪表盘 · 2 秒自动刷新）—— 页面最底(老倪 2026-09-29)
+        layout.addWidget(HardwareCard())
 
         layout.addStretch()
         page.setLayout(layout)
@@ -11170,7 +11272,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.18 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.19 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11178,9 +11280,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.18 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.19 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.16.19: UI(硬件资源卡) **按 CANoe hardware / Vector Hardware Manager 范式重做成仪表盘** (老倪: 「不要用那么多文字来表达, 要换成状态条, 圆环百分比, 再加上红绿灯这样的指示灯; 4060 放到最底下」) ① **位置**: 硬件资源卡由「Hero 之后(页面第 2 位)」移到**首页最底**(实测装配顺序尾部 `... ProductRoadmapWidget / 项目状态 / ★HardwareCard`)。 ② **表达方式换代**: 原来 8 行 24~28px 富文本(实测 `lb_remote` 一行 5428px, 就是上一轮横拉条的元凶) 全部隐藏, 只留作 tooltip/复制; 版面换成**自绘控件**(新模块 `tools/gui/hw_widgets.py`):    · 4 个**圆环百分比**: GPU 利用率 / 显存占用 / CPU 负载 / 内存占用(环内大号数字+环下短标题+副标如 638/8188GB)    · 4 条**状态条**: 磁盘占用 / GPU 温度 / GPU 功耗 / 训练吞吐(颜色按阈值: 绿 ok · 黄 警戒 · 红 危险)    · **指示灯带**: 每台机器一颗发光灯(绿在线/黄停/红错/灰缺), 副标为 `设备名 后端 在线/停 Ns` ③ **阈值口径(可辩护)**: 显存/CPU/内存 <80 绿 · 80-92 黄 · >92 红; 磁盘 <80/80/90; 温度 <70/70/82; **GPU 利用率训练中 <50% 判黄**(承接老倪的掉载口径: 训练须满负荷), 空闲(<5%)灰。 ④ **不造假**: 缺测一律 '—'(空环/空条), 无训练时吞吐 '—'; 功耗条只在**读到 nvidia-smi power.limit** 时才画(没有就只显示瓦数, 不编造额定值); 同一台机器(本机=4060)在 DDS 节点里出现时**自动合并成一盏「本机」灯**, 且**本机/4060 永远排在灯带最右**。 ⑤ **可复制可导出**(老倪一贯要求): 新增「📋 复制参数」→ 纯文本(本机/设备/远端全部指标, 数字已四舍五入)。 ⑥ **实测**(离屏 192DPI, 真采一轮): `_collect 0.2s`; 画面读到真值 GPU 0% · 显存 7.79%(638/8188MB) · CPU 7.83%(32核) · 内存 33.95% · 磁盘 74.37%(可用 81.27GB) · 54~55°C · 功耗 11.9W; 灯带 `['本机']` 合并成功; **首页 视口 2812 == 页面宽 2812 · 横条 max 0**; 截图 `/tmp/hw_card.png` `/tmp/hw_home.png`。 ⑦ 红线: 未下发真机动作; 未改在役指针/默认档/画布数据。需重启控制台后现场可见(v5.16.14~5.16.19 一并生效)。
         # v5.16.18: UI(数据空间 CANoe 版) **按视觉质检报告修 5 处实证缺陷** 质检(vision 子代理逐像素)发现并已修: ① **Trace 半张表"褪色"**: 原来奇数行整行设灰前景(136-157, 对比 6.7:1) vs 偶数行近白(18:1), 背景却相同 ⇒ 取消整行变灰, 改**隔行浅底斑马纹**(#12171e), 文字一律亮色。实测前 20 行变灰列数 = 0。 ② **质量告警重复行**: 同一规则+同文本重复渲染 ⇒ 加 (级别,对象,问题) 三元组去重。实测重复 0 条。 ③ **列头与内容错位 32-42px**(列头默认居中而单元格左对齐) ⇒ tree/Trace/闭环/告警 四张表 `setDefaultAlignment(左对齐)`。 ④ **详情面板值列不齐**(破折号漂移 x2560-2576; 中文宽度按 1 计导致空格补不齐) ⇒ 新增 `_pad()` **按中文 2 列宽补齐**到 14 列, 报文/信号/节点三种详情统一走它; 顺手修「灯」行只有标签没有值。 ⑤ **暗灰对比度 2.3:1 几乎看不见**(无信号行的状态点/文本) ⇒ C_DIM 由 #484f58 提亮到 #6e7681。 另复核(上版质检提到的疑点): **树空文本行 = 0**(「名称列全空」实为子行缩进, 非缺字); 树 3 顶层组/14 报文/5 信号层/5 节点层; Trace 500 行×9 列; 各填充步骤 ≤0.01s; 出图 /tmp/canoe_v3.png。 红线: 未下发真机动作; 未改在役指针/默认档/画布数据。
         # v5.16.17: UI(全局数据空间) **按 CANoe 16 主界面逐像素基准再对齐** (老倪参考图: portal.vector.com/de/web/help/canoe-demo) 依据: vision 子代理读 CANoe 16 官方截图 1067x810 得到的实测布局(三窗格 + 顶部测量组 + 底部标签栏)。 ①**顶部测量组**照 CANoe: 左端两个大按钮 **⚡Start(黄) / ⬢Stop(灰)**, 右侧 状态/档位/刷新龄+拍照/报文 活跃·允许·注册/灯 🟢🟡🔴⚫/测量计时(0:00:00), 等价 CANoe 的 Measurement 组 + 右下计时读数。 ②**上排左 = CANoe 的 Data 面板**: 表结构照抄 CANoe 列名 **Name | Value | Unit | Last Value Time [s] | Bar**; 值是实测 Hz(单位 Hz), Last Value Time 取该话题在 trace.jsonl 的最后一帧帧龄, **Bar = 实测/设计 Hz 的实心蓝条**(自绘 BarDelegate, 色 #2f81f7, 对应 CANoe #0072C5)。 ③**中 = CANoe 的 Trace 面板, 整宽** (原来是挤在中间一列, 这是与 CANoe 最大的差异): 列名照 CANoe Trace **Time | Name | Object Type | Classification | Probability [%] | Sender Name | Sender Id | Tracking Id | Group**, Time 用「测量时间」(相对起点 3 位小数, CANoe 同款), 最新在顶。 ④**Trace 面板自带工具条** (照 CANoe 面板工具条): ⏸暂停 / **Δt**(Time 列切「与同话题上一帧的时间差」, CANoe 同款) / 🔍过滤 / 🗑清屏 / 📤导出 CSV。 ⑤**底部标签栏**照 CANoe 的 Configuration|Measurement|Data Window: **🔁 数据闭环 | ⚠ 质量告警(N)** 两个页签 + 右下 拍照时间。 ⑥数据全真实: busdb.json(74节点/182信号/14报文) · live.json(每话题 hz/丢包/jitter/帧龄/规则/灯) · trace.jsonl · loop.json; 缺测 '—' 不许 0 冒充。旧 12-Tab 收进「🗂 经典视图」开关, 入口零丢失。 ⑦实测(离屏, 192DPI 同现场口径): 构造 0.1s; 各步耗时 ≤0.01s; **信号树 3 顶层组 / Trace 500 行×9 列 / 闭环 9 行 / 告警 6 行**; 截图 2792x1600 出图; 无异常。 ⑧红线: 未下发真机动作; 未改在役指针/默认档/画布数据。需重启控制台后现场可见。
         # v5.16.16: UI(全局数据空间) **按 CANoe 主窗口范式重做** (老倪: 「全局数据空间 参考 https://portal.vector.com/de/web/help/canoe-demo 重新设计UI」) ①**旧版问题**: 该页是「12 个 Tab 堆叠」—— 总线架构/报文追踪/统计/信号/质量告警/回灌/全息映射/DDS 空间… 全平铺成一行 Tab, 第一屏既看不到全景也不成"工作台", 与 CANoe「多窗格同时在线」的用法相反。 ②**新版 = 新模块 `tools/gui/dds_canoe.py`**(`build_view(main_win)`, 1000ms 自刷新), 五区同时在线:     测量条(●测量/档位/刷新龄+**拍照时间**/报文 活跃·允许·注册/**灯 🟢🟡🔴⚫**/记录·刷新·导出CSV·复制详情·经典视图)     中左 **信号浏览器**(报文14 → 信号182 按层分级 → 节点74, 行内带实时值/字节/质量灯)     中中 **Trace**(7 列: 时刻/报文/类型/序号/字节/值·载荷摘要/方向, 最新在顶, **值变化行高亮**)     中右 **详情**(选中对象全属性: 类型/QoS/设计vs实测Hz/抖动/丢包/帧龄/质量判据逐条/载荷字段, 双击可复制)     底部 **数据闭环 S0…(gate/owner/状态·证据)** + **⚠ 质量告警(红/黄/黑)** ③**数据全真实**: `busdb.json`(画布导出的 DBC: 节点74/信号182/报文14) + `live.json`(每话题 hz/丢包/jitter/帧龄/规则/灯) + `trace.jsonl`(总线帧) + `loop.json`(闭环阶段)。缺测一律 `—`(**不许 0 冒充**), 实时量一律带帧龄与拍照时间。 ④**旧入口零丢失**: 右上「🗂 经典视图」开关一键切回原 12-Tab 视图(两套都在内存, 只显示其一)。 ⑤**实测(离屏 QT_FONT_DPI=192 = 现场口径)**: 信号浏览器 3 顶层组/14 报文/182 信号 · Trace 400 行×7 列 · 闭环 9 行 · 告警 6 行 · 测量条读到 `档位 calib · 刷新龄 0.9s · 拍照 19:48:24 · 活跃6/允许7/注册14 · 🟢3🟡1🔴2⚫1` · 点树/点 Trace 行详情联动 · **裁切标签 0** · **需要横拉条的滚动区 无** · 页面宽 2828 == 视口 2828 · 异常 0 · 经典视图来回切换正常。截图 `/tmp/canoe_view.png`(2792x1650)。 ⑥红线: 未下发任何真机动作; 未改在役指针/默认档/画布数据; 只新增模块 + DataSpaceModule 接线(旧 Tab 全部保留)。需**重启控制台**后现场可见。
