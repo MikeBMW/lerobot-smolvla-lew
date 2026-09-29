@@ -185,6 +185,19 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       <div class="hint" style="margin-top:8px">键盘: ↑↓←→ = 前后左右 · PgUp/PgDn = 升降 (真动时同样受执行器 1.5s 间隔限制)</div>
     </div>
     <div class="card">
+      <h2>🤏 夹爪 (关闭 / 打开)</h2>
+      <div class="row" style="gap:10px">
+        <button onclick="gripAct(this,'L2.grip_close','关闭夹爪(夹紧)')"
+          style="font-size:19px;font-weight:700;min-width:190px;padding:14px 16px;border-color:#8b3a3a"
+          title="合爪/夹紧 (技能 L2.grip_close · 夹持力等参数由技能定义固定, 页面改不了) —— 与方向键同一条路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🤏 关闭夹爪<br><span class="hint">合爪 · 夹紧</span></button>
+        <button onclick="gripAct(this,'L2.grip_open','打开夹爪(松开)')"
+          style="font-size:19px;font-weight:700;min-width:190px;padding:14px 16px;border-color:#2f6f3f"
+          title="张爪/松开 (技能 L2.grip_open · 无参数) —— 同一条闸门路; 未授权时只算目标不动作">🖐 打开夹爪<br><span class="hint">张爪 · 松开</span></button>
+      </div>
+      <div class="hint" id="grip_msg" style="font-size:13px;opacity:.9;margin-top:6px">未点之前没有下发。</div>
+      <div class="hint" style="margin-top:4px">夹爪不动臂的位置; 力/行程由技能定义决定。速度取上面「速度」段。</div>
+    </div>
+    <div class="card">
       <h2>🔄 绕轴旋转 (走 /move_pose, 位置不动)</h2>
       <div class="row"><span class="k">角度</span>
         <span class="seg" id="sA"><button data-v="1">1</button><button data-v="5" class="on">5</button>
@@ -410,6 +423,64 @@ function pt1Track(){
     }catch(e){}
   };
   tick(); _pt1.timer=setInterval(tick,5000);
+}
+/* ═══ 🤏 夹爪: 关闭(夹紧) / 打开(松开) ═══
+   2026-09-29 老倪: 「在手动控制台 增加 关闭夹抓 和 打开夹抓 两个技能」。
+   与方向键/点1 **完全同一条路**: 白名单(L2.grip_close / L2.grip_open) → 授权真动 → 限流 → FIFO
+   → 执行器 → 安全裁决。页面**只送技能 id**: 夹持力/行程等参数由技能定义(registry)决定, 页面改不了;
+   未授权时一律演练(只算目标不动作), 服务端还会再拦一次(403), 执行器最后兜底一次。
+   带安全闸时最终结果 45~190s(上限 300s)才落日志 ⇒ 回执先如实说"已收到·在等裁决", 再追日志到那一行。 */
+let _grip={t0:0,timer:null};
+async function gripAct(btn, skill, label){
+  const spd=parseFloat($('#spd').value||'8');
+  const real=ARMED;
+  const m=$('#grip_msg');
+  if(_grip.timer){ clearInterval(_grip.timer); _grip.timer=null; }
+  flash(btn); btn.disabled=true; setTimeout(()=>{btn.disabled=false;},20000);
+  m.textContent='⏳ 下发中(最多 20s 出初步回执)…';
+  $('#msg').textContent='🤏 '+label+': 下发中…'; $('#msg').className='wa';
+  $('#mq').style.display='none';
+  try{
+    const j=renderMoveOut(await post('/ctl/move',{skill:skill,speed:spd,arm:real?1:0},20000),'『'+label+'』');
+    if(j.denied||(j.ok&&j.dry)){
+      m.textContent='⛔ 未授权: 只算了目标, 夹爪不会动 —— 先点上面『🔓 授权真动』再点我';
+    }else if(j.ok&&j.pending){
+      m.textContent='⏳ 已收到, 正在等安全裁决(最多 300s)… 下面是实时回执';
+      gripTrack(skill,label);
+    }else if(j.ok){
+      m.textContent='✅ 已下发(真动) —— 盯下方日志 + 画面里夹爪';
+    }
+  }catch(e){
+    m.textContent='❌ 请求失败: '+e;
+    $('#msg').textContent='请求没发出去/超时: '+e; $('#msg').className='bad';
+  }
+  poll();
+}
+function gripTrack(skill,label){
+  _grip.t0=Date.now();
+  if(_grip.timer) clearInterval(_grip.timer);
+  const tick=async()=>{
+    const el=Math.round((Date.now()-_grip.t0)/1000);
+    if(el>340){ clearInterval(_grip.timer); _grip.timer=null;
+      $('#grip_msg').textContent='⏰ 已等 340s 还没等到裁决行 —— 看下方日志原文判断'; return; }
+    try{
+      const j=await getj('/ctl/log?n=14&t='+Date.now(),7000);
+      if(j&&j.lines&&j.lines.length){
+        $('#lines').textContent=j.lines.join('\n')+'\n—— ⏳ 已等 '+el+'s (点击时刻起算; 上限 300s)';
+        if(j.done){
+          clearInterval(_grip.timer); _grip.timer=null;
+          const v=(j.verdict||'').slice(0,300);
+          const bad=(v.indexOf('拒发')>=0||v.indexOf('被拦')>=0);
+          $('#grip_msg').textContent=(bad?'🛑 被安全闸拒发':'✅ 裁决通过·已下发')+' · 共等 '+el+'s';
+          $('#msg').textContent=(bad?'🛑 ':'✅ ')+v;
+          $('#msg').className=(bad?'bad':'ok');
+        }else{
+          $('#grip_msg').textContent='⏳ 等安全裁决中… 已 '+el+'s (实测 45~190s, 上限 300s)';
+        }
+      }
+    }catch(e){}
+  };
+  tick(); _grip.timer=setInterval(tick,5000);
 }
 function copylog(){
   const t=$('#lines').textContent+'\n'+$('#msg').textContent;
