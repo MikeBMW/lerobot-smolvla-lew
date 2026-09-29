@@ -233,6 +233,10 @@ TUBE_RING_EVERY = int(os.environ.get("ZMAX_TUBE_RING_EVERY", "10"))  # 每隔几
 TUBE_SHADE = 0.55                                                    # 管体主色 = origin 色 × 该系数(暗面)
 TUBE_DARK = 0.22                                                     # 暗边/轮廓
 TUBE_EDGE_PX = int(os.environ.get("ZMAX_TUBE_EDGE_PX", "2"))         # 暗边描边粗细
+# 🧭 前进意图装饰(2026-09-29): 起点实心点 + 末端箭头 + 沿程渐变。纯渲染开关(env 可关, 便于同帧 A/B 取证)
+INTENT_ON = os.environ.get("ZMAX_INTENT", "1") != "0"
+INTENT_START_DOT = os.environ.get("ZMAX_INTENT_START_DOT", "1") != "0"
+INTENT_ARROW = os.environ.get("ZMAX_INTENT_ARROW", "1") != "0"
 
 
 def _cscale(col, k):
@@ -260,12 +264,19 @@ def tube_widths(zc, wmin, wmax):
 
 
 def draw_path_tube(img, uv, zc, col, W, H, base_w=4.0, ring_every=None,
-                   wmin=TUBE_W_MIN, wmax=TUBE_W_MAX):
+                   wmin=TUBE_W_MIN, wmax=TUBE_W_MAX, intent=False,
+                   is_first=False, is_last=False):
     """沿图像折线 uv 画一根立体管道(原地, BGR)。返回 (段数, (最小管径, 最大管径))。
 
     uv:(N,2) px   zc:(N,) 相机系深度(m)   col: origin 色(BGR)   base_w: 规格 width(管径缩放档)
     三要素都在这里: ①逐段四边形填充(宽度随深度) ②每隔 ring_every 点一个截面环
     ③暗边+内侧高光带 ④端点圆帽。
+
+    intent=True(2026-09-29 老倪: 「必须能看出**前进意图**」)时额外加三样**纯渲染**装饰 ——
+    **不改任何数据结构**(仍只读 kind/pts3d/width/origin 这些既有字段):
+      · 管体+截面环**沿程深浅渐变**(起点暗 → 终点亮) ⇒ 一眼看出往哪头走
+      · **起点实心圆点**(带暗边) ⇒ 起点在哪
+      · **末端箭头/楔形**(沿末段切向, 实心 + 暗边) ⇒ 终点方向 = 前进意图
     """
     import cv2
     P = np.asarray(uv, float)
@@ -280,6 +291,11 @@ def draw_path_tube(img, uv, zc, col, W, H, base_w=4.0, ring_every=None,
     body = _cscale(col, TUBE_SHADE)                   # 管体主色(暗面)
     dark = _cscale(col, TUBE_DARK)                    # 暗边/轮廓
     ring_c = _cscale(col, 0.80)                       # 截面环
+    # 沿程渐变系数(0=起点 1=终点): 管体 0.34→0.80 × TUBE_SHADE · 环 0.45→1.0
+    _t = (np.linspace(0.0, 1.0, N) if (intent and INTENT_ON) else np.zeros(N))
+    _bf = [_cscale(col, TUBE_SHADE * (0.34 + 0.46 * float(v))) if intent and INTENT_ON else body
+           for v in _t]
+    _rf = [_cscale(col, 0.45 + 0.55 * float(v)) if intent and INTENT_ON else ring_c for v in _t]
 
     # 每点局部切向 → 法向(把有宽度的管壁撑开)
     nrm = []
@@ -299,18 +315,21 @@ def draw_path_tube(img, uv, zc, col, W, H, base_w=4.0, ring_every=None,
                 int(round(P[i, 1] + nrm[i, 1] * wid[i] * f)))
 
     # ① 管体: 逐段填充"左右边缘"四边形 ⇒ 段宽=两端深度插值出的管径(近粗远细)
+    #    intent ⇒ 逐段用沿程渐变色(_bf): 起点暗、终点亮, 方向一眼可读
     n_seg = 0
     for i in range(N - 1):
         q = np.array([off(i, -1), off(i + 1, -1), off(i + 1, 1), off(i, 1)], np.int32)
+        _c = _bf[i + 1] if (intent and INTENT_ON) else body
         if abs(cv2.contourArea(q)) >= 1.0:
-            cv2.fillConvexPoly(img, q, body, cv2.LINE_AA)
+            cv2.fillConvexPoly(img, q, _c, cv2.LINE_AA)
         else:                                         # 退化段(两端几乎重合)⇒ 退化成粗线
-            cv2.line(img, off(i, 0), off(i + 1, 0), body,
+            cv2.line(img, off(i, 0), off(i + 1, 0), _c,
                      max(1, int(round(min(wid[i], wid[i + 1]) / 2.0))), cv2.LINE_AA)
         n_seg += 1
     for i in range(N):                                # 关节圆头: 拐弯处不留缝
         cv2.circle(img, (int(round(P[i, 0])), int(round(P[i, 1]))),
-                   max(1, int(round(wid[i] / 2.0))), body, -1, cv2.LINE_AA)
+                   max(1, int(round(wid[i] / 2.0))),
+                   (_bf[i] if (intent and INTENT_ON) else body), -1, cv2.LINE_AA)
 
     # ③ 明暗双色: 暗边(+法向轮廓) + 内侧高光带(-法向) ⇒ 圆柱受光感
     for i in range(N - 1):
@@ -325,9 +344,11 @@ def draw_path_tube(img, uv, zc, col, W, H, base_w=4.0, ring_every=None,
         half = max(2, int(round(wid[i] / 2.0)))
         ang = math.degrees(math.atan2(nrm[i, 1], nrm[i, 0]))
         cv2.ellipse(img, (int(round(P[i, 0])), int(round(P[i, 1]))),
-                    (half, max(1, int(round(half * 0.38)))), ang, 0, 360, ring_c, 1, cv2.LINE_AA)
+                    (half, max(1, int(round(half * 0.38)))), ang, 0, 360,
+                    (_rf[i] if (intent and INTENT_ON) else ring_c), 1, cv2.LINE_AA)
         for s in (-1, 1):                             # 管壁刻度(法向两端)
-            cv2.line(img, off(i, s * 0.55), off(i, s * 0.98), ring_c, 1, cv2.LINE_AA)
+            cv2.line(img, off(i, s * 0.55), off(i, s * 0.98),
+                     (_rf[i] if (intent and INTENT_ON) else ring_c), 1, cv2.LINE_AA)
 
     # ④ 端点圆帽: 首末点实心圆 + 暗边 ⇒ 看得到"管口"
     for i in (0, N - 1):
@@ -335,6 +356,28 @@ def draw_path_tube(img, uv, zc, col, W, H, base_w=4.0, ring_every=None,
         r = max(2, int(round(wid[i] / 2.0)))
         cv2.circle(img, c, r, full, -1, cv2.LINE_AA)
         cv2.circle(img, c, r, dark, 1, cv2.LINE_AA)
+
+    # ⑤ 🧭 前进意图装饰(纯渲染, 不改数据): 起点实心圆点 + 末端箭头/楔形
+    if intent and INTENT_ON:
+        if INTENT_START_DOT and is_first:
+            _p0 = (int(round(P[0, 0])), int(round(P[0, 1])))
+            r0 = max(4, int(round(wid[0] * 0.85)))
+            cv2.circle(img, _p0, r0, full, -1, cv2.LINE_AA)          # 实心点(原点色)
+            cv2.circle(img, _p0, r0, dark, max(1, TUBE_EDGE_PX), cv2.LINE_AA)
+            cv2.circle(img, _p0, max(2, int(r0 * 0.35)), dark, -1, cv2.LINE_AA)   # 中心暗点(像"起点")
+        if INTENT_ARROW and is_last:
+            d = _unit2(P[-1, 0] - P[max(0, N - 3), 0], P[-1, 1] - P[max(0, N - 3), 1])
+            if d != (0.0, 0.0):
+                nx, ny = -d[1], d[0]
+                L = max(12.0, 3.4 * float(wid[-1]))                  # 箭头长
+                HW = max(5.0, 0.95 * float(wid[-1]))                 # 半宽
+                tip = (P[-1, 0] + d[0] * L * 0.18, P[-1, 1] + d[1] * L * 0.18)
+                base = (P[-1, 0] - d[0] * L * 0.82, P[-1, 1] - d[1] * L * 0.82)
+                tri = np.array([[int(round(tip[0])), int(round(tip[1]))],
+                                [int(round(base[0] + nx * HW)), int(round(base[1] + ny * HW))],
+                                [int(round(base[0] - nx * HW)), int(round(base[1] - ny * HW))]], np.int32)
+                cv2.fillConvexPoly(img, tri, full, cv2.LINE_AA)      # 楔形箭头(实心)
+                cv2.polylines(img, [tri], True, dark, max(1, TUBE_EDGE_PX), cv2.LINE_AA)
 
     return n_seg, (float(wid.min()), float(wid.max()))
 
@@ -521,11 +564,22 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
             if cur:
                 runs.append(cur)
             w_lo, w_hi = 1e9, 0.0
+            # 🧭 前进意图: origin=plan(规划/意图路径)默认开; 元素也可显式给 intent 覆盖。
+            #    **只影响渲染**, 数据结构不变(kind/pts3d/width/origin 语义原样)。
+            _intent = bool(b.get("intent", str(b.get("origin")) == "plan"))
+            _nmarks = 0
             for run in runs:
                 if len(run) < 2:
                     continue
-                ns, (wl, wh) = draw_path_tube(img, uv[run], zc[run], col, W, H, base_w=_w0)
+                ns, (wl, wh) = draw_path_tube(img, uv[run], zc[run], col, W, H, base_w=_w0,
+                                              intent=_intent,
+                                              is_first=(run[0] == 0), is_last=(run[-1] == len(P) - 1))
                 nseg += ns
+                if _intent:
+                    if INTENT_START_DOT and run[0] == 0:
+                        _nmarks += 1
+                    if INTENT_ARROW and run[-1] == len(P) - 1:
+                        _nmarks += 1
                 w_lo, w_hi = min(w_lo, wl), max(w_hi, wh)
                 for k in run:                        # 记像素范围(供页面/取证)
                     pts.append((int(round(float(uv[k, 0]))), int(round(float(uv[k, 1])))))
@@ -534,6 +588,7 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
             A = np.asarray(pts, float)
             info.update(kind="path3d", corners=None, z_mm=None, n_seg=int(nseg),
                         tube_px=[round(w_lo, 1), round(w_hi, 1)] if w_hi >= w_lo else None,
+                        intent=_intent, n_intent_marks=_nmarks,
                         xyxy=[float(A[:, 0].min()), float(A[:, 1].min()),
                               float(A[:, 0].max()), float(A[:, 1].max())],
                         clipped=bool(((A[:, 0] < 0) | (A[:, 0] > W) | (A[:, 1] < 0) | (A[:, 1] > H)).any()))
