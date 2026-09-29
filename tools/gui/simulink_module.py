@@ -5171,10 +5171,17 @@ class SimulinkModule(QWidget):
             「左边 3 个按钮 → 一片空 → 右边 2 个按钮」(空档 x782-2655 = 顶宽 61%)。
             这里给成与 mk_btn 同一套的深色 pill (同 padding 6x12 ⇒ 同高), 勾选态用绿字。
             """
+            # 🔴 2026-09-29 像素质检+离屏实测: 只给样式不给最小高度 ⇒ 勾选框 h=55 而按钮 h=70,
+            #   同一行里矮 15px、下方留一条 17px 暗带(就是老倪说的"中间一大块空白"的残影)。
+            #   与 mk_btn 用同一个最小高度 (30) ⇒ 同高。
+            c.setMinimumHeight(30)
             try:
                 c.setStyleSheet(
+                    # ⚠️ 纵向 padding 必须是 14 而不是按钮的 6: FlowLayout 按 sizeHint 排布,
+                    #   勾选框的 sizeHint 天生比按钮矮 (实测 55 vs 70) ⇒ 同一行里矮 15px、下方留
+                    #   一条 17px 暗带(像素质检实测)。离屏扫描 pad=14 → h=71 (按钮 70), 差 1px 可接受。
                     "QCheckBox{background:#14181f;color:%s;border:1px solid #30363d;border-radius:5px;"
-                    "padding:6px 12px;font-size:10pt;font-weight:700;spacing:8px}"
+                    "padding:14px 12px;font-size:10pt;font-weight:700;spacing:8px}"
                     "QCheckBox:hover{border-color:#58a6ff}"
                     "QCheckBox:checked{color:#7ee787;border-color:#2ea043;background:#0d1f14}"
                     "QCheckBox::indicator{width:14px;height:14px}"

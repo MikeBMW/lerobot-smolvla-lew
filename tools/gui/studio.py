@@ -752,7 +752,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.16.24")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.16.25")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11276,7 +11276,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.24 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.25 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11284,9 +11284,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.24 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.25 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.16.25: 🧩 画布页顶部工具条: 6 个勾选框与按钮**同高** (收掉最后一块暗带)  像素质检(修前, 实际截图逐像素)报: 第1行 x611-2554 (宽 1943px = 顶宽 63.3%) 在 y43-59 有一条 **17px 连续暗带** —— 6 个勾选框 pill 的盒底 y≈42, 同排按钮盒底 y≈57, **矮 15px** 且整体偏上。 离屏复测同一件事: 按钮 h=70 / 勾选框 h=55 ⇒ 差 15px (两路独立测量一致)。  根因: 工具条是自写 FlowLayout, **按 sizeHint 排布** —— `QCheckBox` 的 sizeHint 天生比 `QPushButton` 矮 (pill 里那个 14px 指示块比按钮的纯文字行占位小), 所以 `setMinimumHeight(30)` 对它**无效** (minimumHeight 量到 30, 几何还是 55)。  修法: 把勾选框 pill 的**纵向 padding 从 6px 提到 14px**(横向 12px 不变) —— 离屏扫描若干取值:   pad=6→55 · 9→61 · 12→67 · 13→69 · **14→71** · 16→75  (按钮恒 70) ⇒ pad=14 时勾选框 h=71 vs 按钮 h=70 (差 1px), 同 y=6 对齐。  实测复核 (修后, 现场 3068x1862 截图 + 像素): 勾选框那一段的"纯底色连续行" **21 行 → 6 行** (剩下 6 行是两排按钮之间本来就该有的行距), 全段 >99% 底色行 26 → 11。文字对比度不变 (11.2~11.5:1)。
         # v5.16.24: 🪟 老倪「独立打开的全局数据空间的最大化按钮不好用」→ 真根因 + 实证  根因: 原来那个独立窗口是 `QDialog(主窗口)` —— 有 parent 的 Qt 对话框, mutter 会把它当       **附属窗(transient dialog)**, 标题栏最大化钮灰着/点不动。 修法: 改成 **无 parent 的真顶层 QMainWindow** + 显式 `Qt.Window|Minimize|Maximize|Close`:       · `_NET_WM_WINDOW_TYPE` = **NORMAL** (原来会是 dialog 类)       · `_NET_WM_ALLOWED_ACTIONS` 现在含 **MAXIMIZE_HORZ / MAXIMIZE_VERT / MINIMIZE / FULLSCREEN**       · 深色主题不丢 (app.setStyleSheet 是**应用级** QSS, 与 parent 无关)       · 控制台退出时随 aboutToQuit 一起关, 不留孤儿窗 实测 (wmctrl 量几何):       开窗 2640x1200 @ (588,873)  →  最大化 **3068x1862 @ (132,212)** = 正好是控制台那块屏的工作区       →  还原回 2640x1200 @ (588,873) ✅ (最大化/还原/最小化/双击标题栏都可用) 最大化后内容真铺满 (像素): 全屏非背景 16.8%, 顶测量条 12.9% / 左信号表 13.4% / 右详情 15.7% / 底部页签 12.9%       ⇒ 不是"放大了还是一小块/大空白"。  另: 首次摆位加了一道"实测几何夹回屏内"(show() 之后 350ms 按真实 frameGeometry 夹, 不信推算 ——     本机 fractional scaling 下 move()/resize() 与 screen().geometry() 不在同一坐标空间)。
         # v5.16.23: 🧩 老倪两件事 (2026-09-29): 「现在我运行 L5的状态空间画布, 我还想同时看到全局数据空间; 在上边我可以打开一个独立的全局数据空间的窗口,   可以同时看到状态空间的场景和数据空间的 topic; 上边的按钮你整理一下, 紧凑点, 现在中间有一大快空白」  1) 【新】独立「全局数据空间」窗口: 画布页顶部工具条新增「🌐 数据空间窗口」    · 非模态顶层窗口 (QDialog, 可拖动/缩放, 不挡操作), 与页面里那份是同一套 CANoe 视图      (dds_canoe.BusView: 测量条 + 信号表 + Trace + 详情 + 数据闭环/质量告警页签)    · 目的: 跑 L5 状态空间画布 / 3D 场景时, 把本窗口拖到屏幕另一侧 ⇒ 场景 + topic 实时值同屏    · 单例复用 (关掉再点 = 同一个窗口, 不重建/不重复采集); 数据同源 busdb/live/trace; 纯只读不下发    · 独立模式下隐藏「🗂 经典视图」开关 (那个开关依赖主窗口的 Tab 容器)  2) 【真根因】「中间有一大快空白」= 那 6 个勾选框**一直都在, 但看不见**    · 像素实测: 「⚡引擎快演 / 🚀L3 全链(插拔+AOI) / 🧠流形 yaw 执行 / 🤖L4 用 INTACT 节点执行 /      🎯L4 意图→DiT 精炼 / 🧩L2 兼容(前馈MLP+YOLO)」共 6 项占 x793-2644 (顶宽 61%), 该矩形      82.7% 是纯底色、亮度>90 的像素 **0 个**; Qt 给 QCheckBox 的默认黑字 (0,0,0) 画在深色      工具条 (13,17,23) 上 ⇒ 对比度 **1.11:1**, 肉眼上就是「左边 3 个按钮 → 一片空 → 右边 2 个按钮」    · 修法: 6 个勾选框统一成与按钮同款深色 pill (同 padding 6x12 ⇒ 同高, 边框 #30363d,      勾选态绿字 #7ee787 + 绿指示块 #3fb950, 悬停蓝边) ⇒ 像素复测该区亮像素 0 → 17258      (其中绿字 14520), 空白块消失  3) 紧凑: 工具条边距 (12,7,12,7)→(10,6,10,6)、行距 10→9、行间隔 8→6    (按钮字号 10pt/内边距 6x12 一律不动 —— 老倪之前嫌过小, 不重复踩)  自测: 重启后 `printf 'ds_win'` 命令通道实测窗口出现       (`wmctrl -lG`: 0x01e005f3 0 567 607 2661 1040 🌐 Z-MAX 全局数据空间 · 独立窗口 (CANoe 范式));       独立窗口内非背景像素 23.2%, 绿 6908 / 琥珀 4141 / 蓝 12457 (CANoe 视图真在画)。
         # v5.16.22: 🔴 **修「全局数据空间 卡住」** (老倪: 「全局数据空间 怎么卡住了」) 真根因(实测定位, 不是猜): 新加的 1.5s 自刷新**每次重建表格时, 列宽策略是 `ResizeToContents`** —— Qt 会为**每一列逐格重新测量文字宽度**(192 DPI 下极贵, 9 列 × 150 行), 且这份开销**发生在事件循环里**(不在我那几个 _fill_* 函数的计时里, 所以之前逐函数计时只看到 11ms/轮, 完全没暴露)。 证据链: ①`resource.getrusage` 分组停定时器 bisect —— 基线 **83% CPU**, 只停 `DdsCanoeView._timer` → **3%**(=CPU 全在这一处, 经典视图/其它页定时器各 0%); ②改固定列宽后同一探针 → 基线 **5%**; ③现场进程 `ps` 实测曾 **81.7%**(页面观感=卡死)。 修法(4 条, 都已落码):   ① 四张表**全部去掉 `ResizeToContents`**, 改显式列宽(树 120/80/180/160, Trace 160/…/120, 闭环 110/240/340/160, 告警 130/280; 名字列 Stretch) —— 这一条就是 83%→5%。   ② **不在看的页不刷新**: `reload()` 首行 `if not self.isVisible(): return`(挂后台每秒重建表格纯属空转)。   ③ **trace 没变就整轮跳过**: 用 (体积, mtime) 签名, 且手动刷新/切页才 `force`。   ④ **有界读**: trace.jsonl 只读尾部 256KB(不再 `readlines()` 整个文件), 行数 500→150, 定时器 1s→1.5s。 实测: 探针基线 83% → **5%**(页自身 2%); 渲染内容不变(截图仍有环/条/表/闭环)。红线: 未下发真机动作; 未改在役指针/默认档/画布数据。
