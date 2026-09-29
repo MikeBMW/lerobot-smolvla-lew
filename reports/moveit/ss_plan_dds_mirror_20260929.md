@@ -27,7 +27,10 @@ zmax-dds-ss.service (tools/dds/ss_daemon.py::pub_plan)  → DDS topic **zmax/ss_
 | live.json | `hz=0.5 · count=19 · matched_pubs=1 · bytes=339440 · age=1.93s · verdict=ok · lamp=绿` |
 | trace.jsonl | `ss_plan` 帧 **19** 条 |
 | busdb (DBC) | 报文 **14 → 15**（`zmax/ss_plan` = `zmax::SSPlan`, hz_design 0.5, qos state） |
-| 独立窗口 | 「🌐 数据空间窗口」里可见 ss_plan 及其 Hz/帧龄/裁决 |
+| 独立窗口 | Trace 里 `zmax/ss_plan` 行（Group=state · Tracking Id 逐帧递增） |
+| 页面左树 | 「报文」树 `ss_plan` 排第 **5/15** 行（活跃在前，不用滚动即见）|
+| 页面详情 | 选中它 → 「🧾 最近一帧摘要」一行给全：`n=123 · 时长 12.11s · 终点误差 2.967mm · FK起点差 261.351mm · 同源闸=0 · age 0.50s` |
+| 命令行 | `python3 tools/ss_plan_show.py`（DDS 侧 hz/count/帧龄 + 规划侧 n/终点误差/时长 + 链路健康）|
 
 ## ⚠️ 同源闸（必须写在明面上，不许糊过去）
 `gate_same_source = 0`：
