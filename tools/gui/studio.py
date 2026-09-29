@@ -726,7 +726,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.16.11")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.16.12")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -1711,15 +1711,22 @@ class ReflowCardRow(QWidget):
     与"写死 3 张横排"的区别: 窗口/面板被拉窄时, QHBoxLayout 只能把卡片压到 minimumWidth
     以下 → 卡片被裁/挤出可视区 (现场观感 = "显示不全")。这里按每一列的最小卡宽算得出
     最多能放几列, 再换列 (3→2→1), 于是**永远放得下**, 不需要横向拖动也能看全。
+
+    🎨 2026-09-29 (v5.16.12) 老倪「主机面的功能模块太宽了, 不协调; 要自适应, 默认不要横拉条」:
+      新增 `max_card_w` —— 宽屏下卡片**不再被拉成 895px 的巨卡**。超过上限就按上限给宽,
+      多出来的宽度**整行居中留白**(左右等分), 于是窄屏·宽屏·全屏三种口径都成比例。
+      本类同时被复用为**分组框的自适应容器**(模块分组 2 列/1 列), 一个类两处用。
     """
 
-    def __init__(self, cards, min_card_w=260, spacing=12, max_cols=3, parent=None):
+    def __init__(self, cards, min_card_w=260, spacing=12, max_cols=3, max_card_w=0, parent=None):
         super().__init__(parent)
         self._cards = list(cards)
         self._min_w = int(min_card_w)
         self._spacing = int(spacing)
         self._max_cols = int(max_cols)
+        self._max_card_w = int(max_card_w or 0)
         self._cols = 0
+        self._cap = 0
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._grid = QGridLayout(self)
         self._grid.setSpacing(self._spacing)
@@ -1734,25 +1741,37 @@ class ReflowCardRow(QWidget):
         return self._cols
 
     def reflow_for(self, width=None):
-        """按给定(或当前)宽度重排; 返回是否真的改了列数。"""
+        """按给定(或当前)宽度重排; 返回是否真的改了列数/卡宽。"""
         w = int(width if width else self.width())
         if w <= 1:
             return False
         cols = self._cols_for_width(w)
-        if cols == self._cols and self._grid.count() == len(self._cards):
+        cell = max(1, (w - self._spacing * (cols - 1)) // cols)
+        cap = cell if self._max_card_w <= 0 else min(cell, self._max_card_w)
+        if cols == self._cols and cap == self._cap and self._grid.count() == len(self._cards):
             return False
         while self._grid.count():
             it = self._grid.takeAt(0)
             if it is not None and it.widget() is not None:
                 it.widget().setParent(None)
-        for i, c in enumerate(self._cards):
-            self._grid.addWidget(c, i // cols, i % cols)
-        for cc in range(self._max_cols):
+        # 🐛 清掉**历史列**的拉伸/最小宽 (上次可能是 5 列, 不清会留下看不见的空列把卡片推开)
+        for cc in range(self._grid.columnCount() + 1):
             try:
-                self._grid.setColumnStretch(cc, 1 if cc < cols else 0)
+                self._grid.setColumnStretch(cc, 0)
+                self._grid.setColumnMinimumWidth(cc, 0)
             except Exception:
                 pass
+        used = cols * cap + self._spacing * (cols - 1)
+        pad = max(0, (w - used) // 2)
+        self._grid.setContentsMargins(pad, 0, pad, 0)
+        for i, c in enumerate(self._cards):
+            c.setMinimumWidth(min(self._min_w, cap))
+            c.setMaximumWidth(cap)          # 🎨 卡宽上限: 宽屏不再把卡片拉成巨卡
+            self._grid.addWidget(c, i // cols, i % cols)
+        for cc in range(self._grid.columnCount()):
+            self._grid.setColumnStretch(cc, 1 if cc < cols else 0)
         self._cols = cols
+        self._cap = cap
         return True
 
     def resizeEvent(self, e):
@@ -1976,6 +1995,7 @@ class HomeWidget(QWidget):
                           "rgba(163,113,247,0.40)", "rgba(227,179,65,0.40)"]  # 边框暗淡 (2026-08-08 老倪: 默认太亮)
         outer = QVBoxLayout()
         outer.setSpacing(10)
+        _groups = []                                                   # 🎨 v5.16.12 分组框自己也要自适应
         for gi, (gtitle, gsub) in enumerate(zip(_GROUP_TITLES, _GROUP_SUBS)):
             gcol = _GROUP_COLORS[gi]
             gbord = _GROUP_BORDERS[gi]
@@ -2015,8 +2035,14 @@ class HomeWidget(QWidget):
                                   veh_id=f"VEH.{idx + 1}")  # 🌐 2026-08-09 老倪: VEH.1~VEH.12 对话 ID (点号)
                 card.clicked.connect(self.module_clicked.emit)
                 _row_cards.append(card)
-            fl.addWidget(ReflowCardRow(_row_cards, max_cols=3))
-            outer.addWidget(frame)
+            fl.addWidget(ReflowCardRow(_row_cards, max_cols=3, max_card_w=470))
+            _groups.append(frame)
+        # 🎨 2026-09-29 (v5.16.12) 老倪「主机面的功能模块太宽了, 不协调; 要自适应, 默认不要横拉条」:
+        #   原来 4 个分组框**各占满整行** ⇒ 2840px 工位屏上每组 3 张卡各被拉成 895px 的巨卡,
+        #   框内大片空白 = "太宽、不协调"。现在分组框自己也是自适应的:
+        #   宽屏 **2 列并排**(每列 ~1380 ⇒ 每张卡 ~443px) / 中等 1 列 3 卡 / 窄屏自动 3→2→1 卡。
+        #   全屏(3200+)也不怕: 卡宽上限 470, 再多出来的宽度整行居中留白, 永不出现横拉条。
+        outer.addWidget(ReflowCardRow(_groups, min_card_w=900, spacing=12, max_cols=2))
         container = QWidget()
         container.setStyleSheet("background:transparent;")
         container.setLayout(outer)
@@ -11052,7 +11078,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.11 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.12 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11060,9 +11086,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.11 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.12 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.16.12: UI(主界面): 功能模块自适应 —— 老倪「主机面的功能模块太宽了, 不协调; 要适应, 默认不需要下面的横拉条, 也可以全屏显示」 ①根因(实测 192DPI 口径): 4 个分组框原来**各占满整行** ⇒ 2840px 工位屏上每组 3 张卡被拉成 **895px 的巨卡**(ReflowCardRow 只做了"换列", 没有卡宽上限), 框内大片空白 = "太宽、不协调"。 ②修法: `ReflowCardRow` 新增 `max_card_w`(卡宽上限 470) —— 超出上限就按上限给宽, 多出来的宽度**整行居中留白**; 同时**清掉历史列的拉伸/最小宽**(上一次若是 5 列, 不清会留下看不见的空列把卡片推开)。 ③分组框自己也要自适应: 4 个分组框套进同一个 `ReflowCardRow`(每列最小 900, 最多 2 列) ⇒ 宽屏 **2 列并排**(每列 ~1380 ⇒ 每张卡 ~443px) / 中等宽度 1 列 3 卡 / 窄屏自动 3→2→1 卡。 ④实测(离屏, QT_FONT_DPI=192, 与现场 Xft.dpi=192 同口径): 卡宽 **895 → 431px**(工位屏 2840 口径); 3840 宽屏卡宽封顶 **470**; 分组行 2 列 · 卡行 3 列; 整窗冒烟(含侧栏): 首页视口 2812 · 页面最小宽 2459 · **横向条 max=0 = 默认不需要横拉条** · 逐页切换(11 页)异常 **0**。 ⑤文字体检: 12 张卡全部标签按 QLabel 真实换行口径(TextWordWrap)复算, 2840/1600/3600 三种宽度**溢出 0**(含"产品大屏"卡的长 URL 自动折行, 不再被裁)。 ⑥红线: 未改页面结构/画布数据/在役链路/默认档; 未下发任何真机动作。
         # v5.16.11: v5.16.11 — TCP 轨迹 AR/VR 调试台: 把算法走过的通道用 3D 管道叠到固定相机上 (小版本迭代)  【本批次主题】 老倪: 「用 VR/AR 把机器人工具中心轨迹可视化出来, 要有明显的 3D 渲染让你感觉出走过的通道; 默认不要一开始就显示, 人工开启; 场景叠加是为了更好的调试算法」。 落实为两个面板 + 一套开关真源, 全程不重启他正在看的 8791/8793 实况流(新功能走独立端口 8797)。  【新增】 - tools/traj_display.py: 轨迹「显示/清除」的唯一真源(开关 show + 清除线 baseline_n + 隐藏折线缓存 _hidden_paths.json), 推流侧/服务侧/两个页面共用同一份状态。 - tools/tcp_ar_server.py: 独立端口(8797)的 AR/VR 调试台服务; 可切相机、按相机存外参、空手有 MJPEG 底图与快照校验端点。 - tools/web/tcp-ar.html: 3D 管道 + VR(base 系, 免标定) + AR 叠加 + 相机切换 + 标定(带 4× 放大镜)。 - tools/laptop_cam_solve.py(外参解算: DLT 线性初值 + 精化 + 自检) · tools/laptop_cam_ar_calib.py · tools/probe_laptop_ar.py · tools/probe_green_anchor.py(采集与探针)。 - tools/web/scene-overlay.html 加轨迹工具条(显示/隐藏/清除/全部历史) + tools/live_trace_publisher.py 接入 traj_display(默认关由推流循环强制执行, 不是只改前端)。  【修复的真根因 (都带实测值)】 1) VR 面板「看不到历史轨迹」= 两个 bug 叠加:    ① 视角写死(target 固定 (0.70,0.22,0.14)/dist 1.6m)而轨迹只占 ~5cm ⇒ 投影成 ~50px 一小坨;       改为按 trace+plan 包围盒自动对焦后, 同一份数据轨迹像素 50 → 2818。    ② 页面只在 init 读一次「显示开关」⇒ 打开页面时后端若处于关/清除线在末尾, 页面永远空画;       改为每次轮询都同步。实测刷新后直接画出 463 点。 2) 屏幕逐帧闪烁: MJPEG <img> 每帧触发 load, 而给 canvas.width 赋同一个值也会清空画布(alpha 255→0)。    修法 = 布局用尺寸签名守卫 + 只在真变尺寸时设 canvas 宽高 + 只按数据签名重绘(不再 1.5s 无条件重画)。    取证: 注入 30 次 img.load 事件 ⇒ 重绘 0 次、标记像素未被清。 3) 「清除轨迹后看不到历史」= 语义问题: 清除 = 把清除线设到当前时刻(只画新点, 数据从不删除);    补「📜 全部历史」(baseline_n=0)按钮, 并把状态文案写成可读中文。 4) 标定点数下限 4 → 6: <6 点没有 DLT 线性初值, 解会飞(实测退化 f=84.6、相机 z=1.4e4m、RMS 2.4e8px);    带 DLT 初值自检: f 真值 520 → 解 521.9(0.36%)、RMS 0.46px、t 误差 2.6mm。  【有实测依据的取舍】 - AR 底图默认切到 MAXHUB 1280×720: 逐块放大核对(视觉取证)笔记本 640×480 那路末端工具**直接出画**   (画面里只有上段臂杆, 从右边缘进、左下没入托盘), 底座也在画外, 操作员躯干挡住中段工作区 ⇒   这种视角外参标得再准, 管道也会画在看不见的臂上甚至压在托盘上, 拿来调算法比不画更坏。   MAXHUB: 整条臂 + 台面 + 托盘/夹具全在画面内, 末端约 10~25px ⇒ 标定配 4× 放大镜(跟随光标+十字)。 - 标定按相机各存一份(data/scene/cam_calib.json 的 {<cam>: ...}), 分辨率不同绝不混用(标定点是像素量纲)。  【数据/产物】 - 轨迹: 实测 463 点 + 航路 149 点(录制器累计 18085 点, 2mm 抽稀, /tmp/live_trace.json)。 - L5 三路理解报告 1 份(reports/l5/three_cam_vlm_20260929_121425.json) + 证据帧 8 张。 - 联调训练 L3/L4 摘要 5 组(reports/joint_train_*/, 权重 .pt 与 .log 按 git 精简纪律不入库, 进现场归档)。  【追加 · 同日现场『点1』按钮 (工位总览 8793 金手指检测窗口)】老倪: 「把回到金手指点1 放到整板原图 按钮旁边, 加一个『点1』按钮, 点击后即返回点一」。技能本来就在册(L2.goto_gold_pt1 · point_locked 位姿锁死 · 示教点 reports/aoi_points/金手指点1.json = pos [0.596737, 0.142622, 0.641536]), 缺的是页面上没有入口 + 手动控制白名单里没有它。 ① tools/cam_live_stream.py: 新增 _CTL_ABS_SKILLS(绝对点位技能白名单 —— 无数字参数, 只发 {skill,speed}; 点位仍锁在技能定义与示教点文件里, 页面/接口都改不了点位); _ctl_move 支持无参技能; 回执新增 pending(执行器已收到·正在等安全裁决, 不冒充"已下发"); 新增只读 GET /ctl/log?n= 供页面追最终裁决行; /station 改为**热读 tools/web/station.html**(以后加/改按钮不用重启推流服务, 文件不在时退回内嵌副本)。 ② tools/web/station.html(新增, 工位总览页真源): 金手指检测窗口 判据图/整板原图 旁边加『🎯 点1』, 与方向键同一条路(白名单→授权真动→限流→FIFO→执行器→安全裁决); 未授权只算目标并给授权入口; 等裁决时每 5s 追日志直到出现「受理: 已下发」或「🛑 被拦…⇒ 拒发」并把原文摆出来可复制。 ③ 实测(零动作): 页面与 tools/web/station.html 逐字节一致(热读生效); 未授权点『点1』→ 执行器 [13:36:11] 目标 L2.goto_gold_pt1: pos=(0.5967,0.1426,0.6415) → DRY-RUN → 受理: DRY-RUN(未下发) ⇒ 整链通且机械臂未动。 ④ 🔴 同时查清「还是不好使」与按钮无关的两层真因: (a) 唯一那次真动 13:26:28 被**慢层 VL 安全闸拒发**(13:27:56 裁决 risk=high: 人手/人臂/人体在臂上相机与笔记本相机视野内 + 笔记本视野被遮挡 + 深度图底部高亮近物) —— 人站在视野里就必然拒发; (b) 13:36 之后本机**产线网卡整体掉了**(ip -br addr 只剩 WiFi 10.163.146.78; 192.168.23.160 控制器 / .66 Orin / .23 工控机 全不可达; SDK 直读采样器 connectToRobot 报 network: network connection) ⇒ 执行器「位姿读不到」拒发一切技能。 ⑤ 采样器加固: ~/zmax_data/rokae_sdk/tcp_direct_sampler.py 把「SDK 静默返回全 0」按读失败处理(以前不抛异常 ⇒ 永不重连, 还把 0 写进 latest.json ⇒ 执行器判位姿无效)。
         # v5.16.10: 收尾迭代 (数据保存 + 逐节点调试工具化)  1. L5 闭环运行产物归集: ~/zmax_data/l5_loop/artifacts_20260929/ (summary/stages/日志/配置快照 +    WEIGHTS_MANIFEST.txt 记 md5+大小; 权重本身按纪律不入代码库)。 2. 逐节点断点清单工具化: tools/ss_node_debug_map.py (走注册表, 与 GUI 双击分派同源) →    reports/ss_node_debug_map.txt/.json; 全画布 73 节点 / 178 连线 / 未注册 0 / 孤岛 0。 3. 新增 reports/关机交接_20260929.md: 关机前状态 + 开机后需手动恢复的三处取流 + 待办优先级。 4. .gitignore: 每次训练动态生成的 config_smolvla_lew_lora_*.yaml 不入库 (快照已归集)。 5. 画布 L5 徽章/横幅认识终态 done_with_gaps (已完成·有缺口 + 缺口清单)。
         # v5.16.9: fix(l5): L5 档「标注→训练」闭环拉通 — 修掉"点 ▶运行只到第 0 阶段就退出"+ 标注 4/6 路丢失  ① 根因 (点 L5/▶运行无后续, state=status:failed · stage:interact · 2s):    src/lerobot/policies/left_right/state_space/hil_bridge.py::build_snapshot() 里    stage_note 只在 `if not stage:` 分支赋值, 下面却无条件引用 → 真机 tap 上报了    prod_stage 时抛 UnboundLocalError: cannot access local variable 'stage_note' →    stage_interact 判 ok=False → 编排 break ⇒ annotate/监督/L2/L3/L4/merge 全部不启动。    修: stage_note = "" 前置初始化 (真报阶段本就不需要"推算阶段"说明)。    证据: 修前 interact_state.json snapshot_err=UnboundLocalError; 修后 ✅ interact 0.0s → 进入 annotate。  ② tools/gen_overlay_from_vlm.py::call_vlm 加重试 (L5 标注 6 路里 4 路整路丢失):    实测 batch_0929_111132 ok=2/6, err="HTTPError: HTTP Error 503: Service Unavailable"    (云端视觉档瞬时限流/过载, 原来一次不成就整路放弃)。现对 5xx/429/超时/URLError/    200-空content 做指数退避(5→10→20→30s)+抖动重试 (默认 4 次, ZMAX_VLM_RETRY 可配);    非限流 4xx 立即抛出 (不掩盖真错)。自测: 假 urlopen 503×2→成功 attempts=3 / 400 立即抛 / 空content重试。  ③ tools/auto_annotate.py::run_batch 并发可配 (ZMAX_ANNOT_WORKERS, 默认 0=保持旧行为 6 路并行):    6 路同时打同一 key → 网关突发 503; 过载环境设 3 降突发。  ④ 新增 tools/ss_node_debug_map.py (只读): 画布 73 节点 → 注册 key → 执行函数 → 文件:行 全表    (registry 149 key + sourceview 行号映射) + 孤岛/未注册检查 → reports/ss_node_debug_map.{txt,json}    (本次: 73 节点 / 178 连线 / 未注册 0 / 孤岛 0 — 每个节点都能对到真实函数, VSCode 断点有落点)。  ⑤ reports/L5链拉通与逐节点调试_20260929.md: 9 阶段→真源脚本→模型→断点落点; 三种调试入口    (单节点真执行 / 逐帧真实化引擎 / L5 编排与训练子进程分别 F5); "数据真流过"的四条判据。
