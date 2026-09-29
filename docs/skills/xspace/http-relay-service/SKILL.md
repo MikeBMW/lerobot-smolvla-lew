@@ -92,6 +92,19 @@ GET  /agent/status                         → 两侧计数 + last_prompt/last_r
 - ⚠️ 消费者(本机 5s 常驻) 与取证脚本会抢同一条消息 → 取证时先 `systemctl stop` 消费者。
 - 补丁锚点唯一性: `if path == "/command":` 在 do_GET/do_POST 各出现一次, 别拿它当锚点; 用 `def do_POST(self):\n        path = self.path.split("?")[0]\n`。
 
+#### 10b. 消费者侧铁律 (本机常驻、拿消息去跑模型/动作的环)
+这组路由的典型消费者是一个"看消息 → 干活(几秒~上百秒) → 回执"的常驻环。它跑偏的四种方式:
+- **游标锚队尾, 只处理新消息**: 启动时先读 `/agent/status.last_prompt.seq` 当起点, **绝不回放历史**
+  (否则一启动就把陈年消息逐条答一遘)。游标**落盘**(如 `reports/<环>_state.json`), 重启接着跑。
+- **被过滤掉的条目也必须推进游标**: 维护一个"本进程见过的最大 seq"(含被过滤的), 单独用它推游标;
+  只在"处理列表"里推 ⇒ 被过滤的消息永远不会被跳过去 ⇒ 每 3s 重读同一批, 游标卡死。
+- 🔴 **队列里有机器消息**: 本地硬件桥/看门狗会定期发探询词(如 `status 状态空间`, 实测每 ~60s 一条)。不区分来源
+  ⇒ 一条机器探询就白跑一轮 (实测 65s 的视觉模型调用) 并把人工触发的标注**覆盖掉**。定式: `from` 黑名单
+  (web-hw-bridge / *-bridge / watchdog …) + **整条就是探询词的**正则过滤; 宁松勿严 —— 「状态: 看光模块」这种带内容的
+  必须放行。"跳过"也要记一行(同一条只报一次, 不刷屏)。
+- **回执带 `prompt_seq`**, 且把"收到什么/跑了多久/产出什么"写进回执正文; 队列两端都靠这个对账。
+- 停自家消费者用**括起一个字符**的写法 (`l5_hil_[a]gent.py`): `pkill -f l5_hil_agent.py` 会匹配到自己这条命令行。
+
 ### 11. 两个进程都不在时的恢复 (2026-09-25 实测)
 症状: `/api/relay/*` **全部** 502 且 `/ws` 也 502, 但首页 200 → 说明 nginx 活着, **zmax_relay(39053) 与 ws_relay(8765) 双双不在** (无人监管, 重启/崩溃后静默死掉)。
 恢复: 各用自带脚本拉起 (`bash /root/zmax-relay/start.sh`、`bash /root/zmax-relay/start_ws.sh`), 两次 ssh 分开执行 (脚本内 pkill 会匹配同一条命令行)。复核 status/peek/packages/orin/status/cam/status + `/ws`(426=升级协商, 说明 WS 服务活了; 502=还没起)。
@@ -150,7 +163,8 @@ GET  /agent/status                         → 两侧计数 + last_prompt/last_r
 - **`/status` "latest" must sort by MTIME, not filename (2026-08-03 实测)**: `pkgs = sorted(glob.glob(...))` sorts by NAME — `pkg_20260803_205315.npz` > `demo_ws_test.json` alphabetically, so the newest JSON packet is permanently shadowed by an older binary → auto-trainers polling `/status` never see the JSON packet. Fix: `sorted(..., key=os.path.getmtime)`. Symptom: upload OK, queue has 2 items, but `/status.latest` always shows the binary. Verify: upload a new JSON after an older npz, confirm `latest` flips.
 - **Binary packets lack frame counts → threshold logic silently skips them (2026-08-03 实测)**: binary upload branch stores `.npz` with `meta = {"binary":..., "size":...}` — NO `frames` key. Consumer gates like `frames >= 20` see `frames="?"` and NEVER fire → binary data sits in the queue untrained while the trainer logs "队列空". JSON packets carry `meta.frames`; binary producers must include a frame count (side-channel, filename, or a small companion JSON) or the consumer must parse the npz itself. Detect: trainer keeps re-logging the same `latest` with `frames=?`.
 - **Remote patch scripts can swallow a function header (2026-08-03 实测)**: replacing `def enforce_buf_limit():` (with its docstring) as the anchor, then injecting a new function BEFORE it, left the old docstring+body orphaned inside the new function → `enforce_buf_limit` UNDEFINED → `/upload` returns 400 `name 'enforce_buf_limit' is not defined`. Rule: when string-patching remote scripts, the anchor must include the FULL function header line; after patch run `ast.parse` AND exercise the real endpoint (small JSON upload), not just syntax check. Always `cp app.py app.py.bak_$(date +%s)` first.
-- **pkill bracket trick `[z]` still fails when the SAME ssh command also starts the service (2026-08-03 实测)**: `pkill -f '[z]max_relay'` alone works (exit 0), but `pkill ... ; sleep 1; setsid nohup python3 zmax_relay.py ...` in one ssh command → exit 255, because pkill ALSO matches the `python3 zmax_relay.py` text inside its own bash -c command line. Fix: kill in ONE ssh call, start in a SEPARATE call, or put both in a start.sh on the host and run `bash start.sh`.
+- **pkill bracket trick `[z]` still fails when the SAME ssh command also starts the service (2026-08-03 实测)**: `pkill -f '[z]max_relay'` alone works (exit 0), but `pkill ... ; sleep 1; setsid nohup python3 zmax_relay.py ...` in one ssh command → exit 255, because pkill ALSO matches the `python3 zmax_relay.py` text inside its own bash -c command line. Fix: kill in ONE ssh call, start in a SEPARATE call, or put both in a start.sh on the host and run `bash start.sh`. 本质是**模式出现在自己这条命令行里** ⇒ 括起一个字符(`l5_hil_[a]gent.py`)即可自排除。
+- **消费者环把机器消息当人话**: 同一队列上硬件桥每 ~60s 发一条探询词, 不滤 ⇒ 白跑一轮模型+覆盖人工结果; 同时被过滤的条目不推游标 ⇒ 每轮重读同一批。两处都要修(详见 §10b)。
 
 ### 9. Relay "collection query failed" — nginx + relay double-death recovery (2026-08-05 实测)
 Symptom: console status bar shows red error for every poll of `https://domain/api/relay/status`; `curl https://domain/api/relay/status` returns EMPTY body / HTTP 000.

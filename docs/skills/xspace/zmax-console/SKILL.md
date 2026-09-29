@@ -14,6 +14,35 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > 🛑 2026-09-28 老倪两次问「控制台怎么自己重启呢」——查证: 控制台**本身没有自启机制**
 > (systemd 用户单元 zmax-studio.service 是 Restart=no, 退出后一直 dead; crontab 11 条没一条碰它),
 > 是 **agent 改完 GUI 代码就重启它** ⇒ 现场只看到窗口闪来闪去。
+> 🎨 2026-09-29 老倪「窗口没显示完全 + 没有横向拖动的拖动条 + 方框里字被遮挡」= **UI 五条真根因与修法** (v5.16.5):
+> ① **横向条被永远关掉**(最直接的根因): 三处 `QScrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)` ⇒ 内容一宽过窗口就既看不到右边、也没有横向拖动条。改 `AsNeeded`(0)。
+> ② **滚动条 QSS 必须挂 widget 级**: 只改全局 `app.setStyleSheet(_build_global_qss())` 会被页面级/控件级样式表压掉 —— 实测"改了全局 QSS 但像素一点没变"。用**附加**写法 `scroll.setStyleSheet("QScrollArea{border:none;}" + SCROLLBAR_QSS)`(studio.py 常量), 画布 view 单独 `setStyleSheet(simulink_module.CANVAS_SCROLLBAR_QSS)`。验收判据 = 截图右缘**蓝色列数**: 修前 0(只剩两条灰线) → 修后 16 列(16px 蓝手柄 #4d8fdb)。
+> ③ **色带(row_bg, 老倪说的"方框")名字被截 = 名字区宽度算错**: 原取**全画布**最小节点 x(本画布=0) ⇒ 每条色带名字区都被压到下限 80px ⇒ 15/15 全部省略号。必须按**本条色带内**的节点算(节点中心 y 落在本带 y..y+h 内) ⇒ 80px → 284~11070px, 实测 15/15 → 0/15。
+> ④ **节点字多 = 换显示名, 不是缩字** (✅ v5.16.6 定稿): 数据名平均 18.7 字(最长 41) ⇒ 两行还挤。改 `node_display_name()` 为**字数预算制**: 预算 **10 字** = 每个中文字 1 字 + 每个西文/数字词 1 字 (`Transformer`/`ACT`/`43D` 各算 1 字), 取值优先级 = 原名≤10字**原样保留(连括号)** → 去括号补充(≥5 字才用) → 人工短名表 `NODE_CORE_LABELS`(43 条, 权威 5~10 字) → 按词裁剪(≥5 字); 另加**单行像素预算 300px** (超了就只能折行) 与**括号保护** `(?<![A-Za-z0-9])[（(【\[〔]` (否则 `SU(2)`/`D064` 这类技术记号里的括号会被当补充说明删掉)。图标(emoji/①②/◉)不计字数, 自动带在标签前。配 `autofit_node_size()` (按最终标签撑宽/长高)。
+> 🔴🔴 **“字只显示一半”的第一个该查的东西 = 屏幕 DPI, 不是文字长度** (v5.16.8 实测根因): 本机桌面 `xrdb -query | grep Xft.dpi` = **192** (2x), 而节点排版常量是按 1x 字形设计的 (标题行 20px / 副行 16px / radio 格 48px) ⇒ `QFont(族, pt)` 现场字形是设计值的 **~1.93 倍** (同一句“抗干扰”: 离屏 42px → 现场 81px; 行高 22→40) ⇒ 行叠字、末字被框边切掉。
+> • 修法: 画布文字一律 `QFont(fam)` + `setPixelSize(...)` (**不做 pt**), 排版常量不变 ⇒ 现场 = 离屏 = 审计三边一致。字号倍率要**扫**出来: `ZMAX_NODE_PX_SCALE` 1.15 通过 / 1.30 互压 / 1.45 越框。
+> • **审计必须在“现场口径”也跑一遍**: `DISPLAY=:0 QT_QPA_PLATFORM=xcb` vs `QT_QPA_PLATFORM=offscreen` (后者不读 Xft.dpi → 永远 1x → **必然假通过**)。只要两种口径结果不一样, 就是这类 DPI 坑。
+> • 画布里别再用 `QFont("Arial", 9)`/`QFont("Consolas", 9)`: 本机两个字体**都不存在** (Arial→Liberation 只有西文字形 → 中文逐字回退; Consolas→回退), 用 `_node_font()`/`_node_mono()`。
+> • **运行期文本**是第二个病灶 (静态扫不出来): `str(x)[:64]` 只截**字数** —— 64 个中文字 ≈ 850px 塞进 406px 的框, 而 `drawText(QRectF,…)` 的矩形**不裁剪** ⇒ 直画到框外/压邻居。统一走 `_fit_text()` (按框宽 elide + 全串进 tooltip)。自查: `scripts/node_runtime_text_check.py` (把 l5_lines 塞满长中文/报错串后复检)。
+> • 🐛 **`QFontMetrics.elidedText` 的宽度必须 `int`**: 传 float 会 `TypeError`, 被 `except Exception` 吞掉 → **静默退回“不省略”**(看上去像没修)。本文件 356 行已记过, 又踩了一次 —— 写完 elide 后一定要 assert 返回值宽度 ≤ 预算。
+> ⛔ **别用“按分隔符从前往后取前缀”** (v5.16.5 的做法, 已废): 它把「🏆 L4 · 工作安全 + 物理世界导航」砍成「L4」——**层号是分类不是功能**, 老倪一句「怎么只是剩下 L4」打回。判据 = 标签字数 ≤10 且 ≥5 且不得只剩 `L[1-5]`。
+> 🔍 **“字太多/太挤/看不清”是另一个毛病, 用代理画笔查** (v5.16.7): `scripts/node_text_audit.py` —— 包一个 `AuditPainter` 转发 set*/draw*, 只拦 `drawText(qrect, flags, text)`, 逐条判三件事: ①文字宽 > 绘制矩形宽 (=会被裁/挤) ②文字矩形画到方框外 ③两块**贴合文字**的矩形互压(大容器矩形要排除, 否则一团假阳性)。实测全 flow 1025 个节点修前 91 处 → 修后 4 个 0。
+> 🐛 该体检抓到的三类**真**毛病 (改文字之外记得顺手查这三处): (a) 小按钮里写死长文案 (📥导出 34px 按钮装 43px 字) → 按钮加宽 + `elidedText`; (b) 色带标题绘制矩形按“带内节点最小 x”算会比**色带自身宽**还大 → 绘制矩形必须 `min(_aw, self.w-16)`; (c) 色带 `paint` 用 `node.get("h", 244)` 而 `__init__` 里是 `node.get("h", DH=110)` ⇒ 没写 `h` 的色带画出来高 134px、标题跑到框下面 —— **paint 一律用 `self.w/self.h`**, 不要另取一个默认值。
+> 🎛 **带自绘控件的节点** (如“能力档位” radio): 标题别写死长句(尤其别用 `QFont("Arial")` —— 本机无该字体, 中文逐字回退→宽窄不一), 走 `node_display_name` 拿短标签 + 统一字体; 详细说明进 tooltip; 每个 radio 子标签先量 `QFontMetrics.horizontalAdvance` 再画 (放不下就不画, 宁少勿挤)。
+> 自检命令 (26 个 flow / 1107 个标签, 三个“0”才算过): 超 10 字 = 0 · 超 300px = 0 · 只剩层号 = 0; 同口径看收益用 `scripts/node_text_before_after.py`。
+> ⑤ **「窗口没显示完全」先量再改, 别急着改尺寸**: `xwininfo -root -children` **看 frame 那一行**(GNOME mutter 会 reparent, 客户窗几何带偏移会骗人) + `wmctrl -m`; 实测老倪窗口 `_NET_WM_STATE_MAXIMIZED_*`, frame 3068x1936+132+64 = **正好铺满 3200x2000** ⇒ 窗口没出屏, 是**内容**宽过视口 + 条被关掉。仍保留 `_fit_window_to_screen()` 兜底(尺寸+位置双夹紧进 availableGeometry, 留 8px 边距; 启动与 show 后各一次; 记 `/tmp/studio_show_diag.log`)+ 菜单「🖥 窗口适配屏幕」。
+> ⑥ **改完画布渲染必须逐个跑真 `paint()`**: paint 里抛异常 = Qt **直接 abort 整个 GUI**(不是打印异常)。探针见 `scripts/canvas_node_render_selfcheck.py`(造 nodes/links shim + QImage 逐节点 paint, 断言"异常 0 / 标题截断 0"), 收益对照用 `scripts/node_text_before_after.py`(两边各走自己的 autofit = 同口径)。
+> 📌 改完照例: `tools/bump_version.py --to X.Y.Z --summary-file ...`(7 处版本号 + VERSION.md 表首, 工具会回读校验) → `git commit` → `git push origin main`。
+>: 单元是 `enabled`(WantedBy=default.target)
+> ⇒ **图形会话一进就会自动弹一个控制台**(只是 Restart=no, 所以关了不会自己弹回来)。
+> 老倪开机看到的是 **v5.15.13 旧版**, 根因 = 单元里 `WorkingDirectory/ExecStart` 还硬编码在**共享检出**
+> `/home/ubuntu/lerobot-smolvla-lew`(被并行线切到 mac-hw ⇒ 那边 GUI 停在 v5.15.13), 真源是 worktree
+> `/home/ubuntu/zmax_rel`(v5.16.4)。桌面图标 09-26 已改成按脚本位置推仓库根, **只有这个 systemd 单元没跟上**。
+> 纪律: **凡"开机自启/常驻"入口一律指 worktree** —— 现在 `ExecStart=/home/ubuntu/zmax_rel/tools/gui/launch_studio.sh`
+> (自带 worktree 优先 / DBUS 会话总线补全 / 已有实例去重激活); 改完必 `systemctl --user daemon-reload` 并回读
+> `systemctl --user show zmax-studio.service -p ExecStart -p WorkingDirectory`。
+> 排查「界面怎么是旧版」: 两个检出各查一次 `grep -m1 CURRENT_VERSION <检出>/tools/gui/update_checker.py`,
+> 再对 `pgrep -af studio.py` 的 cwd (`readlink /proc/<pid>/cwd`) —— 界面版本 = 那个 cwd 的代码版本。
 > 纪律: **改 GUI 代码攒成一批, 重启前先问老倪**; 确需重启走 `bash tools/studio_ctl.sh restart --force`
 > (起不到 300s 的实例会被硬闸拒, 退出码 3), 每次动作记 /tmp/studio_ctl.log 可追谁在重启。
 > 🔌 另: 关机/kill 走 SIGTERM —— 老版本会 "QThread: Destroyed while thread is still running" → SIGABRT + core dump;
