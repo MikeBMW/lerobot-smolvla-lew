@@ -63,6 +63,27 @@ def _jsonable(v):
     return str(v)
 
 
+def _digest_for(k, f):
+    """按话题给**一行可读摘要** —— 否则长数组(如 ss_plan 的 joints_path n×6)会把 digest 灌满数字"""
+    try:
+        if k == "ss_plan":
+            return ("plan-only: n=%s (joints_path %d / tcp_path %d) plan_code=%s 时长=%ss "
+                    "终点误差=%smm FK起点差=%smm 同源闸=%s[%s] age=%ss"
+                    % (f.get("n_points"), len(f.get("joints_path") or []),
+                       len(f.get("tcp_path") or []), f.get("plan_code"), f.get("plan_time_s"),
+                       f.get("end_err_mm"), f.get("fk_start_pos_err_mm"),
+                       f.get("gate_same_source"), (f.get("gate_reason") or "")[:70],
+                       f.get("frame_age_s")))[:400]
+        if k == "ss_state":
+            return ("state: vec[%s]=%s tcp=(%s,%s,%s) layer=%s source=%s note=%s"
+                    % (f.get("dim"), (f.get("vec") or [])[:6], f.get("pos_x"), f.get("pos_y"),
+                       f.get("pos_z"), f.get("layer"), f.get("source"),
+                       (f.get("note") or "")[:60]))[:400]
+    except Exception:                                                        # noqa: BLE001
+        return None
+    return None
+
+
 def _fields_of(msg):
     """按 dataclass 声明白名单取字段 —— 丢掉 DDS 元数据(否则 json 会爆 SampleInfo)"""
     keys = list(getattr(type(msg), "__dataclass_fields__", {}).keys())
@@ -166,12 +187,13 @@ class Probe:
                     s["last_ts"] = f.get("ts")
                     s["last_fields"] = f
                     body = json.dumps(f, ensure_ascii=False)
+                    dg = _digest_for(k, f) or body[:180]
                     self.tr_bytes[k] = self.tr_bytes.get(k, 0) + len(body)
                     if len(self.trace) < 500 or s["count"] % 20 == 0:
                         self.trace.append({"t": round(now, 3), "topic": T.full_name(k),
                                            "type": (T.TOPICS.get(k, {}).get("type") or "").split("::")[-1],
                                            "n": s["count"], "bytes": len(body),
-                                           "digest": body[:180]})
+                                           "digest": dg})
                         if len(self.trace) > 800:
                             self.trace = self.trace[-600:]
                     self.hist[k].append(now)
