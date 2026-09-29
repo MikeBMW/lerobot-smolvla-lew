@@ -37,6 +37,11 @@ import time
 
 HOME = os.path.expanduser("~")
 SS_REMOTE = os.environ.get("SS_REMOTE_DIR", os.path.join(HOME, "zmax_ss_remote"))
+# 🧭 MoveIt plan-only 的 DDS 镜像 tap (老倪 2026-09-29「把 /plan_kinematic_path 返回的关节轨迹
+#    也镜像成 DDS 一条 ss_plan」): 容器 zmax-moveit 里 moveit_plan_live.py 逐轮规划追加一行,
+#    本守护读最新一行 → 发 ss_plan。只规划不执行(容器 allow_trajectory_execution=False)。
+PLAN_DIR = os.environ.get("SS_PLAN_DIR", os.path.join(HOME, "zmax_moveit_plan"))
+PLAN_FILE = os.path.join(PLAN_DIR, "live_plan.jsonl")
 REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")   # ★ 单一工程根(2026-09-29 整治: 原来错指 mac-hw 共享检出)
 MODELS = os.path.join(REPO, "models")
 REPORTS = os.path.join(REPO, "reports")
@@ -51,9 +56,11 @@ STALE_S = 5.0                     # 源帧龄超过它就只发 diag, 不发状�
 MODE_TOPICS = {
     "prod": [],
     "diag": ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag"],
-    "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag"],
+    "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
+              "ss_plan"],
     "test": ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state", "ss_action",
-             "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test"],
+             "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test",
+             "ss_plan"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 
@@ -131,6 +138,15 @@ def read_state():
 def read_proposal():
     """推理服务对真机帧的输出 (action 6 / yaw / model_ms)"""
     p = _newest(os.path.join(SS_REMOTE, "proposal_*.jsonl"))
+    if not p:
+        return None, None
+    d = _last_line(p)
+    return d, (os.path.getmtime(p) if p else None)
+
+
+def read_plan():
+    """MoveIt plan-only 最新一条规划 (含同源闸判据)"""
+    p = PLAN_FILE if os.path.isfile(PLAN_FILE) else None
     if not p:
         return None, None
     d = _last_line(p)
@@ -379,6 +395,41 @@ class SSDaemon:
                                                   (yaw.get("ok") if isinstance(yaw, dict) else yaw))))
         return True
 
+    def pub_plan(self):
+        """🧭 MoveIt plan-only 轨迹 → DDS ss_plan (只规划不执行; 带同源闸)"""
+        from ss_types import SSPlan                                 # noqa: PLC0415
+        d, mt = read_plan()
+        age = (time.time() - mt) if mt else -1.0
+        if not d or age > max(STALE_S, 30.0):      # 规划比状态慢, 给到 30s 帧龄
+            return False
+        jp = [float(x) for x in (d.get("joints_path") or [])]
+        tp = [float(x) for x in (d.get("tcp_path") or [])]
+        n = int(d.get("n_points") or (len(jp) // 6) or -1)
+        fk_err = float(d.get("fk_start_pos_err_mm", -1.0))
+        # 同源闸: FK(真关节) 与真机 TCP 的位置差 ≤5mm 才算同源(可贴真机画面)
+        if fk_err is None or fk_err < 0:
+            gate, why = -1, "未判(缺 FK 起点误差)"
+        elif fk_err <= 5.0:
+            gate, why = 1, "同源: FK(真关节) 与真机 TCP 差 %.2fmm (≤5mm)" % fk_err
+        else:
+            gate, why = 0, ("不同源: FK(真关节) 与真机 TCP 差 %.1fmm (>5mm) —— 关节零位/符号口径不同, "
+                            "只可当设计态轨迹看, 不许冒充真机" % fk_err)
+        if d.get("gate_reason"):
+            why = str(d["gate_reason"])[:200]
+        self.publish("ss_plan", SSPlan(
+            ts=time.time(), source=str(d.get("source", "moveit_plan_only")),
+            group=str(d.get("group", "")), base_frame=str(d.get("base_frame") or d.get("base") or ""),
+            plan_code=int(d.get("plan_code", -1)), n_points=n,
+            plan_time_s=float(d.get("plan_time_s", -1.0)),
+            joints_path=jp, tcp_path=tp,
+            start_joints=[float(x) for x in (d.get("start_joints") or [])][:6],
+            goal_xyz=[float(x) for x in (d.get("goal_xyz") or [])][:3],
+            end_err_mm=float(d.get("end_err_mm", -1.0)), fk_start_pos_err_mm=fk_err,
+            gate_same_source=gate, gate_reason=why,
+            frame_age_s=float(d.get("frame_age_s", -1.0)),
+            note=str(d.get("note", ""))[:200]))
+        return True
+
     def pub_infer(self):
         from ss_types import SSInfer                                 # noqa: PLC0415
         h = read_infer()
@@ -571,6 +622,8 @@ class SSDaemon:
             self.pub_macro()
         if allowed("ss_nodes"):
             self.pub_nodes()
+        if allowed("ss_plan"):
+            self.pub_plan()
 
     def run(self, seconds=0.0, once=False):
         t0 = time.time()

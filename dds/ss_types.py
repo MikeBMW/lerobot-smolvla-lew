@@ -167,6 +167,40 @@ class SSDiag(IdlStruct, typename="zmax::SSDiag"):
     msg: str = ""
 
 
+
+# ─────────────────────────── 规划 (MoveIt plan-only → DDS 镜像) ───────────────────────────
+@dataclass
+class SSPlan(IdlStruct, typename="zmax::SSPlan"):
+    """MoveIt2 plan-only 的产出一份 DDS 镜像 (只规划不执行)
+
+    老倪 2026-09-29: 「起 plan-only 的 move_group 容器, 把 /plan_kinematic_path 返回的关节轨迹
+    也镜像成 DDS 一条 (ss_plan), 能在独立窗口里逐帧对」
+
+    口径(必须与 moveit_plan_only.py 一致):
+      · joints_path  拉平 n×6 (rad), 顺序 = joint_names
+      · tcp_path     拉平 n×3 (m, base 系) —— 由每个路点 FK 得到, 供叠加层画线
+      · gate_same_source: 1=FK(真关节)≈真 /robot/tcp_pose(过同源闸, 可贴真机画面)
+                          0=不同源(只可当"设计态轨迹"看, 不许冒充真机) -1=未判
+      · 未测 = -1.0, 不用 0 冒充 (与全空间口径一致)
+    """
+    ts: float64 = 0.0                       # 规划时刻 (epoch 秒)
+    source: str = ""                        # moveit_plan_only / ...
+    group: str = ""                         # 规划组
+    base_frame: str = ""                    # 基座坐标系
+    plan_code: int32 = -1                   # MoveIt ErrorCode (1=SUCCESS)
+    n_points: int32 = -1                    # 关节路点数
+    plan_time_s: float64 = -1.0             # 轨迹时长 (time_from_start 末尾)
+    joints_path: sequence[float64] = field(default_factory=list)     # 拉平 n×6
+    tcp_path: sequence[float64] = field(default_factory=list)        # 拉平 n×3 (m)
+    start_joints: sequence[float64] = field(default_factory=list)    # 6 (真机关节角=起状态)
+    goal_xyz: sequence[float64] = field(default_factory=list)        # 3 (目标请求, m)
+    end_err_mm: float64 = -1.0              # 末端位置误差 mm
+    fk_start_pos_err_mm: float64 = -1.0     # FK(起状态) 与请求起点的位置差 mm
+    gate_same_source: int32 = -1            # 同源闸: 1/0/-1
+    gate_reason: str = ""                   # 判据文字 (差多少 mm/deg)
+    frame_age_s: float64 = -1.0             # 规划所用真机状态距今多久 (s)
+    note: str = ""
+
 @dataclass
 class SSTest(IdlStruct, typename="zmax::SSTest"):
     """测试用例结果 —— 用于「测试」模式（回归/自检的可观测化）"""

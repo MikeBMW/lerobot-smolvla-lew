@@ -165,6 +165,19 @@ TOPICS = {
         "quality": ["counts_consistent(total = passed + failed)"],
         "provenance": "最近一次真跑的取证 JSON",
     },
+    "ss_plan": {
+        "type": "zmax::SSPlan", "src": TYPES_SRC, "rate_hz": 0.5, "qos": "state",
+        "producer": "zmax_dds_ss_daemon.py ← MoveIt plan-only 镜像 tap ~/zmax_moveit_plan/live_plan.jsonl",
+        "consumers": ["控制台 数据空间页/独立数据空间窗口", "叠加层(画规划折线)", "审计(轨迹必须可追同源闸)"],
+        "modes": ["calib", "test"],
+        "key_fields": ["ts", "source", "plan_code", "n_points", "joints_path(n×6)", "tcp_path(n×3,m)",
+                       "start_joints", "goal_xyz", "end_err_mm", "gate_same_source", "gate_reason",
+                       "frame_age_s"],
+        "quality": ["freshness", "hz_tol", "plan_code_success", "path_dim(n%6==0)", "same_source_gate",
+                    "frame_age_positive", "no_zero_fake"],
+        "provenance": "MoveIt2 /plan_kinematic_path (plan-only 容器 zmax-moveit, ROS_DOMAIN_ID=42, "
+                      "allow_trajectory_execution=False) → FK 逐路点 → JSONL tap → DDS",
+    },
     "link_value": {
         "type": "zmax::LinkValue", "src": TYPES_SRC_LINK, "rate_hz": 5.0, "qos": "beat",
         "producer": "画布连线总线(dds_link_bus)",
@@ -182,10 +195,11 @@ TOPICS = {
 MODE_TOPICS = {
     "prod":  [],
     "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag"],
-    "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag"],
+    "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
+              "ss_plan"],
     "test":  ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state",
               "ss_action", "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib",
-              "ss_diag", "ss_test"],
+              "ss_diag", "ss_test", "ss_plan"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 MODE_DESC = {
@@ -204,7 +218,7 @@ PRODUCERS = {
                         "publishes": ["hw_state", "train_prog"]},
     "状态空间数据空间守护": {"unit": "zmax-dds-ss.service", "path": "/home/ubuntu/zmax_dds_ss_daemon.py",
                         "publishes": ["ss_state", "ss_action", "ss_infer", "ss_calib", "ss_diag",
-                                      "ss_test", "ss_canvas", "ss_macro", "ss_nodes"]},
+                                      "ss_test", "ss_canvas", "ss_macro", "ss_nodes", "ss_plan"]},
     "DDS→relay 汇聚器": {"unit": "zmax-dds-agg.service", "path": "/home/ubuntu/zmax_dds_aggregator.py",
                         "publishes": [], "subscribes": ["hw_state", "train_prog", "heartbeat"]},
     "画布连线总线": {"unit": None, "path": "tools/gui/dds_link_bus.py",

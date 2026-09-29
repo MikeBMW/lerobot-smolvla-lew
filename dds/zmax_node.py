@@ -28,11 +28,12 @@ from zmax_types import DeployCommand, HardwareState, Heartbeat, TrainProgress   
 # ── 状态空间全局数据空间（老倪 2026-09-25: 状态空间工程用 DDS）──
 try:
     from ss_types import (SSState, SSAction, SSInfer, SSCanvasNode, SSMacro, SSNodes,
-                          SSCalib, SSDiag, SSTest)
+                          SSCalib, SSDiag, SSTest, SSPlan)
     _SS_TOPICS = {
         "ss_state": SSState, "ss_action": SSAction, "ss_infer": SSInfer,
         "ss_canvas": SSCanvasNode, "ss_macro": SSMacro, "ss_nodes": SSNodes,
         "ss_calib": SSCalib, "ss_diag": SSDiag, "ss_test": SSTest,
+        "ss_plan": SSPlan,          # 🧭 MoveIt plan-only 轨迹镜像 (老倪 2026-09-29)
     }
 except Exception:                                                               # noqa: BLE001
     _SS_TOPICS = {}
@@ -57,6 +58,8 @@ QOS_CLASS = {
     "link_value": "beat", "ss_action": "beat", "ss_infer": "beat", "ss_state": "beat",
     "ss_canvas": "state", "ss_macro": "state", "ss_nodes": "state",
     "ss_calib": "state", "ss_diag": "beat", "ss_test": "state",
+    # 规划是"状态型"产物(一段时间内有效) → latch: 新开的独立窗口立刻拿到最新一条轨迹
+    "ss_plan": "state",
 }
 
 
