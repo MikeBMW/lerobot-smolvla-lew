@@ -680,6 +680,12 @@ class SystemLayerCard(QFrame):
         sub = QLabel(subtitle)
         sub.setFont(QFont("Arial", 12))
         sub.setStyleSheet(f"color:{self.color}; background:transparent; border:none; margin:0; padding:0;")
+        # 🐛 v5.16.14 老倪: 侧栏卡副标题被**硬裁**(实测「VLA-T + Z-Flow · 500M/15M」被切到
+        #   「VLA-T + Z-Fk」、「L2基石 · EtherCAT」被切到「L2基石 · Ethe」) —— 240px 侧栏里
+        #   12pt 单行放不下就直接截断, 没有省略号也不换行。开 wordWrap 让它换行(卡片高度本来
+        #   就是内容自适应), 并把最小宽放开, 布局不得再用 sizeHint 把它顶宽。
+        sub.setWordWrap(True)
+        sub.setMinimumWidth(1)
         layout.addWidget(sub)
 
         # 组件列表
@@ -746,7 +752,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.16.13")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.16.14")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -803,6 +809,28 @@ class SystemSidebar(QFrame):
         layout.addWidget(info)
 
         self.setLayout(layout)
+
+    # 🐛 v5.16.14 老倪: 侧栏卡里的字被**硬裁**(实测「SYS11 VLA-T 动作 · SmolVLA 500M /
+    #   SYS12 Z-Flow 引导 · LeWorldModel 15M」按 188px 宽需要 374px 高, QVBoxLayout 只按
+    #   sizeHint 的估算给了 243px ⇒ 尾部整行看不见; 副标题「VLA-T + Z-Flow · 500M/15M」、
+    #   「L2基石 · EtherCAT」同样被切)。根因 = wordWrap 的 QLabel 在布局里**被按估算高度压扁**。
+    #   治法: 布局跑完后按**实际宽度**复算 heightForWidth 并锁成最小高, 两遍收敛(第一遍会改变
+    #   宽度分配, 第二遍定稿)。侧栏宽度固定 240px, 所以只需 show 后跑一次。
+    def _snap_label_heights(self):
+        try:
+            for _ in range(2):
+                for lb in self.findChildren(QLabel):
+                    t = lb.text()
+                    if lb.wordWrap() and t:
+                        need = lb.heightForWidth(lb.width() or 188)
+                        if need > lb.minimumHeight():
+                            lb.setMinimumHeight(need)
+        except Exception:
+            pass
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        _QTimerS.singleShot(0, self._snap_label_heights)
 
 
 # ============================================================
@@ -11112,7 +11140,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.13 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.14 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11120,9 +11148,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.13 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.14 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.16.14: UI(主界面/侧栏) 两处真缺陷收口 —— 依据「窗口截图逐像素取证」发现的残留问题 ①**窗口最大化 ≠ 在屏内 (「窗口没显示完全」的残留根因)**: 本机双屏 ⇒ X 虚拟屏 7040x2160, 而主屏只可见 y 0..1999; WM 的「最大化」按跨屏工作区算 ⇒ 实测窗口 3068x1862@132,212, **底边 2074 落在主屏可见区外 74px** ⇒ 最底一行(版本提示/跑马灯/底部按钮)老倪**永远看不到** —— 而离屏抓图能抓到那截, 所以只看截图会漏判。修法: `_fit_window_to_screen()` 里**最大化也要查越界**, 越界先 `showNormal()` 再按可用区重夹(留 8px 边距)。 ②**侧栏卡文字被硬裁**: 「SYS11 VLA-T 动作 · SmolVLA 500M / SYS12 Z-Flow 引导 · LeWorldModel 15M」按 188px 宽需 374px 高, QVBoxLayout 只按 sizeHint 估算给 243px ⇒ 尾行整行看不见; 副标题「VLA-T + Z-Flow · 500M/15M」「L2基石 · EtherCAT」同样被切(实测截到「VLA-T + Z-Fk」「L2基石 · Ethe」)。根因 = wordWrap 的 QLabel 在布局里被按估算高度压扁。修法: 副标题 `setWordWrap(True)` + 布局跑完后按**实际宽度**复算 `heightForWidth` 锁最小高(两遍收敛)。 **实测(离屏 QT_FONT_DPI=192 同现场口径)**: ①越界最大化窗口 → 自动退回 + 夹到 784x584@8,8 全在屏内(单位测试用假窗口验); 在屏内的最大化窗口不动(changed=False)。②侧栏 3 张卡实高=sizeHint(434/548/338), **被裁标签 0**(修前 1 处硬裁 + 2 处副标题截断)。③首页回归不破: 页面宽 2812 == 视口 2812 · 横向条 max=0 · 卡宽 431 · 11 页切换异常 0。红线: 未下发任何真机动作; 未改在役指针/默认档/画布数据。
         # v5.16.13: UI(主界面) 真根因修复 —— 老倪「不好看，不要下面的横向拉条。修改，不要那么宽」 ①**真根因(实测)**: `HardwareCard` 的 `lb_remote/lb_gpu/lb_nodes/lb_src` 是 24~28px **富文本且未开 wordWrap**, 文本一变长就把**整个首页 page 的最小宽撑到 5542px**(lb_remote「📡 DDS 两端硬件…」单个标签 minimumSizeHint=**5428**; lb_gpu=1804 · lb_nodes=1051) ⇒ `QScrollArea(widgetResizable)` 把 page 拉宽到 5542 ⇒ ①底部**必然出现横向滚动条**(实测手柄 1459px/轨 2812 = 内容 **1.82×** 视口, y1732~1748) ②功能模块网格按 page 宽等分 ⇒ 每张卡被拉到 **1752~1795px**(设计最小 260px), 卡内文字只占左侧 ~320px、右侧 ~1300px 全空 = 「那么宽 / 不协调」。②修法: 这几个标签 **`setWordWrap(True)` + `setMinimumWidth(1)`**(布局不再被 sizeHint 绑架, 长文本自己折行); 模块侧沿用 v5.16.12 的**卡宽上限 470 + 分组框 2 列**(卡宽 428)。③实测(离屏 192DPI, 与现场同口径): **页面宽 2796 = 视口 2796** · 页面最小宽 **2459 ≤ 2796** · **横向条 max=0 = 默认不再需要横拉条** · 卡宽集合 [428] · 分组行 2 列 · 卡行 4×3 列; 整窗冒烟(含侧栏) 逐页切换异常 0。④顺手修 badge 绿底 bug: `f"{color}55"` 是 #RRGGBBAA, 而 Qt 的 8 位 hex 是 **#AARRGGBB** ⇒ `#58a6ff55` 被当 alpha=0x58+黄绿; 新增 `rgba_of()` 显式转 `rgba()`。实测: 修前角像素 `#a4ff54`(黄绿) → 修后 `#304e76` = 0.33×#58a6ff+0.67×卡底 的理论值, 逐层色(dataset #28543c / hardware #58492d)同样与理论值吻合。⑤红线: 未改页面结构/画布数据/在役链路/默认档; 未下发任何真机动作。
         # v5.16.12: UI(主界面): 功能模块自适应 —— 老倪「主机面的功能模块太宽了, 不协调; 要适应, 默认不需要下面的横拉条, 也可以全屏显示」 ①根因(实测 192DPI 口径): 4 个分组框原来**各占满整行** ⇒ 2840px 工位屏上每组 3 张卡被拉成 **895px 的巨卡**(ReflowCardRow 只做了"换列", 没有卡宽上限), 框内大片空白 = "太宽、不协调"。 ②修法: `ReflowCardRow` 新增 `max_card_w`(卡宽上限 470) —— 超出上限就按上限给宽, 多出来的宽度**整行居中留白**; 同时**清掉历史列的拉伸/最小宽**(上一次若是 5 列, 不清会留下看不见的空列把卡片推开)。 ③分组框自己也要自适应: 4 个分组框套进同一个 `ReflowCardRow`(每列最小 900, 最多 2 列) ⇒ 宽屏 **2 列并排**(每列 ~1380 ⇒ 每张卡 ~443px) / 中等宽度 1 列 3 卡 / 窄屏自动 3→2→1 卡。 ④实测(离屏, QT_FONT_DPI=192, 与现场 Xft.dpi=192 同口径): 卡宽 **895 → 431px**(工位屏 2840 口径); 3840 宽屏卡宽封顶 **470**; 分组行 2 列 · 卡行 3 列; 整窗冒烟(含侧栏): 首页视口 2812 · 页面最小宽 2459 · **横向条 max=0 = 默认不需要横拉条** · 逐页切换(11 页)异常 **0**。 ⑤文字体检: 12 张卡全部标签按 QLabel 真实换行口径(TextWordWrap)复算, 2840/1600/3600 三种宽度**溢出 0**(含"产品大屏"卡的长 URL 自动折行, 不再被裁)。 ⑥红线: 未改页面结构/画布数据/在役链路/默认档; 未下发任何真机动作。
         # v5.16.11: v5.16.11 — TCP 轨迹 AR/VR 调试台: 把算法走过的通道用 3D 管道叠到固定相机上 (小版本迭代)  【本批次主题】 老倪: 「用 VR/AR 把机器人工具中心轨迹可视化出来, 要有明显的 3D 渲染让你感觉出走过的通道; 默认不要一开始就显示, 人工开启; 场景叠加是为了更好的调试算法」。 落实为两个面板 + 一套开关真源, 全程不重启他正在看的 8791/8793 实况流(新功能走独立端口 8797)。  【新增】 - tools/traj_display.py: 轨迹「显示/清除」的唯一真源(开关 show + 清除线 baseline_n + 隐藏折线缓存 _hidden_paths.json), 推流侧/服务侧/两个页面共用同一份状态。 - tools/tcp_ar_server.py: 独立端口(8797)的 AR/VR 调试台服务; 可切相机、按相机存外参、空手有 MJPEG 底图与快照校验端点。 - tools/web/tcp-ar.html: 3D 管道 + VR(base 系, 免标定) + AR 叠加 + 相机切换 + 标定(带 4× 放大镜)。 - tools/laptop_cam_solve.py(外参解算: DLT 线性初值 + 精化 + 自检) · tools/laptop_cam_ar_calib.py · tools/probe_laptop_ar.py · tools/probe_green_anchor.py(采集与探针)。 - tools/web/scene-overlay.html 加轨迹工具条(显示/隐藏/清除/全部历史) + tools/live_trace_publisher.py 接入 traj_display(默认关由推流循环强制执行, 不是只改前端)。  【修复的真根因 (都带实测值)】 1) VR 面板「看不到历史轨迹」= 两个 bug 叠加:    ① 视角写死(target 固定 (0.70,0.22,0.14)/dist 1.6m)而轨迹只占 ~5cm ⇒ 投影成 ~50px 一小坨;       改为按 trace+plan 包围盒自动对焦后, 同一份数据轨迹像素 50 → 2818。    ② 页面只在 init 读一次「显示开关」⇒ 打开页面时后端若处于关/清除线在末尾, 页面永远空画;       改为每次轮询都同步。实测刷新后直接画出 463 点。 2) 屏幕逐帧闪烁: MJPEG <img> 每帧触发 load, 而给 canvas.width 赋同一个值也会清空画布(alpha 255→0)。    修法 = 布局用尺寸签名守卫 + 只在真变尺寸时设 canvas 宽高 + 只按数据签名重绘(不再 1.5s 无条件重画)。    取证: 注入 30 次 img.load 事件 ⇒ 重绘 0 次、标记像素未被清。 3) 「清除轨迹后看不到历史」= 语义问题: 清除 = 把清除线设到当前时刻(只画新点, 数据从不删除);    补「📜 全部历史」(baseline_n=0)按钮, 并把状态文案写成可读中文。 4) 标定点数下限 4 → 6: <6 点没有 DLT 线性初值, 解会飞(实测退化 f=84.6、相机 z=1.4e4m、RMS 2.4e8px);    带 DLT 初值自检: f 真值 520 → 解 521.9(0.36%)、RMS 0.46px、t 误差 2.6mm。  【有实测依据的取舍】 - AR 底图默认切到 MAXHUB 1280×720: 逐块放大核对(视觉取证)笔记本 640×480 那路末端工具**直接出画**   (画面里只有上段臂杆, 从右边缘进、左下没入托盘), 底座也在画外, 操作员躯干挡住中段工作区 ⇒   这种视角外参标得再准, 管道也会画在看不见的臂上甚至压在托盘上, 拿来调算法比不画更坏。   MAXHUB: 整条臂 + 台面 + 托盘/夹具全在画面内, 末端约 10~25px ⇒ 标定配 4× 放大镜(跟随光标+十字)。 - 标定按相机各存一份(data/scene/cam_calib.json 的 {<cam>: ...}), 分辨率不同绝不混用(标定点是像素量纲)。  【数据/产物】 - 轨迹: 实测 463 点 + 航路 149 点(录制器累计 18085 点, 2mm 抽稀, /tmp/live_trace.json)。 - L5 三路理解报告 1 份(reports/l5/three_cam_vlm_20260929_121425.json) + 证据帧 8 张。 - 联调训练 L3/L4 摘要 5 组(reports/joint_train_*/, 权重 .pt 与 .log 按 git 精简纪律不入库, 进现场归档)。  【追加 · 同日现场『点1』按钮 (工位总览 8793 金手指检测窗口)】老倪: 「把回到金手指点1 放到整板原图 按钮旁边, 加一个『点1』按钮, 点击后即返回点一」。技能本来就在册(L2.goto_gold_pt1 · point_locked 位姿锁死 · 示教点 reports/aoi_points/金手指点1.json = pos [0.596737, 0.142622, 0.641536]), 缺的是页面上没有入口 + 手动控制白名单里没有它。 ① tools/cam_live_stream.py: 新增 _CTL_ABS_SKILLS(绝对点位技能白名单 —— 无数字参数, 只发 {skill,speed}; 点位仍锁在技能定义与示教点文件里, 页面/接口都改不了点位); _ctl_move 支持无参技能; 回执新增 pending(执行器已收到·正在等安全裁决, 不冒充"已下发"); 新增只读 GET /ctl/log?n= 供页面追最终裁决行; /station 改为**热读 tools/web/station.html**(以后加/改按钮不用重启推流服务, 文件不在时退回内嵌副本)。 ② tools/web/station.html(新增, 工位总览页真源): 金手指检测窗口 判据图/整板原图 旁边加『🎯 点1』, 与方向键同一条路(白名单→授权真动→限流→FIFO→执行器→安全裁决); 未授权只算目标并给授权入口; 等裁决时每 5s 追日志直到出现「受理: 已下发」或「🛑 被拦…⇒ 拒发」并把原文摆出来可复制。 ③ 实测(零动作): 页面与 tools/web/station.html 逐字节一致(热读生效); 未授权点『点1』→ 执行器 [13:36:11] 目标 L2.goto_gold_pt1: pos=(0.5967,0.1426,0.6415) → DRY-RUN → 受理: DRY-RUN(未下发) ⇒ 整链通且机械臂未动。 ④ 🔴 同时查清「还是不好使」与按钮无关的两层真因: (a) 唯一那次真动 13:26:28 被**慢层 VL 安全闸拒发**(13:27:56 裁决 risk=high: 人手/人臂/人体在臂上相机与笔记本相机视野内 + 笔记本视野被遮挡 + 深度图底部高亮近物) —— 人站在视野里就必然拒发; (b) 13:36 之后本机**产线网卡整体掉了**(ip -br addr 只剩 WiFi 10.163.146.78; 192.168.23.160 控制器 / .66 Orin / .23 工控机 全不可达; SDK 直读采样器 connectToRobot 报 network: network connection) ⇒ 执行器「位姿读不到」拒发一切技能。 ⑤ 采样器加固: ~/zmax_data/rokae_sdk/tcp_direct_sampler.py 把「SDK 静默返回全 0」按读失败处理(以前不抛异常 ⇒ 永不重连, 还把 0 写进 latest.json ⇒ 执行器判位姿无效)。
@@ -13135,20 +13164,39 @@ def _fit_window_to_screen(win, margin=8):
         if scr is None:
             return False, "no-screen"
         ag = scr.availableGeometry()
+        _mx_fix = False
         if win.isMaximized() or win.isFullScreen():
             fr = win.frameGeometry()
-            return False, (f"maximized {fr.width()}x{fr.height()}@{fr.x()},{fr.y()} "
-                           f"(可用 {ag.width()}x{ag.height()}@{ag.x()},{ag.y()})")
+            # 🐛 v5.16.14 老倪「窗口没有显示完全」的**残留根因**: 本机是双屏(X 虚拟屏 7040x2160),
+            #   主屏只可见 y 0..1999。WM 的「最大化」按**跨屏工作区**算 ⇒ 实测窗口变成
+            #   3068x1862@132,212, 底边 2074 落在主屏可见区**外** 74px ⇒ 最底一行(版本提示/跑马灯/
+            #   那个蓝色按钮)老倪**永远看不到**(离屏抓图能抓到, 所以只看截图会漏判)。
+            #   ⇒ 最大化**不等于**在屏内: 越界就退回普通态再按可用区重夹(不留空洞、不贴死边)。
+            if not (fr.x() < ag.x() or fr.y() < ag.y()
+                    or fr.x() + fr.width() > ag.x() + ag.width()
+                    or fr.y() + fr.height() > ag.y() + ag.height()):
+                return False, (f"maximized ok {fr.width()}x{fr.height()}@{fr.x()},{fr.y()} "
+                               f"(可用 {ag.width()}x{ag.height()}@{ag.x()},{ag.y()})")
+            _pre = f"maximized-overflow {fr.width()}x{fr.height()}@{fr.x()},{fr.y()} → "
+            try:
+                win.showNormal()   # 最大化态下 resize/move 会被 WM 忽略, 必须先退
+            except Exception:
+                pass
+            _mx_fix = True
+        else:
+            _pre = ""
         fr = win.frameGeometry()
-        tw = min(fr.width(), max(640, ag.width() - 2 * margin))
-        th = min(fr.height(), max(480, ag.height() - 2 * margin))
+        _aw = max(640, ag.width() - 2 * margin)
+        _ah = max(480, ag.height() - 2 * margin)
+        tw = _aw if _mx_fix else min(fr.width(), _aw)
+        th = _ah if _mx_fix else min(fr.height(), _ah)
         tx = min(max(fr.x(), ag.x() + margin), max(ag.x() + margin, ag.x() + ag.width() - tw - margin))
         ty = min(max(fr.y(), ag.y() + margin), max(ag.y() + margin, ag.y() + ag.height() - th - margin))
-        changed = (tw, th, tx, ty) != (fr.width(), fr.height(), fr.x(), fr.y())
+        changed = _mx_fix or (tw, th, tx, ty) != (fr.width(), fr.height(), fr.x(), fr.y())
         if changed:
             win.resize(tw, th)
             win.move(tx, ty)
-        return changed, (f"{fr.width()}x{fr.height()}@{fr.x()},{fr.y()} → "
+        return changed, (_pre + f"{fr.width()}x{fr.height()}@{fr.x()},{fr.y()} → "
                          f"{tw}x{th}@{tx},{ty} (可用 {ag.width()}x{ag.height()})")
     except Exception as e:
         return False, f"err {e}"
