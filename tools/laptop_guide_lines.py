@@ -122,11 +122,24 @@ def line_through_vp(vp, ax, ay, x0, x1):
     return [[float(x0), float(vp[1] + m * (x0 - vp[0]))], [float(x1), float(vp[1] + m * (x1 - vp[0]))]]
 
 
-def build(img):
-    g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
+def _median_fit(fits):
+    """多帧拟合取中位: 静止相机下把 RANSAC 初值/JPEG 噪声带来的 VP 漂移压掉。"""
+    ok = [f for f in fits if f]
+    if not ok:
+        return None
+    m = float(np.median([f[0] for f in ok])); c = float(np.median([f[1] for f in ok]))
+    return (m, c, int(np.median([f[2] for f in ok])), int(np.median([f[3] for f in ok])))
+
+
+def build(imgs):
+    if not isinstance(imgs, (list, tuple)):
+        imgs = [imgs]
+    gs = [cv2.cvtColor(i, cv2.COLOR_BGR2GRAY).astype(np.float32) for i in imgs]
+    g = gs[-1]
     H, W = g.shape[:2]
-    ft = fit_beam_top(g, W)
-    fb = fit_step(g, 126, 168, (318, min(636, W)), thr=6.0)
+    print("   多帧拟合并取中位: %d 帧 (静止相机下压掉单帧 VP 漂移)" % len(gs))
+    ft = _median_fit([fit_beam_top(gg, W) for gg in gs])
+    fb = _median_fit([fit_step(gg, 126, 168, (318, min(636, W)), thr=6.0) for gg in gs])
     print("── 横梁两条平行棱(求消失点的证据) ──")
     if not ft or not fb:
         raise SystemExit("✗ 横梁棱线拟合失败, 不硬编坐标(免得又画错)")
@@ -142,7 +155,7 @@ def build(img):
     print("     参考: 相机水平线(地平线)必过 VP_A; 各层线的倾角由 VP_A 与该层高度共同决定\n")
     out = []
     for name, (ylo, yhi), xr, why, fixy in LEVELS:
-        f = fit_step(g, ylo, yhi, xr)
+        f = _median_fit([fit_step(gg, ylo, yhi, xr) for gg in gs])
         xm = int((xr[0] + min(xr[1], W)) / 2)
         if fixy is not None:
             # 该层有**强实测**锚点(单点台阶 Δ 很大)时以它为准: 弱拟合(内点少)会把锚点拉偏
@@ -228,16 +241,24 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--deploy", action="store_true")
     ap.add_argument("--clear", action="store_true")
+    ap.add_argument("--frames", type=int, default=8, help="拟合用帧数(取中位, 压制单帧噪声; 默认 8)")
     ap.add_argument("--out", default="/home/ubuntu/zmax_data/feishu_send/laptop_guide_lines.jpg")
     a = ap.parse_args()
-    img = frame("local")
-    if img is None:
+    imgs = []
+    for _ in range(max(1, a.frames)):
+        im = frame("local")
+        if im is not None:
+            imgs.append(im)
+        if len(imgs) < max(1, a.frames):
+            time.sleep(0.35)
+    if not imgs:
         raise SystemExit("✗ 取不到 local 帧")
+    img = imgs[-1]
     H, W = img.shape[:2]
-    print("   帧 %dx%d\n" % (W, H))
+    print("   帧 %dx%d · 采样 %d 帧\n" % (W, H, len(imgs)))
     if a.clear:
         deploy((0, 0), [], W, H); print("   ✓ 已清空"); return
-    vp, lines = build(img)
+    vp, lines = build(imgs)
     if not lines:
         raise SystemExit("✗ 一层都没拟合出来, 不落地")
     vis = img.copy()
