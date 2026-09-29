@@ -299,7 +299,14 @@ function applyAuth(a){                          // 服务端状态是唯一真�
   const was=ARMED;
   ARMED=!!a.armed; AUTH_LEFT=a.left_s||0; ARMWIN=a.window_s||ARMWIN; AUTH_IP=a.ip||'';
   if(was&&!ARMED){
-    $('#msg').textContent='⌛ 授权已到期(或已被撤销) —— 自动回到未授权(现场安全)。要继续操作就先重新授权';
+    // 🛑 2026-09-29 老倪:「我都取消授权了, 手臂怎么还在动」—— 撤销后必须说清"在途动作停了没有",
+    //    否则现场把"已下发那一下还在走"当成闸门失效。实况由 ctl_revoke_stop 写进 auth.last_stop。
+    const ls=a.last_stop||null, fresh=ls&&ls.ts&&(Date.now()/1000-ls.ts<180);
+    let extra='';
+    if(fresh&&ls.stopped) extra=' ⏹ 已对**在途动作**下达停止(/robot_stop 成功) —— 臂不会再多走。';
+    else if(fresh) extra=' ⏹ 近 3 分钟内没有已下发的动作, 无需叫停。';
+    else extra=' ⚠️ 已经下发到控制器的动作无法收回(慢速指令会走完), 只能等它到位或按急停; 本次已自动尝试叫停在途动作。';
+    $('#msg').textContent='⌛ 授权已到期(或已被撤销) —— 自动回到未授权(现场安全)。要继续操作就先重新授权'+extra;
     $('#msg').className='wa';
   }
   paintArm();
