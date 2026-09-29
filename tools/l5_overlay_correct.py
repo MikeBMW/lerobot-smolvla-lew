@@ -121,6 +121,14 @@ def ask_l5(cam: str, hint: str, negatives=None) -> dict:
         _mt = int(os.environ.get("SS_VLM_MAXTOK_CORR") or
                   ("12000" if os.environ.get("L5CORR_THINK") == "1" else "3000"))
         r = SceneVLM.get().ask(tmp, p, max_tokens=_mt)
+        # 2026-09-29: 空内容自动重试一次(更大预算)。现场实测: 带思考时 12000 仍会被 reasoning 吃光,
+        # 一轮白等 100~160s 且什么都没判定(环里连续多轮都空)。重试一次的成本远低于"这轮白跑"。
+        if r.get("ok") and not (r.get("text") or "").strip():
+            _mt2 = max(_mt * 2, 20000)
+            print("   ↻ 返回空内容 ⇒ 用 max_tokens=%d 重试一次" % _mt2)
+            r = SceneVLM.get().ask(tmp, p, max_tokens=_mt2)
+            if (r.get("text") or "").strip():
+                _mt = _mt2
     finally:
         try:
             os.unlink(tmp)
