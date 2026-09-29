@@ -1,0 +1,23 @@
+[Unit]
+Description=Z-MAX DDS 4060 硬件发布端 (hw_state/train_prog/heartbeat)
+Documentation=file:/home/ubuntu/zmax/docs/design/global_data_space_mapping_20260929.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+# ★ 2026-09-29 工程路径整治: 代码从 /home/ubuntu/zmax_dds_publisher.py 收进 /home/ubuntu/zmax/tools/dds/
+#   (旧路径保留兼容软链, 但服务一律指单一工程根 /home/ubuntu/zmax)
+Environment=ZMAX_REPO=/home/ubuntu/zmax
+Environment=PYTHONUNBUFFERED=1
+# 不带 --cfg: 默认多播发现(=当前实测可用状态)。跨机单播配置见 dds/cyclonedds_unicast.template.xml(现场填 peers 后再引)
+ExecStart=/home/ubuntu/dds-venv/bin/python /home/ubuntu/zmax/tools/dds/publisher.py --interval 3
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/zmax-dds-pub.log
+StandardError=append:/var/log/zmax-dds-pub.log
+
+[Install]
+WantedBy=multi-user.target

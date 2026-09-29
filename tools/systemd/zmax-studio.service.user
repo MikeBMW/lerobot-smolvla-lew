@@ -1,0 +1,16 @@
+[Unit]
+Description=Z-MAX 控制台 (XSpace Studio) — PyQt5 桌面控制台, 状态空间画布
+After=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/zmax/tools/gui
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/run/user/1000/gdm/Xauthority
+Environment=ZMAX_REPO=/home/ubuntu/zmax
+ExecStart=/home/ubuntu/zmax/tools/gui/launch_studio.sh
+Restart=no
+RestartSec=5
+
+[Install]
+WantedBy=default.target

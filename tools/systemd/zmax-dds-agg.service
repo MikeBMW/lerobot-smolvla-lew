@@ -1,0 +1,20 @@
+[Unit]
+Description=Z-MAX DDS 硬件汇聚器 (DDS→relay)
+Documentation=file:/home/ubuntu/zmax/docs/design/global_data_space_mapping_20260929.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+Environment=ZMAX_REPO=/home/ubuntu/zmax
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/dds-venv/bin/python /home/ubuntu/zmax/tools/dds/aggregator.py --watch 5
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/zmax-dds-agg.log
+StandardError=append:/var/log/zmax-dds-agg.log
+
+[Install]
+WantedBy=multi-user.target
