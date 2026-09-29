@@ -425,8 +425,15 @@ def _call_remote(cmd, timeout=40):
                            capture_output=True, text=True, timeout=timeout)
         out = (r.stdout or "") + (r.stderr or "")
     except Exception as e:                                                   # noqa: BLE001
+        log("❌ ROS 回执: 调用异常 %s (cmd=%s)" % (e, str(cmd)[:60]))
         return False, "调用异常: %s" % e
-    return ("response:" in out), out
+    # 2026-09-29: 补 success/error —— 原来只打 joint_state, 现场出现"下发被应答但臂不动"时
+    # 日志上分不清是控制器拒绝还是走完又回(老倪追问过两次)。这里固定留一行定性回执。
+    _ok = "response:" in out
+    _err = [l for l in out.splitlines() if any(w in l.lower() for w in ("error", "fail", "拒绝", "reject", "denied", "不可达", "unreachable"))]
+    log("%s ROS 回执: %s%s" % ("✅" if (_ok and not _err) else "⚠️", "接受" if _ok else "无响应",
+                              (" · 疑似错误: " + _err[0][:90]) if _err else ""))
+    return _ok, out
 
 
 def plan_stage(sk, st, pts, spec, cur):
