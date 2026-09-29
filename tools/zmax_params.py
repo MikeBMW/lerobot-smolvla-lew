@@ -21,6 +21,8 @@
   gui-venv311/bin/python tools/zmax_params.py --sync           # 从各源合并 → config/calib/zmax_calib.json
   gui-venv311/bin/python tools/zmax_params.py --fk 0.16 -0.06 -2.54 1.45 0.44 -0.70
                                                                # 用真源几何算 FK (对照真机 tcp)
+  gui-venv311/bin/python tools/zmax_params.py --m 2.0 --inertia on
+                                                               # 🧮 写流形引擎主标定参数 M (状态空间结构参数)
   gui-venv311/bin/python tools/zmax_params.py --json
 """
 from __future__ import annotations
@@ -37,6 +39,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPEC = os.path.join(ROOT, "config", "robot", "zmax_robot_spec.json")
 CALIB = os.path.join(ROOT, "config", "calib", "zmax_calib.json")
 REAL_CAM_CALIB = os.path.join(ROOT, "models", "real_cam_calib.json")
+# 🧮 流形引擎主标定参数 M 的**可写真源** (config/calib/zmax_manifold.json → 合并进 calib.json)
+MANIFOLD_P = os.path.join(ROOT, "config", "calib", "zmax_manifold.json")
 CALIB_REPORT_GLOB = os.path.expanduser("~/zmax_data/calib_report_*.json")
 GEOM_CANDIDATES = [
     os.path.expanduser("~/zmax_data/real_cell_geometry.json"),
@@ -151,6 +155,39 @@ def _load_json(p):
         return None
 
 
+# ───────── 🧮 流形引擎主标定参数 M (真源: src/lerobot/manifold/manifold_engine.py) ─────────
+def _manifold_consts():
+    """从流形引擎模块取 M 的常量 (单一真源, 不重复硬编码); 失败则回退字面量。"""
+    try:
+        import importlib.util as _ilu
+        _p = os.path.join(ROOT, "src", "lerobot", "manifold", "manifold_engine.py")
+        spec = _ilu.spec_from_file_location("lerobot.manifold.manifold_engine", _p)
+        m = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        return float(m.MANIFOLD_M_DEFAULT), list(m.MANIFOLD_M_RANGE), str(m.MANIFOLD_M_UNIT)
+    except Exception:  # noqa: BLE001
+        return 1.0, [0.0, 8.0], "等效惯量尺度 (无量纲归一化)"
+
+
+MANIFOLD_M_DEFAULT, MANIFOLD_M_RANGE, MANIFOLD_M_UNIT = _manifold_consts()
+
+
+def _manifold_section() -> dict:
+    """流形引擎标定域 (M/inertia/range/unit/…) —— 供 sync_calib 合并与写盘共用。"""
+    _mp = _load_json(MANIFOLD_P) or {}
+    return {
+        "M": float(_mp.get("M", MANIFOLD_M_DEFAULT)),
+        "inertia": bool(_mp.get("inertia", False)),
+        "range": list(MANIFOLD_M_RANGE),
+        "unit": MANIFOLD_M_UNIT,
+        "flow": "二阶: v ← v + (F/M)·dt; p ← exp_p(v·dt) (过阻尼极限 = M→0, 旧一阶 GD)",
+        "struct_src": "从流形结构导出 (曲率/维度/尺度) — 非自由拟合参数; 现场以单标量暴露",
+        "zero_regression": "inertia=false (默认) 或 M=0 ⇒ 引擎行为与旧版一阶过阻尼逐位相同",
+        "_src": os.path.relpath(MANIFOLD_P, ROOT) if os.path.isfile(MANIFOLD_P) else
+                "默认值 (无 config/calib/zmax_manifold.json)",
+    }
+
+
 def sync_calib(write: bool = True) -> dict:
     """把各处标定产物合并成统一注册表 (每项带 _src 溯源)。缺项写 null + 原因。"""
     reg: dict = {"_doc": ("Z-MAX 标定参数注册表 — 由 tools/zmax_params.py --sync 合并生成。"
@@ -223,6 +260,12 @@ def sync_calib(write: bool = True) -> dict:
                           "_reason": None if (spec.get("control_tcp") or {}).get("ok")
                           else "无真机帧可反解 (需真机只读采集在线)"}
 
+    # ⑦ 🧮 流形引擎主标定参数 M (状态空间的结构参数/等效惯量) —— 2026-09-29 老倪
+    #   为何放这里: calib.json 是本项目已确立的**单一真源**口径; M 是流形引擎(L4 核心)向标定层
+    #   暴露的唯一主标定标量, 与内参/几何/TCP 同属"标定参数" → 与其并肩 (不再新开一处硬编码)。
+    #   可写真源 = config/calib/zmax_manifold.json (现场标定单标量); 缺省值/范围/单位来自引擎模块。
+    reg["manifold_engine"] = _manifold_section()
+
     if write:
         os.makedirs(os.path.dirname(CALIB), exist_ok=True)
         tmp = CALIB + ".tmp"
@@ -253,6 +296,57 @@ def plane_z(cls: str | None = None, path: str = CALIB) -> float | None:
 def ext_T(path: str = CALIB):
     """手眼外参 4x4 行主序 (相机→base)。未标 → None。"""
     return calib(path).get("T_base_cam", {}).get("value")
+
+
+# ───────────────────────── 🧮 流形引擎主标定参数 M (读/写) ─────────────────────────
+def manifold_M(path: str = CALIB) -> float:
+    """读流形引擎主标定参数 M (状态空间的结构参数/等效惯量)。缺项 → 引擎默认值 (1.0)。"""
+    c = (calib(path).get("manifold_engine") or {}).get("M")
+    return MANIFOLD_M_DEFAULT if c is None else float(c)
+
+
+def manifold_inertia(path: str = CALIB) -> bool:
+    """读是否启用有惯性二阶演化 (默认 False ⇒ 一阶过阻尼, 零回归)。"""
+    return bool((calib(path).get("manifold_engine") or {}).get("inertia", False))
+
+
+def manifold_spec(path: str = CALIB) -> dict:
+    """读流形引擎标定域全量 (M/inertia/range/unit/flow/struct_src/zero_regression/_src)。"""
+    return dict(calib(path).get("manifold_engine") or {})
+
+
+def write_manifold_M(value: float, inertia: bool | None = None, path: str = MANIFOLD_P) -> dict:
+    """写流形引擎主标定参数 M (**可写口**)。
+
+    落 config/calib/zmax_manifold.json (可写真源) 并重合并 calib.json; 带范围校验 (越界夹取并标注)。
+    返回 {M, inertia, clamped, range, dest} — 现场标定后即可被流形引擎/画布节点 n_calib_mani 读到。
+    """
+    lo, hi = MANIFOLD_M_RANGE
+    v = float(value)
+    clamped = not (lo <= v <= hi)
+    v = min(max(v, lo), hi)
+    d = _load_json(path) or {}
+    d["_doc"] = ("流形引擎主标定参数 M (状态空间的结构参数/等效惯量) — 标定层单一真源。"
+                 "物理: a=F/M ⇒ Δx=F·dt²/M; 信息: 把信息代价梯度换成状态加速度的曲率尺度;"
+                 " M 从流形结构导出 (非自由拟合), 现场以单标量标定。inertia=false ⇒ 零回归。")
+    d["M"] = v
+    d["inertia"] = bool(d.get("inertia", False)) if inertia is None else bool(inertia)
+    d["_range"], d["_unit"] = list(MANIFOLD_M_RANGE), MANIFOLD_M_UNIT
+    d["_updated_at"] = time.strftime("%F %T")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=1)
+    # 只更新 calib.json 的 manifold_engine 键 (★ 不整表重合并 —— 避免把现场几何/内参等
+    #   其他标定域一起刷新成"当前源"而意外改变在役读值; 本域改动无副作用)。
+    c = _load_json(CALIB)
+    if isinstance(c, dict):
+        c["manifold_engine"] = _manifold_section()
+        tmp = CALIB + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(c, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, CALIB)
+    return {"M": v, "inertia": d["inertia"], "clamped": bool(clamped),
+            "range": list(MANIFOLD_M_RANGE), "dest": os.path.relpath(path, ROOT)}
 
 
 # ───────────────────────── 就绪度 / 缺口 ─────────────────────────
@@ -314,6 +408,9 @@ def check(path: str = CALIB, verbose: bool = True) -> int:
     print(f"  产线 TCP 反解: {'✅ ' + str(ct.get('offset_xyz_m')) if ct.get('ok') else '❌ ' + str(ct.get('_reason'))}")
     pl = c.get("tool_payload", {})
     print(f"  控制器负载: {'✅ mass=' + str(pl.get('mass_kg')) + ' cog=' + str(pl.get('cog_m')) if pl.get('mass_kg') else '❌ ' + str(pl.get('_reason'))}")
+    me = c.get("manifold_engine", {})
+    print(f"  🧮 流形引擎主参数 M: {me.get('M')} (范围 {me.get('range')} · "
+          f"{'有惯性' if me.get('inertia') else '过阻尼=旧行为'} · {me.get('_src', '')})")
     g = gaps(path)
     print("─" * 78)
     if g:
@@ -333,7 +430,18 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--fk", nargs="+", type=float, metavar="Q", help="六个关节角(rad) 算 FK")
     ap.add_argument("--live", action="store_true", help="--fk 时同时读真机 tcp 真值做对照")
+    ap.add_argument("--m", dest="m_val", type=float, default=None,
+                    help="写流形引擎主标定参数 M (状态空间结构参数/等效惯量)")
+    ap.add_argument("--inertia", dest="inertia", default=None,
+                    help="写 M 时同时设惯性开关 (on/off; 默认保持)")
     a = ap.parse_args()
+
+    if a.m_val is not None:
+        inr = None if a.inertia is None else str(a.inertia).lower() in ("1", "true", "on", "yes")
+        r = write_manifold_M(a.m_val, inr)
+        print("✅ 已写流形引擎主参数 M:", json.dumps(r, ensure_ascii=False))
+        print("   当前:", json.dumps(manifold_spec(), ensure_ascii=False)[:200], "…")
+        return 0
 
     if a.sync:
         r = sync_calib(write=True)

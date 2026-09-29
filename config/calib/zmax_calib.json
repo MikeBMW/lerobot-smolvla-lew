@@ -84,5 +84,18 @@
   "verdict": "刚体一致 (std ≤2mm 且姿态偏差 ≤1°) — 可作产线 TCP 口径入库",
   "_src": "真机只读采集落盘多帧反解 (FK(jpos) 对 tcp_pose)",
   "_reason": null
+ },
+ "manifold_engine": {
+  "M": 1.0,
+  "inertia": false,
+  "range": [
+   0.0,
+   8.0
+  ],
+  "unit": "等效惯量尺度 (无量纲归一化; 物理类比 kg, 信息类比 Fisher/Hessian 曲率尺度)",
+  "flow": "二阶: v ← v + (F/M)·dt; p ← exp_p(v·dt) (过阻尼极限 = M→0, 旧一阶 GD)",
+  "struct_src": "从流形结构导出 (曲率/维度/尺度) — 非自由拟合参数; 现场以单标量暴露",
+  "zero_regression": "inertia=false (默认) 或 M=0 ⇒ 引擎行为与旧版一阶过阻尼逐位相同",
+  "_src": "config/calib/zmax_manifold.json"
  }
 }

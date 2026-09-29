@@ -4612,7 +4612,132 @@ _reg("ss_mani_eng", ["流形引擎", "Manifold Engine"],
      node_ss_mani_eng)
 
 _EXTERNAL_LOC["ss_mani_eng"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py"),
-                                403, "class ManifoldEngine")
+                                457, "class ManifoldEngine")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🧮 流形引擎标定 (Manifold Engine Calibration) — L4 标定层 · 主标定参数 M (2026-09-29 老倪)
+#   动机 (老倪原话): 「质量在神经网络类比里对应『惯性』, 但在标准梯度下降里被『过阻尼』近似掉了…
+#     质量不是本质, 而是能量的聚集形式、是粒子与场相互作用的副产物。结构决定可能性, 质量是结构的
+#     副产物。在状态空间工程里, **流形引擎**就是整个工程的核心结构; 向**标定层**暴露一个主标定
+#     参数 M (类似发动机标定的质量 M)。」
+#   真执行: 读 config/calib/zmax_manifold.json (经 tools/zmax_params.py 口径) 的 M/inertia →
+#     构 ManifoldEngine(manifold_M=M, inertia=…) → 在**同一起点/同一场**跑两臂:
+#       · 过阻尼 (旧行为): p ← exp_p(−∇Φ·dt)                     (速度 ∝ 力)
+#       · 有惯性 (M>0)  : v ← v + (−∇Φ/M)·dt; p ← exp_p(v·dt)    (带**动量**)
+#     报 M / 范围 / 单位 / 两臂位移差 / 动量范数; M 可读 (zmax_params.manifold_M) 可写
+#     (tools/zmax_params.py --m <值> [--inertia on|off] → config/calib/zmax_manifold.json)。
+#   ⚠ 只读旁路: 结论进 _SS_STATE/日志, **不下发动作** (动作须人工授权)。
+# ══════════════════════════════════════════════════════════════════════════════
+def node_ss_calib_mani(ctx):
+    """🧮 流形引擎标定 — 主参数 M (状态空间结构参数/等效惯量): 同一场 有惯性 vs 过阻尼 两臂真跑"""
+    log = ctx.get("log")
+    try:
+        import importlib.util as _ilu
+        import numpy as np
+
+        # ① 读 M (标定层单一真源: config/calib/zmax_manifold.json → tools/zmax_params.py)
+        M, inertia, rng, unit, src, zm = None, None, None, None, None, None
+        try:
+            _s = _ilu.spec_from_file_location("zmax_params", os.path.join(_REPO_ROOT, "tools", "zmax_params.py"))
+            zm = _ilu.module_from_spec(_s)
+            _s.loader.exec_module(zm)
+            M, inertia = zm.manifold_M(), zm.manifold_inertia()
+            sp = zm.manifold_spec()
+            rng, unit, src = sp.get("range"), sp.get("unit"), sp.get("_src")
+        except Exception as _e:                                                 # noqa: BLE001
+            M, inertia, rng, unit, src = 1.0, False, [0.0, 8.0], "等效惯量尺度", f"默认 (读 zmax_params 失败: {_e})"
+
+        # ①b 可写口 (可选): 画布节点 params 带数值 write_M 且 zmax_params 可用 → 真写盘并复读
+        wrote = None
+        _wv = (ctx.get("params") or {}).get("write_M")
+        if _wv is not None and zm is not None:
+            wrote = zm.write_manifold_M(float(_wv), (ctx.get("params") or {}).get("inertia"))
+            M, inertia = wrote["M"], wrote["inertia"]
+
+        # ② 流形引擎 (真件) + 权威规格
+        path = os.path.join(_MANIFOLD_DIR, "manifold_engine.py")
+        spec = _ilu.spec_from_file_location("lerobot.manifold.manifold_engine", path)
+        m = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        msp = m.manifold_M_spec()
+        dt = 0.01
+
+        mod = ctx.get("module")
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        O, idx = None, 0
+        if tr is not None and tr.get("t"):
+            O = np.asarray(tr["obs"], dtype=float)
+            if O.ndim == 2 and O.shape[1] >= 43 and len(tr["t"]) > 0:
+                idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
+            else:
+                O = None
+        real = O is not None
+
+        if real:      # 真引擎帧 (su2 流形): 编码→投影→梯度流 → 取力
+            eng = m.ManifoldEngine(manifold_type="su2", latent_dim=16, state_dim=43, action_dim=4,
+                                   manifold_M=M, inertia=bool(inertia))
+            ck = os.path.join(_REPO_ROOT, "models", "manifold_engine.npz")
+            loaded = eng.load(ck)
+            if not loaded:
+                U = np.asarray(tr.get("u_exec_vec") or np.zeros((len(O), 4)), dtype=float)[:len(O), :4]
+                eng.fit(O[:, :43], U)
+            goal = eng.project(O[-1, :43])["p"]              # 目标 = 末帧收敛态 (真值锚)
+            eng.goal_point = goal
+            r = eng.project(O[idx, :43])
+            gf = eng.gradient_flow()
+            frame = (f"引擎帧 {idx}/{len(O)-1} · 流形 {eng.manifold_type} · "
+                     f"{'标定 npz' if loaded else '本段轨迹现场拟合'}")
+        else:         # 无引擎轨迹 → 合成势场小实验 (与 M 同构; 如实标注, 不假装有真机帧)
+            eng = m.ManifoldEngine(manifold_type="euclidean", latent_dim=2, state_dim=2, action_dim=2,
+                                   manifold_M=M, inertia=bool(inertia))
+            goal = np.array([1.0, 0.0])
+            eng.goal_point = goal
+            r = eng.project(np.zeros(2))
+            gf = eng.gradient_flow()
+            frame = "无引擎轨迹 → 合成势场小实验 (如实标注, 非真机帧; 建议先点 ▶ 运行状态空间)"
+
+        # ③ 两臂: 过阻尼 (旧行为) vs 有惯性 (M 带动量) — 严格同一起点/同一场
+        p_od = eng.navigator.step(r["p"], gf["descent"], dt)     # 过阻尼 = 旧行为 (未改的 navigator)
+        _M_used = float(M) if (M is not None and float(M) > 0) else 1.0
+        eng.inertia, eng.M, eng.velocity = True, _M_used, None
+        p_in = eng._evolve(r["p"], gf["descent"], dt)
+        mom = 0.0 if eng.velocity is None else float(np.linalg.norm(eng.velocity))
+        d_od = float(np.linalg.norm(np.asarray(p_od, float) - np.asarray(r["p"], float)))
+        d_in = float(np.linalg.norm(np.asarray(p_in, float) - np.asarray(r["p"], float)))
+        _SS_STATE["calib_mani"] = {"M": M, "inertia_read": bool(inertia), "range": rng, "unit": unit,
+                                   "M_used": _M_used, "momentum": mom, "wrote": wrote,
+                                   "dx_overdamped": d_od, "dx_inertial": d_in,
+                                   "real_frame": real,
+                                   "goal": None if goal is None else np.asarray(goal).ravel().tolist()}
+        if log:
+            log("🧮 流形引擎标定 · L4 标定层 主参数 M (状态空间结构参数 / 等效惯量)")
+            log(f"   ① M = {M} (范围 {rng} · 单位「{str(unit)[:24]}…」· 真源 {src})"
+                + (f" · 本次真写盘 {wrote}" if wrote else ""))
+            log(f"   ② 现场读 inertia = {inertia} ({'有惯性二阶 a=F/M' if inertia else '过阻尼一阶 = 旧行为, 零回归'})"
+                f" · 数据 {frame}")
+            log(f"   ③ 同一起点/同一场两臂: 过阻尼 Δx={d_od:.6g} (速度∝力, 旧行为) vs "
+                f"有惯性 M={_M_used} Δx={d_in:.6g} (a=F/M, 动量 ‖v‖={mom:.6g}) → 差 {abs(d_in - d_od):.3g}")
+            log(f"   ④ 物理: {msp['physical']}")
+            log(f"   ⑤ 信息: {msp['information']}")
+            log(f"   ⑥ 可写口: tools/zmax_params.py --m <值> [--inertia on|off] → config/calib/zmax_manifold.json")
+            log(f"   ⑦ {msp['not_free_param']}")
+            log("   🔒 只读旁路: 只标定/对比, 不下发动作 (动作须人工授权)")
+        return True
+    except Exception as e:                                                      # noqa: BLE001
+        if log:
+            log(f"⚠️ 流形引擎标定失败: {type(e).__name__}: {e}")
+        return False
+
+
+_reg("n_calib_mani", ["流形引擎标定", "流形标定", "主标定参数 M", "Manifold Calibration"],
+     "🧮 流形引擎标定 — L4 标定层 主标定参数 M (状态空间结构参数/等效惯量): 流形引擎向标定层暴露的唯一"
+     "主标定量; 读 config/calib/zmax_manifold.json (经 tools/zmax_params.py; 默认 M=1.0, 范围 0~8, "
+     "inertia 默认关 ⇒ 零回归), 在同一场跑 有惯性(M>0, a=F/M 带动量) vs 过阻尼(M→0, 速度∝力=旧 GD) 两臂对比 "
+     "(源码 src/lerobot/manifold/manifold_engine.py::ManifoldEngine._evolve / manifold_M_spec)",
+     node_ss_calib_mani)
+
+_EXTERNAL_LOC["n_calib_mani"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py"),
+                                 101, "MANIFOLD_M_DEFAULT")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 🎥 真实场景叠加 · 双眼 (sim2real) — 画布节点内实时出画面 (2026-09-27 老倪)

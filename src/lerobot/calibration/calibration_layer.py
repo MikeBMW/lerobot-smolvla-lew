@@ -70,14 +70,39 @@ LATENT_CALIB = {
 EQ_BAND = 0.15
 
 
+# ── 🧮 流形引擎标定 (2026-09-29 老倪: 质量 = 结构的副产物; M = 状态空间的结构参数) ──
+# 定位: 流形引擎 = 整个工程的核心结构; M = 它向标定层暴露的**主标定参数** (类似发动机标定的质量 M)。
+#   · 物理类比: 等效惯量 —— 状态演化写有惯性的二阶形式 a = F/M ⇒ Δx = F·dt²/M (F=−∇Φ)。
+#   · 信息论类比: 交叉熵 H(p,q) 度量“用 q 编码 p”的代价; M 是把“信息代价梯度”换成“状态加速度”的
+#     单位换算/曲率尺度 —— Fisher 信息/Hessian 尺度的**单标量代理**。
+#   · 过阻尼含义: M→0 ⇒ 无惯性、速度∝力 (旧 GD, 一阶); M>0 ⇒ 状态带动量 ⇒ 过渡更平滑、抑制突变。
+#   · **M 不是拟合出来的自由参数**, 而是从流形结构导出的结构参数 (曲率/维度/尺度); 标定时以单标量暴露。
+# 真源: config/calib/zmax_manifold.json → tools/zmax_params.py (manifold_M/manifold_inertia) →
+#       流形引擎 ManifoldEngine(manifold_M=…, inertia=…) · 规格真源 manifold_engine.manifold_M_spec()。
+# 零回归: inertia=False (默认) 时引擎行为与旧版一阶过阻尼逐位相同 ⇒ 本域默认值不影响在役链。
+# ⚠️ M 不做源码字面量写回 (apply_calib_to_engine 不变): 它是**运行期结构参数**, 引擎每次运行从本域读,
+#    与 latent_dim 同类 (结构常数, 非旋钮式字面量替换)。
+MANIFOLD_CALIB = {
+    "M": 1.0,                    # 主标定参数 M: 状态空间结构参数 (等效惯量尺度); 默认 1.0
+    "inertia": False,            # 是否启用有惯性二阶演化 (默认关 ⇒ 零回归)
+    "range": [0.0, 8.0],         # 现场可标定范围 (M=0 ⇒ 无惯性/过阻尼极限)
+    "unit": "等效惯量尺度 (无量纲归一化; 物理类比 kg, 信息类比 Fisher/Hessian 曲率尺度)",
+    "flow": "二阶: v ← v + (F/M)·dt; p ← exp_p(v·dt)   (F = 场/梯度给出的力)",
+    "struct_src": "从流形结构导出 (曲率/维度/尺度) — 非自由拟合参数",
+}
+
+
 class CalibrationLayer:
-    """标定层 — 引力(动作)/斥力(状态预测)/潜空间(世界模型流形) 三域标定 + 平衡点计算
+    """标定层 — 引力(动作)/斥力(状态预测)/潜空间(世界模型流形)/流形引擎(M) 四域标定 + 平衡点计算
 
     地图导航视角 (2026-09-03 老倪): 潜空间 = 承载物理规律的流形地图; 世界模型在
     潜流形上沿速度场 (prior A·x+B·u) 推演 = 地图导航仪; 引力/斥力 = 该地图上
-    动作与状态预测的标定旋钮。本类纯数据/计算, 不参与引擎推理。"""
+    动作与状态预测的标定旋钮。
+    2026-09-29 (老倪): 「流形引擎就是整个工程的核心结构」→ 新增**流形引擎标定域** MANIFOLD_CALIB,
+    主标定参数 M = 状态空间的结构参数 (等效惯量): 引擎向标定层暴露的唯一主标量。
+    本类纯数据/计算, 不参与引擎推理。"""
 
-    def __init__(self, attraction=None, repulsion=None, latent=None):
+    def __init__(self, attraction=None, repulsion=None, latent=None, manifold=None):
         self.attr = dict(ATTRACTION_CALIB)
         if attraction:
             self.attr.update(attraction)
@@ -87,6 +112,9 @@ class CalibrationLayer:
         self.lat = dict(LATENT_CALIB)
         if latent:
             self.lat.update(latent)
+        self.mani = dict(MANIFOLD_CALIB)          # 🧮 流形引擎域: 主参数 M (可读可写)
+        if manifold:
+            self.mani.update(manifold)
 
     # ── 引力势: 当前速度贴阶段上限的程度 (1.0=满速贴上限, <1=有余量) ──
     def attraction_potential(self, stage, speed):
@@ -123,6 +151,14 @@ class CalibrationLayer:
                 f"力通道={'进' if self.lat['force_ch'] else '不进'}潜状态 · "
                 f"速度场 prior_A={self.lat['prior_A']:.1f} (潜流形上 ODE 离散化)")
 
+    # ── 🧮 流形引擎 (主参数 M) 摘要 — 状态空间结构参数/等效惯量的标定陈述 ──
+    def manifold_summary(self):
+        m = self.mani
+        rng = m.get("range", [0.0, 8.0])
+        return (f"流形引擎: 主标定参数 M={m['M']} (范围 {rng[0]}~{rng[1]}, "
+                f"{'有惯性二阶 a=F/M' if m.get('inertia') else '过阻尼一阶=旧行为'}) · "
+                f"单位「{m.get('unit', '')[:16]}…」 · {m.get('struct_src', '')}")
+
     # ── 标定表导出 (落盘 json 快照) ──
     def export(self, path=None):
         if path is None:
@@ -130,7 +166,7 @@ class CalibrationLayer:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump({"attraction": self.attr, "repulsion": self.rep,
-                       "latent": self.lat, "eq_band": EQ_BAND},
+                       "latent": self.lat, "manifold": self.mani, "eq_band": EQ_BAND},
                       f, ensure_ascii=False, indent=1)
         return path
 

@@ -18,6 +18,23 @@
       - 提升: `manifold/fiber_bundle.py::fit_map` (可选, 有标定文件时走丛映射)
   · 延迟/精度**全部实测** (perf_counter), 不抄规格书。
 
+主标定参数 M —— 质量 = 结构的副产物 (老倪 2026-09-29, 原文):
+    「质量在神经网络类比里对应『惯性』, 但在标准梯度下降里被『过阻尼』近似掉了, 所以感觉消失了。
+     光没有静止质量(规范对称性要求规范玻色子无质量), 但有等效质量来自能量。质量不是本质, 而是
+     能量的聚集形式、是粒子与场相互作用的副产物。物理学的倾向: 对称性和场更本质, 质量是果不是因;
+     结构决定可能性, 质量是结构的副产物。在状态空间工程里, **流形引擎**就是整个工程的核心结构;
+     把思想整合进流形引擎节点, 向**标定层**暴露一个主标定参数 M (类似发动机标定的质量 M)。」
+  · 物理类比: M = **等效惯量**。状态演化写成有惯性的二阶形式 a = F/M ⇒ Δx = F·dt²/M
+    (F = 场/梯度给出的“力”, 即 −∇Φ; 一阶过阻尼是 M→0 的极限)。
+  · 信息论类比: **交叉熵 H(p,q)** 度量“用 q 编码 p”的代价; M 相当于把“信息代价梯度”换成
+    “状态加速度”的**单位换算/曲率尺度** —— Fisher 信息/Hessian 尺度的**单标量代理**。
+  · 过阻尼的含义: **M→0 ⇒ 无惯性、速度∝力** (现在的 GD, 一阶); **M>0 ⇒ 状态带动量** ⇒ 过渡更
+    平滑、对突变有抑制 ⇒ 机械臂运动更接近“有质量的物体”。
+  · **M 不是拟合出来的自由参数**, 而是**从流形结构导出的结构参数** (曲率/维度/尺度); 标定时又
+    必须以**单标量**暴露给现场 —— 见 `manifold_M_spec()` (规格真源) · `tools/zmax_params.py::manifold_M`
+    (读) / `write_manifold_M` (写) · 画布节点 `n_calib_mani`「流形引擎标定」。
+  · **零回归**: `inertia=False` (默认) 或 M≤M_EPS ⇒ 精确退化回原有一阶过阻尼行为 (逐位相同)。
+
 用法 (独立自检):
     ./gui-venv311/bin/python src/lerobot/manifold/manifold_engine.py --selftest
 标定 (从真实引擎轨迹拟合编码器/解码器 → models/manifold_engine.npz):
@@ -74,6 +91,43 @@ MANIFOLD_REGISTRY: dict[str, dict] = {
 }
 
 STAGE_KEYS = ("encode", "project", "metric", "navigate", "feedback")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🧮 主标定参数 M (状态空间的结构参数 / 等效惯量) — 全工程唯一真源
+#   物理: a = F/M ⇒ Δx = F·dt²/M (有惯性二阶); 信息: 把“信息代价梯度”换成“状态加速度”的
+#   曲率尺度 (Fisher/Hessian 的单标量代理); M 从流形结构导出, **不是自由拟合参数**。
+#   零回归: inertia=False (默认) 或 M ≤ M_EPS ⇒ 精确退化回一阶过阻尼 (与旧版逐位相同)。
+# ══════════════════════════════════════════════════════════════════════════════
+MANIFOLD_M_DEFAULT = 1.0                       # 默认等效惯量尺度 (inertia 关闭时不影响行为)
+MANIFOLD_M_RANGE = (0.0, 8.0)                  # 现场可标定范围 (M=0 ⇒ 无惯性/过阻尼极限)
+MANIFOLD_M_UNIT = "等效惯量尺度 (无量纲归一化; 物理类比 kg, 信息类比 Fisher/Hessian 曲率尺度)"
+M_EPS = 1e-9                                   # M ≤ M_EPS 视为无惯性 (过阻尼极限)
+
+
+def manifold_M_spec() -> dict:
+    """主标定参数 M 的**规格真源** (默认值/范围/单位/含义/物理-信息类比/零回归口径)。
+
+    标定层 (calibration_layer.MANIFOLD_CALIB) 与画布节点 (n_calib_mani) 都从这里拿说明,
+    避免多处硬编码; `tools/zmax_params.py` 也 import 本模块取常量 (单一真源)。
+    """
+    return {
+        "name": "M",
+        "meaning": "状态空间的结构参数 (流形引擎主标定参数 / 等效惯量)",
+        "physical": "a = F/M ⇒ Δx = F·dt²/M (F = 场/梯度给出的“力”) — 状态演化是有惯性的二阶形式",
+        "information": ("把“信息代价梯度”换成“状态加速度”的单位换算/曲率尺度: 交叉熵 H(p,q) 度量"
+                        "“用 q 编码 p”的代价; M ≈ Fisher 信息/Hessian 尺度的单标量代理"),
+        "overdamped": ("M→0 ⇒ 无惯性、速度∝力 (旧 GD, 一阶); M>0 ⇒ 状态带动量 ⇒ 过渡更平滑、"
+                       "对突变有抑制 ⇒ 机械臂运动更接近“有质量的物体”"),
+        "not_free_param": ("M 不是拟合出来的自由参数, 而是从流形结构导出的结构参数 (曲率/维度/尺度);"
+                           " 标定时以单标量暴露给现场"),
+        "default": MANIFOLD_M_DEFAULT,
+        "range": list(MANIFOLD_M_RANGE),
+        "unit": MANIFOLD_M_UNIT,
+        "zero_regression": "inertia=False 或 M≤M_EPS ⇒ 精确退化回一阶过阻尼行为 (与旧版逐位相同)",
+        "motivation": ("老倪: 「质量不是本质, 而是能量的聚集形式、是粒子与场相互作用的副产物;"
+                       " 结构决定可能性, 质量是结构的副产物。流形引擎就是整个工程的核心结构;"
+                       " 把思想整合进流形引擎节点, 向标定层暴露一个主标定参数 M。」"),
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -405,11 +459,19 @@ class ManifoldEngine:
 
     def __init__(self, manifold_type: str = "sphere", latent_dim: int = 16,
                  state_dim: int = 43, action_dim: int = 4, gain: float = 0.3,
-                 max_step: float = 0.05) -> None:
+                 max_step: float = 0.05, manifold_M: float = MANIFOLD_M_DEFAULT,
+                 inertia: bool = False) -> None:
         self.manifold_type = manifold_type
         self.latent_dim = int(latent_dim)
         self.state_dim = int(state_dim)
         self.action_dim = int(action_dim)
+        # ── 主标定参数 M (等效惯量) + 是否有惯性演化 ──
+        #   inertia=False (默认) ⇒ 一阶过阻尼 (旧行为, 零回归); inertia=True 且 M>0 ⇒ 二阶 (带动量)。
+        lo, hi = MANIFOLD_M_RANGE
+        self.M = float(min(max(float(manifold_M), lo), hi))
+        self.inertia = bool(inertia)
+        self.velocity: np.ndarray | None = None      # 动量 (二阶演化的速度状态)
+        self.M_history: list[dict] = []              # M 标定/演化留痕 (只读旁路用)
         self.encoder = Encoder(latent_dim)
         self.projector = ManifoldProjector(manifold_type)
         self.metric = MetricCalculator(manifold_type)
@@ -426,6 +488,45 @@ class ManifoldEngine:
         self.lat: dict[str, list[float]] = {k: [] for k in STAGE_KEYS}
         self.calib: dict = {}
         self.fitted = False
+
+    # ── 主标定参数 M (可读可写) ──
+    def set_M(self, value: float, inertia: bool | None = None) -> dict:
+        """设置主标定参数 M (带范围校验; inertia=None 时保持原状)。
+
+        M 从流形结构导出 (非自由拟合), 但**必须可写** —— 现场以单标量标定 (老倪口径)。
+        M ≤ M_EPS 或 inertia=False ⇒ 精确退化回一阶过阻尼 (零回归)。
+        """
+        lo, hi = MANIFOLD_M_RANGE
+        v = float(value)
+        clamped = not (lo <= v <= hi)
+        v = min(max(v, lo), hi)
+        old = self.M
+        self.M = v
+        if inertia is not None:
+            self.inertia = bool(inertia)
+        self.velocity = None                     # 改 M = 换惯性, 动量复位 (不留旧尺度残迹)
+        info = {"M": self.M, "M_prev": old, "inertia": self.inertia,
+                "clamped": bool(clamped), "range": [lo, hi], "unit": MANIFOLD_M_UNIT}
+        self.M_history.append(info)
+        if self.history is not None:
+            self.history.append({"M_set": dict(info)})
+        return info
+
+    def _evolve(self, p: np.ndarray, force: np.ndarray, dt: float) -> np.ndarray:
+        """状态演化 (主参数 M 在此生效)。
+
+        · inertia=False (默认) 或 M ≤ M_EPS ⇒ **一阶过阻尼** (原行为, 逐位相同):
+              p ← exp_p(force · dt)          (速度 ∝ 力 = 现在的 GD)
+        · inertia=True 且 M>0 ⇒ **有惯性二阶** (a = F/M):
+              v ← v + (force/M)·dt ;  p ← exp_p(v · dt)      ⇒ 状态带**动量**
+        M 的物理类比 = 等效惯量; 信息论类比 = 把“信息代价梯度”换成“状态加速度”的曲率尺度
+        (Fisher 信息/Hessian 尺度的单标量代理)。M 越大越“有质量”(过渡更平滑、对突变有抑制)。
+        """
+        if (not self.inertia) or self.M <= M_EPS:
+            return self.navigator.step(p, force, dt)         # ← 旧行为 (零回归)
+        a = np.asarray(force, float) / self.M               # a = F/M
+        self.velocity = a * dt if self.velocity is None else self.velocity + a * dt
+        return self.navigator.step(p, self.velocity, dt)
 
     # ── 拟合 / 标定 ──
     def fit(self, X: np.ndarray, U: np.ndarray | None = None) -> dict:
@@ -563,7 +664,7 @@ class ManifoldEngine:
         """单步: 编码→投影→梯度流→导航步→解码动作→(可选)反馈修正"""
         r = self.project(state)
         gf = self.gradient_flow(potential_fn)
-        p_new = self.navigator.step(r["p"], gf["descent"], dt=dt)
+        p_new = self._evolve(r["p"], gf["descent"], dt)      # M 生效点 (默认过阻尼=旧行为)
         fb = self.feedback_update(sensor_residual) if sensor_residual is not None else None
         # 解码动作 (有拟合 readout 用真拟合; 否则用潜坐标前 action_dim 维, **如实标注**)
         if self.readout is not None:
@@ -580,6 +681,8 @@ class ManifoldEngine:
                "z": r["z"], "phi": gf["phi"], "grad": gf["grad"], "action": a,
                "confidence": r["confidence"], "anomaly": r["anomaly"],
                "residual": r["residual"], "feedback": fb, "decode_src": dec_src,
+               "M": self.M, "inertia": self.inertia,
+               "momentum": (None if self.velocity is None else float(np.linalg.norm(self.velocity))),
                "t_encode_ms": r["t_encode_ms"], "t_project_ms": r["t_project_ms"],
                "t_grad_ms": gf["t_ms"], "manifold": r["manifold"], "status": r["status"]}
         self.history.append({"p": r["p"].tolist(), "phi": gf["phi"], "anomaly": r["anomaly"]})
@@ -593,6 +696,9 @@ class ManifoldEngine:
                 "latent_dim": self.encoder.latent_dim, "fitted": self.fitted,
                 "n_fit": self.encoder.n_fit, "readout": self.readout is not None,
                 "feedback_n": self.feedback.n_updates, "feedback_clamped": self.feedback.clamped,
+                "M": self.M, "inertia": self.inertia,
+                "momentum": (None if self.velocity is None else round(float(np.linalg.norm(self.velocity)), 6)),
+                "M_spec": manifold_M_spec(),
                 "history_n": len(self.history), "calib": self.calib, "what": what}
 
     def latency_report(self) -> dict:
@@ -670,6 +776,25 @@ def _selftest() -> int:
     print(f"  calabi_yau  status={r['status']} confidence={r['confidence']} "
           f"(planned → 不提供投影, 已如实标注)")
     print("  registry:", json.dumps(eng.registry_table(), ensure_ascii=False)[:150], "…")
+
+    # ── 🧮 主标定参数 M: 零回归 + 惯性生效 (同一起点/同一场) ──
+    _p0, _F, _dt = np.zeros(2), np.array([1.0, 0.0]), 0.01
+    em = ManifoldEngine(manifold_type="euclidean", latent_dim=2, state_dim=2, action_dim=2)
+    p_off, p_ref = em._evolve(_p0, _F, _dt), em.navigator.step(_p0, _F, _dt)
+    em1 = ManifoldEngine(manifold_type="euclidean", latent_dim=2, state_dim=2, action_dim=2,
+                         manifold_M=1.0, inertia=True)
+    p_on = em1._evolve(_p0, _F, _dt)
+    em0 = ManifoldEngine(manifold_type="euclidean", latent_dim=2, state_dim=2, action_dim=2,
+                         manifold_M=0.0, inertia=True)
+    reg = bool(np.array_equal(np.asarray(p_off), np.asarray(p_ref)))
+    reg0 = bool(np.array_equal(np.asarray(em0._evolve(_p0, _F, _dt)), np.asarray(p_ref)))
+    eff = bool(not np.allclose(p_on, p_off))
+    ok_all &= bool(reg and reg0 and eff)
+    _sp = manifold_M_spec()
+    print(f"  🧮 M 主标定参数: 零回归 (inertia 关={reg} · M=0={reg0}) · 惯性生效 "
+          f"(M=1 Δx={np.round(p_on, 6)} ≠ 关 Δx={np.round(p_off, 6)} → {eff}) · "
+          f"默认 {_sp['default']} 范围 {_sp['range']} 单位「{_sp['unit'][:12]}…」")
+
     print("\n自检结果:", "全部通过 ✅" if ok_all else "有失败 ❌")
     print("MANIFOLD_SELFTEST_DONE")
     return 0 if ok_all else 1

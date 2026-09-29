@@ -61,6 +61,7 @@ LEVELS_INDEX = {
         ("swworld", "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)", 'sw_world', "library.py", 'node_sw_world'),
         ("ss_lora_l4", "🎛 L4 · INTACT LoRA 微调 (r8/α16) · 接入中", 'ss_lora_l4', "library.py", 'node_ss_lora_l4'),
         ("ss_mani_eng", "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)", 'ss_mani_eng', "library.py", 'node_ss_mani_eng'),
+        ("n_calib_mani", "🧮 流形引擎标定 · 主参数 M (状态空间结构参数 · 等效惯量)", 'n_calib_mani', "library.py", 'node_ss_calib_mani'),
     ],
     "L5": [
         ("ssllm_in", "📝 任务指令 · MES/自然语言", 'ss_llm_in', "library.py", 'node_ss_llm_in'),

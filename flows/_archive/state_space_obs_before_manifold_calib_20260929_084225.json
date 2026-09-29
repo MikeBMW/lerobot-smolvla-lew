@@ -885,8 +885,7 @@
    "icon": "🧮",
    "color": "#58a6ff",
    "inputs": [
-    "in1",
-    "in3"
+    "in1"
    ],
    "outputs": [
     "out1"
@@ -1413,8 +1412,7 @@
     "source_symbol": "class WorldModelPredictor"
    },
    "inputs": [
-    "in1",
-    "in6"
+    "in1"
    ]
   },
   {
@@ -1904,8 +1902,7 @@
     "in2",
     "in3",
     "in4",
-    "in5",
-    "in6"
+    "in5"
    ],
    "outputs": [
     "out1",
@@ -2075,49 +2072,6 @@
     "lora_inject": "tools/lora_inject.py",
     "lora_merge": "tools/merge_lora_ckpt.py"
    }
-  },
-  {
-   "id": "n_calib_mani",
-   "type": "model",
-   "name": "🧮 流形引擎标定 · 主参数 M (状态空间结构参数 · 等效惯量)",
-   "x": 6000,
-   "y": 1546,
-   "w": 340,
-   "h": 130,
-   "icon": "🧮",
-   "color": "#d2a8ff",
-   "params": {
-    "state_space": true,
-    "manifold_calib": true,
-    "kind": "real",
-    "role": "L4 标定层 — 流形引擎主标定参数 M (状态空间结构参数 / 等效惯量)",
-    "M": 1.0,
-    "M_default": 1.0,
-    "M_range": [
-     0.0,
-     8.0
-    ],
-    "M_unit": "等效惯量尺度 (无量纲归一化; 物理类比 kg, 信息类比 Fisher/Hessian 曲率尺度)",
-    "M_meaning": "a = F/M ⇒ Δx = F·dt²/M (有惯性二阶); M→0 ⇒ 无惯性/速度∝力 (旧 GD 过阻尼); M>0 ⇒ 状态带动量, 过渡更平滑、对突变有抑制",
-    "M_info": "信息论类比: 交叉熵 H(p,q) 度量“用 q 编码 p”的代价; M 是把“信息代价梯度”换成“状态加速度”的单位换算/曲率尺度 (Fisher 信息/Hessian 尺度的单标量代理)",
-    "M_not_free": "M 不是拟合出来的自由参数, 而是从流形结构导出的结构参数 (曲率/维度/尺度); 现场以单标量暴露",
-    "inertia": false,
-    "inertia_default": false,
-    "zero_regression": "inertia=false 或 M≤0 ⇒ 引擎行为与旧版一阶过阻尼逐位相同 (零回归)",
-    "source": "src/lerobot/manifold/manifold_engine.py (ManifoldEngine.manifold_M / inertia · manifold_M_spec())",
-    "calib_source": "config/calib/zmax_manifold.json → tools/zmax_params.py::manifold_M()/write_manifold_M()",
-    "desc": "流形引擎向标定层暴露的唯一主标定标量 M; 双击/右键真跑: 同一起点同一场, 有惯性(M>0) vs 过阻尼(M→0) 两臂对比"
-   },
-   "inputs": [
-    "in1",
-    "in2"
-   ],
-   "outputs": [
-    "out1",
-    "out2",
-    "out3"
-   ],
-   "actions": []
   }
  ],
  "links": [
@@ -3485,46 +3439,6 @@
    "f_port": "out3",
    "t_port": "in1",
    "label": "L5 监督标注数据 → L2 YOLO 检测 (全量训练)"
-  },
-  {
-   "id": "lk0929_sscalib_n_calib_mani",
-   "f": "sscalib",
-   "t": "n_calib_mani",
-   "f_port": "out3",
-   "t_port": "in1",
-   "label": "标定层单一真源 → M 注册口 (引力/斥力/潜空间三域)"
-  },
-  {
-   "id": "lk0929_sslat_n_calib_mani",
-   "f": "sslat",
-   "t": "n_calib_mani",
-   "f_port": "out3",
-   "t_port": "in2",
-   "label": "潜空间几何 → 曲率/维度尺度 (M 的结构来源)"
-  },
-  {
-   "id": "lk0929_n_calib_mani_ss_mani_eng",
-   "f": "n_calib_mani",
-   "t": "ss_mani_eng",
-   "f_port": "out1",
-   "t_port": "in6",
-   "label": "M = 状态空间结构参数 (等效惯量) → 流形引擎主核"
-  },
-  {
-   "id": "lk0929_n_calib_mani_ssmani_c",
-   "f": "n_calib_mani",
-   "t": "ssmani_c",
-   "f_port": "out2",
-   "t_port": "in3",
-   "label": "M → 接触流形势能 Φ_c 的惯性尺度"
-  },
-  {
-   "id": "lk0929_n_calib_mani_ssmani_exp",
-   "f": "n_calib_mani",
-   "t": "ssmani_exp",
-   "f_port": "out3",
-   "t_port": "in6",
-   "label": "M → 流形梯度流/动量 (JEPA 流形预测器)"
   }
  ],
  "params_note": ""

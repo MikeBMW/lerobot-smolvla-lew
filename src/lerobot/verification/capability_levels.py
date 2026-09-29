@@ -150,6 +150,16 @@ CAPABILITY_LEVELS = {
              "· 测地线T=16 0.24ms · 约束违例 1.1e-16 (真跑引擎轨迹); 解码器岭回归**只在标定分布内可信** "
              "(训练段逐维相关 0.76~0.94) ⇒ 只读旁路, 未接管动作。真源 src/lerobot/manifold/manifold_engine.py",
              "groups": ["lat", "mc", "mp", "obs43"]},
+            {"fid": "L4-C16", "name": "流形引擎标定 · 主参数 M", "desc":
+             "L4 标定层新增**流形引擎标定**节点 (n_calib_mani): 把「质量=结构的副产物/等效惯量」落进引擎 —— "
+             "状态演化有惯性二阶 a=F/M ⇒ Δx=F·dt²/M, M→0 退回过阻尼(旧 GD), M>0 带动量(过渡更平滑/抑制突变)。"
+             "M = 状态空间的结构参数 (从流形结构导出, 非自由拟合), 是引擎向标定层暴露的**唯一主标定量**; "
+             "真源 config/calib/zmax_manifold.json → tools/zmax_params.py (manifold_M/manifold_inertia/write_manifold_M, "
+             "CLI `--m <v> [--inertia on|off]`), 默认 M=1.0 · 范围 0~8 · inertia 默认关 ⇒ **零回归** "
+             "(与旧一阶行为逐位相同)。画布接线: 标定层/潜空-流形 → 本节点 → 流形引擎/接触流形/流形专家; "
+             "节点真跑同一起点两臂对比 (过阻尼 vs 有惯性动量)。真源 src/lerobot/calibration/calibration_layer.py "
+             "MANIFOLD_CALIB + src/lerobot/manifold/manifold_engine.py::ManifoldEngine._evolve/manifold_M_spec",
+             "groups": []},
         ],
     },
     # ── L5 🧠 大模型层 (回路外慢决策): 2026-09-25 老倪「L5 新节点: 与 web 的 agent 交换信息」──
