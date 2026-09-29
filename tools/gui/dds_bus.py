@@ -186,7 +186,7 @@ class BusTopology(QWidget):
         # 层带
         bands = [("L5", "L5 战略/意图"), ("L4", "L4 认知/世界模型"), ("L3", "L3 调度"),
                  ("L2", "L2 感知/执行"), ("meta", "meta 基建")]
-        top, BH = 86, max(26, int((H - 100) / len(bands)))
+        top, BH = 96, max(26, int((H - 110) / len(bands)))
         self._boxes = []
         # ── 报文: 总线干线 ──
         busY = 70
@@ -201,21 +201,21 @@ class BusTopology(QWidget):
             lst, _why = _topic_lamp(self.live, k)
             col = QColor(FG if lst == "green" else _lamp_color(lst) if lst in ("red", "yellow") else DIM)
             x = 16 + i * nw
-            r = [x, 20, x + nw - 8, busY - 6]
+            r = [x, 16, x + nw - 8, busY - 8]
             p.setPen(QPen(QColor(_lamp_color(lst) if lst != "black" else "#6b7684"), 2))
             p.setBrush(QBrush(QColor(PANEL)))
-            p.drawRoundedRect(x, 20, nw - 8, busY - 30, 4, 4)
-            _draw_lamp(p, x + nw - 16, 28, 4, lst)          # 🚦 报文状态灯
+            p.drawRoundedRect(x, 16, nw - 8, busY - 24, 4, 4)
+            _draw_lamp(p, x + nw - 16, 24, 4, lst)          # 🚦 报文状态灯
             p.setPen(col); f = QFont("Sans", 7); p.setFont(f)
             name = m["topic"].replace("zmax/", "")
-            p.drawText(x + 4, 32, name[:int((nw - 12) / 5.2)])
+            p.drawText(x + 4, 28, name[:int((nw - 12) / 5.2)])
             p.setPen(QColor(DIM)); p.setFont(QFont("Sans", 7))
             hz = lv.get("hz", -1.0)
-            p.drawText(x + 4, 42, ("实测 %.2fHz" % hz) if hz >= 0 else "实测 —")
-            p.drawText(x + 4, 52, "设计 %.2fHz" % (m.get("hz_design") or 0))
+            p.drawText(x + 4, 38, ("实测 %.2fHz" % hz) if hz >= 0 else "实测 —")
+            p.drawText(x + 4, 48, "设计 %.2fHz" % (m.get("hz_design") or 0))
             ns = m.get("n_signals")
-            p.drawText(x + 4, 62, ("%d 信号" % ns) if ns else ("配对%s" % lv.get("matched_pubs", "-")))
-            p.setPen(QPen(QColor("#4a5666"), 2)); p.drawLine(x + (nw - 8) // 2, busY - 10, x + (nw - 8) // 2, busY)
+            p.drawText(x + 4, 61, ("%d 信号" % ns) if ns else ("配对%s" % lv.get("matched_pubs", "-")))
+            p.setPen(QPen(QColor("#4a5666"), 2)); p.drawLine(x + (nw - 8) // 2, busY - 12, x + (nw - 8) // 2, busY)
             self._boxes.append([r[0], r[1], r[2], r[3], k or m["topic"], 0])
             self._boxes[-1][4] = k or m["topic"]
         # ── 节点: 按层挂 ──
@@ -245,7 +245,12 @@ class BusTopology(QWidget):
                 p.drawRect(cx, cy - 9, 3, 14)                     # 左侧层色条(层归属)
                 _draw_lamp(p, cx + 11, cy - 2, 4, st)             # 🚦 模块状态灯
                 p.setPen(QColor(FG))
-                p.drawText(cx + 19, cy + 2, ("%s ⇢%d ⇠%d" % (n["name"][:14], n["tx"], n["rx"]))[:26])
+                # 名称省略号截断(不硬切) + 计数右对齐(实测: 名字常被框边切断)
+                _fm = p.fontMetrics()
+                _cnt = "⇢%d ⇠%d" % (n["tx"], n["rx"])
+                _nw = _fm.horizontalAdvance(_cnt)
+                p.drawText(cx + 19, cy + 2, _fm.elidedText(n["name"], Qt.ElideRight, 150 - 26 - _nw))
+                p.drawText(cx + 150 - _nw - 4, cy + 2, _cnt)
                 self._boxes.append([cx, cy - 9, cx + 150, cy + 5, n["id"], 1])
 
 
@@ -332,11 +337,13 @@ class BusPanel:
         self.tb_stat.setHorizontalHeaderLabels(cols)
         self.lbl_st_n = QLabel("—")
         hh = self.tb_stat.horizontalHeader()
-        for i, wd in ((0, 76), (1, 210), (2, 110), (3, 62), (4, 68), (5, 68), (6, 62),
-                      (7, 70), (8, 64), (9, 72), (10, 52), (11, 72)):
+        for i, wd in ((0, 86), (1, 240), (2, 132), (3, 66), (4, 70), (5, 70), (6, 62),
+                      (7, 72), (8, 66), (9, 78), (10, 56), (11, 74)):
             hh.setSectionResizeMode(i, QHeaderView.Interactive)
             self.tb_stat.setColumnWidth(i, wd)
-        hh.setSectionResizeMode(11, QHeaderView.Stretch)
+        hh.setSectionResizeMode(1, QHeaderView.Stretch)      # ★ 拉宽"报文"列, 其余按内容;
+        for i in (0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11):        #   裁决列不再独占 43% 宽度
+            hh.setSectionResizeMode(i, QHeaderView.ResizeToContents)
         self.tb_stat.verticalHeader().setVisible(False)
         v.addWidget(self.lbl_st_n)
         v.addWidget(self.tb_stat, 1)
@@ -600,9 +607,11 @@ class BusPanel:
             npass = sum(1 for g in gates if g.get("ok") is True) if gates else s.get("n_pass")
             _st = str(s.get("status", "?")).lower()
             _ic = {"pass": "🟢", "ok": "🟢", "fail": "🔴", "warn": "🟡", "unknown": "⚫"}.get(_st, "⚫")
-            out.append("  %s %-3s %-20s %-8s 门=%s/%s  %s" %
+            _gt = ("%d/%d" % (npass, len(gates))) if gates else (
+                ("%s/%s" % (s.get("n_pass"), s.get("n_gate"))) if s.get("n_gate") else "-")
+            out.append("  %s %-3s %-20s %-8s 门禁 %-7s %s" %
                        (_ic, str(s.get("id") or s.get("sid") or ""), str(s.get("name", ""))[:20],
-                        str(s.get("status", "?")), npass, len(gates) or s.get("n_gate"),
+                        str(s.get("status", "?")), _gt,
                         str(s.get("evidence") or s.get("detail") or "")[:70]))
         self.tx_qual.setPlainText("\n".join(out))
 
@@ -748,6 +757,12 @@ class LampWall(QWidget):
         dot = LampDot(18)
         nm = QLabel(title); nm.setStyleSheet("color:%s;font-size:11px;font-weight:bold;border:none" % FG)
         nm.setToolTip(title)
+        try:
+            from PyQt5.QtGui import QFontMetrics
+            fm = QFontMetrics(nm.font())
+            nm.setText(fm.elidedText(title, Qt.ElideRight, 196))    # 卡宽 240 − 灯 26 − 边距, 留 8px 防贴边硬切
+        except Exception:                                                        # noqa: BLE001
+            pass
         de = QLabel(sub); de.setStyleSheet("color:%s;font-size:10px;border:none" % DIM)
         de.setWordWrap(True)
         vv = QVBoxLayout(); vv.setSpacing(0); vv.addWidget(nm); vv.addWidget(de)
@@ -772,6 +787,8 @@ class LampWall(QWidget):
             def section(text):
                 nonlocal gr, gc, cur
                 flush(); cur = []
+                if gc != 0:            # ★ 当前行没填满 ⇒ 标题必须换行, 否则压在后两张卡片上(实测踩到)
+                    gr += 1; gc = 0
                 lab = QLabel(text)
                 lab.setStyleSheet("color:%s;font-size:10px;font-weight:bold;"
                                   "border:none;padding-top:6px" % ACC)
@@ -828,6 +845,13 @@ class LampWall(QWidget):
         self._last_state = {key: dot.state for key, (dot, _de, _t) in self._cards.items()}
         L = _lamps_mod()
         tal = L.tally([s for _t, s, _n in t_states]) if L else {}
+        if tal and tal.get("black", 0) and not tal.get("green", 0):
+            self.lbl_tally.setText("🚦 状态灯总览: ⚫ 无信号 %d/%d —— 当前档位下**没有节点间数据流**(预期行为, 不是故障); "
+                                   "点『📥 回灌』可把工程 json 发上总线, 全图 74 个模块灯立刻点亮"
+                                   % (tal.get("black"), len(self._cards)))
+            self.lbl_tally.setStyleSheet("color:#e0a33a;font-size:11px")
+            self._t_states = t_states
+            return
         if tal:
             per = {}
             for key, (dot, _de, _t) in self._cards.items():

@@ -3450,6 +3450,13 @@ class DataSpaceModule(QWidget):
         bl.setContentsMargins(18, 18, 18, 18)
         bl.setSpacing(10)
 
+        # ★ 2026-09-29 视觉复核实测: 本页没有自己的背景 ⇒ 所有 background:transparent 的控件
+        #   漏出应用调色板的亮底(#EFEFEF/#FBFBFB, 实测占页面 21.8% 面积, 其中底部"一致性问题"
+        #   是红字压白底, 最扎眼)。用 ID 选择器只给本页上深色, 不改其它页。
+        self.setObjectName("DataSpaceModule")
+        self.setStyleSheet("#DataSpaceModule { background:%s; }" % C_BG)
+        self.setAttribute(Qt.WA_StyledBackground, True)   # ★ 自定义 QWidget 子类不认样式表背景(Qt 经典坑)
+
         title = QLabel("🌐 全局数据空间 — 节点↔数据对象 全息映射 · DDS 全链路 topic 可视化 · 数据闭环")
         title.setFont(QFont("Arial", 13, QFont.Bold))
         title.setStyleSheet(f"color:{SYS2_COLOR}; background:transparent; border:none;")
@@ -3571,6 +3578,14 @@ class DataSpaceModule(QWidget):
                     self._table.setItem(i, c, it)
             s = self.ds.summary()
             issues = self.ds.consistency()
+            if not rows:
+                self.lbl_summary.setText(
+                    "📦 数据集 %d · 📈 曲线 %d · 🧠 模型 %d · 画布节点 %d —— 本页无行: 画布上下文未就绪时"
+                    "(离屏快照/画布未加载)节点↔数据对象映射为空, 在控制台内打开本页即按当前画布重算"
+                    % (s['datasets'], s['curves'], s['models'], len(node_list)))
+                self.lbl_issues.setText(
+                    f"⚠️ 一致性问题 {len(issues)}: {'; '.join(issues[:5])}" if issues else "✅ 数据一致性正常")
+                return
             self.lbl_summary.setText(
                 f"📦 数据集 {s['datasets']} · 📈 曲线 {s['curves']} · 🧠 模型 {s['models']}"
                 f" · 🎬 视频 {s['rollouts']} · 📄 报告 {s['reports']} · 画布节点 {len(node_list)}")
