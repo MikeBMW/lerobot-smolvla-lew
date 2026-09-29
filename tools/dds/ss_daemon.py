@@ -307,8 +307,14 @@ class SSDaemon:
             sys.path.insert(0, DDS_DIR)
         try:
             from zmax_node import Node                              # noqa: PLC0415
+            # ⚠ 2026-09-29 实测坑: 原来写 `cfg if os.path.getsize(cfg) else None` —— 文件**不存在**时
+            #   os.path.getsize 直接抛 FileNotFoundError ⇒ 整个 DDS 参与者建不起来 ⇒ 所有话题静默
+            #   (表现: 状态灯全黑, 日志刷 "DDS 不可用: No such file")。缺文件/空文件都应视为"没配, 走默认发现"。
             cfg = os.path.join(DDS_DIR, "cyclonedds_unicast.xml")
-            self.node = Node("ss_daemon", domain=0, config_xml=cfg if os.path.getsize(cfg) else None)
+            if not os.path.isfile(cfg) or os.path.getsize(cfg) == 0:
+                cfg = None                                          # 默认多播发现(=当前实测可用状态)
+                log("ℹ️ 未配单播配置文件(或为空) → 用默认发现; 跨机单播见 dds/cyclonedds_unicast.template.xml")
+            self.node = Node("ss_daemon", domain=0, config_xml=cfg)
             log("📡 DDS 参与者已建立 (mode=%s, 允许话题 %d 个)" % (mode(), len(MODE_TOPICS.get(mode(), []))))
             return True
         except Exception as e:                                        # noqa: BLE001
