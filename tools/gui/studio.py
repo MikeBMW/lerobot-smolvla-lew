@@ -752,7 +752,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.16.22")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.16.23")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11276,7 +11276,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.22 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.23 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11284,9 +11284,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.22 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.23 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.16.23: 🧩 老倪两件事 (2026-09-29): 「现在我运行 L5的状态空间画布, 我还想同时看到全局数据空间; 在上边我可以打开一个独立的全局数据空间的窗口,   可以同时看到状态空间的场景和数据空间的 topic; 上边的按钮你整理一下, 紧凑点, 现在中间有一大快空白」  1) 【新】独立「全局数据空间」窗口: 画布页顶部工具条新增「🌐 数据空间窗口」    · 非模态顶层窗口 (QDialog, 可拖动/缩放, 不挡操作), 与页面里那份是同一套 CANoe 视图      (dds_canoe.BusView: 测量条 + 信号表 + Trace + 详情 + 数据闭环/质量告警页签)    · 目的: 跑 L5 状态空间画布 / 3D 场景时, 把本窗口拖到屏幕另一侧 ⇒ 场景 + topic 实时值同屏    · 单例复用 (关掉再点 = 同一个窗口, 不重建/不重复采集); 数据同源 busdb/live/trace; 纯只读不下发    · 独立模式下隐藏「🗂 经典视图」开关 (那个开关依赖主窗口的 Tab 容器)  2) 【真根因】「中间有一大快空白」= 那 6 个勾选框**一直都在, 但看不见**    · 像素实测: 「⚡引擎快演 / 🚀L3 全链(插拔+AOI) / 🧠流形 yaw 执行 / 🤖L4 用 INTACT 节点执行 /      🎯L4 意图→DiT 精炼 / 🧩L2 兼容(前馈MLP+YOLO)」共 6 项占 x793-2644 (顶宽 61%), 该矩形      82.7% 是纯底色、亮度>90 的像素 **0 个**; Qt 给 QCheckBox 的默认黑字 (0,0,0) 画在深色      工具条 (13,17,23) 上 ⇒ 对比度 **1.11:1**, 肉眼上就是「左边 3 个按钮 → 一片空 → 右边 2 个按钮」    · 修法: 6 个勾选框统一成与按钮同款深色 pill (同 padding 6x12 ⇒ 同高, 边框 #30363d,      勾选态绿字 #7ee787 + 绿指示块 #3fb950, 悬停蓝边) ⇒ 像素复测该区亮像素 0 → 17258      (其中绿字 14520), 空白块消失  3) 紧凑: 工具条边距 (12,7,12,7)→(10,6,10,6)、行距 10→9、行间隔 8→6    (按钮字号 10pt/内边距 6x12 一律不动 —— 老倪之前嫌过小, 不重复踩)  自测: 重启后 `printf 'ds_win'` 命令通道实测窗口出现       (`wmctrl -lG`: 0x01e005f3 0 567 607 2661 1040 🌐 Z-MAX 全局数据空间 · 独立窗口 (CANoe 范式));       独立窗口内非背景像素 23.2%, 绿 6908 / 琥珀 4141 / 蓝 12457 (CANoe 视图真在画)。
         # v5.16.22: 🔴 **修「全局数据空间 卡住」** (老倪: 「全局数据空间 怎么卡住了」) 真根因(实测定位, 不是猜): 新加的 1.5s 自刷新**每次重建表格时, 列宽策略是 `ResizeToContents`** —— Qt 会为**每一列逐格重新测量文字宽度**(192 DPI 下极贵, 9 列 × 150 行), 且这份开销**发生在事件循环里**(不在我那几个 _fill_* 函数的计时里, 所以之前逐函数计时只看到 11ms/轮, 完全没暴露)。 证据链: ①`resource.getrusage` 分组停定时器 bisect —— 基线 **83% CPU**, 只停 `DdsCanoeView._timer` → **3%**(=CPU 全在这一处, 经典视图/其它页定时器各 0%); ②改固定列宽后同一探针 → 基线 **5%**; ③现场进程 `ps` 实测曾 **81.7%**(页面观感=卡死)。 修法(4 条, 都已落码):   ① 四张表**全部去掉 `ResizeToContents`**, 改显式列宽(树 120/80/180/160, Trace 160/…/120, 闭环 110/240/340/160, 告警 130/280; 名字列 Stretch) —— 这一条就是 83%→5%。   ② **不在看的页不刷新**: `reload()` 首行 `if not self.isVisible(): return`(挂后台每秒重建表格纯属空转)。   ③ **trace 没变就整轮跳过**: 用 (体积, mtime) 签名, 且手动刷新/切页才 `force`。   ④ **有界读**: trace.jsonl 只读尾部 256KB(不再 `readlines()` 整个文件), 行数 500→150, 定时器 1s→1.5s。 实测: 探针基线 83% → **5%**(页自身 2%); 渲染内容不变(截图仍有环/条/表/闭环)。红线: 未下发真机动作; 未改在役指针/默认档/画布数据。
         # v5.16.21: UI(硬件仪表盘) **按视觉质检修 10 处** (质检: 逐像素, 离屏卡 2748x548 + 首页底部) ① **状态条漏画观感**: 功耗(未读到额定限值)与吞吐(无训练)两条不画条 ⇒ 但**底槽与卡底色几乎同色**, 看着像"4 条只画了 2 条"。槽色改 #2b3340(与卡底 #161b22 拉开) ⇒ 四条量程线清晰, 空条也能读出"无量程/无数据"。 ② **圆环弧长偏大**: 圆头端帽让 34% 画出 131°(看着像 36%) ⇒ 改**平头端帽**, 弧长与数字一致。 ③ **环内小字不齐**: 中文 21px vs 数字 14-15px、基线差 5px ⇒ 统一等宽 9pt 单行。 ④ **内存环副标歧义**(只写 31GB, 读作 110%) ⇒ 改「已用/总」如 `11/31GB`, 与显存环同格式。 ⑤ **卡片左侧 31% 全空**(灯靠 addStretch 挤到右边、圆环只占右端 21%) ⇒ 灯带改左对齐, 圆环每环 stretch=1 铺满整宽。 ⑥ **设备小字/名称被硬裁** ⇒ 按实测字宽**省略号截断**(`NVIDIA GeForce…`), 灯宽 126→152px。 ⑦ **远端数据源不可达却整卡全绿**(看不出是占位/过期) ⇒ 新增「远端数据源 未连通(仅本机数据)」**红灯**; 数据源那行最暗文字(深色横条 79% 空)隐去, 信息由灯承载。 ⑧ **按钮行三档高度/字号**(25/28/47px, 11/11/20px, 底边错位) ⇒ 统一 `_BTN_CSS`(同高同字号)。 ⑨ **采样时间小片左右仅 1px 内边距** ⇒ 加 `padding:4px 12px` + 圆角。 ⑩ **首页竖向节奏**: 卡片紧贴上方「项目状态」深条(0-1px) ⇒ 加节标题「硬件资源  Hardware」(与「功能模块」「项目状态」同规格), 顺带对齐栅格。 实测(离屏 192DPI 真采): 圆环 GPU 7% / 显存 8% / CPU 3% / 内存 37%(已用 11.33/31.04GB) · 条 磁盘 74% / 温度 53°C · **灯带视觉顺序 ['远端数据源','本机']**(本机永远最后) · 首页 视口 2812 == 页面宽 2812 · 横条 max 0 · 卡片为页面最后元素。 红线: 未下发真机动作; 未改在役指针/默认档/画布数据。
         # v5.16.20: UI(数据空间 CANoe 版) **按第二轮视觉质检修 8 处** (质检: 逐像素, 2792x1600 截图) ① **Bar 列没人看得懂**(质检: 0.21Hz 满格 / 0.50Hz 只剩 35px / 无底轨无刻度) —— 语义其实对(条 = 实测/设计, ss_action 设计 10Hz 所以 0.5Hz 只占 5%), 但界面没说: **表头改成 `Bar  实测/设计` + 给条加底轨 + 右侧留白 26px**(原长条顶到滚动条)。 ② **Last Value Time [s] 整列全是 '—'** —— 真根因两条: (a) `_update_values()` 跑在 `_fill_trace()` 之前, 首刷时 `_trace_rows` 还空; (b) **live.json 的键是短名(heartbeat) 而 trace.jsonl 里是全路径(zmax/heartbeat)**, 查表永远落空。修法: 值更新前补读一次 trace + 末帧表**同时登记全路径与短名**。实测末帧龄有值行 0/14 → **6/14**(其余 8 个话题窗口内真没帧, 仍 '—')。 ③ **详情面板 78% 空白**(全图最大空白块) —— 首刷自动选中第一条报文, 面板立刻有内容(实测详情 307 字)。 ④ **测量条中段 733px 死区** —— 中间加一行真实读数: `Trace 500 行 · 过滤 关 · Δt 关 · 帧龄 1.73s · 闭环 5/9`。 ⑤ **表头文字全场最弱(5.1:1)** —— 表头色由 #8b949e 提到 **#b6c2cf**。 ⑥ **闭环表「质量门」列 190px 致 4 行全截断**(且与 owner 贴到 13px) —— 列宽给到 330px(仍可拖)。 ⑦ **三张表行高不齐**(Data 46.5px vs Trace/闭环 60px) —— 树行 padding 3→6px 拉齐。 ⑧ **Trace Sender Name/Sender Id 全 '—'** —— 回落到 busdb 的真实生产者/发送者(实测变成 `zmax_dds_ss_daemon.py(延时…)` / `ss_diag`)。 红线: 未下发真机动作; 未改在役指针/默认档/画布数据。需重启控制台后现场可见。
@@ -11832,6 +11833,9 @@ class StudioMainWindow(QMainWindow):
                         _oneshot(self, 300, self._l5_diag_cmd)
                     # 🔬 2026-09-27 给"页面按钮"也开一条命令通道 (静静自测: 反复触发按钮本体,
                     #   不必盲点鼠标坐标; 老倪: 点了没反应 → 我要能从控制台内部逐次复现)
+                    elif line == "ds_win":
+                        _oneshot(self, 900, lambda: getattr(self, "simulink", None)
+                                 and self.simulink.open_dataspace_window())
                     elif line == "ov_page":
                         if getattr(self, "simulink", None) is not None:
                             _oneshot(self, 300, self.simulink.open_scene_overlay)

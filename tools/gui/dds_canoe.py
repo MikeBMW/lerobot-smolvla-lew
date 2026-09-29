@@ -126,9 +126,10 @@ class BarDelegate(QStyledItemDelegate):
 class BusView(QWidget):
     """CANoe 范式的多窗格数据空间视图"""
 
-    def __init__(self, main_win=None, parent=None):
+    def __init__(self, main_win=None, parent=None, standalone=False):
         super().__init__(parent)
         self.main = main_win
+        self.standalone = bool(standalone)   # 独立窗口模式: 无需主窗口里那套「经典视图」切换
         self._busdb, self._live, self._loop = {}, {}, {}
         self._t0 = None
         self._sel_kind = self._sel_obj = None
@@ -259,6 +260,8 @@ class BusView(QWidget):
                                    lambda: self.reload(force_tree=True)))
         self.btn_classic = self._sm_btn("🗂 经典视图", "切回原来的 12 个 Tab 视图(旧入口不丢)",
                                         self._toggle_classic, color=C_GRAY, checkable=True)
+        if self.standalone:                      # 独立窗口里没有主窗口那套 Tab 视图 → 不显示该开关
+            self.btn_classic.setVisible(False)
         lay.addWidget(self.btn_classic)
         return bar
 
@@ -914,5 +917,5 @@ class BusView(QWidget):
             pass
 
 
-def build_view(main_win=None) -> QWidget:
-    return BusView(main_win=main_win)
+def build_view(main_win=None, standalone=False) -> QWidget:
+    return BusView(main_win=main_win, standalone=standalone)

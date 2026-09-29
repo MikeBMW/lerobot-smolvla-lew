@@ -5152,7 +5152,8 @@ class SimulinkModule(QWidget):
         #   (自动换行 + 高度自适应), 放大后单行放不下自动折第二行, 永不压扁文字。
         try:
             from ui_flowlayout import FlowBar
-            tb = FlowBar(margin=(12, 7, 12, 7), h_spacing=10, v_spacing=8)
+            # 2026-09-29 老倪「上边的按钮整理一下, 紧凑点」→ 间距/边距各收一档 (字号不动, 防再嫌小)
+            tb = FlowBar(margin=(10, 6, 10, 6), h_spacing=9, v_spacing=6)
             tl = tb.flow()
         except Exception:      # 兜底: 布局模块缺失退回旧单行
             tb = QFrame()
@@ -5161,6 +5162,28 @@ class SimulinkModule(QWidget):
             tl.setContentsMargins(10, 4, 10, 4)
             tl.setSpacing(8)
         tb.setStyleSheet("background:#f6f8fa; border-bottom:1px solid #d0d7de;")
+
+        def _style_chk(c, color="#c9d1d9"):
+            """顶部工具栏复选框统一样式 — 老倪 2026-09-29「中间有一大块空白」
+
+            实测(像素取证): 这 6 个勾选框**一直都在**, 但 Qt 默认给 QCheckBox 黑字, 画在
+            深色工具栏 (13,17,23) 上对比度只有 1.11:1 ⇒ 像素上"看不见", 视觉上就成了
+            「左边 3 个按钮 → 一片空 → 右边 2 个按钮」(空档 x782-2655 = 顶宽 61%)。
+            这里给成与 mk_btn 同一套的深色 pill (同 padding 6x12 ⇒ 同高), 勾选态用绿字。
+            """
+            try:
+                c.setStyleSheet(
+                    "QCheckBox{background:#14181f;color:%s;border:1px solid #30363d;border-radius:5px;"
+                    "padding:6px 12px;font-size:10pt;font-weight:700;spacing:8px}"
+                    "QCheckBox:hover{border-color:#58a6ff}"
+                    "QCheckBox:checked{color:#7ee787;border-color:#2ea043;background:#0d1f14}"
+                    "QCheckBox::indicator{width:14px;height:14px}"
+                    "QCheckBox::indicator:unchecked{border:1px solid #6e7681;border-radius:3px;background:#0d1117}"
+                    "QCheckBox::indicator:checked{border:1px solid #3fb950;border-radius:3px;background:#3fb950}"
+                    % color)
+            except Exception:
+                pass
+            return c
 
         def mk_btn(text, tip, fn, color="#58a6ff"):
             b = QPushButton(text)
@@ -5273,6 +5296,11 @@ class SimulinkModule(QWidget):
             "   (回到 R0 真值 + 解析前馈; 逐帧 MLP 的收益尚未证明)。\n"
             "取消勾选等效环境变量 SS_L4_L2_COMPAT=0; L2/L3 档不受本勾选框影响 (零回退)。")
         tl.addWidget(self.chk_l2_compat)
+        # 🌗 2026-09-29 老倪「中间有一大块空白」: 这 6 个勾选框一直在, 但黑字/深底 = 看不见
+        #   (实测对比度 1.11:1) ⇒ 统一成深色 pill (与按钮同高同观感), 勾选态绿字
+        for _c in (self.chk_engine_demo, self.chk_l3_full, self.chk_mani_yaw,
+                   self.chk_intact_exec, self.chk_l4_dit, self.chk_l2_compat):
+            _style_chk(_c)
         tl.addWidget(self.btn_state_space)
         tl.addWidget(self.btn_ss_3d)
         # 🧩 2026-09-27 老倪: 「场景叠加」按钮 — 真实视频流上叠加仿真场景检测框
@@ -5299,6 +5327,18 @@ class SimulinkModule(QWidget):
             "  · 地址: http://<本机IP>:8793/station (日志里给出可复制的完整地址)",
             self.open_station_page, "#f0883e")
         tl.addWidget(self.btn_station)
+        # 🌐 2026-09-29 老倪: 「现在我运行 L5 的状态空间画布, 我还想同时看到全局数据空间;
+        #   在上边我可以打开一个独立的全局数据空间的窗口, 可以同时看到状态空间的场景和数据空间的 topic」
+        #   ⇒ 独立顶层窗口(QDialog, 非模态)承载 DdsCanoeView: 画布放左边/它放右边, 两边同时刷新。
+        self.btn_ds_win = mk_btn(
+            "🌐 数据空间窗口",
+            "打开【独立窗口】的全局数据空间 (CANoe 范式: 测量组 + 信号表 + Trace + 详情 + 闭环/告警):\n"
+            "  · **不占用控制台页面** ⇒ 可以一边跑 L5 状态空间画布/3D 场景, 一边看 topic 实时值\n"
+            "  · 窗口可自由拖动/缩放(非模态, 不挡操作), 关掉后再点即复用同一个窗口\n"
+            "  · 数据同源: busdb.json(节点/信号/报文) + live.json(每话题 hz/丢包/帧龄/质量) + trace.jsonl\n"
+            "  · 仅读取, 不下发任何动作",
+            self.open_dataspace_window, "#58a6ff")
+        tl.addWidget(self.btn_ds_win)
         tl.addWidget(self.btn_stop)
         tl.addSpacing(8)
         tl.addWidget(self.btn_tutorial)
@@ -8325,6 +8365,39 @@ class SimulinkModule(QWidget):
                           (" · 浏览器输出: " + _tail) if _tail else ""))
         return True, "%s · %d 个窗已搬屏+最大化到控制台那块屏 · 实测尺寸 %s" % (
             tried[0], len(_wins), _g2 or "未知")
+
+    def open_dataspace_window(self):
+        """🌐 独立「全局数据空间」窗口 (老倪 2026-09-29)
+
+        与页面里的那份是**同一套视图**(dds_canoe.BusView), 但是独立顶层窗口:
+        跑 L5 状态空间画布/3D 场景时, 把本窗口拖到屏幕另一侧 ⇒ 画布 + topic 实时值同时可见。
+        非模态、可缩放; 关掉后再点复用同一个实例(不重建、不重复采集)。
+        """
+        try:
+            w = getattr(self, "_ds_win", None)
+            if w is None:
+                from PyQt5.QtWidgets import QDialog, QVBoxLayout
+                from dds_canoe import build_view
+                w = QDialog(self.window())
+                w.setWindowTitle("🌐 Z-MAX 全局数据空间 · 独立窗口 (CANoe 范式)")
+                w.setModal(False)
+                w.setSizeGripEnabled(True)
+                lay = QVBoxLayout(w)
+                lay.setContentsMargins(6, 6, 6, 6)
+                lay.setSpacing(0)
+                self._ds_view = build_view(None, standalone=True)
+                lay.addWidget(self._ds_view)
+                w.resize(1560, 1040)
+                self._ds_win = w
+                self.log_signal.emit("🌐 数据空间独立窗口已创建 (非模态, 可自由拖动/缩放)")
+            w.show()
+            w.raise_()
+            w.activateWindow()
+            self._log("🌐 数据空间独立窗口已打开 —— 可拖到屏幕另一侧, 与画布/3D 同屏看")
+            return True
+        except Exception as e:                                                  # noqa: BLE001
+            self.log_signal.emit("🌐 数据空间独立窗口打开失败: %s: %s" % (type(e).__name__, str(e)[:120]))
+            return False
 
     def open_station_page(self):
         """🛰 工位总览 (6 路同屏 + 右侧控制区) — 老倪 2026-09-27「那个网页怎么搞丢了?」
