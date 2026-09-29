@@ -1,0 +1,266 @@
+{
+ "ts": "2026-09-29",
+ "why": "老倪: 根目录太多不认识的东西, 整合+删没用的",
+ "rule": "旧代删/可重下删/原料先搬再删外壳/代码搬进工程留软链/个人数据不动",
+ "acts": [
+  {
+   "kind": "dataset",
+   "path": "/home/ubuntu/stable-wm-cache/datasets/l5_gen_v4.h5",
+   "mb": 11389,
+   "note": "被 l5_gen_v6 取代; 唯一引用是 fullpipe_chain.sh 的输出路径",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260916.jsonl",
+   "mb": 158,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "05e95f3d541c8ee454840b81a6584195571800d517263bb616f69796c87c8c09",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260916.jsonl.1.gz",
+   "mb": 27,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "84aaf74e1bb607bfbb3cac3a0e99cf713575d6ee9aa0b93176ebe375fbe87804",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260917.jsonl",
+   "mb": 0,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260917.jsonl.1",
+   "mb": 355,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "b4e2b1d0f9cd571e22658399f63ed4dca3a379138f138df33dd9e38653ef99f8",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260918.jsonl",
+   "mb": 0,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260918.jsonl.1",
+   "mb": 394,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "41c6058bf22274f448dd2038adc79a1cfcd5bb0341b8e69bc08b18653456884a",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260918.jsonl.2.gz",
+   "mb": 85,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "8bcafba39bae4be557d652d2ecc53d41663b1ca957f7eadeecd22d80ef7220ba",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260918.jsonl.3.gz",
+   "mb": 37,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "898ce1569f500b260c71e0e1c42a52ff557315da8e09bd2ff196f7009b0b0209",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260919.jsonl",
+   "mb": 71,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "47f4edf2bdd3afed8839ef268dcb6cbf08b02824fa81eb15d4fdb4e0b304856a",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260920.jsonl",
+   "mb": 0,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260920.jsonl.1",
+   "mb": 367,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "16acdb0f6c0bac22408c90650784ccef297fb171e62c626f5f345bdaea74aa9f",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260920.jsonl.2.gz",
+   "mb": 22,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "6725da7680310921646f23e429463f54c1ebe6ee8cb214f7030ab6a88a3f57b8",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260921.jsonl",
+   "mb": 520,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "9ea0855a8ac852c7cba25017118673993bb285cc36c7faef47427c42710af62c",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260921.jsonl.1",
+   "mb": 209,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "c2c7f6a63731eb6a4fbf2b8c813e66720e138117b90864c63aa82968435f5613",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260923.jsonl",
+   "mb": 0,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260923.jsonl.1",
+   "mb": 530,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "34b312afdf5aa0f3c356a17d81794b71f36f9f76b74bc8fa5b20b8a83b2cca2b",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260923.jsonl.2.gz",
+   "mb": 20,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "b0bdbad7a9d347282d0b37a2b815aa24f84457cba786e5e96f8a67c8cc69b962",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260924.jsonl",
+   "mb": 0,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260924.jsonl.1",
+   "mb": 486,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "76c92c497ae41d02cc4f8271f13febdd1d89fa30ffeec4c4b48a96c91c60d39b",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260924.jsonl.2.gz",
+   "mb": 85,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "c8bc4abc8780e3cc084c4c0ba664bf821e73cad4e945ecd0f6e7847fa8794170",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260924.jsonl.3.gz",
+   "mb": 35,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "f72fbf5b5b50f42a62674eb001e126fdd4e8c2efbde4c1e0f5c98fc04c1c93cc",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260925.jsonl",
+   "mb": 0,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260925.jsonl.1",
+   "mb": 419,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "1389c17415eafb3f81c7092ab737927f9db1722088c2c348ba58e9d5d24ea1fe",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260925.jsonl.2.gz",
+   "mb": 59,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "fe0449ca01e6db9c0a592a635f2d9fa7d431088010e603798cf665f7578b9311",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260926.jsonl",
+   "mb": 0,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "gone": true
+  },
+  {
+   "kind": "ssdump",
+   "path": "/home/ubuntu/zmax_ss_remote/state_20260926.jsonl.1",
+   "mb": 664,
+   "note": "旧天状态流(daemon 只读当天; 需要历史再采)",
+   "sha256": "93d81983d64fb01f0f16a5c4ddc7293b6c6337d68e41f156ebce450de5a5eac7",
+   "gone": true
+  },
+  {
+   "kind": "worktree-reg",
+   "path": "/home/ubuntu/zmax_train",
+   "mb": 0,
+   "note": "git worktree remove"
+  },
+  {
+   "kind": "pkgs",
+   "path": "/home/ubuntu/intact_pkgs",
+   "mb": 301,
+   "note": "下载的 wheel 包(可重下)",
+   "gone": true
+  },
+  {
+   "kind": "cache",
+   "path": "~/.cache/pip + ~/.cache/LarkShell + ~/.npm/_cacache",
+   "mb": 0,
+   "note": "可再生的包缓存"
+  },
+  {
+   "kind": "moved",
+   "path": "/home/ubuntu/aoi_v4",
+   "mb": 417,
+   "note": "→ zmax/tools/aoi/aoi_v4 (旧路径软链)"
+  },
+  {
+   "kind": "moved",
+   "path": "/home/ubuntu/l4_ab",
+   "mb": 35,
+   "note": "→ zmax_data/l4_ab (旧路径软链)"
+  },
+  {
+   "kind": "moved",
+   "path": "/home/ubuntu/pkg",
+   "mb": 2,
+   "note": "→ zmax_data/pkgs (旧路径软链)"
+  },
+  {
+   "kind": "moved",
+   "path": "/home/ubuntu/android-sdk",
+   "mb": 458,
+   "note": "→ zmax_data/toolchains/android-sdk (旧路径软链)"
+  }
+ ],
+ "freed_mb": 17145
+}
