@@ -108,6 +108,20 @@ DW = 280  # 节点默认宽度 (240→280: 可用宽 204→228, 字不再贴徽�
 #   加上标题 9→8→7 逐节点自适应降字号 ⇒ 观感"大小不一/挤/显示不全"。
 #   统一规格 (全画布一致, 不再逐节点变): 统一字体族 + 固定字号 + 固定行数 + 超出省略号(+悬停显示全名)
 NODE_FONT = "Noto Sans CJK SC"   # 统一字体族 (实测本机可用, 中英度量一致; 缺则 Qt 回退系统默认)
+# 🔴🔴 2026-09-29 老倪「这些框里面的字体，还是没有显示完全，只能看到一半」的**真根因**:
+#   本机桌面 Xft.dpi = **192** (2x), 而画布节点的排版常量是按"1x 字形"设计的
+#   (标题行 20px、副行 16px、能力档位 radio 格 48px、状态行 16/18px 步进…)。
+#   `QFont(族, pt)` 是按**屏幕 DPI** 渲染的 ⇒ 现场字形是设计值的 ~1.93 倍 ⇒ 行与行互相叠住、
+#   末字被框边切掉 = 用户看到的"只有一半"。
+#   而我的离屏取证跑在 offscreen 平台 (不读 Xft.dpi → 默认 96dpi, 1x) ⇒ 每次都"全部通过" ——
+#   这正是前两版改了文字仍然"看不清"的原因 (审计口径 ≠ 现场口径)。
+#   修法: 节点文字一律用 **像素字号** `setPixelSize` (与 DPI 无关, 任何桌面/打包版一致),
+#   排版常量按 13px/12px (≈10pt/9pt @96dpi) 设计 —— 现场 = 离屏 = 审计口径。
+NODE_TITLE_PX = 13               # 标题字号 (像素) — 由 NODE_PX_SCALE 统一缩放
+NODE_SUB_PX = 12                 # 次要文字字号 (像素)
+NODE_PX_SCALE = float(os.environ.get("ZMAX_NODE_PX_SCALE", "1.15") or 1.15)   # 全局倍率 (审计试算用)
+#   1.15 = 实测"最大且仍然放得下"的倍率 (1.30 起出现文字互压, 1.45 起越框) —— 用审计脚本扫出来的, 不是拍的
+NODE_MONO_FONT = "DejaVu Sans Mono"    # 参数值等宽字体 (本机 Arial/Consolas 都不存在 → 原写法会回退)
 NODE_TITLE_PT = 10               # 🎨 2026-09-29: 标题固定 10pt Bold (9→10; 配合下方"短显示名"后
                                  #   单行放得下, 比原来"9pt 挤两行"更清楚 — 老倪: 字少+完整+不遮挡)
 NODE_SUB_PT = 9                  # 次要文字固定 9pt (8→9)
@@ -127,7 +141,8 @@ NODE_TITLE_LINES = 2             # 标题最多两行 (超出 → 最后一行�
 #     · 框宽按**最终标签**自适应 (autofit_node_size) ⇒ 短标签单行放得下, 不再折两行挤在一起。
 NODE_LABEL_MAX_CHARS = 10        # 节点标签字数预算 (中文字 1 字 + 西文词 1 字)
 NODE_LABEL_MIN_CHARS = 5         # 裁剪时的下限 (低于此值继续补词, 避免"只剩 L4")
-NODE_LABEL_MAX_PX = 300          # 单行标签像素上限 (仅作最终的省略号兜底)
+NODE_LABEL_MAX_PX = 340          # 单行标签像素上限 (仅作最终的省略号兜底) — 2026-09-29 随字号倍率
+                                 #   1.15 同步放大 (300→340): 像素字号长大 15%, 预算不同步就会误判"超宽"
 # 人工短名表: (命中正则, 短标签) —— 只在"原名/去括号名都超预算"时才用, 越具体的排前面。
 # 标签里**不写图标** (图标由原名字自动带过来), 长度按上面的算法都 ≤10 字。
 NODE_CORE_LABELS = (
@@ -196,10 +211,45 @@ QScrollBar::add-page, QScrollBar::sub-page { background:transparent; }
 
 
 def _node_font(pt, bold=False):
-    """统一节点字体 (族名固定; 装不上时回退系统默认, 不再出现"Arial→Liberation"错配)。"""
-    f = QFont(NODE_FONT, pt)
+    """统一节点字体: 族名固定 + **像素字号** (与屏幕 DPI 无关 — 修 "现场字比框大一倍" 的根因)。
+
+    `pt` 是"设计点值" (10=标题 / 9=次要), 内部换算成像素 (×4/3) 再乘 NODE_PX_SCALE;
+    用 setPixelSize 后, Xft.dpi=192 的桌面与离屏审计渲染出的字形**完全一致**。
+    """
+    f = QFont(NODE_FONT)
+    f.setPixelSize(max(8, int(round(float(pt) * 4.0 / 3.0 * NODE_PX_SCALE))))
     f.setBold(bool(bold))
     return f
+
+
+def _node_mono(pt, bold=False):
+    """参数值/日志用的等宽字体 (同样用像素字号; 本机没有 Arial/Consolas, 用 DejaVu Sans Mono)。"""
+    f = QFont(NODE_MONO_FONT)
+    f.setStyleHint(QFont.Monospace)
+    f.setPixelSize(max(8, int(round(float(pt) * 4.0 / 3.0 * NODE_PX_SCALE))))
+    f.setBold(bool(bold))
+    return f
+
+
+def _fit_text(painter, rect, text, flags):
+    """🎨 2026-09-29 老倪「VEH.5.006 / 能力档位 框里字体只能看到一半」的通用收口:
+
+    **动态文本** (运行状态行、参数值、路径、日志行…) 一律先按目标矩形宽度做省略, 再画。
+    病根: `drawText(QRectF(...), flags, tx)` 的矩形只决定对齐/折行, **不裁剪** —— 运行期
+    状态串 (最多 64 字 ≈ 850px) 塞进 406px 的框里时会直接画到框外/压到邻居上, 现场就是
+    "字只显示了一半"。字面量文本由 `node_text_audit.py` 静态兜住, 动态文本走这里。
+    返回实际画上去的字符串 (便于测试断言)。
+    """
+    try:
+        _t = str(text)
+        # 🐛 宽度必须 int: PyQt 的 QFontMetrics.elidedText(float) 会抛 TypeError,
+        #   被 except 吞掉 → 静默退回"不省略"(=原样画到框外)。本文件 356 行记过同一个坑。
+        _w = int(max(24, float(rect.width()) - 2))
+        _t = painter.fontMetrics().elidedText(_t, Qt.ElideRight, _w)
+    except Exception:
+        _t = str(text)
+    painter.drawText(rect, flags, _t)
+    return _t
 
 
 _BRACKET_RE = re.compile(r"(?<![A-Za-z0-9])[（(【\[〔][^（()）【】\[\]〔〕]{0,80}[）)】\]〕]")
@@ -2233,7 +2283,7 @@ class CICDStageItem(QGraphicsObject):
         painter.drawRoundedRect(QRectF(0, 0, self.w, self.h), 8, 8)
         # 标题 (🎨 主题色 — 硬编码 #1f2328 深色主题下黑字黑底看不见)
         painter.setPen(QColor(pal["title"]))
-        painter.setFont(QFont("Arial", 13, QFont.Bold))
+        painter.setFont(_node_font(13, bold=True))
         # 🐛 2026-08-12 老倪: 训练/推理开关节点 — title 带当前模式 (🔀 训练模式/🔀 推理模式)
         if self.node.get("type") == "switch" and self.node.get("params", {}).get("mode"):
             _m = self.node["params"]["mode"]
@@ -2243,17 +2293,17 @@ class CICDStageItem(QGraphicsObject):
             painter.drawText(QRectF(8, 8, self.w - 16, 22), Qt.AlignVCenter | Qt.AlignLeft, self.title)
         # 描述 (🐛 2026-08-22 老倪: 灰色小字太乱且挤不下 — 删除, 只留白色名称+状态徽章)
         painter.setPen(QColor(pal["label"]))
-        painter.setFont(QFont("Arial", 10))
+        painter.setFont(_node_font(10))
         # 状态徽章
         icon = {1: "● 运行中", 2: "✓ 成功", 3: "✕ 失败", 0: "○ 未开始"}[self.state]
         painter.setPen(c)
-        painter.setFont(QFont("Arial", 11, QFont.Bold))
+        painter.setFont(_node_font(11, bold=True))
         painter.drawText(QRectF(8, 32, self.w - 16, 18), Qt.AlignVCenter | Qt.AlignLeft, icon)
         # 🌐 2026-08-08 老倪: 节点全局 ID — 🐛 2026-08-09 老倪: 仅悬停显示 (左下角小字青色)
         try:
             # 🐛 2026-08-09 老倪: CICD 环节 ID 常显
             painter.setPen(QColor("#8b949e"))
-            painter.setFont(QFont("Arial", 10))
+            painter.setFont(_node_font(10))
             nid = getattr(self, "nid", None) or (
                 f"VEH.5.{lib_seq_of(self.title):03d}" if lib_seq_of(self.title) else
                 f"VEH.5.CICD.{self.sid}")  # 🐛 sid 字符串不能 % 100
@@ -3275,19 +3325,21 @@ class SimNodeItem(QGraphicsObject):
                           QColor("#3fb950") if (_i == 0 and _st == "ok") else QColor("#8b949e"))
                     painter.setPen(_c)
                     painter.setFont(_node_font(NODE_SUB_PT, bold=(_i == 0)))
-                    painter.drawText(QRectF(12, 58 + _i * 16, self.w - 24, 15),
-                                     Qt.AlignVCenter | Qt.AlignLeft, _tx)
+                    # 🎨 2026-09-29: 进度行是**运行期**文本 → 按框宽省略 (原来不省略 = 画到框外)
+                    _fit_text(painter, QRectF(12, 58 + _i * 15, self.w - 24, 15),
+                              _tx, Qt.AlignVCenter | Qt.AlignLeft)
             # desc (当前档说明, 底部小字) — 🎨 2026-09-29 老倪「字太多太挤」: 每档压到 ≤10 字, 一行放得下
             #   (原 L4/L5 说明 30~50 字 ⇒ 只能靠省略号, 现场看就是"看不清"; 详细链路在 tooltip/文档)
-            painter.setFont(_node_font(NODE_SUB_PT))
-            painter.setPen(QColor("#8b949e"))
             _capdesc = {"L2": "插装即完成 · 8 段",
                         "L3": "全链: 插→拔→AOI→放回",
                         "L4": "抗干扰 90° 全链 · 真物理",
                         "L5": "自动标注 → 自动训练"}.get(_cap_cur, "")
-            _cfm = painter.fontMetrics()
-            painter.drawText(QRectF(12, self.h - 22, self.w - 24, 16), Qt.AlignVCenter | Qt.AlignLeft,
-                             _cfm.elidedText(_capdesc, Qt.ElideRight, self.w - 24))
+            # 🎨 2026-09-29: 有运行进度行时, 矮框 (h<130) 不再挤一行说明 —— 宁可少一行, 不要叠字
+            if (not _l5l) or self.h >= 130:
+                painter.setFont(_node_font(NODE_SUB_PT))
+                painter.setPen(QColor("#8b949e"))
+                _fit_text(painter, QRectF(12, self.h - 22, self.w - 24, 16),
+                          _capdesc, Qt.AlignVCenter | Qt.AlignLeft)
             return
         # 标题 (统一 9pt Bold, 超宽拆两行完整显示, 垂直居中 — 不截断/不逐节点降字号)
         # 🐛 2026-08-22 老倪: 原 9→8→7 逐节点降字号导致"大小不一", elidedText 截断"显示不全",
@@ -3337,6 +3389,11 @@ class SimNodeItem(QGraphicsObject):
             _fm2 = painter.fontMetrics()
             _lh = _fm2.height() + 1                     # 固定行高 (字号固定 → 行距一致, 不再挤)
             _top, _box_h = (8.0, self.h - 16.0) if _gfx else (10.0, self.h - 26.0)
+            # 🎨 2026-09-29: L5 闭环节点下半部分被 3 行运行状态占用 (h-62 起) —— 标题只占
+            #   上面那块, 不再"垂直居中"压到状态行上 (现场: 紫字/白字上下叠 = 只看到一半)
+            if params.get("l5_loop"):
+                _top = 8.0
+                _box_h = max(20.0, (self.h - 62.0) - _top - 6.0)
             _n = len(_draw_lines)
             _y0 = _top + max(0.0, (_box_h - _n * _lh) / 2.0)     # 多行也垂直居中
             for _i, _ln in enumerate(_draw_lines):
@@ -3357,7 +3414,7 @@ class SimNodeItem(QGraphicsObject):
                                        QRectF(0, 0, pm.width(), pm.height()))
                     if self.video_overlay:
                         painter.setPen(QColor("#8b949e"))
-                        painter.setFont(QFont("Arial", 9))
+                        painter.setFont(_node_font(NODE_SUB_PT))
                         painter.drawText(QRectF(6, 4, self.w - 12, 12),
                                          Qt.AlignLeft | Qt.AlignTop, self.video_overlay)
             except Exception:
@@ -3368,7 +3425,7 @@ class SimNodeItem(QGraphicsObject):
         if params.get("z700_internal"):
             # ── 第一区: 类型标签 (模块角色) ──
             painter.setPen(QColor(pal["label"]))
-            painter.setFont(QFont("Arial", 9))
+            painter.setFont(_node_font(NODE_SUB_PT))
             role = {"感知链": "前馈·观测", "双脑": "前馈·预测",
                     "状态机": "串联·P", "动作": "串联·D"}.get(name.replace("🎯 ", "").replace("🧠 ", "").replace("❖ ", "").replace("🎮 ", ""), "")
             if role:
@@ -3378,7 +3435,7 @@ class SimNodeItem(QGraphicsObject):
             desc = params.get("desc", "")
             if desc:
                 painter.setPen(QColor("#8b949e"))
-                painter.setFont(QFont("Arial", 9))
+                painter.setFont(_node_font(NODE_SUB_PT))
                 _fm = painter.fontMetrics()
                 _avail = self.w - 20
                 _d1 = _fm.elidedText(desc, Qt.ElideRight, _avail)
@@ -3399,11 +3456,11 @@ class SimNodeItem(QGraphicsObject):
                     _vs = str(_v)
                 # 变量名 (青色)
                 painter.setPen(QColor("#58a6ff"))
-                painter.setFont(QFont("Consolas", 9, QFont.Bold))
+                painter.setFont(_node_mono(NODE_SUB_PT, bold=True))
                 painter.drawText(QRectF(12, _py, self.w - 20, _ph), Qt.AlignVCenter | Qt.AlignLeft, _k)
                 # 值 (白色, 右对齐)
                 painter.setPen(QColor("#e6edf3"))
-                painter.setFont(QFont("Consolas", 9))
+                painter.setFont(_node_mono(NODE_SUB_PT))
                 painter.drawText(QRectF(12, _py, self.w - 24, _ph), Qt.AlignVCenter | Qt.AlignRight, _vs)
                 _py += _ph
         # 🤖 2026-08-09 老倪: 场景节点 — 右上角画小机器人图标 (参考半导体产线机器人)
@@ -3437,7 +3494,7 @@ class SimNodeItem(QGraphicsObject):
             if getattr(self, "_hover", False) and self.node.get("type") != "row_bg":
                 # 🐛 2026-08-12 老倪: ID 显示在右下角 (用户要求, 不遮挡标题/desc 主区)
                 painter.setPen(QColor("#e6edf3"))
-                painter.setFont(QFont("Arial", 9, QFont.Bold))
+                painter.setFont(_node_font(NODE_SUB_PT, bold=True))
                 nid = self.node.get("nid") or str(self.node.get("id", ""))
                 painter.drawText(QRectF(8, self.h - 16, self.w - 16, 14), Qt.AlignRight | Qt.AlignVCenter, nid)
         except Exception:
@@ -3480,7 +3537,7 @@ class SimNodeItem(QGraphicsObject):
         elif params.get("l5_loop"):
             # 🧿 2026-09-28 L5 标注→训练闭环节点: **把闭环进度画在画布上**
             #   (老倪口径: 点运行后用户正看的界面必须变 —— 只写日志 = 用户眼里"没反应")
-            _lines = [str(x)[:64] for x in (params.get("l5_lines") or [])][:3]
+            _lines = [str(x) for x in (params.get("l5_lines") or [])][:3]
             if not _lines:
                 _lines = ["待启动: 选 L5 档 → 点 ▶运行", "(双击本节点看闭环状态/产物)"]
             _bad = params.get("l5_state") == "error"
@@ -3489,8 +3546,17 @@ class SimNodeItem(QGraphicsObject):
                 painter.setPen(QColor("#ff7b72") if (_bad and _i == 0) else
                                (QColor("#a371f7") if _i == 0 else QColor("#8b949e")))
                 painter.setFont(_node_font(NODE_SUB_PT, bold=(_i == 0)))
-                painter.drawText(QRectF(12, self.h - 62 + _i * 18, self.w - 24, 16),
-                                 Qt.AlignVCenter | Qt.AlignLeft, _tx)
+                # 🎨 2026-09-29 老倪「VEH.5.006 框里字只能看到一半」根因一行:
+                #   原 `str(x)[:64]` 只按**字数**截, 64 个中文字 ≈ 850px 塞进 406px 的框里,
+                #   drawText 的矩形不裁剪 ⇒ 直接画到框外 (邻居/色带压住 → 现场看到"半个字")。
+                #   改成按**框宽**省略 (elide), 完整串进 tooltip。
+                _shown = _fit_text(painter, QRectF(12, self.h - 62 + _i * 18, self.w - 24, 16),
+                                   _tx, Qt.AlignVCenter | Qt.AlignLeft)
+                if _i == 0 and _shown != str(_tx):
+                    try:
+                        self.setToolTip(str(self.node.get("name")) + "\n" + "\n".join(str(x) for x in _lines))
+                    except Exception:
+                        pass
         elif t == "mode_switch":
             # 🔀 训练/推理模式开关: 圆点指示 (绿=训练 蓝=推理 橙=真机数据 L2 训练)
             md = params.get("mode", "train")
@@ -3522,7 +3588,7 @@ class SimNodeItem(QGraphicsObject):
             st_icon = "♻"  # 复用节点 (被两模型共用, 紫框)
         if st_icon:
             painter.setPen(color)
-            painter.setFont(QFont("Arial", 9, QFont.Bold))
+            painter.setFont(_node_font(NODE_SUB_PT, bold=True))
             painter.drawText(QRectF(self.w - 22, 2, 20, 16), Qt.AlignRight | Qt.AlignVCenter, st_icon)
         # 端口: Switch 双输入 (左上下) + 单输出 (右中); 其他节点单进单出
         if t == "switch":
@@ -3603,7 +3669,7 @@ class SimNodeItem(QGraphicsObject):
         painter.drawRoundedRect(QRectF(0, 0, w, h), 6, 6)
         # 标题 (顶部, 9px Bold)
         painter.setPen(QColor(pal["title"]))
-        painter.setFont(QFont("Arial", 10, QFont.Bold))
+        painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
         _disp = name
         _fm = painter.fontMetrics()
         if _fm.horizontalAdvance(_disp) > w - 20:
@@ -3614,14 +3680,14 @@ class SimNodeItem(QGraphicsObject):
                 "状态机": "串联·P", "动作": "串联·D"}.get(
             name.replace("🎯 ", "").replace("🧠 ", "").replace("❖ ", "").replace("🎮 ", ""), "")
         painter.setPen(QColor("#58a6ff"))
-        painter.setFont(QFont("Arial", 9))
+        painter.setFont(_node_font(NODE_SUB_PT))
         if role:
             painter.drawText(QRectF(10, 22, w - 20, 13), Qt.AlignVCenter | Qt.AlignLeft, f"▸ {role}")
         # desc (y=38, 7px 灰, 单行省略)
         desc = p.get("desc", "")
         if desc:
             painter.setPen(QColor("#8b949e"))
-            painter.setFont(QFont("Arial", 9))
+            painter.setFont(_node_font(NODE_SUB_PT))
             _fm = painter.fontMetrics()
             painter.drawText(QRectF(10, 37, w - 20, 12), Qt.AlignVCenter | Qt.AlignLeft,
                              _fm.elidedText(desc, Qt.ElideRight, w - 20))
@@ -3641,10 +3707,10 @@ class SimNodeItem(QGraphicsObject):
             else:
                 _vs = str(_v)
             painter.setPen(QColor("#58a6ff"))
-            painter.setFont(QFont("Consolas", 9, QFont.Bold))
+            painter.setFont(_node_mono(NODE_SUB_PT, bold=True))
             painter.drawText(QRectF(10, _py, w - 20, _ph), Qt.AlignVCenter | Qt.AlignLeft, _k)
             painter.setPen(QColor("#e6edf3"))
-            painter.setFont(QFont("Consolas", 9))
+            painter.setFont(_node_mono(NODE_SUB_PT))
             painter.drawText(QRectF(10, _py, w - 22, _ph), Qt.AlignVCenter | Qt.AlignRight, _vs)
             _py += _ph
         # 端口锚点 (in1 左 / out1 右 — 连线依赖, 不能省)
@@ -3803,7 +3869,7 @@ class SimLinkItem(QGraphicsObject):
         lbl = self.link.get("label", "")
         if lbl:
             mid = path.pointAtPercent(0.5)
-            painter.setFont(QFont("Consolas", 9))
+            painter.setFont(_node_mono(NODE_SUB_PT))
             fm = painter.fontMetrics()
             lw = fm.horizontalAdvance(lbl) + 8
             lh = fm.height() + 2
@@ -8910,7 +8976,7 @@ class SimulinkModule(QWidget):
             if d.get("offline"):
                 head += " · 未接: " + "+".join(d["offline"])
             p.setPen(QColor("#7ee787"))
-            p.setFont(QFont("Arial", 11))
+            p.setFont(_node_font(11))
             p.drawText(QRectF(6, 2, W - 12, band - 4), Qt.AlignVCenter | Qt.AlignLeft,
                        p.fontMetrics().elidedText(head, Qt.ElideRight, W - 12))
             for i, nm in enumerate(srcs):
@@ -8927,7 +8993,7 @@ class SimulinkModule(QWidget):
                 bs = " ".join("%s%d" % (k, v) for k, v in sorted(bo.items())) if bo else "-"
                 sa = m.get("spec_age")
                 p.setPen(QColor("#e6edf3"))
-                p.setFont(QFont("Arial", 11, QFont.Bold))
+                p.setFont(_node_font(11, bold=True))
                 p.drawText(QRectF(cx + 4, cy + tile[1] - 22, tile[0] - 8, 20),
                            Qt.AlignVCenter | Qt.AlignLeft,
                            "%s · 框 %s · 真值链 %s · 规格 %s" %
