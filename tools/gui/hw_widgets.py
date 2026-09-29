@@ -17,12 +17,13 @@
 from __future__ import annotations
 
 from PyQt5.QtCore import QRectF, Qt
-from PyQt5.QtGui import QColor, QFont, QPainter, QPen
+from PyQt5.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PyQt5.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 C_BG, C_BG2, C_CARD, C_BORDER = "#0d1117", "#161b22", "#1c2333", "#30363d"
 C_WHITE, C_GRAY, C_DIM, C_BLUE = "#ffffff", "#8b949e", "#6e7681", "#58a6ff"
 C_GREEN, C_YELLOW, C_RED, C_CYAN = "#3fb950", "#d29922", "#f85149", "#39d0d8"
+TRACK = "#2b3340"           # 状态条底槽: 原用卡底色 ⇒ 看不出量程(质检)
 UI, MONO = "Arial", "Consolas"
 
 
@@ -66,12 +67,12 @@ class Ring(QWidget):
         d = min(w, h - 26) - 10
         r = QRectF((w - d) / 2.0, 4.0, d, d)
         pen = QPen(QColor(C_BORDER), 9)
-        pen.setCapStyle(Qt.RoundCap)
+        pen.setCapStyle(Qt.FlatCap)      # 质检: 圆头端帽让弧比数值多 ~8.6°(34% 看着像 36%)
         p.setPen(pen)
         p.drawArc(r, 0, 360 * 16)
         if self._frac is not None and self._frac > 0:
             pen2 = QPen(QColor(self._color), 9)
-            pen2.setCapStyle(Qt.RoundCap)
+            pen2.setCapStyle(Qt.FlatCap)
             p.setPen(pen2)
             p.drawArc(r, 90 * 16, -int(360 * 16 * self._frac))
         # 中心文字
@@ -81,8 +82,8 @@ class Ring(QWidget):
         p.drawText(QRectF(0, 4 + d * 0.28, w, d * 0.44), Qt.AlignCenter, self._text)
         if self._sub:
             p.setPen(QColor(C_GRAY))
-            p.setFont(QFont(UI, 8))
-            p.drawText(QRectF(0, 4 + d * 0.62, w, d * 0.3), Qt.AlignCenter, self._sub)
+            p.setFont(QFont(MONO, 9))            # 质检: 中文/数字字号不一、基线差 5px → 统一等宽 9pt
+            p.drawText(QRectF(0, 4 + d * 0.60, w, d * 0.34), Qt.AlignCenter, self._sub)
         # 环下标题
         p.setPen(QColor(C_GRAY))
         p.setFont(QFont(UI, 10, QFont.Bold))
@@ -119,7 +120,7 @@ class StatBar(QWidget):
         if x1 - x0 < 40:
             x1 = max(x0 + 40, w - 60)
         p.setPen(Qt.NoPen)
-        p.setBrush(QColor(C_CARD))
+        p.setBrush(QColor(TRACK))
         p.drawRoundedRect(QRectF(x0, h / 2.0 - 7, x1 - x0, 14), 7, 7)
         if self._frac:
             p.setBrush(QColor(self._color))
@@ -140,7 +141,7 @@ class Lamp(QWidget):
         self.name = name
         self._state = "off"
         self._sub = ""
-        self.setFixedSize(126, 62)
+        self.setFixedSize(152, 62)
 
     def set_state(self, state, sub=""):
         self._state = state if state in self.COLOR else "off"
@@ -164,10 +165,20 @@ class Lamp(QWidget):
         p.drawEllipse(QRectF(cx - r, cy - r, r * 2, r * 2))
         p.setPen(QColor(C_WHITE))
         p.setFont(QFont(UI, 10, QFont.Bold))
-        p.drawText(QRectF(cx + r + 6, cy - 20, w - cx - r - 8, 22), Qt.AlignVCenter, self.name)
+        nm = self.name
+        while nm and QFontMetrics(p.font()).width(nm) > (w - cx - r - 12):
+            nm = nm[:-1]
+        if nm != self.name:
+            nm = self.name[:max(1, len(nm) - 1)] + "…"
+        p.drawText(QRectF(cx + r + 6, cy - 20, w - cx - r - 8, 22), Qt.AlignVCenter, nm)
         p.setPen(QColor(C_GRAY))
         p.setFont(QFont(MONO, 8))
-        p.drawText(QRectF(cx + r + 6, cy + 1, w - cx - r - 8, 22), Qt.AlignVCenter, self._sub)
+        sub = self._sub
+        while sub and QFontMetrics(p.font()).width(sub) > (w - cx - r - 12):     # 质检: 小字被硬裁
+            sub = sub[:-1]
+        if sub != self._sub:
+            sub = (self._sub[:max(1, len(sub) - 1)] + "…") if len(self._sub) > 2 else sub
+        p.drawText(QRectF(cx + r + 6, cy + 1, w - cx - r - 8, 22), Qt.AlignVCenter, sub)
 
 
 class HwVisual(QWidget):
@@ -186,21 +197,19 @@ class HwVisual(QWidget):
         self.lb_dev.setStyleSheet(f"color:{C_GRAY};border:none;background:transparent;")
         v.addWidget(self.lb_dev)
         self.row_dev = QHBoxLayout()
-        self.row_dev.setSpacing(6)
-        self.row_dev.addStretch()
-        v.addLayout(self.row_dev)
+        self.row_dev.setSpacing(10)
+        v.addLayout(self.row_dev)          # 质检: 原来先 addStretch ⇒ 灯全挤到右边, 左侧 31% 空白
         self._lamps = {}
 
         self.row_ring = QHBoxLayout()
         self.row_ring.setSpacing(18)
-        self.row_ring.addStretch()
-        v.addLayout(self.row_ring)
+        v.addLayout(self.row_ring)         # 质检: 环只占右端 21% ⇒ 改成每环 stretch=1 铺满
         self.rings = {}
         for key, cap, unit in (("gpu", "GPU 利用率", "%"), ("vram", "显存占用", "%"),
                                ("cpu", "CPU 负载", "%"), ("mem", "内存占用", "%")):
             rg = Ring(cap, unit)
             self.rings[key] = rg
-            self.row_ring.addWidget(rg)
+            self.row_ring.addWidget(rg, 1)
 
         self.row_bar = QHBoxLayout()
         self.row_bar.setSpacing(26)
@@ -234,7 +243,8 @@ class HwVisual(QWidget):
         self.rings["mem"].set_value(None if mu is None else mu / 100.0,
                                     None if mu is None else "%.0f" % mu, _tone(mu),
                                     "" if loc.get("mem_total_gb") is None
-                                    else "%sGB" % round(loc["mem_total_gb"]))
+                                    else "%s/%sGB" % (round(loc.get("mem_used_gb") or 0),
+                                                      round(loc["mem_total_gb"])))
 
         dp = loc.get("disk_pct")
         self.bars["disk"].set_value(None if dp is None else dp / 100.0,
@@ -261,6 +271,8 @@ class HwVisual(QWidget):
         devs = list(m.get("devices") or [])
         if m.get("remote_src"):
             devs.append({"name": "远端数据源", "sub": m["remote_src"], "state": "ok"})
+        elif m.get("remote_src_off"):
+            devs.append({"name": "远端数据源", "sub": "未连通(仅本机数据)", "state": "err"})
         _ln = (loc.get("gpu_name") or "")[:12].lower()      # 本机显卡名 → 用来认出"同一台机"
         merged = False
         for d in devs:

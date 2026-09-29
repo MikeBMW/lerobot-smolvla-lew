@@ -752,7 +752,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.16.20")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.16.21")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -1378,6 +1378,12 @@ def _get_dds_collector():
     return _DDS_COL
 
 
+_BTN_CSS = ("""QPushButton{{background:{bg};color:{fg};border:1px solid {bd};border-radius:6px;"""
+            """padding:6px 14px;font-size:13px;min-height:22px}}"""
+            """QPushButton:hover{{color:#ffffff;border-color:{bl}}}""").format(
+    bg="#161b22", fg="#8b949e", bd="#30363d", bl="#58a6ff")
+
+
 class HardwareCard(QFrame):
     """🖥 硬件资源卡（老倪 2026-09-25: "app还是没有4060硬件参数"）
 
@@ -1399,7 +1405,8 @@ class HardwareCard(QFrame):
         t = QLabel("🖥 硬件资源")
         t.setStyleSheet(f"color:{C_WHITE};font-size:34px;font-weight:700;border:none")
         self.lb_ts = QLabel("采样中…")
-        self.lb_ts.setStyleSheet(f"color:{C_GRAY};font-size:18px;border:none")
+        self.lb_ts.setStyleSheet(f"color:{C_GRAY};font-size:18px;border:none;"
+                                 f"background:{C_BG2};border-radius:5px;padding:4px 12px")
         head.addWidget(t)
         head.addStretch()
         head.addWidget(self.lb_ts)
@@ -1438,10 +1445,7 @@ class HardwareCard(QFrame):
         self.btn_dds = QPushButton("📡 启动本机 DDS 发布")
         self.btn_dds.setToolTip("在本机启动 DDS 节点(发布 4060 硬件/训练进度, 订阅部署指令)")
         self.btn_dds.clicked.connect(self.start_local_dds)
-        self.btn_dds.setStyleSheet(
-            f"QPushButton{{background:{C_BG2};color:{C_GRAY};border:1px solid {C_BORDER};"
-            f"border-radius:8px;padding:9px 18px;font-size:20px}}"
-            f"QPushButton:hover{{color:{C_WHITE};border-color:{C_BLUE}}}")
+        self.btn_dds.setStyleSheet(_BTN_CSS)
         for lb in (self.lb_gpu, self.lb_cpu, self.lb_mem, self.lb_disk, self.lb_thr, self.lb_mac):
             lb.setStyleSheet(f"color:{C_GRAY};font-size:28px;border:none")
             lb.setTextFormat(Qt.RichText) if hasattr(Qt, "RichText") else None
@@ -1469,19 +1473,14 @@ class HardwareCard(QFrame):
         self.lb_src.setStyleSheet(f"color:{C_DIM};font-size:20px;border:none")
         self.lb_src.setWordWrap(True)
         self.lb_src.setMinimumWidth(1)
+        self.lb_src.setVisible(False)      # 质检: 数据源横条 79% 空且全卡最暗 → 信息改由灯带承载
         v.addWidget(self.lb_src)
         row = QHBoxLayout()
         row.addStretch()
         if self.btn_refresh is not None:
-            self.btn_refresh.setStyleSheet(
-                f"QPushButton{{background:{C_BG2};color:{C_GRAY};border:1px solid {C_BORDER};"
-                f"border-radius:6px;padding:3px 10px;font-size:11px}}"
-                f"QPushButton:hover{{color:{C_WHITE};border-color:{C_BLUE}}}")
+            self.btn_refresh.setStyleSheet(_BTN_CSS)
             row.addWidget(self.btn_refresh)
-        self.btn_copy.setStyleSheet(
-            f"QPushButton{{background:{C_BG2};color:{C_GRAY};border:1px solid {C_BORDER};"
-            f"border-radius:6px;padding:3px 10px;font-size:11px}}"
-            f"QPushButton:hover{{color:{C_WHITE};border-color:{C_BLUE}}}")
+        self.btn_copy.setStyleSheet(_BTN_CSS)
         row.addWidget(self.btn_copy)
         row.addWidget(self.btn_dds)
         v.addLayout(row)
@@ -1758,6 +1757,7 @@ class HardwareCard(QFrame):
                     self.lb_src.setText(f"数据源: {_url}（{_lab}）· 本机行 = 运行 APP 的这台机器")
                     m["remote_src"] = "%s (%s)" % (_lab, _url.split("//")[-1].split("/")[0])
                 else:
+                    m["remote_src_off"] = True
                     self.lb_remote.setText(
                         "🛰 <b>4060 远端真实数据</b> —（数据源不可达 → 点「🔄 刷新数据源」；"
                         "或设 ZMAX_HW_URL / 写 ~/.zmax_hw_url）")
@@ -1999,6 +1999,10 @@ class HomeWidget(QWidget):
         layout.addWidget(self._stats_bar())
 
         # 🖥 硬件资源卡（4060 仪表盘 · 2 秒自动刷新）—— 页面最底(老倪 2026-09-29)
+        lbl4 = QLabel("硬件资源  Hardware")
+        lbl4.setFont(QFont("Arial", 11, QFont.Bold))
+        lbl4.setStyleSheet(f"color:{C_GRAY};")
+        layout.addWidget(lbl4)
         layout.addWidget(HardwareCard())
 
         layout.addStretch()
@@ -11272,7 +11276,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.20 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.21 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11280,9 +11284,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.20 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.21 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.16.21: UI(硬件仪表盘) **按视觉质检修 10 处** (质检: 逐像素, 离屏卡 2748x548 + 首页底部) ① **状态条漏画观感**: 功耗(未读到额定限值)与吞吐(无训练)两条不画条 ⇒ 但**底槽与卡底色几乎同色**, 看着像"4 条只画了 2 条"。槽色改 #2b3340(与卡底 #161b22 拉开) ⇒ 四条量程线清晰, 空条也能读出"无量程/无数据"。 ② **圆环弧长偏大**: 圆头端帽让 34% 画出 131°(看着像 36%) ⇒ 改**平头端帽**, 弧长与数字一致。 ③ **环内小字不齐**: 中文 21px vs 数字 14-15px、基线差 5px ⇒ 统一等宽 9pt 单行。 ④ **内存环副标歧义**(只写 31GB, 读作 110%) ⇒ 改「已用/总」如 `11/31GB`, 与显存环同格式。 ⑤ **卡片左侧 31% 全空**(灯靠 addStretch 挤到右边、圆环只占右端 21%) ⇒ 灯带改左对齐, 圆环每环 stretch=1 铺满整宽。 ⑥ **设备小字/名称被硬裁** ⇒ 按实测字宽**省略号截断**(`NVIDIA GeForce…`), 灯宽 126→152px。 ⑦ **远端数据源不可达却整卡全绿**(看不出是占位/过期) ⇒ 新增「远端数据源 未连通(仅本机数据)」**红灯**; 数据源那行最暗文字(深色横条 79% 空)隐去, 信息由灯承载。 ⑧ **按钮行三档高度/字号**(25/28/47px, 11/11/20px, 底边错位) ⇒ 统一 `_BTN_CSS`(同高同字号)。 ⑨ **采样时间小片左右仅 1px 内边距** ⇒ 加 `padding:4px 12px` + 圆角。 ⑩ **首页竖向节奏**: 卡片紧贴上方「项目状态」深条(0-1px) ⇒ 加节标题「硬件资源  Hardware」(与「功能模块」「项目状态」同规格), 顺带对齐栅格。 实测(离屏 192DPI 真采): 圆环 GPU 7% / 显存 8% / CPU 3% / 内存 37%(已用 11.33/31.04GB) · 条 磁盘 74% / 温度 53°C · **灯带视觉顺序 ['远端数据源','本机']**(本机永远最后) · 首页 视口 2812 == 页面宽 2812 · 横条 max 0 · 卡片为页面最后元素。 红线: 未下发真机动作; 未改在役指针/默认档/画布数据。
         # v5.16.20: UI(数据空间 CANoe 版) **按第二轮视觉质检修 8 处** (质检: 逐像素, 2792x1600 截图) ① **Bar 列没人看得懂**(质检: 0.21Hz 满格 / 0.50Hz 只剩 35px / 无底轨无刻度) —— 语义其实对(条 = 实测/设计, ss_action 设计 10Hz 所以 0.5Hz 只占 5%), 但界面没说: **表头改成 `Bar  实测/设计` + 给条加底轨 + 右侧留白 26px**(原长条顶到滚动条)。 ② **Last Value Time [s] 整列全是 '—'** —— 真根因两条: (a) `_update_values()` 跑在 `_fill_trace()` 之前, 首刷时 `_trace_rows` 还空; (b) **live.json 的键是短名(heartbeat) 而 trace.jsonl 里是全路径(zmax/heartbeat)**, 查表永远落空。修法: 值更新前补读一次 trace + 末帧表**同时登记全路径与短名**。实测末帧龄有值行 0/14 → **6/14**(其余 8 个话题窗口内真没帧, 仍 '—')。 ③ **详情面板 78% 空白**(全图最大空白块) —— 首刷自动选中第一条报文, 面板立刻有内容(实测详情 307 字)。 ④ **测量条中段 733px 死区** —— 中间加一行真实读数: `Trace 500 行 · 过滤 关 · Δt 关 · 帧龄 1.73s · 闭环 5/9`。 ⑤ **表头文字全场最弱(5.1:1)** —— 表头色由 #8b949e 提到 **#b6c2cf**。 ⑥ **闭环表「质量门」列 190px 致 4 行全截断**(且与 owner 贴到 13px) —— 列宽给到 330px(仍可拖)。 ⑦ **三张表行高不齐**(Data 46.5px vs Trace/闭环 60px) —— 树行 padding 3→6px 拉齐。 ⑧ **Trace Sender Name/Sender Id 全 '—'** —— 回落到 busdb 的真实生产者/发送者(实测变成 `zmax_dds_ss_daemon.py(延时…)` / `ss_diag`)。 红线: 未下发真机动作; 未改在役指针/默认档/画布数据。需重启控制台后现场可见。
         # v5.16.19: UI(硬件资源卡) **按 CANoe hardware / Vector Hardware Manager 范式重做成仪表盘** (老倪: 「不要用那么多文字来表达, 要换成状态条, 圆环百分比, 再加上红绿灯这样的指示灯; 4060 放到最底下」) ① **位置**: 硬件资源卡由「Hero 之后(页面第 2 位)」移到**首页最底**(实测装配顺序尾部 `... ProductRoadmapWidget / 项目状态 / ★HardwareCard`)。 ② **表达方式换代**: 原来 8 行 24~28px 富文本(实测 `lb_remote` 一行 5428px, 就是上一轮横拉条的元凶) 全部隐藏, 只留作 tooltip/复制; 版面换成**自绘控件**(新模块 `tools/gui/hw_widgets.py`):    · 4 个**圆环百分比**: GPU 利用率 / 显存占用 / CPU 负载 / 内存占用(环内大号数字+环下短标题+副标如 638/8188GB)    · 4 条**状态条**: 磁盘占用 / GPU 温度 / GPU 功耗 / 训练吞吐(颜色按阈值: 绿 ok · 黄 警戒 · 红 危险)    · **指示灯带**: 每台机器一颗发光灯(绿在线/黄停/红错/灰缺), 副标为 `设备名 后端 在线/停 Ns` ③ **阈值口径(可辩护)**: 显存/CPU/内存 <80 绿 · 80-92 黄 · >92 红; 磁盘 <80/80/90; 温度 <70/70/82; **GPU 利用率训练中 <50% 判黄**(承接老倪的掉载口径: 训练须满负荷), 空闲(<5%)灰。 ④ **不造假**: 缺测一律 '—'(空环/空条), 无训练时吞吐 '—'; 功耗条只在**读到 nvidia-smi power.limit** 时才画(没有就只显示瓦数, 不编造额定值); 同一台机器(本机=4060)在 DDS 节点里出现时**自动合并成一盏「本机」灯**, 且**本机/4060 永远排在灯带最右**。 ⑤ **可复制可导出**(老倪一贯要求): 新增「📋 复制参数」→ 纯文本(本机/设备/远端全部指标, 数字已四舍五入)。 ⑥ **实测**(离屏 192DPI, 真采一轮): `_collect 0.2s`; 画面读到真值 GPU 0% · 显存 7.79%(638/8188MB) · CPU 7.83%(32核) · 内存 33.95% · 磁盘 74.37%(可用 81.27GB) · 54~55°C · 功耗 11.9W; 灯带 `['本机']` 合并成功; **首页 视口 2812 == 页面宽 2812 · 横条 max 0**; 截图 `/tmp/hw_card.png` `/tmp/hw_home.png`。 ⑦ 红线: 未下发真机动作; 未改在役指针/默认档/画布数据。需重启控制台后现场可见(v5.16.14~5.16.19 一并生效)。
         # v5.16.18: UI(数据空间 CANoe 版) **按视觉质检报告修 5 处实证缺陷** 质检(vision 子代理逐像素)发现并已修: ① **Trace 半张表"褪色"**: 原来奇数行整行设灰前景(136-157, 对比 6.7:1) vs 偶数行近白(18:1), 背景却相同 ⇒ 取消整行变灰, 改**隔行浅底斑马纹**(#12171e), 文字一律亮色。实测前 20 行变灰列数 = 0。 ② **质量告警重复行**: 同一规则+同文本重复渲染 ⇒ 加 (级别,对象,问题) 三元组去重。实测重复 0 条。 ③ **列头与内容错位 32-42px**(列头默认居中而单元格左对齐) ⇒ tree/Trace/闭环/告警 四张表 `setDefaultAlignment(左对齐)`。 ④ **详情面板值列不齐**(破折号漂移 x2560-2576; 中文宽度按 1 计导致空格补不齐) ⇒ 新增 `_pad()` **按中文 2 列宽补齐**到 14 列, 报文/信号/节点三种详情统一走它; 顺手修「灯」行只有标签没有值。 ⑤ **暗灰对比度 2.3:1 几乎看不见**(无信号行的状态点/文本) ⇒ C_DIM 由 #484f58 提亮到 #6e7681。 另复核(上版质检提到的疑点): **树空文本行 = 0**(「名称列全空」实为子行缩进, 非缺字); 树 3 顶层组/14 报文/5 信号层/5 节点层; Trace 500 行×9 列; 各填充步骤 ≤0.01s; 出图 /tmp/canoe_v3.png。 红线: 未下发真机动作; 未改在役指针/默认档/画布数据。
