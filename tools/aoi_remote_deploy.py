@@ -112,7 +112,20 @@ def verify(port, test_capture=True):
 
     st, body = http_get("http://%s:%d/storage" % (ILO, port))
     ok = chk("/storage HTTP200", st == 200, "(%s)" % st)
-    n_before = files_total(port)
+
+    def _stable_total(tries=8, gap=1.5):
+        """等落盘稳定(连续两次读数相同)再取基准。
+        ⚠️ 2026-09-29 踩坑: 基准若在 capture_detect 的**异步 worker 还在落图**时取,
+        'grab 不落盘' 会假失败 ⇒ 假失败触发**自动回滚**(危险)。实测就是这么误判过一次。"""
+        last = None
+        for _ in range(tries):
+            cur = files_total(port)
+            if cur is not None and cur == last:
+                return cur
+            last = cur
+            time.sleep(gap)
+        return last
+
     if test_capture:
         st, body = http_post("http://%s:%d/capture_detect" % (ILO, port))
         ok &= chk("POST /capture_detect 回执 code=200", st == 200 and b'"code":200' in body,
@@ -129,6 +142,7 @@ def verify(port, test_capture=True):
         legal404 = st == 404 and "尚无检测结果".encode() in body
         ok &= chk("/last_result 判决通道", st == 200 or legal404,
                   ("200 " if st == 200 else "404-尚无(在等/推理慢) ") + body[:60].decode("utf-8", "replace"))
+    n_before = _stable_total()          # 取基准: 等检测线程落盘稳定(见 _stable_total 注释)
     st, img = http_get("http://%s:%d/picture?kind=origin&grab=1" % (ILO, port), timeout=60)
     ok &= chk("grab=1 出图", st == 200 and len(img) > 10000, "%d 字节" % len(img))
     n_after = files_total(port)
