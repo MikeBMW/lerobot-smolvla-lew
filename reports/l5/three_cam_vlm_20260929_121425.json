@@ -1,0 +1,180 @@
+{
+ "kind": "L5 场景理解·三路相机(同源 gen_overlay_from_vlm 口径)",
+ "created": "2026-09-29 12:14:25",
+ "model": "deepseek-v4-flash",
+ "tool": "tools/l5_understand_three_cams.py",
+ "rules": [
+  "无坐标条目一律不写盘",
+  "光模块禁止 2D 框(只用 3D 框表达)",
+  "每路留取帧文件+md5+时刻"
+ ],
+ "cams": {
+  "arm": {
+   "cam": "arm",
+   "ok": true,
+   "frame": "/home/ubuntu/zmax_rel/reports/l5/three_cam_frames/arm_20260929_121124.jpg",
+   "md5": "04d585721dec",
+   "w": 640,
+   "h": 480,
+   "frame_bytes": 28333,
+   "elements": [],
+   "rejected": [],
+   "filtered_2d_module": [
+    {
+     "label": "光模块",
+     "why": "光模块禁止 2D 框(只用 3D 框表达)",
+     "bbox": [
+      535.0,
+      145.0,
+      580.0,
+      270.0
+     ]
+    }
+   ],
+   "n_objs": 1,
+   "model": "deepseek-flash",
+   "latency_s": 76.5,
+   "usage": {
+    "prompt_tokens": 799,
+    "completion_tokens": 16886,
+    "total_tokens": 17685,
+    "prompt_tokens_details": {
+     "cached_tokens": 384
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 16768
+    },
+    "prompt_cache_hit_tokens": 384,
+    "prompt_cache_miss_tokens": 415
+   },
+   "scene": "机器人工作场景，右侧PCB板插槽内有光模块，中央为扫码枪，左上为料盘。",
+   "topology": "右侧PCB板SFP插槽，槽边线近似垂直，光模块嵌于槽内",
+   "elapsed_s": 76.5
+  },
+  "local": {
+   "cam": "local",
+   "ok": true,
+   "frame": "/home/ubuntu/zmax_rel/reports/l5/three_cam_frames/local_20260929_121124.jpg",
+   "md5": "1912fc0a757e",
+   "w": 640,
+   "h": 480,
+   "frame_bytes": 38003,
+   "elements": [],
+   "rejected": [],
+   "filtered_2d_module": [
+    {
+     "label": "光模块",
+     "why": "光模块禁止 2D 框(只用 3D 框表达)",
+     "bbox": [
+      360.0,
+      440.0,
+      400.0,
+      465.0
+     ]
+    },
+    {
+     "label": "光模块",
+     "why": "光模块禁止 2D 框(只用 3D 框表达)",
+     "bbox": [
+      420.0,
+      430.0,
+      460.0,
+      458.0
+     ]
+    }
+   ],
+   "n_objs": 2,
+   "model": "deepseek-flash",
+   "latency_s": 45.7,
+   "usage": {
+    "prompt_tokens": 799,
+    "completion_tokens": 9689,
+    "total_tokens": 10488,
+    "prompt_tokens_details": {
+     "cached_tokens": 384
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 9526
+    },
+    "prompt_cache_hit_tokens": 384,
+    "prompt_cache_miss_tokens": 415
+   },
+   "scene": "机械臂工作台上，人员位于前景，托盘槽内置有光模块。",
+   "topology": "黑色托盘多槽平行，槽长轴沿托盘宽度方向，模块嵌于槽内",
+   "elapsed_s": 45.7
+  },
+  "local2": {
+   "cam": "local2",
+   "ok": true,
+   "frame": "/home/ubuntu/zmax_rel/reports/l5/three_cam_frames/local2_20260929_121124.jpg",
+   "md5": "84f270577a2e",
+   "w": 1280,
+   "h": 720,
+   "frame_bytes": 68385,
+   "elements": [
+    {
+     "origin": "vlm",
+     "label": "插槽/托盘槽位",
+     "xyxy": [
+      724.0,
+      398.0,
+      845.0,
+      458.0
+     ],
+     "conf": 0.85,
+     "why": "槽边平行线族",
+     "cam": "local2",
+     "frame_md5": "84f270577a2e"
+    },
+    {
+     "origin": "vlm",
+     "label": "托盘",
+     "xyxy": [
+      820.0,
+      650.0,
+      1090.0,
+      715.0
+     ],
+     "conf": 0.85,
+     "why": "前景空托盘",
+     "cam": "local2",
+     "frame_md5": "84f270577a2e"
+    }
+   ],
+   "rejected": [],
+   "filtered_2d_module": [
+    {
+     "label": "光模块",
+     "why": "光模块禁止 2D 框(只用 3D 框表达)",
+     "bbox": [
+      798.0,
+      386.0,
+      836.0,
+      410.0
+     ]
+    }
+   ],
+   "n_objs": 3,
+   "model": "deepseek-flash",
+   "latency_s": 180.6,
+   "usage": {
+    "prompt_tokens": 1173,
+    "completion_tokens": 9363,
+    "total_tokens": 10536,
+    "prompt_tokens_details": {
+     "cached_tokens": 384
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 9158
+    },
+    "prompt_cache_hit_tokens": 384,
+    "prompt_cache_miss_tokens": 789
+   },
+   "scene": "机械臂在实验桌上操作光模块，桌面有黑色托盘槽位。",
+   "topology": "右桌黑托盘槽边平行，长轴指向右侧消失点，槽角约4°",
+   "elapsed_s": 180.7
+  }
+ },
+ "n_total_written": 2,
+ "merged_to_spec": true
+}

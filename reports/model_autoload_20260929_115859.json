@@ -1,0 +1,130 @@
+{
+ "ts": "2026-09-29 11:58:59",
+ "trigger": "startup_autoload",
+ "registry": "models/active_models.json",
+ "deep": true,
+ "layers": {
+  "L2": {
+   "resolve": {
+    "layer": "L2",
+    "kind": "yolo",
+    "name": "L2 · YOLO 光模块检测 (真机域在役)",
+    "declared": "models/yolo_peg_live.pt",
+    "path": "/home/ubuntu/zmax_rel/models/yolo_peg_live.pt",
+    "exists": true,
+    "realpath": "/home/ubuntu/lerobot-smolvla-lew/runs/detect/outputs/yolo_annot/annot_0919_1814/weights/best.pt",
+    "symlink": true,
+    "sha16": "e0d84ed83da74497",
+    "size_mb": 6.2
+   },
+   "name": "L2 · YOLO 光模块检测 (真机域在役)",
+   "layer": "L2",
+   "loader": "ultralytics.YOLO(models/yolo_peg_live.pt)",
+   "ok": true,
+   "classes": [
+    "peg",
+    "OPT_Gold"
+   ],
+   "n_classes": 2,
+   "loaded_relpath": "../lerobot-smolvla-lew/runs/detect/outputs/yolo_annot/annot_0919_1814/weights/best.pt",
+   "frame_src": "video_stream_8791/arm.jpg(28920B)",
+   "inference": {
+    "n_boxes": 0,
+    "imgsz": [
+     480,
+     640
+    ]
+   },
+   "secs": 1.74
+  },
+  "L3": {
+   "resolve": {
+    "layer": "L3",
+    "kind": "smolvla",
+    "name": "L3 · SmolVLA+LEW 策略 (在役运行时 ckpt)",
+    "declared": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model",
+    "path": "/home/ubuntu/zmax_rel/outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model",
+    "exists": true,
+    "realpath": "/home/ubuntu/lerobot-smolvla-lew/outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model",
+    "symlink": false,
+    "files": [
+     "config.json",
+     "model.safetensors",
+     "policy_postprocessor.json",
+     "policy_postprocessor_step_2_unnormalizer_processor.safetensors",
+     "policy_preprocessor.json",
+     "policy_preprocessor_step_3_normalizer_processor.safetensors",
+     "train_config.json"
+    ],
+    "weight_file": "model.safetensors",
+    "sha16": "4f2f9a5fd24ff91a",
+    "size_mb": 1289.2
+   },
+   "name": "L3 · SmolVLA+LEW 策略 (在役运行时 ckpt)",
+   "layer": "L3",
+   "loader": "SmolVLALewPolicy.from_pretrained (与引擎 SS_L3_CK 同源)",
+   "ok": true,
+   "type": "smolvla_lew",
+   "n_obs_steps": 1,
+   "ckpt_relpath": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model",
+   "weights": {
+    "file": "model.safetensors",
+    "n_tensors": 905,
+    "size_mb": 1289.2,
+    "param_elems": 625160504
+   },
+   "ok_light": true,
+   "gpu_free_mb": 7045,
+   "deep": {
+    "device": "cuda",
+    "n_params": 625160504,
+    "pre_ok": true,
+    "post_ok": true,
+    "n_action_steps": 7,
+    "engine_cache_warmed": "(引擎未导入: 由 GUI 启动钩子调用时才会写回)"
+   },
+   "secs": 17.61
+  },
+  "L4": {
+   "resolve": {
+    "layer": "L4",
+    "kind": "intact",
+    "name": "L4 · INTACT-JEPA 意图-动作 (在役稳定指针)",
+    "declared": "/home/ubuntu/stable-wm-cache/checkpoints/intact_l4_current",
+    "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_l4_current",
+    "exists": true,
+    "folder_format": true,
+    "weights": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6r11_s3072/weights_epoch_2.pt",
+    "sha16": "22a3657cc6d328bf",
+    "size_mb": 84.1
+   },
+   "name": "L4 · INTACT-JEPA 意图-动作 (在役稳定指针)",
+   "layer": "L4",
+   "loader": "IntactRuntime(model_adapter) hello — INTACT venv 子进程",
+   "ok": true,
+   "bridge_available": {
+    "ok": true,
+    "why": "ok",
+    "repo": "/home/ubuntu/INTACT-JEPA",
+    "venv": "/home/ubuntu/INTACT-JEPA/.venv/bin/python"
+   },
+   "handshake": {
+    "trained": true,
+    "dims": {
+     "embed_dim": 0,
+     "action_dim": 8,
+     "history_size": 3,
+     "img_size": 224
+    },
+    "reason": null,
+    "runtime_kind": "root",
+    "policy_name": "intact_l4_current",
+    "device": null,
+    "start_ok": true
+   },
+   "weights_in_use": "intact_l4_current",
+   "secs": 5.24
+  }
+ },
+ "ok": true
+}

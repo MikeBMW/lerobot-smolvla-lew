@@ -104,6 +104,13 @@
   <button id="mFull" onclick="toggleFull()">⛶ 全屏</button>
   <button onclick="refresh(1)">↻ 刷新</button>
   <button onclick="apkToggle()">📲 装 APP</button>
+  <span style="width:1px;height:22px;background:#30363d;margin:0 6px"></span>
+  <button id="tjShow" onclick="trajShow(true)">▶ 显示轨迹</button>
+  <button id="tjHide" onclick="trajShow(false)">⏸ 隐藏轨迹</button>
+  <button id="tjClear" onclick="trajClear()">🧹 清除轨迹</button>
+  <button id="tjAll" onclick="trajAll()">📜 全部历史</button>
+  <span class="chip" id="tjState">轨迹: —</span>
+  <a class="jump" id="jumpAr" href="#" target="_blank" rel="noopener">🛰 AR/VR 轨迹台</a>
 </div>
 
 <div class="wrap" id="apkCard" style="display:none">
@@ -659,6 +666,55 @@ document.addEventListener('keydown', function(ev){
 
 $('jumpStation').href = stationUrl();
 $('jumpStation2').href = stationUrl();
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  轨迹显示开关 / 清除  —— 单一真源是 AR 轨迹台服务(:8797), 本页只当遥控器
+//  为什么跨端口调: 轨迹的"隐藏/清除"要同时作用在 臂上D405叠加画面 和 笔记本相机AR 上,
+//  只能由一处统一决策(tools/traj_display.py + live_trace_publisher 执行), 各页各写一套必然对不上。
+//  ⚠️ 跨端口 = 跨源 → AR 服务已放开 CORS, 否则浏览器直接把请求拦掉(表现为"点了没反应")。
+// ══════════════════════════════════════════════════════════════════════════════
+var AR_PORT = 8797;
+function arBase(){ return 'http://' + ((location.host || '').split(':')[0] || '127.0.0.1') + ':' + AR_PORT; }
+$('jumpAr').href = arBase() + '/';
+function tjPaint(st){
+  var chip = $('tjState');
+  var on = st.state && st.state.show;
+  chip.textContent = '轨迹: ' + (on ? '开(人工开启)' : '关(默认)')
+    + (st.recorded_pts != null ? ' · 已录 ' + st.recorded_pts + ' 点' : '');
+  chip.className = 'chip ' + (on ? 'ok' : '');
+  $('tjShow').className = on ? 'on' : '';
+}
+async function tjState(){
+  try { tjPaint(await (await fetch(arBase() + '/api/traj/state?t=' + Date.now(), {cache:'no-store'})).json()); }
+  catch (e) { $('tjState').textContent = '轨迹台 :' + AR_PORT + ' 连不上'; }
+}
+async function trajShow(show){
+  try {
+    var r = await (await fetch(arBase() + '/api/traj/show', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({show: !!show})})).json();
+    toast(show ? '轨迹显示已开启(走起来就画通道)' : '轨迹已隐藏', 2200);
+    await tjState(); refresh(1);
+    loadBoxes();
+  } catch (e) { toast('开关失败: ' + e, 3000); }
+}
+async function trajClear(){
+  try {
+    var r = await (await fetch(arBase() + '/api/traj/clear', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: '{}'})).json();
+    toast(r.msg || '轨迹已清除', 2600);
+    await tjState(); refresh(1); loadBoxes();
+  } catch (e) { toast('清除失败: ' + e, 3000); }
+}
+async function trajAll(){
+  try {
+    var r = await (await fetch(arBase() + '/api/traj/baseline', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({n:0})})).json();
+    toast(r.msg || '已恢复全部历史轨迹', 2600);
+    await tjState(); refresh(1); loadBoxes();
+  } catch (e) { toast('操作失败: ' + e, 3000); }
+}
+tjState(); setInterval(tjState, 4000);
+
 setView('ov');
 poll(); pollSpec(); loadBoxes();
 setInterval(poll, 2000);

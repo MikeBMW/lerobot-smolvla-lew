@@ -530,6 +530,15 @@ _CTL_SKILLS = {
     "L2.rot_c_pos": ("deg", 1, 30), "L2.rot_c_neg": ("deg", 1, 30),
 }
 
+# 🎯 绝对点位技能(无数字参数): 只发 {skill, speed}, 目标点位由技能定义 point_locked 锁死(执行器侧)。
+# 2026-09-29 老倪: 「把这个技能放到工位总览 金手指检测窗口 整板原图 按钮旁边, 添加一个『点1』按钮,
+#   点击后即返回点一」。白名单里加的是**技能 id**(不是坐标) ⇒ 点位真值仍由示教点文件 + 执行器收口,
+# 页面/接口都无法改点位; 仍走同一条 授权真动 + 限流 + FIFO + 回执 的路。
+_CTL_ABS_SKILLS = {
+    "L2.goto_gold_pt1": "🎯 回到金手指点1",
+    "L2.goto_aoi_gold": "🎯 进入金手指检测区",
+}
+
 
 def _read_json(path: str, default=None):
     try:
@@ -1211,15 +1220,20 @@ def _ctl_move(req: dict) -> dict:
     不是"已发送"这种自报。
     """
     sid = str(req.get("skill") or "")
-    if sid not in _CTL_SKILLS:
+    _abs = _CTL_ABS_SKILLS.get(sid)
+    if sid not in _CTL_SKILLS and _abs is None:
         return {"ok": False, "msg": "技能 %r 不在手动控制白名单里" % sid}
-    pname, lo, hi = _CTL_SKILLS[sid]
-    try:
-        val = float(req.get(pname, 0))
-    except (TypeError, ValueError):
-        return {"ok": False, "msg": "参数 %s 不是数字" % pname}
-    if not (lo <= val <= hi):
-        return {"ok": False, "msg": "%s=%.1f 超出允许范围 [%d, %d]" % (pname, val, lo, hi)}
+    if _abs is not None:
+        # 🎯 绝对点位技能: 没有数字参数(点位锁在技能定义里) ⇒ 不校验 d_mm/deg
+        pname, val = None, 0.0
+    else:
+        pname, lo, hi = _CTL_SKILLS[sid]
+        try:
+            val = float(req.get(pname, 0))
+        except (TypeError, ValueError):
+            return {"ok": False, "msg": "参数 %s 不是数字" % pname}
+        if not (lo <= val <= hi):
+            return {"ok": False, "msg": "%s=%.1f 超出允许范围 [%d, %d]" % (pname, val, lo, hi)}
     try:
         speed = float(req.get("speed", 8))
     except (TypeError, ValueError):
@@ -1232,7 +1246,7 @@ def _ctl_move(req: dict) -> dict:
         return {"ok": False, "denied": True, "code": 403, "auth": _auth_info(),
                 "msg": "未授权真动(现场安全): 先点页面上『🔓 授权真动』并二次确认(现场确认无人), "
                        "再操作; 授权 %.0f 分钟后自动失效" % _win}
-    cmd = {"skill": sid, pname: val, "speed": speed}
+    cmd = {"skill": sid, "speed": speed} if pname is None else {"skill": sid, pname: val, "speed": speed}
     if not want_real:
         cmd["dry"] = True
         why = "服务未授权真动(--ctl-motion)" if not _CTL["motion"] else "未授权真动(只算目标, 不下发)"
@@ -1267,13 +1281,21 @@ def _ctl_move(req: dict) -> dict:
         if sid in buf and ("受理" in buf or "拒绝" in buf or "失败" in buf):
             break
     lines = [l.strip() for l in buf.splitlines() if l.strip()][-6:]
-    out = {"ok": True, "dry": not want_real, "skill": sid, "param": {pname: val}, "speed": speed,
-           "msg": ("演练(未下发): %s" % why) if not want_real else "已下发(真动)",
+    # 🛡 语义层(VL)在场时: 执行器先「告知 VL」并等针对本次动作的裁决(实测 45~190s, 上限 300s) ——
+    #    这 9s 窗口里只会有「目标 / 告知 VL」两行。如实报「执行器已收到, 在等裁决」,
+    #    **不冒充当次已下发**(也不让现场把"还没动"当成"点了没反应/坏了"); 页面继续追 /ctl/log
+    #    直到出现「受理: 已下发」或「🛑 被拦(...) ⇒ 拒发」那一行。
+    _pend = bool(buf) and ("受理" not in buf) and ("等针对该动作的裁决" in buf or "告知 VL" in buf)
+    _par = {} if pname is None else {pname: val}
+    out = {"ok": True, "dry": not want_real, "skill": sid, "param": _par, "speed": speed,
+           "pending": bool(_pend and want_real),
+           "msg": ("⏳ 执行器已收到: 正在等安全裁决(最多 300s, 实测 45~190s) — 机械臂还没动, 继续追裁决"
+                   if _pend else (("演练(未下发): %s" % why) if not want_real else "已下发(真动)")),
            "elapsed_s": round(time.time() - t0, 2), "lines": lines}
-    rec = {"t": time.time(), "skill": sid, pname: val, "speed": speed,
+    rec = {"t": time.time(), "skill": sid, "param": _par, "speed": speed,
            "dry": not want_real, "lines": lines}
     _CTL["last"] = {"t": rec["t"], "skill": sid, "dry": not want_real, "ok": True,
-                    "msg": out["msg"], "lines": lines}
+                    "pending": out["pending"], "msg": out["msg"], "lines": lines}
     try:
         with open(_CTL_LOG, "a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -1734,6 +1756,28 @@ def _mobile_page() -> bytes:
     except Exception as e:
         return ("<!doctype html><meta charset=utf-8>"
                 "<h2>📱 手机叠加页缺失</h2><p>%s</p><p>期望: %s</p>" % (e, p)).encode("utf-8")
+
+
+_STATION_CACHE = {"t": None, "b": b""}
+
+
+def _station_page() -> bytes:
+    """🛰 工位总览页真源 = `tools/web/station.html`(按 mtime 热读)。
+
+    2026-09-29: 原来页面是**本文件内嵌的 STATION_PAGE** ⇒ 改一个按钮就得重启推流服务,
+    而重启会掐断现场正在看的 MJPEG 流(且授权真动随进程失效)。改成外部文件热读后,
+    以后加/改按钮**不用重启**(没这个文件时退回内嵌副本, 行为与老版本一致)。
+    """
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "station.html")
+    try:
+        m = os.path.getmtime(p)
+        if _STATION_CACHE["t"] != m:
+            with open(p, "rb") as f:
+                _STATION_CACHE["b"] = f.read()
+            _STATION_CACHE["t"] = m
+        return _STATION_CACHE["b"]
+    except Exception:                                                         # noqa: BLE001
+        return STATION_PAGE.encode("utf-8")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -2554,7 +2598,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 return
-            self._send(200, "text/html; charset=utf-8", STATION_PAGE.encode("utf-8"))
+            self._send(200, "text/html; charset=utf-8", _station_page())
         elif p in ("/app", "/app.html", "/m"):
             # 📱 手机版场景叠加页 (Z-MAX APP 首页「🧩 场景叠加」的跳转目标)
             self._send(200, "text/html; charset=utf-8", _mobile_page())
@@ -2614,6 +2658,29 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "application/json; charset=utf-8", _jbytes(_motion_state()))
         elif p == "/ctl/status":
             self._send(200, "application/json; charset=utf-8", _jbytes(_ctl_status()))
+        elif p == "/ctl/log":
+            # 📜 执行器日志尾(只读, GET 安全): 页面用它追「等安全裁决 → 受理·已下发 / 拒发」这一行。
+            # 为什么需要: 带 VL 安全闸时, 一次动作的最终结果在 45~190s 后才落在执行器日志里,
+            # 而 /ctl/move 的回执只有 9s 窗口 —— 没有这个接口页面就只能停在"已收到"上, 现场会判"没反应"。
+            _n = 14
+            for kv in (self.path.split("?", 1)[1] if "?" in self.path else "").split("&"):
+                if kv.startswith("n="):
+                    try:
+                        _n = max(1, min(80, int(kv.split("=", 1)[1])))
+                    except ValueError:
+                        pass
+            _sz = os.path.getsize(_L2_LOG) if os.path.exists(_L2_LOG) else 0
+            _off = max(0, _sz - 60000)                      # 只看尾部 60KB(日志已 MB 级, 别整读)
+            _t = _tail(_L2_LOG, _off, 60000)
+            _ls = [l.strip() for l in _t.splitlines() if l.strip()][-_n:]
+            _done = ""
+            for l in _ls:
+                if "受理:" in l or "🛑 被拦" in l or "⇒ 拒发" in l:
+                    _done = l
+            self._send(200, "application/json; charset=utf-8",
+                       _jbytes({"ok": True, "n": len(_ls), "lines": _ls,
+                                "done": bool(_done), "verdict": _done,
+                                "log": _L2_LOG, "size": _sz}))
         elif p == "/station/status":
             # 🛰 页面只发**一条**状态请求 (3 条合并成 1) —— 见页面注释里的 HTTP/1.1 六连接坑
             payload = {"stats": self._stats(), "ctl": _ctl_status(),

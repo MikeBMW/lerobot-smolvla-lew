@@ -32,6 +32,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(_HERE)
 sys.path.insert(0, _HERE)
 import scene_overlay as SO                                                      # noqa: E402
+import traj_display as TD                                                       # noqa: E402  (显示开关单一真源)
 
 CONTAINER = os.environ.get("TRACE_CONTAINER", "ss-remote-tap")
 IN_CONTAINER = os.environ.get("TRACE_PATH", "/tmp/live_trace.json")
@@ -120,16 +121,36 @@ def main():
         return 0
 
     t0 = time.time()
+    said_off = False
     while True:
-        d = fetch()
-        if d and d.get("pts"):
-            pts = decimate(d["pts"], a.gap_mm, a.max_pts)
-            n = publish(pts)
-            print("[%s] 轨迹 %d 点(原始 %d, 抽稀后 %d) → cameras.%s origin=%s" % (
-                time.strftime("%H:%M:%S"), n, len(d["pts"]), n, CAM, ORIGIN), flush=True)
+        st = TD.get_state()
+        # 🔴 默认不显示: 人工开启前一律把 trace/plan 折线撤掉(规格里不留, 画面干净)
+        if not st["show"]:
+            if not said_off:
+                publish([], clear=True)
+                print("[%s] 轨迹显示=关 (默认) ⇒ 已撤掉画面上的轨迹线; 需要时点页面的『显示轨迹』" % (
+                    time.strftime("%H:%M:%S")), flush=True)
+                said_off = True
+            else:
+                publish([], clear=True)
         else:
-            print("[%s] 还没有轨迹数据(录制器起了吗? /tmp/live_trace.json)" % time.strftime("%H:%M:%S"),
-                  flush=True)
+            said_off = False
+            if st["plan_hidden"]:                       # 自愈: 开关开着但航路还没恢复 ⇒ 恢复
+                TD.restore_origins(["plan"])
+                TD.set_state(plan_hidden=False)
+            d = fetch()
+            if d and d.get("pts"):
+                base = int(st["baseline_n"] or 0)
+                raw = d["pts"]
+                if base > 0:
+                    raw = raw[base:] if base < len(raw) else raw[-1:]
+                pts = decimate(raw, a.gap_mm, a.max_pts)
+                n = publish(pts)
+                print("[%s] 轨迹 %d 点(原始 %d, 清除线 %d, 抽稀后 %d) → cameras.%s origin=%s" % (
+                    time.strftime("%H:%M:%S"), n, len(d["pts"]), base, n, CAM, ORIGIN), flush=True)
+            else:
+                print("[%s] 还没有轨迹数据(录制器起了吗? /tmp/live_trace.json)" % time.strftime("%H:%M:%S"),
+                      flush=True)
         if a.once or not a.loop or time.time() - t0 > a.seconds:
             break
         time.sleep(a.every)

@@ -1,0 +1,39 @@
+{
+ "generated_at": "2026-09-29 11:27:20",
+ "steps": 40,
+ "lora": {
+  "L4": true,
+  "L3": true,
+  "r": 8
+ },
+ "gpu_free_mb_at_end": 7724,
+ "rows": [
+  {
+   "stage": "L4",
+   "layer": "L4 INTACT (安全+物理导航)",
+   "desc": "INTACT 续训 + LoRA 适配 (基座冻结, 只训 lora_A/B)",
+   "cmd": [
+    "/home/ubuntu/INTACT-JEPA/.venv/bin/python",
+    "train.py",
+    "--config-name=intact_goal_optical_insert_v6",
+    "data=zmax_v6",
+    "output_model_name=intact_goal_optical_insert_v6lora_40",
+    "init_weights_path=/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6d9_s3072/weights_epoch_1.pt",
+    "init_zero_skill_branch=false",
+    "trainer.max_epochs=1",
+    "+trainer.limit_train_batches=40"
+   ],
+   "rc": 0,
+   "secs": 34.1,
+   "log": "/home/ubuntu/zmax_rel/reports/joint_train_20260929_112646/L4.log",
+   "evidence": [
+    {
+     "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_40",
+     "exists": true,
+     "size_mb": null
+    }
+   ],
+   "ts": "2026-09-29 11:27:20"
+  }
+ ]
+}
