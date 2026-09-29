@@ -29,7 +29,8 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY = os.path.join(ROOT, "gui-venv311", "bin", "python")
 HUB = os.path.join(ROOT, "tools", "agent_hub.py")
-OUT_DIR = "/tmp/zmax_agent_out"
+# 2026-09-29: 与 agent_hub.py 的 OUT_DIR 同步搬出 /tmp(见 agent_hub.py 顶部"fs.protected_regular"说明)
+OUT_DIR = "/home/ubuntu/zmax_data/agent_hub/out"
 HOST = "192.168.23.50"
 ILO = "192.168.23.23"
 FILENAME_10082 = "cam_finger_10082_work_v6.py"

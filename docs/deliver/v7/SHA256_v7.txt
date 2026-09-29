@@ -1,0 +1,1 @@
+a828a4716b6bcee4c1b34e08db7d6db85cd1a1415287e67cc3e1e9643ca692e8  cam_finger_10082_work_v7.py

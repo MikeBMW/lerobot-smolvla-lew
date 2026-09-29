@@ -752,7 +752,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.16.28")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.16.29")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11276,7 +11276,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.28 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.29 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11284,9 +11284,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.28 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.29 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.16.29: v5.16.29 — 工控机金手指 topview 改成「判据图」口径(AOI 程序 v7) 老倪: 「工控机的金手指…点击请求检测后, 在工控机保存的 topview图片, 不是我在判据图的样子; 改成判据图的样子」 · 差在哪(实测): 工控机保存/送检的是 960x960 方图(1455x70 条带纵向拉 13.7 倍), 网页判据图是 900x332(原比例+纵向×2+反倾角+定尺) ⇒ 两张完全不同。 · 工控机程序 v7: 落盘/展示的 topview 改判据图口径(过曝带切除+只留金手指条+列裁死白列+短边×2+按实测倾角反旋+定尺900x332), 口径从 4060 侧 aoi_exposure_fix 逐条移植; 模型输入**逐位不变**(仍 960x960 送检, 另存 Finger_ModelIn_*), /last_result 同时报 topview(人看的) 与 model_input(模型吃的); /crop_info 出 judge 台账; 渲染失败自动回退并打警告。 · 现场证据: 工控机侧文件自检 saved_topview=900x332 ✅; 工控机 ?kind=crop(900x332) vs 网页判据图帧 → 灰度均值 188.1/188.1, r=0.9847(行剖面 0.9971) ✅; 离线对同源原图 r=0.9973 ✅; 模型输入仍是 960x960, 检测回执正常(count/verdict/ms) ✅。 · 顺带修好被卡死的反向通道(否则推不上去): ①hub 没托管 → 新增 zmax-agent-hub.service; ②队列在 /tmp 被 fs.protected_regular 拒写 → 运行态搬到 ~/zmax_data/agent_hub/; ③两端 token 不一致(工控机带 ZMAX_AOI_KeepAlive) → hub 支持多 token。实测通道恢复(回执 DESKTOP-NV6ATND / nt authority\system)。 · 交付件: docs/deliver/v7/ (程序+口径模块+离线测试+SHA256) · reports/aoi/topview_judge_v7_20260929.md · 新工具 tools/station_cmd.py(给工控机发一条命令并取回执)。
         # v5.16.28: v5.16.28 — 手动控制台增加「🤏 关闭夹爪 / 🖐 打开夹爪」两个技能按钮  老倪: 「http://10.163.146.78:8793/station 在手动控制台 增加 关闭夹抓 和 打开夹抓 两个技能」  做法(与方向键/点1 完全同一条路, 不新开通道): - 页面 tools/web/station.html(热读, 不用重启): 手动控制台新增「🤏 夹爪 (关闭/打开)」卡, 两个大按钮   → gripAct(btn, skill, label) → POST /ctl/move {skill, speed, arm:已授权?1:0}; 页面只送技能 id   (夹持力/行程由技能定义 registry 固定, 页面/接口都改不了); 未授权时只算目标不下发;   带安全闸时追 /ctl/log 直到「受理: 已下发」或「🛑 被拦… ⇒ 拒发」把原文摆出来。 - 服务端 tools/cam_live_stream.py: 白名单 _CTL_ABS_SKILLS 增加 L2.grip_close / L2.grip_open   (无页面可调参数, 与 L2.goto_gold_pt1 同规格) ⇒ 天然复用「授权真动 + 限流 + FIFO + 回执」那套路。  实测(未授权, 全程零动作): - 页面已含两个按钮(grep L2.grip_close/L2.grip_open 各 3 处; div 48/48 平衡; node --check 509 行内联 JS 通过)。 - 未授权 + arm=1 点「关闭夹爪」→ HTTP 403 denied(服务端拦)。 - 未授权 + arm=0 演练 → 执行器给出将要真下发的指令, 语义核对无误:   L2.grip_close → /gripper_driver GripperSrv {target_pos: 0.0, target_force: 40.0}(合爪+40%力);   L2.grip_open  → {target_pos: 1000.0}(张爪)。 - 绕过网页直接写 FIFO 真动 L2.grip_close → 执行器「🛑 被拦(真动授权): … 拒发」(撤销后一律拒)。
         # v5.16.27: v5.16.27 — 真动授权收敛成单一真源: 撤销后手臂不再动(点1 与一切路径都服从 8793 手动控制台授权)  老倪现场: 「8793/station 我都取消授权了，手臂怎么还在动；金手指检测的点1技能，也要服从手动控制台的授权」  根因(实测, 两条并存): 1) 授权只活在 8793 那个进程的**内存**里 ⇒ 其它会动臂的路径(GUI 原子技能/脚本/自动流程/AOI 伺服,    实测有 18 个文件直接写 ~/zmax_data/l2_cmd.fifo)**完全绕过**它 —— 授权对它们形同虚设。 2) 执行器(l2_daemon)下发前**不校验**授权 ⇒ 「点授权 → 命令排队等 VL 慢层(上限 300s) → 期间人点撤销    → 照样下发」。现场表现就是"取消了授权还在动"。另: 已下发给控制器的慢速动作(speed=8, 实测 30~90s    才到位)不会因为点撤销就停 —— 这一条以前根本没人管。  改法: · 新增 tools/ctl_auth.py —— 真动授权的**单一真源**(文件 ~/zmax_data/ctl_auth.json):   armed=until>now(到期自动失效) + 单调 epoch(每次授权/撤销 +1)。8793 页面与执行器共用同一份。 · 8793 侧(cam_live_stream): _auth_info/_auth_set 改读写该真源; 写 FIFO 的命令带上签发时的 auth_epoch。 · 执行器侧(l2_daemon)在**唯一收口** chan_send + 服务步(_service_call) + 夹爪/力控(_call_remote)   一律 `_auth_guard`: ①此刻必须有授权(不是"签发时有") ②命令 epoch 必须不小于当前 epoch(撤销即作废);   ③等 VL 慢层期间每 2s 复核, 一撤立刻作废本条(绝不下发)。停机/复位类白名单永远放行(闸门不挡急停)。   ctl_auth 不可用 ⇒ fail-closed 一律拒发。 · 新增 tools/ctl_revoke_stop.py + zmax-ctl-stop.service —— 带外看门人: 撤销瞬间若近 180s 内有真下发,   立刻调机器人 /robot_stop(std_srvs/Trigger) 把**在途**运动停下; 全程审计(谁能查谁撤销/停了没有)。 · 页面: 撤销后横幅明说"已对在途动作下达停止(/robot_stop 成功)"或"已下发到控制器的动作无法收回";   /ctl/status 的 auth 增加 last_stop 实况。  实测证据(全部真跑): · 未授权 + arm=1 点『回到金手指点1』→ HTTP 403 denied, 且**没有**任何 FIFO 写入/执行器日志行。 · 绕过网页直接写 FIFO 真动命令(未授权) → 执行器: 🛑 被拦(真动授权): 拒绝 ✓(臂零位移) · 授权 → 写真动命令 → 命令正在等 VL 慢层 → **点撤销** → 1s 内: ⏹ 本条立即作废(未下发), 日志中「已下发」计数=0;   同时看门人: ⏹ 已在途停止 /robot_stop success(4.7s, 机器人回执 stop ec=0 操作成功完成)。
         # v5.16.26: 🛰 数据空间页: ss_plan 一眼可见 + 详情直接给出那一帧摘要  背景: MoveIt plan-only 的轨迹已镜像成 DDS `zmax/ss_plan`(0.5Hz · 每帧 ~23KB · 累计 189 帧 · verdict=ok)。 但老倪要"逐帧对"时撞到两个现实问题, 像素质检+离屏探针各量了一遍:  1) **看不到那条**: 左面板「报文」树是纯字母序 ⇒ `ss_plan` 排第 12/15 行, 而面板只放得下 ~8 行    (视口 462px / 行高 52px) ⇒ 页面上根本看不见。修法: **活跃在前**(hz>0 优先, 组内仍字母序)    ⇒ 现在顺序 heartbeat | hw_state | ss_action | ss_calib | ss_diag | **ss_plan** | ss_state | …,    `ss_plan` 排第 5 行, 不用滚动就在视野里。  2) **看不到那几个数**: Trace 表 9 列只有 话题/类型/判决/概率/生产者/发送者/跟踪号/QoS,    全帧真正要看的 `n_points` / `end_err_mm` / `同源闸` 一个都不在。修法: 详情面板新增    **「🧾 最近一帧摘要 (trace digest)」** —— 探针给 ss_plan 写的是一行可读摘要而不是 768 个数字:      `plan-only: n=123 (joints_path 738 / tcp_path 369) plan_code=1 时长=12.11s 终点误差=2.967mm       FK起点差=261.351mm 同源闸=0[同源闸不过: FK(真关节)与真机 TCP 差 261.4mm (>5mm)…] age=0.50s`    同时把载荷字段里的长序列折叠成 `[0.16, -0.0616, -2.545, …] (共 366 个)` —— 否则 joints_path    一个字段就把 24 个字段名额占满, end_err_mm / gate_* 全被挤出去(实测确认现在都在)。  实测: 离屏探针打印详情面板全文, ss_plan 的 类型/QoS/设计·实测频率/抖动/丢包/帧龄/累计报文/字节/ 匹配发布者/质量判决/灯/生产者 + 3 条质量判据 + 摘要 + 18 个载荷字段 全部到位。

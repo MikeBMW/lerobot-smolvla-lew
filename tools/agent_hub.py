@@ -9,7 +9,7 @@
 
 接口(都带 token):
   GET  /agent/cmd?t=TOKEN   取一条待执行命令(取走即出队; 没有则返回 NONE)
-  POST /agent/out?t=TOKEN   把命令的输出送回来(存 /tmp/zmax_agent_out/<n>.txt 并打印)
+  POST /agent/out?t=TOKEN   把命令的输出送回来(存 ~/zmax_data/agent_hub/out/<n>.txt 并打印)
   GET  /agent/beat?t=TOKEN  心跳(看那边还活着)
   GET  /agent/log?t=TOKEN   看最近几条命令/输出(人在手机上也能瞄一眼)
 其余路径照旧当静态文件服务(交付包下载不受影响)。
@@ -25,11 +25,19 @@ import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-QUEUE_FILE = "/tmp/zmax_agent_cmd.jsonl"
-OUT_DIR = "/tmp/zmax_agent_out"
-LOG_FILE = "/tmp/zmax_agent.log"
+# ⚠️ 2026-09-29 踩坑: 运行态文件**不能再放 /tmp** —— 本机 ubuntu 用 CLI 入队/服务以 root 跑,
+#    root 去"重写"一个 ubuntu 属主的 /tmp 文件会被内核 `fs.protected_regular`(sticky 目录保护)拒掉:
+#    PermissionError: '/tmp/zmax_agent_cmd.jsonl' ⇒ 队列取不走, 通道**看着断着其实是权限**
+#    (现象: 客户端每 5s 来 GET /agent/cmd 都 403/报错, served 恒为 0)
+#    ⇒ 运行态统一放数据目录(非 sticky 目录, 两个属主都能写)。
+HUB_DATA = os.environ.get("ZMAX_AGENT_DATA", "/home/ubuntu/zmax_data/agent_hub")
+OUT_DIR = os.path.join(HUB_DATA, "out")
+LOG_FILE = os.path.join(HUB_DATA, "hub.log")
+BEAT_FILE = os.path.join(HUB_DATA, "beat")
+BEAT_FILE_LEGACY = "/tmp/zmax_agent_beat"        # 兼容老看门狗脚本(aoi_watch.sh)读取
+QUEUE_FILE = os.path.join(HUB_DATA, "cmd.jsonl")
 _LOCK = threading.Lock()
-STATE = {"token": "", "last_beat": 0.0, "served": 0, "outs": 0}
+STATE = {"token": "", "tokens": set(), "last_beat": 0.0, "served": 0, "outs": 0}
 
 
 def _log(msg: str):
@@ -90,7 +98,11 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def _ok_token(self, q) -> bool:
-        return (q.get("t", [""])[0] or "") == STATE["token"]
+        """v2 (2026-09-29): 允许多个 token(逗号分隔)。
+        起因: 工控机上那条轮询循环带的 token 是 `ZMAX_AOI_KeepAlive`(不是 agent 脚本里的 `zmax-7ce74c7f`),
+        一直 403 ⇒ 通道"看着断着"其实客户端活着。多 token 兼容, 不让一个字的差异卡死整条链路。"""
+        v = (q.get("t", [""])[0] or "")
+        return bool(v) and (v == STATE["token"] or v in (STATE.get("tokens") or set()))
 
     def _beat(self, who=""):
         """记一次 agent 侧活动, 并把时刻落到文件里 —— 让主节点(4060)的看门狗能不看日志就判通道死活。
@@ -98,11 +110,13 @@ class Handler(SimpleHTTPRequestHandler):
         STATE["last_beat"] = time.time()
         if who in ("127.0.0.1", "::1", "localhost", ""):
             return
-        try:
-            with open("/tmp/zmax_agent_beat", "w") as f:
-                f.write("%.3f" % STATE["last_beat"])
-        except OSError:
-            pass
+        for p in (BEAT_FILE, BEAT_FILE_LEGACY):
+            try:
+                os.makedirs(os.path.dirname(p), exist_ok=True)
+                with open(p, "w") as f:
+                    f.write("%.3f" % STATE["last_beat"])
+            except OSError:
+                pass
 
     def do_GET(self):
         u = urlparse(self.path)
@@ -160,7 +174,7 @@ def main():
     ap.add_argument("--port", type=int, default=8794)
     ap.add_argument("--bind", default="0.0.0.0")
     ap.add_argument("--dir", default=".")
-    ap.add_argument("--token", default="")
+    ap.add_argument("--token", default="", help="可逗号分隔多个(兼容旧客户端)")
     ap.add_argument("--enqueue", default="")
     a = ap.parse_args()
     if a.enqueue:
@@ -171,7 +185,8 @@ def main():
         return
     if not a.token:
         raise SystemExit("必须给 --token")
-    STATE["token"] = a.token
+    STATE["token"] = a.token.split(",")[0].strip()
+    STATE["tokens"] = {x.strip() for x in a.token.split(",") if x.strip()}
     Handler.token = a.token
     Handler.root = a.dir
     os.makedirs(OUT_DIR, exist_ok=True)
