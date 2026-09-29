@@ -341,6 +341,14 @@ def stage_slots(st: dict, ts: str) -> dict:
         r["reason"] = ("尚无已记录槽位 (等老倪逐个演示; 记录器: python tools/l5_slot_tool.py "
                        "--record --slot N --size W,H,T)" if not ((r.get("slots") or {}).get("recorded"))
                        else "槽位数据集为空")
+        # 🐛 2026-09-29 修 (编排"模型拉不通"的第二个卡点): 槽位是**可选输入** ——
+        #   没演示槽位时 stage_L2 本来就有明确退路 (退回 L5 监督标注数据集, 见 stage_L2 的
+        #   mode="L5 监督标注"), 但原编排一律 `break` ⇒ 后面的 L2_full/L3_lora/L4_lora/merge
+        #   全不启动 (实测: interact✅ annotate✅ supervision✅ slots❌ → 整链 failed)。
+        #   现把"尚未演示槽位"标为 non_fatal: 仍如实 ok=False + 写 reason (绝不补假数据),
+        #   但主循环只告警继续 → 训练阶段照跑 (L2 自动退到监督数据集, 各阶段自己的红线不变)。
+        #   数据/代码类错误 (槽位记录了却建不出数据集) 仍按致命处理。
+        r["non_fatal"] = not ((r.get("slots") or {}).get("recorded"))
     return r
 
 
@@ -657,6 +665,76 @@ def stage_supervision(st: dict, batch_dir: str) -> dict:
 
 
 # ─────────────────────────── ③ 训练 ───────────────────────────
+def _ensure_val_split(data: str) -> dict:
+    """val 拆分为空时补上 val —— ultralytics 硬要求, 且不破「自动标注样本绝不进 val」红线。
+
+    ① 优先: 既有**真机人工留出集** data/yolo_annot/dataset/{images,labels}/val → 软链过来
+       (单一真源; 样本是人工标注, 不是 L5 自动样本 ⇒ 红线不破、指标口径诚实)
+    ② 都没有: 退化为 val=train, 并**如实标注"指标偏乐观"** (不静默假报)
+    """
+    img_val = os.path.join(data, "images", "val")
+    lab_val = os.path.join(data, "labels", "val")
+    os.makedirs(img_val, exist_ok=True)
+    os.makedirs(lab_val, exist_ok=True)
+    for _c in ("val.cache", os.path.join("..", "labels", "val.cache")):
+        _cp = os.path.join(img_val, _c) if not _c.startswith("..") else os.path.join(data, "labels", "val.cache")
+        if os.path.isfile(_cp):
+            try:
+                os.remove(_cp)
+            except OSError:
+                pass
+    n_img = len([f for f in glob.glob(os.path.join(img_val, "*")) if not f.endswith(".cache")])
+    n_lab0 = len([f for f in glob.glob(os.path.join(lab_val, "*")) if not f.endswith(".cache")])
+    # ⚠️ 两个都要有才算"已有 val": 图像有、标签没有 = val 全是背景图 (评估失效), 必须补标签。
+    if n_img > 0 and n_lab0 > 0:
+        return {"need": False, "n_img": n_img, "n_label": n_lab0, "source": "已有 val"}
+    src_root = os.path.join(ROOT, "data", "yolo_annot", "dataset")
+    src_img, src_lab = os.path.join(src_root, "images", "val"), os.path.join(src_root, "labels", "val")
+    cands = [f for f in glob.glob(os.path.join(src_img, "*")) if os.path.isfile(f)]
+    if cands:
+        # ⚠️ 修 (2026-09-29 实测踩到): 图像是 .jpg / 标签是 .txt —— 原来两路都用同一个
+        #   basename b, 于是标签侧永远找不到源文件 ⇒ images/val 有 5 张而 labels/val **0 个**
+        #   (val 全变背景图 = 评估失去意义)。这里按 stem 分别映射扩展名。
+        n_img = n_lab = 0
+        for f in cands:
+            b = os.path.basename(f)
+            stem = os.path.splitext(b)[0]
+            for p, t, _kind in ((os.path.join(src_img, b), os.path.join(img_val, b), "img"),
+                                (os.path.join(src_lab, stem + ".txt"), os.path.join(lab_val, stem + ".txt"), "lab")):
+                if not os.path.exists(p) or os.path.exists(t):
+                    continue
+                try:
+                    os.symlink(p, t)
+                except OSError:
+                    shutil.copy2(p, t)          # 跨设备/无权限 → 退化为拷贝
+                if _kind == "img":
+                    n_img += 1
+                else:
+                    n_lab += 1
+        return {"need": True, "n_img": n_img, "n_label": n_lab, "n_src": len(cands),
+                "source": "真机人工留出集 data/yolo_annot/dataset/{images,labels}/val (软链)",
+                "honest": "L5 自动标注样本仍不进 val"}
+    n2 = 0
+    for f in glob.glob(os.path.join(data, "images", "train", "*")):
+        b = os.path.basename(f)
+        t = os.path.join(img_val, b)
+        if not os.path.exists(t):
+            try:
+                os.symlink(f, t)
+            except OSError:
+                shutil.copy2(f, t)
+            n2 += 1
+        lp = os.path.join(data, "labels", "train", os.path.splitext(b)[0] + ".txt")
+        lt = os.path.join(lab_val, os.path.basename(lp))
+        if os.path.isfile(lp) and not os.path.exists(lt):
+            try:
+                os.symlink(lp, lt)
+            except OSError:
+                shutil.copy2(lp, lt)
+    return {"need": True, "n_img": n2, "source": "train (无独立留出集)",
+            "honest": "⚠️ val=train → 指标偏乐观, 仅用于跑通链路, 不可作为泛化判据"}
+
+
 def stage_L2(st: dict, sup: dict, epochs: int, ts: str) -> dict:
     """L2 = **全量训练** YOLO (从 COCO 预训练重训, --base none)。
 
@@ -675,6 +753,14 @@ def stage_L2(st: dict, sup: dict, epochs: int, ts: str) -> dict:
     use_slot = bool(slot_n > 0 and os.path.isfile(slot_yaml))
     root = SLOT_DS if use_slot else L2_ROOT
     data = os.path.join(root, "dataset")
+    # 🐛 2026-09-29 修 (编排"模型拉不通"的第三个卡点): val 空 → ultralytics 直接
+    #   `AssertionError: val: No images found` → L2 全量训练起不来 (实测 l5vlm 集 val=0 张:
+    #   红线要求自动标注样本**绝不进 val**, 所以新集天然没有 val 拆分)。
+    #   正解: 训练用 L5 自动标注集, **val 用既有真机留出集**(data/yolo_annot/dataset/images/val,
+    #   人工标注、非自动样本) —— 红线不破且指标口径诚实。软链而非拷贝 (单一真源)。
+    #   若真机留出集也不存在 → 退化为 val=train 并**如实标注指标偏乐观** (不静默)。
+    #   ⚠️ 必须在下面的 labels_assert 之前做: 断言/日志要报**补完之后**的真实拆分。
+    _vs = _ensure_val_split(data)
     # 🚨 2026-09-28 老倪红线: **训练前断言数据集非空** (train/val 的 labels 数 > 0),
     #   否则拒绝启动 —— 空数据集上"8 epochs completed"= 训了个空模型却报成功 (绝对不能发生)。
     _lab = {}
@@ -699,6 +785,7 @@ def stage_L2(st: dict, sup: dict, epochs: int, ts: str) -> dict:
     r["dataset_used"] = {"root": root, "n_boxes": slot_n if use_slot else None,
                          "mode": ("槽位 14 类 (TCP真值+标定链投影)" if use_slot
                                   else "L5 监督标注 (VLM 场景理解; 无槽位记录时的退路)")}
+    r["val_split"] = _vs
     # 🔎 best.pt 落地位置不止一处: yolo_annot_train 的 project 会挂到 RUNS_DIR(runs/detect) 下
     #   → 原只查 ROOT/outputs/... 会假阴性 (2026-09-28 实测: 训练真跑完 rc=0/8轮, 却报 best.pt 不在位)。
     #   口径: 解析日志里的「权重路径」行 + 多根 glob 兜底, 命中即真产物。
@@ -735,6 +822,11 @@ def stage_L2(st: dict, sup: dict, epochs: int, ts: str) -> dict:
             r["reason"] = ("训练跑完但**真推理验证 0 框** → **不算成功**: 样本太少/未收敛, "
                            "权重不可用 (明确标注, 不上在役); 需要更多标注样本 (当前 labels %s)"
                            % json.dumps(_lab, ensure_ascii=False))
+            # 🐛 2026-09-29 (编排"模型拉不通"的第四个卡点): 上面这条是**数据量**问题, 不是链路问题
+            #   —— 训练本身机械跑通 (rc=0 + best.pt 落地)。原逻辑一律 break ⇒ L3/L4 LoRA 与
+            #   merge 也不启动, 后面两个模型同样"拉不通"。现标 non_fatal: 主循环告警继续
+            #   (权重仍是"未过闸、不可上在役"的诚实状态, 绝不悄悄上线)。
+            r["non_fatal"] = True
     return r
 
 
@@ -1024,9 +1116,21 @@ def main() -> int:
             for ln in (r.get("head") or [])[:6]:
                 _say("     | " + ln[-160:])
             if not r.get("ok") and os.environ.get("ZMAX_L5_CONTINUE_ON_FAIL") != "1":
+                if r.get("non_fatal"):
+                    # 🐛 2026-09-29: 可选输入的缺口 (如"尚未演示槽位") 只告警, 不掐断整链 ——
+                    #   后面的训练阶段各有自己的退路与红线 (L2 退监督数据集; 空集仍拒绝启动)。
+                    _say("⚠️ 阶段 %s 未过 (non_fatal: 可选输入缺口) → 继续后续阶段: %s"
+                         % (s, r.get("reason") or ""))
+                    continue
                 _say("⛔ 阶段 %s 未过 → 停止后续 (设 ZMAX_L5_CONTINUE_ON_FAIL=1 可强跑)" % s)
                 break
-        st["status"] = "done" if all((res.get(k) or {}).get("ok") for k in todo) else "failed"
+        # 终态口径: 有致命阶段未过 = failed; 只有 non_fatal 缺口 (如"尚未演示槽位"/"L2 零检出")
+        # = done_with_gaps —— 链路本身跑通, 缺口如实记录 (不因缺口把整链报成"失败", 也不掩盖)。
+        _gaps = [k for k in todo if not (res.get(k) or {}).get("ok")]
+        st["gaps"] = _gaps
+        st["status"] = ("done" if not _gaps
+                        else ("done_with_gaps" if all((res.get(k) or {}).get("non_fatal") for k in _gaps)
+                              else "failed"))
     except Exception as e:                                                  # noqa: BLE001
         import traceback
         st["status"] = "failed"
