@@ -27,7 +27,8 @@ from PyQt5.QtWidgets import (QAbstractItemView, QCheckBox, QFrame, QHBoxLayout, 
 
 # ── 调色板(与控制台主色一致) ──
 C_BG, C_BG2, C_CARD, C_BORDER = "#0d1117", "#161b22", "#1c2333", "#30363d"
-C_WHITE, C_GRAY, C_DIM, C_BLUE = "#ffffff", "#8b949e", "#6e7681", "#58a6ff"  # C_DIM 提亮: 原 #484f58 对比度仅 2.3:1(质检: 几乎看不见)
+C_WHITE, C_GRAY, C_DIM, C_BLUE = "#ffffff", "#8b949e", "#6e7681", "#58a6ff"
+C_HEAD = "#b6c2cf"          # 表头文字: 原 #8b949e 在表头条上仅 5.1:1(质检最弱文本) → 提亮  # C_DIM 提亮: 原 #484f58 对比度仅 2.3:1(质检: 几乎看不见)
 C_GREEN, C_YELLOW, C_RED, C_PURPLE = "#3fb950", "#d29922", "#f85149", "#bc8cff"
 C_BAR = "#2f81f7"     # CANoe 的 Bar 是实心蓝 #0072C5, 深色主题里提亮
 C_SEL = "#243a52"     # CANoe 选中行浅蓝 #AFD7F1 的深色对应
@@ -106,7 +107,14 @@ class BarDelegate(QStyledItemDelegate):
         if ratio <= 0:
             return
         r = opt.rect
-        w = max(2, int((r.width() - 8) * min(1.0, ratio)))
+        w = max(2, int((r.width() - 26) * min(1.0, ratio)))
+        p.save()
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(C_CARD))                                    # 底轨(质检: 无轨道无法判满格)
+        p.drawRoundedRect(QRectF(r.x() + 6, r.y() + r.height() * 0.28,
+                                 max(6, r.width() - 26), r.height() * 0.44), 2, 2)
+        p.restore()
         p.save()
         p.setRenderHint(QPainter.Antialiasing, True)
         p.setPen(Qt.NoPen)
@@ -242,6 +250,11 @@ class BusView(QWidget):
         for w in (self.lb_state, self.lb_mode, self.lb_fresh, self.lb_msgs, self.lb_lamps, self.lb_clock):
             lay.addWidget(w)
         lay.addStretch()
+        self.lb_mid = QLabel("—")
+        self.lb_mid.setFont(QFont(MONO, 9))
+        self.lb_mid.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none;")
+        lay.addWidget(self.lb_mid)
+        lay.addStretch()
         lay.addWidget(self._sm_btn("🔄 刷新", "立刻重读 live.json / trace.jsonl",
                                    lambda: self.reload(force_tree=True)))
         self.btn_classic = self._sm_btn("🗂 经典视图", "切回原来的 12 个 Tab 视图(旧入口不丢)",
@@ -260,12 +273,13 @@ class BusView(QWidget):
         head.addWidget(self._sm_btn("展开/收起", "展开或收起 报文/信号/节点 三组", self._toggle_all))
         self.tree = QTreeWidget()
         self.tree.setColumnCount(5)
-        self.tree.setHeaderLabels(["Name", "Value", "Unit", "Last Value Time [s]", "Bar"])
+        self.tree.setHeaderLabels(["Name", "Value", "Unit", "Last Value Time [s]",
+                                   "Bar  实测/设计"])
         self.tree.setStyleSheet(
             f"QTreeWidget {{ background:{C_BG}; color:{C_WHITE}; border:none; font-family:{UI}; font-size:10pt; }}"
-            f"QTreeWidget::item {{ padding:3px 2px; }}"
+            f"QTreeWidget::item {{ padding:6px 2px; }}"                        # 行高与 Trace/闭环表齐(质检: 46.5px vs 60px)
             f"QTreeWidget::item:selected {{ background:{C_SEL}; }}"
-            f"QHeaderView::section {{ background:{C_CARD}; color:{C_GRAY}; border:none; padding:4px; }}")
+            f"QHeaderView::section {{ background:{C_CARD}; color:{C_HEAD}; border:none; padding:4px; }}")
         self.tree.setUniformRowHeights(True)
         self.tree.header().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)   # 列头左对齐=与内容同列
         self.tree.setItemDelegateForColumn(4, BarDelegate(self.tree))
@@ -320,7 +334,7 @@ class BusView(QWidget):
             f" font-family:{MONO}; font-size:10pt; }}"
             f"QTableWidget::item {{ padding:2px 6px; }}"
             f"QTableWidget::item:selected {{ background:{C_SEL}; color:{C_WHITE}; }}"
-            f"QHeaderView::section {{ background:{C_CARD}; color:{C_GRAY}; border:none; padding:4px;"
+            f"QHeaderView::section {{ background:{C_CARD}; color:{C_HEAD}; border:none; padding:4px;"
             f" font-family:{UI}; }}")
         self.tb.verticalHeader().setVisible(False)
         self.tb.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -374,7 +388,7 @@ class BusView(QWidget):
                 f" font-family:{UI}; font-size:9pt; }}"
                 f"QTableWidget::item {{ padding:2px 6px; }}"
                 f"QTableWidget::item:selected {{ background:{C_SEL}; }}"
-                f"QHeaderView::section {{ background:{C_CARD}; color:{C_GRAY}; border:none; padding:4px; }}")
+                f"QHeaderView::section {{ background:{C_CARD}; color:{C_HEAD}; border:none; padding:4px; }}")
             t.verticalHeader().setVisible(False)
             t.setEditTriggers(QAbstractItemView.NoEditTriggers)
             t.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -385,6 +399,7 @@ class BusView(QWidget):
         for i in (0, 1, 3):
             lh.setSectionResizeMode(i, QHeaderView.ResizeToContents)
         lh.setSectionResizeMode(2, QHeaderView.Interactive)
+        self.tb_loop.setColumnWidth(2, 330)        # 质检: 质量门 190px 全截断 → 给足(仍可拖)
         lh.setSectionResizeMode(4, QHeaderView.Stretch)
         ah = self.tb_alert.horizontalHeader()
         ah.setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -480,6 +495,15 @@ class BusView(QWidget):
                     self._busdb = _j(BUSDB, {})
                 self._fill_tree()
             self._update_values()
+            if self._sel_obj is None and self.tree.topLevelItemCount():
+                _root = self.tree.topLevelItem(0)
+                if _root is not None and _root.childCount():
+                    _it = _root.child(0)
+                    self.tree.setCurrentItem(_it)          # 默认选中第一条报文(详情面板立刻有内容)
+                    _d = _it.data(0, Qt.UserRole)
+                    if _d:
+                        self._sel_kind, self._sel_obj = _d
+                        self._it_default = _it
             self._fill_measure_bar()
             if not self.btn_pause.isChecked():
                 self._fill_trace()
@@ -516,8 +540,10 @@ class BusView(QWidget):
         out = {}
         for rec in self._trace_rows[-600:]:
             t = rec.get("topic")
-            if t:
-                out[t] = rec.get("t")
+            if not t:
+                continue
+            out[t] = rec.get("t")                       # 全路径 zmax/xxx
+            out[str(t).split("/")[-1]] = rec.get("t")   # 🐛 短名 xxx —— live.json 的键是短名(质检: 整列 '—')
         return out
 
     def _fill_tree(self):
@@ -594,6 +620,8 @@ class BusView(QWidget):
         root_n.setExpanded(False)
 
     def _update_values(self):
+        if not self._trace_rows:                   # 🐛 质检: Last Value Time 整列 '—' —— 首刷顺序问题
+            self._trace_rows = self._read_trace()  #   (值更新早于 trace 读取) ⇒ 这里补读一次
         """Data 表: Value=实测 Hz · Unit=Hz · Last Value Time=该话题最后一帧 · Bar=实测/设计(CANoe 实心蓝条)"""
         topics = self._topics()
         last = self._last_frame()
@@ -655,6 +683,17 @@ class BusView(QWidget):
             el = int(time.time() - self._t0)
             self.lb_clock.setText("%d:%02d:%02d" % (el // 3600, (el % 3600) // 60, el % 60))
         self.lb_stamp.setText("拍照 %s" % _hhmmss(live.get("ts")))
+        try:                                    # 中段读数(质检: 顶栏 733px 死区)
+            self.lb_mid.setText("Trace %d 行 · 过滤 %s · Δt %s · 帧龄 %s · 闭环 %s"
+                                % (self.tb.rowCount(), ("'%s'" % self._filter) if self._filter else "关",
+                                   "开" if self._dt_mode else "关",
+                                   _num((live.get("topics") or {}).get(
+                                       next(iter(self._topics()), ""), {}).get("age_s"), 2, "s"),
+                                   "%s/%s" % (sum(1 for s in ((self._loop or {}).get("stages") or [])
+                                                  if s.get("status") in ("pass", "ok")),
+                                              len(((self._loop or {}).get("stages") or [])))))
+        except Exception:                                                       # noqa: BLE001
+            pass
 
     def _fill_trace(self):
         rows = self._read_trace()
@@ -702,8 +741,11 @@ class BusView(QWidget):
                 str(live_t.get("verdict", "—")),
                 _num(score * 100 if isinstance(score, (int, float)) and score >= 0 else -1, 1)
                 if score is not None else "—",
-                str(live_t.get("producer") or live_t.get("source") or "—")[:24],
-                (live_t.get("publisher") or live_t.get("node") or "—") if live_t else "—",
+                str(live_t.get("producer") or live_t.get("source")
+                    or ((self._busdb.get("messages") or {}).get(key) or {}).get("producer")
+                    or "—")[:24],
+                str(((self._busdb.get("messages") or {}).get(key) or {}).get("sender")
+                    or live_t.get("publisher") or key or "—")[:22],
                 str(rec.get("n", "—")),
                 str(live_t.get("qos") or "—"),
             ]
