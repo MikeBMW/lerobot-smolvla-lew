@@ -113,6 +113,9 @@ def main():
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--clear", action="store_true")
     ap.add_argument("--seconds", type=float, default=5400)
+    ap.add_argument("--stale-s", type=float, default=120.0,
+                    help="轨迹源(容器内 /tmp/live_trace.json)超过这么多秒没更新 ⇒ 判为停摆, "
+                         "把画面上的轨迹撤掉(不然会一直画着一条冻结的旧轨迹, 看着像实时的)")
     a = ap.parse_args()
 
     if a.clear:
@@ -138,6 +141,22 @@ def main():
             if st["plan_hidden"]:                       # 自愈: 开关开着但航路还没恢复 ⇒ 恢复
                 TD.restore_origins(["plan"])
                 TD.set_state(plan_hidden=False)
+            # 🔴 停摆守卫: 录制器死了但主机上留着旧副本时, fetch 照样"成功" ⇒ 画面会一直重画那条
+            #    冻结的旧轨迹(老倪现场: 链停了 8 小时, 页面上还写着"已录 26479 点")。这里按**文件龄**判停摆。
+            _age = None
+            try:
+                _age = time.time() - os.path.getmtime(LOCAL)
+            except Exception:                                                      # noqa: BLE001
+                pass
+            if _age is not None and _age > a.stale_s:
+                publish([], clear=True)
+                if int(time.time()) % 30 < 3:                 # 别刷屏
+                    print("[%s] ⚠️ 轨迹源已停 %.1f 分钟 ⇒ 已撤掉画面上的轨迹(等录制器回来)" % (
+                        time.strftime("%H:%M:%S"), _age / 60.0), flush=True)
+                if a.once or not a.loop or time.time() - t0 > a.seconds:
+                    break
+                time.sleep(a.every)
+                continue
             d = fetch()
             if d and d.get("pts"):
                 base = int(st["baseline_n"] or 0)

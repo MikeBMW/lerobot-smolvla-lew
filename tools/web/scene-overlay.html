@@ -724,12 +724,32 @@ function tjPaint(st){
   var on = st.state && st.state.show;
   chip.textContent = '轨迹: ' + (on ? '开(人工开启)' : '关(默认)')
     + (st.recorded_pts != null ? ' · 已录 ' + st.recorded_pts + ' 点' : '');
+  // 轨迹链的心跳: 发布器每 1.5s 重写 reports/moveit/live_trace.json ⇒ 它老了就是整条链停了。
+  // 现场教训: 链停了 8 小时, 页面只显示"已录 26479 点", 老倪以为数据是新的, 点删除当然没反应。
+  if (st.trace_age_s != null && st.trace_age_s > 60) {
+    chip.textContent += ' · ⚠️ 轨迹链已停 ' + Math.round(st.trace_age_s / 60) + ' 分钟';
+    chip.style.color = '#D29922';
+  } else { chip.style.color = ''; }
   chip.className = 'chip ' + (on ? 'ok' : '');
   $('tjShow').className = on ? 'on' : '';
 }
+function tjAvail(ok){
+  ['tjShow','tjHide','tjClear','tjAll'].forEach(function(id){
+    var b = $(id); if (!b) return;
+    b.disabled = !ok; b.style.opacity = ok ? '' : '.45';
+    b.title = ok ? '' : ('轨迹台(:' + AR_PORT + ') 没在跑 —— 先 sudo systemctl start zmax-traj-ar');
+  });
+}
 async function tjState(){
-  try { tjPaint(await (await fetch(arBase() + '/api/traj/state?t=' + Date.now(), {cache:'no-store'})).json()); }
-  catch (e) { $('tjState').textContent = '轨迹台 :' + AR_PORT + ' 连不上'; }
+  try {
+    tjPaint(await (await fetch(arBase() + '/api/traj/state?t=' + Date.now(), {cache:'no-store'})).json());
+    tjAvail(true);
+  } catch (e) {
+    var c = $('tjState');
+    c.textContent = '⚠️ 轨迹台(:' + AR_PORT + ') 未运行 —— 轨迹按钮点了没反应';
+    c.style.color = '#ff7b72';
+    tjAvail(false);
+  }
 }
 async function trajShow(show){
   try {

@@ -1,0 +1,22 @@
+[Unit]
+Description=Z-MAX 轨迹发布器 (容器实时轨迹 → 叠加规格 cameras.arm origin=trace, 受 traj 显示开关控制)
+Documentation=file:/home/ubuntu/zmax/tools/live_trace_publisher.py
+After=network-online.target docker.service zmax-traj-rec.service zmax-traj-ar.service
+Wants=zmax-traj-rec.service
+# 常驻(--seconds 86400) + 崩溃自起; 它每 1.5s 重写 reports/moveit/live_trace.json, 该文件 mtime 就是
+# 整条轨迹链的心跳(页面上的 "⚠️ 轨迹链已停 N 分钟" 就是读它)。
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+Environment=ZMAX_REPO=/home/ubuntu/zmax
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/live_trace_publisher.py --loop --every 1.5 --max-pts 1500 --seconds 86400
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/zmax-traj-pub.log
+StandardError=append:/var/log/zmax-traj-pub.log
+
+[Install]
+WantedBy=multi-user.target

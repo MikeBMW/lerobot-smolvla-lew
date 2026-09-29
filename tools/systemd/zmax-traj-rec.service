@@ -1,0 +1,22 @@
+[Unit]
+Description=Z-MAX 真机轨迹录制器 (容器内 50Hz 关节角+TCP → /tmp/live_trace.json)
+Documentation=file:/home/ubuntu/zmax/tools/live_motion_recorder.py
+After=network-online.target docker.service ss-remote-tap.service
+Requires=docker.service
+Wants=ss-remote-tap.service
+# ⚠️ 原先这条链(录制器 + 发布器)没有任何单元托管, 是人工起一次、到点(--seconds)自己退就没人管了:
+#    轨迹在画面上"冻"在最后一次, 页面还显示"已录 N 点", 点删除也不动 —— 现场就是这么被坑的。
+[Service]
+Type=simple
+User=root
+ExecStart=/bin/bash /home/ubuntu/zmax/tools/traj_rec_up.sh ss-remote-tap 12
+Restart=always
+RestartSec=5
+# ⚠️ 实测: systemctl stop 只会杀掉宿主机上的 docker exec **客户端**, 容器里的 python 录制器照样活着
+#    (它挂在 containerd-shim 下) ⇒ 不显式清掉就会出现两个录制器同时往同一文件追加。
+ExecStop=-/usr/bin/docker exec ss-remote-tap pkill -f live_motion_recorder.py
+StandardOutput=append:/var/log/zmax-traj-rec.log
+StandardError=append:/var/log/zmax-traj-rec.log
+
+[Install]
+WantedBy=multi-user.target

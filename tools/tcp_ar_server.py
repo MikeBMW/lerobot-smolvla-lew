@@ -235,12 +235,17 @@ class H(BaseHTTPRequestHandler):
     def _traj_state(self):
         st = TD.get_state()
         rec = 0
+        age = None
         try:
-            rec = int(json.load(open(os.path.join(REPO, "reports", "moveit", "live_trace.json"))).get("n") or 0)
+            _p = os.path.join(REPO, "reports", "moveit", "live_trace.json")
+            rec = int(json.load(open(_p)).get("n") or 0)
+            # 🆕 轨迹链的"心跳": 发布器每 1.5s 重写这个文件 ⇒ 它的 mtime 就是整条链(录制器→发布器)的
+            #    活证。8 小时前停掉的链会让"已录 N 点"看着像真的(老倪现场就是这么被误导的), 页面必须能看出来。
+            age = round(time.time() - os.path.getmtime(_p), 1)
         except Exception:                                                          # noqa: BLE001
             pass
         return {"ok": True, "state": st, "in_spec": TD.paths_in_spec(),
-                "recorded_pts": rec, "plan_cached": TD.paths_cached(),
+                "recorded_pts": rec, "trace_age_s": age, "plan_cached": TD.paths_cached(),
                 "hint": "show=false 是默认(人工开启); clear 只影响显示, 录制历史保留"}
 
     def _stable(self, seconds: float = 1.2):
@@ -300,16 +305,45 @@ class H(BaseHTTPRequestHandler):
                 pass
             TD.set_state(baseline_n=rec)
             pub = self._publish_once(True) if TD.get_state()["show"] else None
-            self._json({"ok": True, "baseline_n": rec, "publish": pub,
-                        "msg": "🧹 已清除画面上走过的轨迹(清除线=%d); 之后新走的会重新画. 录制历史未动" % rec})
+            # 🔴 2026-09-29 现场「删除轨迹删不掉」的真根因: 这条路**只改了清除线**, 真正把折线从叠加规格里
+            #    挪走的是发布器(live_trace_publisher); 而发布器要读录制器(容器内)落的 /tmp/live_trace.json,
+            #    录制器一停它只打一行"还没有轨迹数据"就退出 ⇒ 画面上那条历史折线永远在, 按钮点了没反应。
+            #    兜底: 直接改叠加规格(挪进可恢复缓存), 不依赖录制器/发布器任何一环。
+            strip = None
+            try:
+                _tn = int(((TD.paths_in_spec() or {}).get("trace") or {}).get("n_pts") or 0)
+                # 🔴 只在"发布器这一轮没拿到数据"时兜底(录制器死了) —— 不能无条件 strip:
+                #    链健康时发布器会把清除线之后**新走过**的点重画上去, 那时候删它反而是错的。
+                # 只要画面上还有 trace 折线, 就把它挪走 —— 老倪要的是"点了就消失", 不能再去猜
+                # 发布器/录制器这一轮有没有干活(实测: 录制器死了但主机上还留着旧副本时, 发布器照样
+                # 会把那条**冻结的旧轨迹**重发上去 ⇒ 只改清除线 = 画面纹丝不动)。新走过的点
+                # 由发布器下一轮(1.5s)重新画上去, 不会丢。
+                if TD.get_state()["show"] and _tn > 0:
+                    strip = TD.strip_origins(["trace"])
+            except Exception as e:                                                # noqa: BLE001
+                strip = {"err": str(e)[:120]}
+            _m = "🧹 已清除画面上走过的轨迹(清除线=%d); 之后新走的会重新画. 录制历史未动" % rec
+            if isinstance(strip, dict) and strip.get("moved"):
+                _m += " · 兜底直连: 已从叠加层挪走 %d 条折线(可恢复)" % strip["moved"]
+            self._json({"ok": True, "baseline_n": rec, "publish": pub, "strip": strip, "msg": _m})
         elif p == "/api/traj/baseline":                 # 直接设"清除线": 0 = 画全部历史
             n = body.get("n")
             n = 0 if n is None else max(0, int(n))
             TD.set_state(baseline_n=n)
             pub = self._publish_once(True) if TD.get_state()["show"] else None
-            self._json({"ok": True, "baseline_n": n, "publish": pub,
-                        "msg": ("📜 清除线已归 0 ⇒ 画**全部已走过**的轨迹" if n == 0
-                                else "清除线=%d" % n)})
+            # 同上的兜底(反向): 录制器不在时, "全部历史"靠缓存里的折线放回去, 不能只依赖发布器
+            rest = None
+            try:
+                _tn = int(((TD.paths_in_spec() or {}).get("trace") or {}).get("n_pts") or 0)
+                _cn = int(((TD.paths_cached() or {}).get("trace") or {}).get("n_pts") or 0)
+                if n == 0 and _tn == 0 and _cn > 0:
+                    rest = TD.restore_origins(["trace"])
+            except Exception as e:                                                # noqa: BLE001
+                rest = {"err": str(e)[:120]}
+            _m = ("📜 清除线已归 0 ⇒ 画**全部已走过**的轨迹" if n == 0 else "清除线=%d" % n)
+            if isinstance(rest, dict) and rest.get("restored"):
+                _m += " · 兜底直连: 已放回 %d 条折线" % rest["restored"]
+            self._json({"ok": True, "baseline_n": n, "publish": pub, "restore": rest, "msg": _m})
         else:
             self._json({"ok": False, "err": "no route %s" % p}, 404)
 
