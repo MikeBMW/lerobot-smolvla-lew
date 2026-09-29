@@ -1,0 +1,79 @@
+{
+ "kind": "L5 场景理解·三路相机(同源 gen_overlay_from_vlm 口径)",
+ "created": "2026-09-29 09:02:47",
+ "model": "deepseek-v4-flash",
+ "tool": "tools/l5_understand_three_cams.py",
+ "rules": [
+  "无坐标条目一律不写盘",
+  "光模块禁止 2D 框(只用 3D 框表达)",
+  "每路留取帧文件+md5+时刻"
+ ],
+ "cams": {
+  "arm": {
+   "cam": "arm",
+   "ok": true,
+   "frame": "/home/ubuntu/zmax_rel/reports/l5/three_cam_frames/arm_20260929_085929.jpg",
+   "md5": "0f8ab556d2b6",
+   "w": 640,
+   "h": 480,
+   "frame_bytes": 29052,
+   "elements": [
+    {
+     "origin": "vlm",
+     "label": "标定板",
+     "xyxy": [
+      270.0,
+      40.0,
+      370.0,
+      220.0
+     ],
+     "conf": 0.92,
+     "why": "金属圆靶标",
+     "cam": "arm",
+     "frame_md5": "0f8ab556d2b6"
+    }
+   ],
+   "rejected": [],
+   "filtered_2d_module": [],
+   "n_objs": 1,
+   "model": "deepseek-flash",
+   "latency_s": 183.6,
+   "usage": {
+    "prompt_tokens": 818,
+    "completion_tokens": 6918,
+    "total_tokens": 7736,
+    "prompt_tokens_details": {
+     "cached_tokens": 384
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 6816
+    },
+    "prompt_cache_hit_tokens": 384,
+    "prompt_cache_miss_tokens": 434
+   },
+   "scene": "机械臂末端相机对准白色基座上的金属标定板",
+   "topology": "无槽位，标定板独立安装于白色基座，长边竖直",
+   "elapsed_s": 183.6
+  },
+  "local": {
+   "cam": "local",
+   "ok": false,
+   "err": "大模型 content 为空(推理额度吃满) · 196s",
+   "frame": "/home/ubuntu/zmax_rel/reports/l5/three_cam_frames/local_20260929_085929.jpg",
+   "md5": "2f4d88969875",
+   "w": 640,
+   "h": 480
+  },
+  "local2": {
+   "cam": "local2",
+   "ok": false,
+   "err": "大模型 content 为空(推理额度吃满) · 197s",
+   "frame": "/home/ubuntu/zmax_rel/reports/l5/three_cam_frames/local2_20260929_085929.jpg",
+   "md5": "607ac2dc6ed4",
+   "w": 1280,
+   "h": 720
+  }
+ },
+ "n_total_written": 1,
+ "merged_to_spec": false
+}

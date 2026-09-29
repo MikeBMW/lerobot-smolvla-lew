@@ -1,0 +1,31 @@
+{
+ "kind": "publish_overlay_after_restart",
+ "created": "2026-09-29 09:02:29",
+ "published": false,
+ "condition": {
+  "overlay_200": null,
+  "spec_plan_cleared": null,
+  "state": {
+   "mode": "meas+plan+trace+vlm",
+   "updated_at": "2026-09-29 09:02:29",
+   "n_boxes": 5,
+   "by_origin": {
+    "meas": 2,
+    "vlm": 1,
+    "det": 0,
+    "trace": 1,
+    "plan": 1
+   },
+   "n_plan": 1,
+   "n_vlm": 1,
+   "origins": [
+    "meas",
+    "plan",
+    "trace",
+    "vlm"
+   ]
+  },
+  "waited_s": 0.0,
+  "why": "等待 0s 内没等到(overlay 未恢复 200 或 spec 里仍有 plan 层)"
+ }
+}
