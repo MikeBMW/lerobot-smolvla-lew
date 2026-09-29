@@ -191,11 +191,14 @@ def main():
     ap.add_argument("--finger", default=os.path.expanduser("~/aoi_v4/cam_finger_10082_work_v6.py"))
     ap.add_argument("--surface", default=os.path.expanduser("~/aoi_v4/cam_surface_10083_work_v6.py"))
     ap.add_argument("--pubdir", default="/home/ubuntu/aoi_v4/deliver/v6")
+    ap.add_argument("--only", default="both", choices=["both", "10082", "10083"],
+                    help="哪一路当验收判据(另一路仅报状态, 不参与成败与回滚)")
     ap.add_argument("--no-restart", action="store_true", help="只推文件+核对, 不动服务")
     ap.add_argument("--dry", action="store_true", help="只推文件+核对, 不重启不验收")
     a = ap.parse_args()
 
     pair = [(10082, a.finger, FILENAME_10082), (10083, a.surface, FILENAME_10083)]
+    pair_ports = [p for p, _s, _n in pair]
     os.makedirs(a.pubdir, exist_ok=True)
     report = {"t": time.strftime("%Y-%m-%d %H:%M:%S"), "files": [], "verify": {}}
 
@@ -250,8 +253,9 @@ def main():
     # ⚠️ 2026-09-30 踩坑: 只该用**本轮真换了文件**的那一路当判据。原来两路都当判据 ⇒
     #    另一台相机自己抽风(10083 grab 出 46 字节)会把本轮的修复误判成失败 ⇒ 触发回滚,
     #    而回滚会把**本轮新文件**换成本轮之前的内容(把刚修好的版本滚掉)。没换文件的那路只报状态。
-    changed = {port for (port, _src, nm) in pair
-               if any(f["name"] == nm and not f["same"] for f in report["files"])}
+    # 判据只看**命令行显式指定的那一路**(--only): ②的哈希是"传输完整性", 下载完必然一致,
+    # 拿它推断"文件有没有变"永远为空(2026-09-30 踩过: 于是 10082 的失败被降级成"仅报状态")。
+    changed = {p for p in pair_ports if a.only in ("both", str(p))}
     ok_all = True
     for port, _src, name in pair:
         ok, detail = verify(port)
