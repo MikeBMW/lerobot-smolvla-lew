@@ -97,6 +97,20 @@ if ($ag.Count -eq 0) {
     $acts += ('agent revive: via watchdog -> ok' + $err)
   }
 }
+# rev6 (2026-09-30): 反向通道自愈 —— agent 循环是"一问一答 + 串行 + **没有超时**"的,
+#   一条会挂住的命令就能把通道彻底堵死(实测: 一条清理临时文件的命令挂住 ⇒ 通道 13 分钟零回执,
+#   而 watchdog/keepalive 只看"agent 进程在不在", 所以永远不会自愈)。
+#   这里只杀"命令行含 zmax_cmd.ps1 **且已跑超过 10 分钟**"的子进程: 正常命令都是秒级, 不会误伤。
+$stuck = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -EA SilentlyContinue |
+           Where-Object { $_.CommandLine -and $_.CommandLine.Contains('zmax_cmd.ps1') })
+foreach ($s in $stuck) {
+  $age = 0
+  try { $age = ((Get-Date) - $s.CreationDate).TotalMinutes } catch { $age = 0 }
+  if ($age -gt 10) {
+    Stop-Process -Id $s.ProcessId -Force -EA SilentlyContinue
+    $acts += ('agent child stuck ' + [int]$age + 'min -> killed pid ' + $s.ProcessId)
+  }
+}
 if ($acts.Count -gt 0) {
   Add-Content -Path $log -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + ' ' + ($acts -join ' | ')) -Encoding ASCII
 }
