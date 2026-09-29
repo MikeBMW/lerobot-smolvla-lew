@@ -3019,9 +3019,10 @@ class SimNodeItem(QGraphicsObject):
                 painter.drawText(QRectF(8, 0, _aw, h), Qt.AlignVCenter | Qt.AlignLeft,
                                  (_bg_lines or [name])[0])
             # 左上角小标: 可编辑提示
-            painter.setPen(QColor(255, 255, 255, 140))
-            painter.setFont(QFont("Arial", 8))
-            painter.drawText(QRectF(8, 4, 110, 12), Qt.AlignLeft | Qt.AlignTop,
+            # 🎨 2026-09-29: 8pt 太细/太暗 (VLM 目检也读出"辨识困难") → 统一 9pt + 提亮
+            painter.setPen(QColor(255, 255, 255, 210))
+            painter.setFont(_node_font(NODE_SUB_PT))
+            painter.drawText(QRectF(8, 4, 110, 14), Qt.AlignLeft | Qt.AlignTop,
                              "▤ 背景行")
             return
         # ⚙️ 2026-08-15 老倪: Z700 内部模块 (前馈PD 标定层) — 完全独立绘制, 不碰通用路径
