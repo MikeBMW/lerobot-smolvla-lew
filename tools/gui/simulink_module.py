@@ -8376,21 +8376,78 @@ class SimulinkModule(QWidget):
         try:
             w = getattr(self, "_ds_win", None)
             if w is None:
-                from PyQt5.QtWidgets import QDialog, QVBoxLayout
+                # 🔴 2026-09-29 老倪「最大化按钮不好用」→ 真根因: 原来是 QDialog(且 parent=主窗口),
+                #   mutter 把有 parent 的对话框当**附属窗(transient)** ⇒ 标题栏最大化钮灰着/点不动。
+                #   改成 **无 parent 的真顶层 QMainWindow** + 显式 Min/Max/Close 三个钮 ⇒ 最大化/还原/
+                #   最小化/双击标题栏全可用; app 级 QSS (app.setStyleSheet) 是应用级的, 深色主题不丢。
+                from PyQt5.QtCore import Qt
+                from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
                 from dds_canoe import build_view
-                w = QDialog(self.window())
+                w = QMainWindow(None)
+                w.setWindowFlags(Qt.Window | Qt.WindowMinimizeButtonHint
+                                 | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint)
                 w.setWindowTitle("🌐 Z-MAX 全局数据空间 · 独立窗口 (CANoe 范式)")
-                w.setModal(False)
-                w.setSizeGripEnabled(True)
-                lay = QVBoxLayout(w)
+                cw = QWidget()
+                lay = QVBoxLayout(cw)
                 lay.setContentsMargins(6, 6, 6, 6)
                 lay.setSpacing(0)
                 self._ds_view = build_view(None, standalone=True)
                 lay.addWidget(self._ds_view)
-                w.resize(1560, 1040)
+                w.setCentralWidget(cw)
+                _app = QApplication.instance()
+                if _app is not None:                    # 控制台退出时一起关, 不留孤儿窗
+                    _app.aboutToQuit.connect(w.close)
                 self._ds_win = w
-                self.log_signal.emit("🌐 数据空间独立窗口已创建 (非模态, 可自由拖动/缩放)")
+                self._ds_win_placed = False
+                self.log_signal.emit("🌐 数据空间独立窗口已创建 (真顶层窗: 最大化/还原/最小化可用)")
+            if not getattr(self, "_ds_win_placed", False):
+                # 首次摆位: 摆在控制台那块屏的右下角 (占屏 56%×60%) ⇒ 既看得见画布,
+                # 最大化时也一定落在**同一块屏**上 (双屏 3200×2000 + 3840×2160 混合, 不能乱飞)
+                try:
+                    from PyQt5.QtWidgets import QApplication
+                    _scr = None
+                    try:
+                        _scr = self.window().screen()
+                    except Exception:
+                        _scr = None
+                    if _scr is None:
+                        _scr = QApplication.primaryScreen()
+                    g = _scr.availableGeometry()
+                    _gw, _gh = int(g.width() * 0.56), int(g.height() * 0.60)
+                    w.resize(_gw, _gh)
+                    w.move(g.x() + g.width() - _gw - 40, g.y() + g.height() - _gh - 40)
+                    self._ds_win_placed = True
+                    self.log_signal.emit("🌐 数据空间窗口摆位: 屏%s 右下角 %dx%d @ (%d,%d)"
+                                         % (g.width(), _gw, _gh, w.x(), w.y()))
+                except Exception as _e:                                         # noqa: BLE001
+                    w.resize(1500, 1000)
+                    self.log_signal.emit("🌐 数据空间窗口摆位失败(用默认尺寸): %s" % str(_e)[:80])
             w.show()
+            # 🧭 首次显示后按"实测几何"夹回屏内 —— 本机 Qt 的 move()/resize() 与
+            #   screen().geometry() 在 fractional scaling 下不是同一坐标空间 (实测: 按 56% 算出的
+            #   2640x1200 会摆到 y+1200=2098 > 屏高 2000, 底部出屏), 所以统一在 show() 之后
+            #   用真实 frameGeometry 夹紧, 不靠推算。
+            from PyQt5.QtCore import QTimer
+
+            def _clamp_ds_win():
+                try:
+                    from PyQt5.QtWidgets import QApplication
+                    sc = QApplication.primaryScreen().availableGeometry()
+                    r = w.frameGeometry()
+                    _nx, _ny = r.x(), r.y()
+                    if r.right() > sc.right() - 24:
+                        _nx = sc.right() - r.width() - 24
+                    if r.bottom() > sc.bottom() - 24:
+                        _ny = sc.bottom() - r.height() - 24
+                    _nx = max(_nx, sc.x() + 8)
+                    _ny = max(_ny, sc.y() + 8)
+                    if (_nx, _ny) != (r.x(), r.y()):
+                        w.move(_nx, _ny)
+                        self.log_signal.emit("🌐 数据空间窗口出屏 → 已夹回 (%d,%d)" % (_nx, _ny))
+                except Exception:
+                    pass
+
+            QTimer.singleShot(350, _clamp_ds_win)
             w.raise_()
             w.activateWindow()
             self._log("🌐 数据空间独立窗口已打开 —— 可拖到屏幕另一侧, 与画布/3D 同屏看")
