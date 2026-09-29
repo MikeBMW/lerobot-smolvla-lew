@@ -6,13 +6,16 @@
 # 用法: bash tools/post_lora_merge.sh <训练产物目录名> [指针目录名] [r] [alpha]
 #   例: bash tools/post_lora_merge.sh intact_goal_optical_insert_v6lora_200 intact_l4_v6lora_200 8 16
 set -u
+export ZMAX_REPO="${ZMAX_REPO:-$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)}"
 SWM=/home/ubuntu/stable-wm-cache
 ART_DIR=$SWM/checkpoints/${1:?用法: post_lora_merge.sh <产物目录名> [指针名] [r] [alpha]}
 POLICY=${2:-intact_l4_${1}}
 R=${3:-8}
 ALPHA=${4:-16}
 IVENV=/home/ubuntu/INTACT-JEPA/.venv/bin/python
-REPO=/home/ubuntu/lerobot-smolvla-lew
+# 🔴 2026-09-30: 原来写死 /home/ubuntu/lerobot-smolvla-lew(改名前的路径, 里面没有这两个工具⇒退出码 3)
+#   工程根现在是 /home/ubuntu/zmax(main 真源) ⇒ 默认改为自动定位本脚本所在的仓库, 也可用 ZMAX_REPO 覆盖。
+REPO="${ZMAX_REPO:-$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)}"
 
 LATEST=$(ls -t $ART_DIR/weights_epoch_*.pt 2>/dev/null | head -1)
 [ -z "$LATEST" ] && { echo "❌ $ART_DIR 里没有 weights_epoch_*.pt"; exit 2; }
@@ -35,7 +38,7 @@ STABLEWM_HOME=$SWM LOCAL_DATASET_DIR=$SWM INTACT_DEVICE=cpu INTACT_RUNTIME=root 
 MUJOCO_GL=egl INTACT_POLICY=$POLICY $IVENV - <<PY
 import json, subprocess, os
 p = subprocess.Popen(["/home/ubuntu/INTACT-JEPA/.venv/bin/python",
-                      "/home/ubuntu/lerobot-smolvla-lew/tools/intact_worker.py",
+                      "%s/tools/intact_worker.py" % os.environ["ZMAX_REPO"],
                       "--repo", "/home/ubuntu/INTACT-JEPA", "--task", "pusht",
                       "--hf-repo", "INTACT-JEPA/INTACT", "--hf-rev", "paper-e5-goal-v1",
                       "--policy", "direct", "--policy-name", os.environ["INTACT_POLICY"],
