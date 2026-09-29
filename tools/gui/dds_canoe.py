@@ -142,7 +142,7 @@ class BusView(QWidget):
         self.reload(force_tree=True)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.reload)
-        self._timer.start(1000)
+        self._timer.start(1500)
 
     # ─────────────────── 骨架 ───────────────────
     def _build(self):
@@ -285,10 +285,9 @@ class BusView(QWidget):
         self.tree.setItemDelegateForColumn(4, BarDelegate(self.tree))
         h = self.tree.header()
         h.setSectionResizeMode(0, QHeaderView.Stretch)
-        for i in (1, 2, 3):
-            h.setSectionResizeMode(i, QHeaderView.ResizeToContents)
-        h.setSectionResizeMode(4, QHeaderView.Fixed)
-        self.tree.setColumnWidth(4, 132)
+        for i, w in ((1, 120), (2, 80), (3, 180), (4, 160)):
+            h.setSectionResizeMode(i, QHeaderView.Interactive)   # 🐛 卡顿真根因: ResizeToContents
+            self.tree.setColumnWidth(i, w)                       #   每秒重建时逐格重算列宽(192DPI 极贵)
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self.tree.itemClicked.connect(self._on_tree_click)
         lay.addWidget(self.tree, 1)
@@ -342,8 +341,9 @@ class BusView(QWidget):
         self.tb.setShowGrid(True)
         self.tb.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         th = self.tb.horizontalHeader()
-        for i in range(9):
-            th.setSectionResizeMode(i, QHeaderView.ResizeToContents)
+        for i, w in ((0, 160), (2, 180), (3, 160), (4, 140), (5, 260), (6, 170), (7, 140), (8, 120)):
+            th.setSectionResizeMode(i, QHeaderView.Interactive)  # 🐛 同上(卡死根因)
+            self.tb.setColumnWidth(i, w)
         th.setSectionResizeMode(1, QHeaderView.Stretch)
         self.tb.itemClicked.connect(self._on_trace_click)
         lay.addWidget(self.tb, 1)
@@ -396,14 +396,14 @@ class BusView(QWidget):
         self.tb_loop.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.tb_alert.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         lh = self.tb_loop.horizontalHeader()
-        for i in (0, 1, 3):
-            lh.setSectionResizeMode(i, QHeaderView.ResizeToContents)
-        lh.setSectionResizeMode(2, QHeaderView.Interactive)
-        self.tb_loop.setColumnWidth(2, 330)        # 质检: 质量门 190px 全截断 → 给足(仍可拖)
+        for i, w in ((0, 110), (1, 240), (2, 340), (3, 160)):   # 🐛 ResizeToContents → 固定宽
+            lh.setSectionResizeMode(i, QHeaderView.Interactive)
+            self.tb_loop.setColumnWidth(i, w)
         lh.setSectionResizeMode(4, QHeaderView.Stretch)
         ah = self.tb_alert.horizontalHeader()
-        ah.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        ah.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        for i, w in ((0, 130), (1, 280)):
+            ah.setSectionResizeMode(i, QHeaderView.Interactive)
+            self.tb_alert.setColumnWidth(i, w)
         ah.setSectionResizeMode(2, QHeaderView.Stretch)
         self.tb_alert.hide()
         return box
@@ -487,6 +487,11 @@ class BusView(QWidget):
 
     # ─────────────────── 数据刷新 ───────────────────
     def reload(self, force_tree=False):
+        # 🐛 2026-09-29 老倪「全局数据空间怎么卡住了」真根因: 1s 定时器**无条件**重建 500 行×9 列的表
+        #   (每轮 4500 个 QTableWidgetItem + 整页重排) ⇒ 进程 CPU 实测 81.7%, 页面像冻住。
+        #   修法三条: ①不在看的页直接不刷新 ②trace 没变(体积+mtime)就整轮跳过 ③行数 500→150。
+        if not self.isVisible():
+            return
         try:
             self._live = _j(LIVE, {}) or {}
             self._loop = _j(LOOP, {}) or {}
@@ -506,7 +511,7 @@ class BusView(QWidget):
                         self._it_default = _it
             self._fill_measure_bar()
             if not self.btn_pause.isChecked():
-                self._fill_trace()
+                self._fill_trace(force=bool(force_tree))
             self._fill_loop()
             self._fill_alerts()
             if self._sel_obj:
@@ -518,12 +523,15 @@ class BusView(QWidget):
     def _topics(self):
         return (self._live or {}).get("topics") or {}
 
-    def _read_trace(self, n=600):
+    def _read_trace(self, n=300):
         rows = []
         if os.path.exists(TRACE):
             try:
-                with open(TRACE, encoding="utf-8", errors="replace") as f:
-                    for ln in f.readlines()[-n:]:
+                with open(TRACE, "rb") as f:      # 有界读: 只取尾部 256KB(文件长大也不会拖慢)
+                    f.seek(0, os.SEEK_END)
+                    f.seek(max(0, f.tell() - 262144))
+                    _tail = f.read().decode("utf-8", "replace").splitlines()
+                for ln in _tail[-n:]:
                         ln = ln.strip()
                         if not ln:
                             continue
@@ -695,7 +703,18 @@ class BusView(QWidget):
         except Exception:                                                       # noqa: BLE001
             pass
 
-    def _fill_trace(self):
+    def _trace_sig(self):
+        try:
+            st = os.stat(TRACE)
+            return (st.st_size, int(st.st_mtime))
+        except Exception:                                                        # noqa: BLE001
+            return None
+
+    def _fill_trace(self, force=False):
+        sig = self._trace_sig()
+        if not force and sig == getattr(self, "_trace_sig_last", None):
+            return self.tb.rowCount()            # 文件没动 ⇒ 不重建(卡顿根因就是这里每秒重建)
+        self._trace_sig_last = sig
         rows = self._read_trace()
         if not rows:
             self._trace_rows = []
@@ -719,8 +738,8 @@ class BusView(QWidget):
                     or f in str(r.get("type", "")).lower()]
         topics = self._topics()
         self.tb.setUpdatesEnabled(False)
-        self.tb.setRowCount(min(len(rows), 500))
-        for r, rec in enumerate(rows[:500]):
+        self.tb.setRowCount(min(len(rows), 150))
+        for r, rec in enumerate(rows[:150]):
             topic = str(rec.get("topic", "?"))
             key = topic.split("/")[-1]
             live_t = topics.get(key) or topics.get(topic) or {}
