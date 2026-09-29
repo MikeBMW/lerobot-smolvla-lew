@@ -1,0 +1,259 @@
+{
+ "ts": "2026-09-29",
+ "reason": "老倪: 没用的都删掉, 有用的都整合 (磁盘 %s > 红线 300G)",
+ "rule": "零引用 + 每族保最新; 删前 sha256",
+ "deleted": [
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_30",
+   "mb": 165,
+   "name": "intact_goal_optical_insert_v6lora_30",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/unified_v15",
+   "mb": 335,
+   "name": "unified_v15",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/unified_v15_s1",
+   "mb": 335,
+   "name": "unified_v15_s1",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/unified_v14",
+   "mb": 335,
+   "name": "unified_v14",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/unified_v12",
+   "mb": 335,
+   "name": "unified_v12",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/unified_v11",
+   "mb": 335,
+   "name": "unified_v11",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/unified_v10",
+   "mb": 335,
+   "name": "unified_v10",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/unified_v9",
+   "mb": 335,
+   "name": "unified_v9",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/unified_v8",
+   "mb": 335,
+   "name": "unified_v8",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/unified_v7",
+   "mb": 335,
+   "name": "unified_v7",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6d8_s3072",
+   "mb": 81,
+   "name": "intact_goal_optical_insert_v6d8_s3072",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6d7_s3072",
+   "mb": 81,
+   "name": "intact_goal_optical_insert_v6d7_s3072",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6d6_s3072",
+   "mb": 81,
+   "name": "intact_goal_optical_insert_v6d6_s3072",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6d5_s3072",
+   "mb": 81,
+   "name": "intact_goal_optical_insert_v6d5_s3072",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6d4_s3072",
+   "mb": 81,
+   "name": "intact_goal_optical_insert_v6d4_s3072",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6d3_s3072",
+   "mb": 81,
+   "name": "intact_goal_optical_insert_v6d3_s3072",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6d2_s3072",
+   "mb": 81,
+   "name": "intact_goal_optical_insert_v6d2_s3072",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6d1_s3072",
+   "mb": 81,
+   "name": "intact_goal_optical_insert_v6d1_s3072",
+   "ok": true
+  },
+  {
+   "kind": "ckpt",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6r3_s3072",
+   "mb": 1,
+   "name": "intact_goal_optical_insert_v6r3_s3072",
+   "ok": true
+  },
+  {
+   "kind": "epoch",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_30/weights_epoch_1.pt",
+   "mb": 84,
+   "name": "intact_goal_optical_insert_v6lora_30/weights_epoch_1.pt",
+   "ok": true
+  },
+  {
+   "kind": "epoch",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_40/weights_epoch_1.pt",
+   "mb": 84,
+   "name": "intact_goal_optical_insert_v6lora_40/weights_epoch_1.pt",
+   "sha256": "33ec5929cb0e976042a62b268a3a99c4bf0f72eb1e922b8fcfeee174b01095a2",
+   "ok": true
+  },
+  {
+   "kind": "epoch",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6r11_s3072/weights_epoch_1.pt",
+   "mb": 81,
+   "name": "intact_goal_optical_insert_v6r11_s3072/weights_epoch_1.pt",
+   "sha256": "1e308299f7e1529ecf7132cecb2d9680ac659d50dee25f1c75609ba05a3a08e8",
+   "ok": true
+  },
+  {
+   "kind": "epoch",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6r2_s3072/weights_epoch_1.pt",
+   "mb": 81,
+   "name": "intact_goal_optical_insert_v6r2_s3072/weights_epoch_1.pt",
+   "sha256": "669fc0068a670adeb33b296a02e9b02952d72b20d3cda5683ad54d7767851680",
+   "ok": true
+  },
+  {
+   "kind": "epoch",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6r2_s3072/weights_epoch_2.pt",
+   "mb": 81,
+   "name": "intact_goal_optical_insert_v6r2_s3072/weights_epoch_2.pt",
+   "sha256": "4706e2bf4ddf45f03feca6d00fda28f711aac7b63a45591d550da61d0acf34c9",
+   "ok": true
+  },
+  {
+   "kind": "epoch",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_zmax_s3072/weights_epoch_2.pt",
+   "mb": 81,
+   "name": "intact_goal_zmax_s3072/weights_epoch_2.pt",
+   "sha256": "edcc2fda1873890341d097ada19f3a1c917cd052d88d488930730484a3f3a7ad",
+   "ok": true
+  },
+  {
+   "kind": "epoch",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_zmax_s3072/weights_epoch_5.pt",
+   "mb": 81,
+   "name": "intact_goal_zmax_s3072/weights_epoch_5.pt",
+   "sha256": "c3b236faac7db14b1283f5d300d56847c974b1b912c11b69fd50ababcf6570b6",
+   "ok": true
+  },
+  {
+   "kind": "epoch",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_zmax_v2_s3072/weights_epoch_2.pt",
+   "mb": 81,
+   "name": "intact_goal_zmax_v2_s3072/weights_epoch_2.pt",
+   "sha256": "06687ff28da0295dc5a087e9ed85a4ff41c440612ad9f816193b54724f1e307c",
+   "ok": true
+  },
+  {
+   "kind": "nested-dup",
+   "path": "/home/ubuntu/stable-wm-cache/checkpoints/checkpoints",
+   "mb": 324,
+   "name": "checkpoints/checkpoints",
+   "ok": true
+  },
+  {
+   "kind": "dataset",
+   "path": "/home/ubuntu/stable-wm-cache/datasets/l5_gen_v6_probe.h5",
+   "mb": 74,
+   "name": "l5_gen_v6_probe.h5",
+   "sha256": "ffd451a8cc75a49b1192aea141d79cedeeb276ff1fdc458f552aaf79eb03be78",
+   "ok": true
+  },
+  {
+   "kind": "dataset",
+   "path": "/home/ubuntu/stable-wm-cache/datasets/l5_new_sub12k.h5",
+   "mb": 33,
+   "name": "l5_new_sub12k.h5",
+   "sha256": "3007853a204a7cf15cf366c81275a13b0f388bd8bb755fba9bb3951ddf3000e1",
+   "ok": true
+  },
+  {
+   "kind": "dataset",
+   "path": "/home/ubuntu/stable-wm-cache/datasets/v5_sub25k.h5",
+   "mb": 1490,
+   "name": "v5_sub25k.h5",
+   "sha256": "ea626f9e0b37ca35d1fbd446cc522a13123f8be76b660d10ce59ce33fad21cca",
+   "ok": true
+  },
+  {
+   "kind": "backup",
+   "path": "/home/ubuntu/hermes-portable.tar.gz",
+   "mb": 893,
+   "name": "hermes-portable.tar.gz",
+   "sha256": "f9831d03d8bb9fb656375064158bdc60f6641e424d2e3efca644fbe665c3210d",
+   "ok": true
+  },
+  {
+   "kind": "backup",
+   "path": "/home/ubuntu/hermes_core_20260826_1047.zip",
+   "mb": 263,
+   "name": "hermes_core_20260826_1047.zip",
+   "sha256": "e8f771b2d0ac66a7c93ce27575ad85b3efb2155915698215a51d00fffdb753dc",
+   "ok": true
+  },
+  {
+   "kind": "backup",
+   "path": "/home/ubuntu/hermes_core_usb_20260822_1037.zip",
+   "mb": 142,
+   "name": "hermes_core_usb_20260822_1037.zip",
+   "sha256": "11a9bbbceee0fbf459bd9cc2a460b7e6d4895c69885ba9d1a85f6a90a50e2d7a",
+   "ok": true
+  }
+ ],
+ "freed_mb": 7702
+}
