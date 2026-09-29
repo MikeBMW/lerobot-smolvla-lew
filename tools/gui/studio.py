@@ -726,7 +726,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.16.5")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.16.6")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10979,7 +10979,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.5 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.6 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10987,9 +10987,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.5 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.6 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.16.6: 控制台 v5.16.6 — 节点标签: 5~10 字说清核心功能, 不再"只剩层号" (老倪: 「VEH.5.031 这个节点, 怎么只是剩下 L4, 其它的描述呢? 不要这么简化, 要完整表达这个节点的核心功能。控制在 10 个字以内, 5~10 个字。全局优化一下节点信息表达的文字」) 上一版按分隔符**从前往后取前缀** ⇒ 遇到「🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)」被砍成「L4」(层号是分类不是功能) = 过度简化。本版改成**有字数预算的表达** (`simulink_module.node_display_name`): ① 预算 = **10 字**, 计法 = 每个中文字 1 字 + 每个西文/数字词 1 字 (Transformer/ACT/43D 各算 1 字, 技术名词不按字母数罚) ② 取值优先级 (信息量从多到少): 原名 ≤10 字 **原样保留(连括号)** → 去括号补充(≥5 字才用) → 人工短名表 `NODE_CORE_LABELS`(43 条, 权威 5~10 字) → 按词裁剪(≥5 字, 绝不只剩层号) ③ 图标(emoji/①/◉)不计字数、自动带在标签前 ④ 单行像素预算 300px (标签宽度必须一行放得下, 否则继续降级取值) ⑤ 数据里 `node["name"]` **一个字都不改** (id/连线/引擎映射/审计零回归), 全名进 tooltip; 框宽按最终标签自适应 (`autofit_node_size`)。**全量实测**(26 个 flow / 1107 个节点标签): 超 10 字 **0** · 超 300px **0** · 只剩层号 **0** · 过简(原名>10字而标签<5字) **0**; 状态空间画布 73 节点同口径对照: 两行 **6→0**、被省略 **0→0**、标题宽中位 161→**128px** 最大 385→**294px**; 88 节点逐个真 `paint()` 异常 **0** (paint 抛异常 = Qt 直接 abort 整个 GUI)。样例: 「🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)」→「🏆 L4 工作安全导航」· 「🎯 INTACT (L4) · 工作安全 + 物理世界导航」→「🎯 INTACT 安全导航」· 「🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)」→「🧮 流形引擎 编码导航」· 「🧭 能力档位 (L2插/L3插拔+AOI/L4自主恢复)」→「🧭 能力档位 L2/L3/L4」· 「🧩 SU(2) 统一状态空间 (二阶特殊酉群)」→「🧩 SU(2) 统一状态空间」(括号保护: SU(2)/D064 这类技术记号里的括号不再被当补充说明删掉)。色带(方框)标题仍按老倪 09-29 的要求保留完整(名字区很宽, 不压字数)。红线: 未下发真机动作; 画布 JSON 未改(node name/x/y/w 原样)。
         # v5.16.5: 控制台 v5.16.5 — UI 可读性与自适应 (老倪: 「窗口没有显示完全 + 没有横向拖动的拖动条 + 节点字太多被遮挡」) ①**窗口入屏**: 新增 `_fit_window_to_screen()` (尺寸/位置双夹紧进可用工作区, 留 8px 边距, 不贴死屏幕边缘) — 启动时与 show 后各夹一次, 并留 /tmp/studio_show_diag.log 取证; 菜单新增「🖥 窗口适配屏幕 (Ctrl+Shift+F)」+「🔲 全屏切换 (F11)」。②**滚动条看得见/抓得住**: 实测根因 = 滚动条仅 8px + 手柄暗灰(#484f58), 横向条**此前没有任何 QSS 规则**; 新增 `SCROLLBAR_QSS`(纵/横 16px + 蓝手柄 #4d8fdb + hover 高亮) 挂到首页/硬件页/另一页滚动区 + 画布 view(`CANVAS_SCROLLBAR_QSS`), 三处 `ScrollBarAlwaysOff → AsNeeded`(原来内容宽过窗口就既看不到右边也没有横向条)。像素取证: 改造前右缘蓝色列为 0 条(只剩两条灰线), 改造后 16 列蓝色手柄 1838..1853。③**方框(色带)字显示不全 —— 真根因**: 色带名字区宽度原按**全画布**最小节点 x 算(本画布 = 0) ⇒ 15 条色带的名字区**全部**被压到下限 80px ⇒ 15/15 全部截成「🔧 L2 基础辅助功能…」。改为按**本行色带自己的**内部节点算(节点中心 y 落在本带内) ⇒ 名字区 80px → 284~11070px, 实测 **15/15 完整显示**。④**画布节点字: 字少 + 完整 + 不遮挡 (显示名 ≠ 数据名)**: 节点名字平均 18.7 字/最长 41 字 ⇒ 框里挤两行。新增 `node_display_name()`(去括号补充 → 按分隔符 · → | 只保留放得下的前缀, 保留原分隔符样式) + `autofit_node_size()`(按**短名**自适应框宽, 并按行数长高, 宁可长高不压字)。数据里的 node["name"] **一个字都不改**(id/连线/引擎映射/审计零回归), 全名进 tooltip。标题字号 9→10pt、次要 8→9pt。同口径实测(两边各走自己的 autofit): 老 73 节点两行 6 个/标题宽中位 161px 最大 385px → 新 **两行 0 个**/中位 129px 最大 277px, 截断 0。⑤**渲染自检**: 88 节点逐个走真实 `paint()` → **异常 0**(paint 抛异常 = Qt 直接 abort 整个 GUI), 标题截断 0。⑥**方框自适应布局**: 首页 12 张模块卡改 `ReflowCardRow`(按可用宽度自动换列 3→2→1, 单元验证 1500/1000→3 列 · 600→2 列 · 500 以下→1 列; 本机 1920 屏仍 3 列)。⑦红线: 未下发任何真机动作; 未改在役指针/默认档; 画布 JSON 未改(node name/x/y/w 原样, 只在内存里自适应)。
         # v5.16.4: 控制台 v5.16.4 — 流形引擎主标定参数 M (老倪: 质量=结构的副产物/等效惯量)。引擎 `ManifoldEngine` 新增有惯性二阶分支 `a=F/M ⇒ Δx=F·dt²/M` (默认 `inertia=False` ⇒ **零回归**, 与旧一阶过阻尼逐位相同); 物理类比等效惯量 / 信息论类比交叉熵 H(p,q)→Fisher-Hessian 曲率尺度, 过阻尼 = M→0 (速度∝力, 旧 GD)。标定层新增**流形引擎标定**节点 `n_calib_mani`「🧮 流形引擎标定 · 主参数 M」: 主参数 M (默认 1.0, 范围 0~8, 单位/含义齐备) **可读可写** —— 真源 `config/calib/zmax_manifold.json` → `tools/zmax_params.py` (`manifold_M`/`manifold_inertia`/`write_manifold_M`, CLI `--m <v> [--inertia on|off]`), 并入 `calib.json` `manifold_engine` 域 (只更新该键, 不动其他标定域); 标定层 `calibration_layer.py` 新增 `MANIFOLD_CALIB` 域与 `manifold_summary()`。画布**真接线** (标定层/潜空-流形 → 本节点 → 流形引擎/接触流形/流形专家, 5 条前向边) ⇒ 87→**88 节点** / 173→**178 连线**; 能力清单加 `L4-C16`。零回归取证: L2 **275/275** · L4 **178/178** (与基线一致); 数值实验 `tools/manifold_M_experiment.py`: inertia 关 与 M=0 均与旧一阶**逐位相同**, M=1 首步 Δx=1e-4(=|F|dt²/M) 且场反转后仍前进 (动量), 过阻尼立刻反向。红线: 只读旁路不下发真机动作; 未改在役指针/默认档。
         # v5.16.3: 控制台 v5.16.3 — 现场人机在环互动 + 场景叠加校正闭环 · 新增「HIL↔L5 互动环」(tools/l5_hil_agent.py): 只读轮询 ECS 中转的人机在环指示 → 抓臂上相机实帧 →   调**状态空间工程引擎的 L5**(left_right/state_space/scene_vlm.py :: SceneVLM)理解 → 复用严格 JSON 提示词   把框写到叠加页 vlm 层(自动标注) → 带 seq 回执给人机在环界面; 现场停顿点(P_n)自动触发同一理解环。   红线不变: 动作类指示一律只记账待授权, 绝不代发真机动作; 引擎不可用时回退并如实标明来源。 · 场景叠加新增 `trace` 层(黄 · 真机 TCP 实测轨迹) + 参考点标记 P_n; 实测轨迹按 2mm 抽稀, 每次停顿自动落参考点。 · 现场实时链工具化: live_motion_recorder(50Hz 真关节+TCP, 原子落盘) · live_pause_marker(停顿点+trace 发布) ·   live_plan_segment(同源规划段: 两端真机真值, 按执行器守卫 ≤50mm/下降≤20mm/自转≤10° 分段) ·   l2_dispatch_watch(只读镜像 l2_daemon 下发链, 替代断点; 已兼容新旧日志格式)。 · 修正: L5 槽位工具退出码语义(0=已记录/有框 · 1=待确认或0框 · 2=参数错)并在 0 框/待确认时打印原因分解;   深度判据由「查容器名 ros_depth_stream」改为按**源文件龄**(与 cam_live_stream 同口径, 修掉假离线);   project_slot 缺/非法几何不再 TypeError 崩溃(只出中心点投影, ok=False, 不编造角点)。 · 已实测: 引擎 L5 判读 0.6~1.5s(thinking 关), 带框提示词一次 4 框[光模块,光模块,标定板,托盘]; 现场抓拍-投影链路   cmd_record 返回码 0(status=已记录)。

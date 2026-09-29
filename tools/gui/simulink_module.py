@@ -114,13 +114,69 @@ NODE_SUB_PT = 9                  # 次要文字固定 9pt (8→9)
 NODE_PAD_L = 14                  # 标题左内边距
 NODE_PAD_R = 56                  # 标题右内边距 (给状态徽章留位)
 NODE_TITLE_LINES = 2             # 标题最多两行 (超出 → 最后一行省略号, 悬停看全名)
-# 🎨 2026-09-29 老倪: 「节点字体显示, 不要太多字数, 要显示完整, 不要被遮挡了」——
-#   实测(73 个非背景节点): 名字平均 18.7 字 · 最长 41 字 · 31 个要折两行 ⇒ 框里字多行密,
-#   观感就是"挤/显示不全/被遮挡"。做法 = **显示名 ≠ 数据名**:
-#     · 数据里的 node["name"] 一个字都不改 (节点 id / 连线 / 引擎映射 / 审计全按原名, 零回归);
-#     · 只把**画进框里的字**裁成短标签 (去括号补充 → 按分隔符只留放得下的段) —— 全名进 tooltip;
-#     · 框宽按"短标签"自适应 (autofit_node_width), 于是单行放得下 = 字更少但更完整更大。
-NODE_LABEL_MAX_PX = 300          # 单行标签像素上限 (超出按分隔符截段, 再超才省略号)
+# 🎨 2026-09-29 (v5.16.6) 老倪: 「VEH.5.031 怎么只是剩下 L4, 其它的描述呢? 不要这么简化, 要完整表达
+#   这个节点的核心功能, 控制在 10 个字以内, 5~10 个字。全局优化一下节点信息表达的文字」——
+#   上一版按分隔符**从前往后取前缀** ⇒ 遇到「🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)」就砍成
+#   「L4」(只剩层号; 层号是分类不是功能) = 过度简化。本版改成**有字数预算的表达**:
+#     · 预算 = **10 字**, 计法: 每个中文字算 1 字, 每个西文/数字词(Transformer/ACT/43D)算 1 字
+#       (技术名词不该按字母数罚 → "Transformer Encoder" 算 2 字, 保留原样最完整);
+#     · 优先级 (信息量从多到少): 原名 ≤10 字 ⇒ **原样保留(连括号一起)** → 去括号补充 ⇒ 保留 →
+#       人工短名表 NODE_CORE_LABELS (权威: 5~10 字说清核心功能) → 按词裁剪 (≥5 字, 绝不停在 1 个层号上);
+#     · 图标(emoji/①②/... )不算字数, 自动接在标签前面;
+#     · 数据里 node["name"] 一个字都不改 (节点 id/连线/引擎映射/审计零回归), 全名进 tooltip;
+#     · 框宽按**最终标签**自适应 (autofit_node_size) ⇒ 短标签单行放得下, 不再折两行挤在一起。
+NODE_LABEL_MAX_CHARS = 10        # 节点标签字数预算 (中文字 1 字 + 西文词 1 字)
+NODE_LABEL_MIN_CHARS = 5         # 裁剪时的下限 (低于此值继续补词, 避免"只剩 L4")
+NODE_LABEL_MAX_PX = 300          # 单行标签像素上限 (仅作最终的省略号兜底)
+# 人工短名表: (命中正则, 短标签) —— 只在"原名/去括号名都超预算"时才用, 越具体的排前面。
+# 标签里**不写图标** (图标由原名字自动带过来), 长度按上面的算法都 ≤10 字。
+NODE_CORE_LABELS = (
+    (r"视觉语言自动标注", "L5 视觉自动标注"),
+    (r"阶段专家\s*MOE", "阶段专家MOE门控路由"),
+    (r"环境渲染图像源", "插拔环境渲染图像源"),
+    (r"INTACT\s*插拔策略", "INTACT 插拔策略"),
+    (r"INTACT.*(工作安全|物理世界导航)", "INTACT 安全导航"),
+    (r"(工作安全|物理世界导航).*记忆|前额叶", "L4 工作安全导航"),
+    (r"工作安全.*物理世界导航|物理世界导航", "L4 工作安全导航"),
+    (r"Z-MAX\s*引擎.*真物理|光模块插拔真物理", "光模块插拔真物理"),
+    (r"视觉语言大模型|场景理解.*Qwen", "视觉大模型场景理解"),
+    (r"DeepSeek-V4-Flash", "L5 DeepSeek 视觉"),
+    (r"DeepSeek-VL", "大模型场景理解"),
+    (r"SU\(2\)", "SU(2) 状态空间"),
+    (r"能力档位", "能力档位 L2/L3/L4"),
+    (r"流形引擎\s*标定|主参数\s*M", "流形引擎标定"),
+    (r"流形引擎", "流形引擎 编码导航"),
+    (r"总装机记忆|势场联络", "势场联络 意图生成"),
+    (r"总装记忆中枢", "总装记忆中枢"),
+    (r"旁路实时可视化", "旁路实时可视化"),
+    (r"Z700\s*真机信号", "Z700 真机信号"),
+    (r"板坐标系定位", "板坐标系定位"),
+    (r"工程记忆", "工程记忆库"),
+    (r"Web\s*智能体桥", "Web 智能体桥"),
+    (r"HIL\s*人机在环", "HIL 人机在环"),
+    (r"MoveIt\s*运动规划", "MoveIt 运动规划"),
+    (r"真实场景叠加", "真实场景叠加"),
+    (r"插拔渲染视频", "插拔渲染视频"),
+    (r"意图丛", "意图丛 四槽语法"),
+    (r"跨层连接", "跨层记忆图谱"),
+    (r"意图直读", "意图直读"),
+    (r"技能词典", "技能词典 动作基"),
+    (r"肌肉记忆技能库", "L2 肌肉记忆库"),
+    (r"肌肉记忆操作", "L2 肌肉记忆操作"),
+    (r"长程序列规划器", "L3 长程规划器"),
+    (r"长程序列规划", "L3 长程序列规划"),
+    (r"技能序列编排", "L3 技能序列编排"),
+    (r"接触流形", "接触流形 导航"),
+    (r"性能流形", "性能流形 代价"),
+    (r"标定层\s*·\s*引力", "标定层 力场动作"),
+    (r"流形专家预测器", "流形专家预测器"),
+    (r"流形专家层", "流形专家层"),
+    (r"Feature\s*功能清单", "能力功能清单"),
+    (r"前馈激活直方图", "前馈激活直方图"),
+    (r"异常推理器", "异常推理器"),
+    (r"INTACT\s*LoRA", "L4 LoRA 微调"),
+    (r"SmolVLA\s*LoRA", "L3 LoRA 微调"),
+)
 # 🟡🟢🔴 画布顶部通栏状态横幅 (L5 闭环进度) — 2026-09-28 老倪: 节点小字读不出来 ⇒ 通栏大字
 BANNER_FONT_FAMILY = "Noto Sans CJK SC"
 BANNER_FONT_PT = 15              # 15pt Bold (比状态栏 11pt 大一档, 画布顶部一眼可读)
@@ -146,7 +202,7 @@ def _node_font(pt, bold=False):
     return f
 
 
-_BRACKET_RE = re.compile(r"[（(【\[〔][^（()）【】\[\]〔〕]{0,80}[）)】\]〕]")
+_BRACKET_RE = re.compile(r"(?<![A-Za-z0-9])[（(【\[〔][^（()）【】\[\]〔〕]{0,80}[）)】\]〕]")
 _LABEL_SEPS = ("·", "→", "|", "：", ":")
 
 
@@ -161,40 +217,115 @@ def _strip_brackets(text, rounds=4):
     return re.sub(r"\s{2,}", " ", s).strip().strip("·-—、,， ").strip()
 
 
-def node_display_name(name, max_px=None):
-    """🎨 2026-09-29: 画进节点框里的**短标签** (数据名一字不改)。
+_ICON_RE = re.compile(r"^([\U0001F000-\U0001FAFF\u2190-\u2BFF\u2460-\u24FF\u2600-\u27BF]+)\s*")
+_TOKEN_SEP_RE = re.compile(r"\s*(?:·|→|←|\||｜|/|：|:|,|，|、|;|；|&|\+|\-|—|–)\s*")
 
-    规则 (确定性, 与绘制同一套字体度量):
-      ① 去括号补充 —— "🧮 流形引擎 (Manifold Engine · 编码→投影)" → "🧮 流形引擎"
-      ② 仍超预算 → 按分隔符 (·→|：) 逐段累加, 只留放得下的段 (至少留第一段)
-      ③ 仍超 → 省略号 (调用方给 tooltip 补全名)
-    max_px=None ⇒ 只做 ① (调用方自己量宽)。
+
+def _split_icon(name):
+    """拆出名字开头的图标 (emoji / ① / ◉ / ⚙ …) —— 图标不计入字数预算, 原样保留。"""
+    s = re.sub(r"[\uFE0F\u200d]", "", str(name or "")).strip()
+    m = _ICON_RE.match(s)
+    if m:
+        return m.group(1), s[m.end():].strip()
+    return "", s
+
+
+def _label_cost(s):
+    """字数成本: 每个中文字 1 字 · 每个西文/数字词 1 字 (Transformer/ACT/43D 各算 1 字)。"""
+    s = str(s or "")
+    cjk = len(re.findall(r"[\u3400-\u9fff]", s))
+    words = len(re.findall(r"[A-Za-z0-9][A-Za-z0-9\.\-\+_/]*", s))
+    return cjk + words
+
+
+def _label_segments(s):
+    """按分隔符 + 中西文边界切词 —— 裁剪时以"词"为单位, 不切半个技术名词。"""
+    s = _TOKEN_SEP_RE.sub(" ", str(s or ""))
+    s = re.sub(r"(?<=[A-Za-z0-9])(?=[\u3400-\u9fff])", " ", s)
+    s = re.sub(r"(?<=[\u3400-\u9fff])(?=[A-Za-z0-9])", " ", s)
+    return [t for t in re.split(r"\s+", s.strip()) if t]
+
+
+def _trim_label(s, budget=NODE_LABEL_MAX_CHARS, floor=NODE_LABEL_MIN_CHARS):
+    """按词裁剪到 ≤budget 字; 达不到 floor 就继续补词 (绝不只剩 "L4" 这种层号)。
+    单个词就超预算时按字符兜底裁 (中文长词), 至少 floor 字。"""
+    segs = _label_segments(s)
+    out = ""
+    for seg in segs:
+        trial = (out + " " + seg).strip()
+        if _label_cost(trial) > budget and _label_cost(out) >= floor:
+            break
+        out = trial
+        if _label_cost(out) >= budget:
+            break
+    if not out or _label_cost(out) > budget:
+        out = ""
+        for ch in str(s):
+            if _label_cost(out + ch) > budget and _label_cost(out) >= floor:
+                break
+            out += ch
+    out = re.sub(r"\s{2,}", " ", out).strip().strip("·-—、,，+/| ")
+    # 兜底: 结果只剩层号 (L1~L5) 或 1 个字 ⇒ 从剩余词里再补 (宁可 2 行也不给无意义标签)
+    if _label_cost(out) <= 2 and segs:
+        for seg in segs:
+            if seg not in out and _label_cost(out + " " + seg) <= budget:
+                out = (out + " " + seg).strip()
+                if _label_cost(out) >= floor:
+                    break
+    return out or str(s)
+
+
+def node_display_name(name, max_px=None):
+    """🎨 2026-09-29 v5.16.6: 画进节点框里的**标签** —— 5~10 字, 说清核心功能, 不退化。
+
+    预算 = NODE_LABEL_MAX_CHARS(10) 字 (中文字 1 字 · 西文词 1 字); 图标不计字数。
+    取值优先级 (信息量从多到少, 一旦命中就返回):
+      ① 原名 ≤10 字  ⇒ **原样保留**(连括号补充一起, 最完整)
+      ② 去括号补充 ≤10 字 ⇒ 保留
+      ③ 人工短名表 NODE_CORE_LABELS (5~10 字, 说清核心功能)
+      ④ 按词裁剪 (≥5 字, 绝不只剩层号 L2/L3/L4)
+    max_px=None (状态空间**色带**调用) ⇒ 只去括号, 不压字数 —— 色带名字区很宽, 老倪要它完整。
     """
     s = str(name or "").strip()
     if not s:
         return s
-    s = _strip_brackets(s)
-    if not s:
-        return str(name)
-    if max_px:
-        try:
-            fm = QFontMetrics(_node_font(NODE_TITLE_PT, True))
-        except Exception:
-            return s
-        if fm.horizontalAdvance(s) > max_px:
-            # 按分隔符 (· → | ：) 只保留**放得下的前缀**, 且保留原分隔符样式 (不把 "→" 改成 "·")
-            keep = None
-            for m in re.finditer(r"\s*(?:·|→|\||：|:)\s*", s):
-                cand = s[:m.start()].rstrip().strip("·-—、,，")
-                if not cand:
-                    continue
-                if fm.horizontalAdvance(cand) > max_px:
-                    break
-                keep = cand
-            s = keep or s
-            if fm.horizontalAdvance(s) > max_px:
-                s = fm.elidedText(s, Qt.ElideRight, int(max_px))
-    return s or str(name)
+    icon, body = _split_icon(s)
+    if not body:
+        return icon or s
+
+    def _join(t):
+        return (icon + " " + t).strip() if icon else t
+
+    if max_px is None:                     # 色带: 保完整
+        return _join(_strip_brackets(body) or body)
+    # 单行像素预算: 标签宽 ≤ max_px 才能保证 autofit 后**一行放得下**(不折行/不遮挡)
+    try:
+        fm = QFontMetrics(_node_font(NODE_TITLE_PT, True))
+        px_cap = int(max_px)
+    except Exception:
+        fm, px_cap = None, 0
+
+    def _fit(t):
+        if not t:
+            return False
+        if fm is not None and fm.horizontalAdvance(t) > px_cap:
+            return False
+        return True
+    # ① 原样 (连括号) —— 字数够少 且 一行放得下
+    if _label_cost(body) <= NODE_LABEL_MAX_CHARS and _fit(body):
+        return _join(body)
+    # ② 去括号补充 (要求 ≥5 字 —— 太短说明"功能"被括号带走了, 就走下面的表/裁剪)
+    stripped = _strip_brackets(body)
+    if (stripped and NODE_LABEL_MIN_CHARS <= _label_cost(stripped) <= NODE_LABEL_MAX_CHARS
+            and _fit(stripped)):
+        return _join(stripped)
+    # ③ 人工短名表 (有表就用表; 表项都按 5~10 字设计过)
+    for pat, lab in NODE_CORE_LABELS:
+        if re.search(pat, body):
+            return _join(lab)
+    # ④ 按词裁剪 (从信息更多的那个版本裁)
+    src = stripped if (stripped and _label_cost(stripped) >= NODE_LABEL_MIN_CHARS) else body
+    return _join(_trim_label(src))
 
 
 def _wrap_title(text, fm, avail, max_lines=NODE_TITLE_LINES):
