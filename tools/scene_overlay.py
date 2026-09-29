@@ -777,6 +777,17 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
     for i, t in enumerate(band):
         cv2.putText(img, t, (8, max(14, y + i * 16)), cv2.FONT_HERSHEY_SIMPLEX, 0.42,
                     (230, 237, 243), 1, cv2.LINE_AA)
+    # ── 辅助线(origin=guide) 在真值带**之上**再补画一遍 (2026-09-30 实测) ──
+    #   真值带从 y≈358 一直铺到画面底, 落在带内的辅助线(如"空间底" y=415)在叠加帧里**一个像素都没有**。
+    #   这类线是量测标注(标"横梁围成的内部空间"的层次), 压在状态带上也必须可读 ⇒ 带画完补一遍。
+    #   只重画几何, 不重做标签, 不进 drawn(统计口径与删除语义保持不变)。
+    _gcol = ORIGIN_STYLE["guide"][0]
+    for b in boxes:
+        if b.get("origin") != "guide" or not b.get("xyxy"):
+            continue
+        gx1, gy1, gx2, gy2 = [float(t) for t in b["xyxy"]]
+        cv2.rectangle(img, (int(max(0, gx1)), int(max(0, gy1))),
+                      (int(min(W - 1, gx2)), int(min(H - 1, gy2))), _gcol, 2)
     return img, {"drawn": drawn, "skipped": skipped, "intrinsics_est": K.get("est", False),
                  "boxes": out_boxes, "deleted": sorted(deleted),
                  "n_3d": n3, "n_2d": len(drawn) - n3}
