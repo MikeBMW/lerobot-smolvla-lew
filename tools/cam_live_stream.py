@@ -1586,6 +1586,63 @@ def _deleted_labels(cam: str = "arm") -> list:
 
 _GEN_STATE = {"busy": None, "last": None, "ts": 0.0}
 _GEN_KINDS = {"sim": "仿真场景投影", "scene": "场景契约", "vlm": "L5 大模型理解", "det": "真机检测"}
+
+# 🧩 开放词汇分割 (SAM3) —— L2 感知原语的服务化调用 (2026-09-29)
+#   为什么走独立进程: SAM3 = 848M/1008px, 显存 ≈2GB, 与推流/GUI 同进程会打架
+#   (本机红线: 同刻仅一模型进程) ⇒ 真执行件是常驻服务 `tools/sam3_seg.py --serve --port 8796`,
+#   这里只做**转发 + 落规格**(origin='seg', kind='mask'), 失败时如实把原因回给页面。
+_SEG_URL = os.environ.get("ZMAX_SEG_URL", "http://127.0.0.1:8796")
+# ⚠️ 概念词必须**英文** (2026-09-29 实测: SAM3 文本塔是 CLIP, 中文提示词返回 0 实例; "光模块"→0, "green connector"→6)
+# 默认概念 = 实测在这台工位真帧上有命中的三个词 (socket/gripper/optical module 实测 0 实例)
+_SEG_DEFAULT_TEXTS = os.environ.get("ZMAX_SEG_TEXT", "green connector,slot,metal pin")
+_SEG_STATE = {"at": None, "cam": None, "texts": None, "count": 0, "ms": None, "err": None}
+
+
+def _seg_run(cam: str = "arm", texts: str = "", three_d: bool = True, timeout: float = 180.0) -> dict:
+    """调常驻分割服务: 一帧 + 概念提示词 → 所有实例掩膜, 并写进叠加规格 (origin='seg')"""
+    ts = [t.strip() for t in (texts or "").split(",") if t.strip()]
+    used_default = False
+    if not ts:
+        ts = [t.strip() for t in _SEG_DEFAULT_TEXTS.split(",") if t.strip()]
+        used_default = True
+    body = json.dumps({"cam": cam, "texts": ts, "three_d": bool(three_d),
+                       "write_spec": True, "cam_name": cam,
+                       "note": "叠加页按钮 🧩 开放词汇分割 (L2/SAM3)"}).encode("utf-8")
+    t0 = time.time()
+    try:
+        req = urllib.request.Request(_SEG_URL + "/seg", data=body,
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            j = json.loads(r.read().decode("utf-8"))
+    except Exception as e:                                                    # noqa: BLE001
+        err = "%s: %s" % (type(e).__name__, str(e)[:150])
+        _SEG_STATE.update(at=time.strftime("%H:%M:%S"), cam=cam, texts=ts, count=0,
+                          ms=None, err=err)
+        print("[seg] ✗ 分割服务调用失败: %s (URL %s)" % (err, _SEG_URL), flush=True)
+        return {"ok": False, "count": 0, "texts": ts,
+                "msg": "分割服务未响应 (%s) — 先起: python tools/sam3_seg.py --serve --port 8796" % err}
+    dt = (time.time() - t0) * 1000
+    _SEG_STATE.update(at=time.strftime("%H:%M:%S"), cam=cam, texts=ts,
+                      count=int(j.get("count") or 0), ms=j.get("ms"),
+                      err=None if j.get("ok") else (j.get("err") or "服务返回 ok=false"))
+    if not j.get("ok"):
+        return {"ok": False, "count": 0, "texts": ts, "msg": "分割失败: %s" % (j.get("err") or j)}
+    n3d = sum(1 for it in (j.get("instances") or []) if (it.get("c3d") or {}).get("ok"))
+    print("[seg] ✓ %s · 概念=%s · 实例 %d (其中 3D 成功 %d) · 推理 %.0fms · 端到端 %.0fms"
+          % (cam, ts, j.get("count") or 0, n3d, j.get("ms") or -1, dt), flush=True)
+    return {"ok": True, "count": j.get("count"), "texts": ts, "ms": j.get("ms"),
+            "end2end_ms": round(dt), "n_3d": n3d, "size": j.get("size"),
+            "ts_used_default": used_default,
+            "instances": [{"label": it.get("label"), "score": it.get("score"),
+                           "area_px": it.get("area_px"), "box_xyxy": it.get("box_xyxy"),
+                           "c3d": (it.get("c3d") if (it.get("c3d") or {}).get("ok") else None)}
+                          for it in (j.get("instances") or [])],
+            "msg": "🧩 分割完成: 概念 %s → %d 个实例掩膜%s · 推理 %.0fms"
+                   % ("/".join(ts), j.get("count") or 0,
+                      ("(默认概念)" if used_default else ""), j.get("ms") or -1)}
+
+
+
 # 生成卡死上限(秒): VLM 实测 5~120s, 网络最坏 300s(gen_overlay_from_vlm 的 urlopen timeout)
 # ⇒ 留足余量; 超了判卡死并自动解锁, 避免 busy 永久占位把 4 个按钮全变哑巴
 _GEN_STALE_S = 360.0
@@ -2626,6 +2683,21 @@ class Handler(BaseHTTPRequestHandler):
                 msg = _spawn_gen(kind, cam, hint) if kind in _GEN_KINDS else "未知 kind=%s" % kind
             self._send(200, "application/json; charset=utf-8",
                        json.dumps({"msg": msg}, ensure_ascii=False).encode("utf-8"))
+        elif p == "/seg":
+            # 🧩 开放词汇分割 (SAM3): 概念提示词 → 所有实例掩膜(像素级), 写 origin='seg' 进叠加规格
+            #    GET /seg?cam=arm&texts=光模块,插孔&three_d=1   (texts 空 = 用默认三个概念, 回执里标明)
+            cam, texts, t3d = "arm", "", "1"
+            if "?" in self.path:
+                for kv in self.path.split("?", 1)[1].split("&"):
+                    if kv.startswith("cam="):
+                        cam = urllib.parse.unquote_plus(kv.split("=", 1)[1])
+                    elif kv.startswith("texts=") or kv.startswith("text="):
+                        texts = urllib.parse.unquote_plus(kv.split("=", 1)[1])
+                    elif kv.startswith("three_d="):
+                        t3d = kv.split("=", 1)[1]
+            res = _seg_run(cam, texts, t3d not in ("0", "false", "no", "off"))
+            self._send(200, "application/json; charset=utf-8",
+                       json.dumps(res, ensure_ascii=False).encode("utf-8"))
         elif p == "/boxes":
             # 🖱 可交互框清单: 像素几何(3D 线框 8 角点 / 2D xyxy) + 稳定 id + 已删清单
             cam = "arm"

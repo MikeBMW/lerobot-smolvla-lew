@@ -76,6 +76,7 @@ ORIGIN_STYLE = {
     "meas": ((230, 0, 230), "实测长方体"),          # 紫(2026-09-28 深度实测的 3D 长方体: 光模块)
     "plan": ((255, 255, 255), "规划路径"),          # 亮白(2026-09-28 规划的末端位姿轨迹: 路点+连�)
     "trace": ((0, 255, 255), "实测轨迹"),           # 黄(2026-09-29 真机 TCP 实测轨迹: 人拖/控制台走出来的真实路径)
+    "seg": ((255, 0, 200), "SAM3 分割掩膜"),         # 品红(2026-09-29 L2 开放词汇分割: 像素级掩膜轮廓+半透明填充)
 }
 
 
@@ -664,6 +665,44 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
                         _anchor=None,
                         _box=[round(float((xs.min() + xs.max()) / 2.0), 1),
                               round(float(ys.min()), 1), round(float(ys.max()), 1)])
+        # ── 🧩 掩膜(origin=seg, L2 开放词汇分割/SAM3): 像素级轮廓 + 半透明填充 ──
+        #    规格元素: {"kind":"mask", "polys":[[[x,y],...], ...], "origin":"seg", "label":..., "conf":...,
+        #              "area_px":..., "c3d":{...可选, 掩膜+深度解出的 base 系中心/尺寸}}
+        #    为什么单列一支而不是走 2D 框: 掩膜是**物体轮廓**(像素级), 用矩形框画会把台面/邻件一起圈进去,
+        #    老倪目检一眼就能看出"框不对"。填充按面积减淡(大掩膜别糊满屏), 与 3D 盒的染色同一套取舍。
+        elif b.get("polys"):
+            polys = [np.asarray(p, np.int32).reshape(-1, 1, 2)
+                     for p in (b.get("polys") or []) if len(p) >= 3]
+            if not polys:
+                skipped.append((label, "掩膜多边形不足 3 点"))
+                continue
+            _marea = float(sum(cv2.contourArea(p) for p in polys))
+            _k = 1.0 if _marea < 8000.0 else max(0.45, 8000.0 / _marea)
+            if _FILL_ON:
+                _ov = img.copy()
+                for p in polys:
+                    cv2.fillPoly(_ov, [p], tuple(int(v * 0.5) for v in col), cv2.LINE_AA)
+                cv2.addWeighted(_ov, FILL_ALPHA * _k, img, 1.0 - FILL_ALPHA * _k, 0, img)
+            for p in polys:
+                cv2.polylines(img, [p], True, col, 2, cv2.LINE_AA)
+            _all = np.concatenate([p.reshape(-1, 2) for p in polys], 0).astype(float)
+            xs, ys = _all[:, 0], _all[:, 1]
+            xyxy = [float(np.clip(xs.min(), 0, W - 1)), float(np.clip(ys.min(), 0, H - 1)),
+                    float(np.clip(xs.max(), 0, W - 1)), float(np.clip(ys.max(), 0, H - 1))]
+            _c3d = b.get("c3d") if isinstance(b.get("c3d"), dict) and b.get("c3d", {}).get("ok") else None
+            info.update(kind="mask", corners=None, xyxy=xyxy, clipped=bool(
+                xs.min() < 0 or ys.min() < 0 or xs.max() > W or ys.max() > H),
+                n_polys=len(polys), area_px=b.get("area_px") or int(round(_marea)),
+                # 轮廓点集给前端画 SVG/命中(取最大一圈; 完整多圈仍在规格的 polys 里) —— 页面据此画出**真实轮廓**
+                # 而不是外接矩形, 否则掩膜的"贴合"在页面上看不出来(与叠加帧一致)
+                contour=[[int(round(float(q[0][0]))), int(round(float(q[0][1])))]
+                         for q in max(polys, key=cv2.contourArea)],
+                n_contour=int(len(polys)),
+                z_mm=(round(_c3d["z_mm"], 1) if _c3d and _c3d.get("z_mm") is not None else None),
+                c3d=(_c3d or None),
+                # 标签放**轮廓外**(不透明底片贴在掩膜上会盖掉填充与轮廓 —— 3D 盒分支同款教训)
+                _box=[round(float((xs.min() + xs.max()) / 2.0), 1),
+                      round(float(ys.min()), 1), round(float(ys.max()), 1)])
         # ── 2D 框(det/vlm 只有像素框): 保持矩形, 无色框材质 ──
         elif b.get("xyxy"):
             x1, y1, x2, y2 = [float(t) for t in b["xyxy"]]
@@ -719,14 +758,16 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
         for k in ("frame_age", "tcp", "handeye", "note"):
             if extra.get(k):
                 band.append(str(extra[k]))
-    band.append("框: 仿真=%s 量测=%s 大模型=%s 检测=%s (共%d)"
+    band.append("框: 仿真=%s 量测=%s 大模型=%s 检测=%s 分割=%s (共%d)"
                 % (sum(1 for d in drawn if d["origin"] == "sim"),
                    sum(1 for d in drawn if d["origin"] == "meas"),
                    sum(1 for d in drawn if d["origin"] == "vlm"),
-                   sum(1 for d in drawn if d["origin"] == "det"), len(drawn)))
+                   sum(1 for d in drawn if d["origin"] == "det"),
+                   sum(1 for d in drawn if d["origin"] == "seg"), len(drawn)))
     n3 = sum(1 for d in drawn if d.get("kind") == "3d")
-    band.append("3D 线框 %d · 2D 框 %d · 用户已删 %d %s"
-                % (n3, len(drawn) - n3, len(deleted),
+    nmsk = sum(1 for d in drawn if d.get("kind") == "mask")
+    band.append("3D 线框 %d · 2D 框 %d · 分割掩膜 %d · 用户已删 %d %s"
+                % (n3, len(drawn) - n3 - nmsk, nmsk, len(deleted),
                    ("(点框选中 · Delete 删除 · Ctrl+Z 撤销)" if drawn else "")))
     if deleted:
         band.append("已删: " + ", ".join(sorted(x.split("|")[-1] for x in deleted))[:110])

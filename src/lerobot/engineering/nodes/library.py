@@ -3294,6 +3294,11 @@ _reg("ss_skill", ["技能序列编排", "技能编排器"], "🛠 技能编排�
 # ════════════════════════════════════════════════════════════════
 _EXTERNAL_LOC["ss_yolo"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 57, "class YoloStateAligner")  # 2026-09-21 行号同步: 37→57
 
+# 🧩 开放词汇分割 (SAM3): 源码视图指向**算法内核**(包里, 与 policies/yolo_3d 同级), 不是 node_ss_seg 胶水
+#    老倪 2026-09-29 纠正: 模型算法归 src/lerobot/policies/, tools/ 只留调用方(CLI/服务/叠加胶水)。
+_EXTERNAL_LOC["ss_seg"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "sam3_seg", "segmenter.py"),
+                           99, "    def segment(self, img_bgr")
+
 def node_ss_yolo(ctx):
     """🎯 YOLO 目标检测 — 真实执行: metaworld 渲染帧 → YOLO detect_3d → align() 替换 39D 段
     源码: yolo_state_aligner.py (YoloStateAligner / detect_3d / align) — 右键源码与真实执行同源, 断点可进
@@ -3359,6 +3364,77 @@ def node_ss_aoi(ctx):
 _reg("ss_aoi", ["外观质量检测"],
      "🔍 外观质量检测 — 真实执行: 目标帧 → quality_check.py 图像处理缺陷检测 (DET-AOI-01~04; 双击=源码, 📥按钮=Excel导出清单)",
      node_ss_aoi)
+
+# 🧩 开放词汇分割 (2026-09-29 老倪: 状态空间缺分割能力) —— L2 感知原语, 与 🎯 YOLO 同级
+#    架构定位: **能力落 L2**(图像+概念提示词 → 该概念的**所有实例掩膜**), **意图落 L5**(概念短语由 VLM/人/工单给),
+#              不进 L4(不预测/不规划/非世界模型), 不进 L3(不产动作/不编排技能)。
+#    算法内核: src/lerobot/policies/sam3_seg/ (与 policies/yolo_3d 同级, 感知前端统一在 policies/ 下)
+#    调用方: 常驻服务 `python tools/sam3_seg.py --serve --port 8796` (独立进程 ⇒ 显存独占 ≈2GB,
+#            本节点不把大模型塞进 GUI 进程, 避免显存打架)。
+_SEG_URL = os.environ.get("ZMAX_SEG_URL", "http://127.0.0.1:8796")
+_SEG_CACHE: dict = {}
+# ⚠️ 概念词必须英文 (实测 CLIP 文本塔不吃中文: 中文提示 → 0 实例)
+# 默认概念 = 实测在这台工位真帧上有命中的三个词 (socket/gripper/optical module 实测 0 实例)
+_SEG_DEFAULT_TEXTS = os.environ.get("ZMAX_SEG_TEXT", "green connector,slot,metal pin")
+
+
+def node_ss_seg(ctx):
+    """🧩 开放词汇分割 (SAM3 分割anything) — 真实执行: 一帧 + 概念提示词 → 所有实例掩膜(像素级)
+    真执行: POST 常驻分割服务 /seg (算法内核 src/lerobot/policies/sam3_seg/, 调用方 tools/sam3_seg.py,
+    权重=facebook/sam3 逐文件镜像, 本地 transformers Sam3Model)
+    返回: 每实例 掩膜多边形/面积/分数, 并写进叠加规格 origin='seg' (kind=mask) → 叠加页/画布可见
+    ⚠️ 概念提示词来自 L5(参数/环境变量), 本节点**不自造概念**; 服务没起/取不到帧 → 如实报, 不造数"""
+    log = ctx.get("log")
+    try:
+        import json as _json
+        import urllib.request as _ur
+        params = ctx.get("params") or {}
+        texts = params.get("texts") or params.get("prompt") or _SEG_DEFAULT_TEXTS
+        if isinstance(texts, str):
+            texts = [t.strip() for t in texts.split(",") if t.strip()]
+        cam = params.get("cam") or os.environ.get("ZMAX_SEG_CAM", "arm")
+        payload = _json.dumps({"cam": cam, "texts": texts, "three_d": bool(params.get("three_d", True)),
+                               "write_spec": True, "cam_name": cam,
+                               "note": "画布节点 node_ss_seg (L2 开放词汇分割)"}).encode()
+        req = _ur.Request(_SEG_URL + "/seg", data=payload, headers={"Content-Type": "application/json"})
+        t0 = time.time()
+        with _ur.urlopen(req, timeout=float(params.get("timeout", 120))) as r:
+            res = _json.loads(r.read())
+        dt = (time.time() - t0) * 1000
+        if not res.get("ok"):
+            if log:
+                log(f"⚠️ 开放词汇分割: 服务返回失败 — {res.get('err') or res}")
+            return False
+        _SEG_CACHE.update({"res": res, "at": time.time(), "texts": texts, "cam": cam})
+        if log:
+            log(f"🧩 开放词汇分割 (SAM3 真实推理): 概念={texts} · 帧={res.get('src')} · "
+                f"{res.get('ms')}ms(服务) / {dt:.0f}ms(端到端) · 实例 {res.get('count')} 个")
+            for it in (res.get("instances") or [])[:8]:
+                c3 = it.get("c3d") or {}
+                extra = (f" · base中心=({c3['center_base'][0]:.3f},{c3['center_base'][1]:.3f},{c3['center_base'][2]:.3f})，"
+                         f"z={c3['z_mm']:.0f}mm 尺寸={c3['xy_size_mm'][0]:.1f}×{c3['xy_size_mm'][1]:.1f}mm"
+                         if c3.get("ok") else (f" · 3D拒答: {c3.get('reason')}" if c3 else ""))
+                log(f"   {it.get('label')}: score={it.get('score'):.3f} 面积={it.get('area_px')}px "
+                    f"轮廓={len(it.get('polys') or [])} 圈{extra}")
+            if res.get("count"):
+                log("   → 已写入叠加规格 origin='seg' (kind=mask), 叠加页/工位总览刷新即见(品红轮廓+半透明填充)")
+            else:
+                log("   ℹ️ 这一帧没找到该概念(不是执行失败) — 概念词要现场试(英文); 已把该相机的 seg 掩膜清空")
+        # 口径: 链跑通(服务返回 ok) 就算成功 —— 0 个实例是**合法结果**, 不能当失败报(GUI 播放会误判)
+        return True
+    except Exception as e:
+        if log:
+            log(f"⚠️ 开放词汇分割真实执行失败: {type(e).__name__}: {e}")
+            if isinstance(e, OSError) or "refused" in str(e).lower() or "timed out" in str(e).lower():
+                log("   服务未在跑? 先起: python tools/sam3_seg.py --serve --port 8796 "
+                    "(SAM3 权重 ~1.7GB, 显存独占)")
+        return False
+
+
+_reg("ss_seg", ["开放词汇分割", "SAM3", "分割anything", "分割"],
+     "🧩 开放词汇分割 (SAM3 分割anything) — L2 感知原语: 一帧+概念提示词 → 所有实例掩膜(像素级) + 掩膜→base 3D; "
+     "写叠加规格 origin=seg (真执行件 tools/sam3_seg.py, 常驻服务 8796; 概念由 L5 给, 本节点不自造)",
+     node_ss_seg)
 
 # 🧮 标定层 (2026-09-02 老倪: Drifting Models 思想 — 引力/斥力二分 + 平衡点; 回路外元层)
 _CALIB_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "calibration")

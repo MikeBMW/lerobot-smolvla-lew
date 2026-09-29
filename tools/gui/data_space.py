@@ -24,7 +24,9 @@ import os, glob, json, time
 
 class GlobalDataSpace:
     def __init__(self, root=None):
-        self.root = root or os.path.expanduser("~/lerobot-smolvla-lew")
+        # 2026-09-29: 原来扫 ~/lerobot-smolvla-lew —— 那是**另一棵分支检出**(mac-hw),
+        # 曾被切走导致 main 线脚本全不存在。老倪红线: 逻辑与产物只有一个 CICD 路径 ⇒ 指 main 工作树。
+        self.root = root or os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax_rel")
         self.datasets = []      # 数据集注册表
         self.curves = {}        # policy → 曲线信息
         self.models = {}        # policy → checkpoint 信息

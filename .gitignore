@@ -286,3 +286,10 @@ reports/session_archive/
 
 # 2026-09-29 L5 闭环: 每次训练动态生成的 LoRA 运行配置 (内容快照在 ~/zmax_data/l5_loop/artifacts_*)
 config_smolvla_lew_lora_*.yaml
+
+# 2026-09-29 视觉复核/调试产生的临时物(不是交付件)
+reports/crops/
+reports/qa_crops/
+reports/dbg_label_audit*.py
+reports/live_local_frame.jpg
+reports/model_autoload_*.json

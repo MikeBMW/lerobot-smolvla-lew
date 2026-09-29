@@ -35,6 +35,7 @@ LEVELS_INDEX = {
         ("n_l2_muscle", "💪 L2 肌肉记忆技能库 (光模块抓放循环)", 'n_l2_muscle', "library.py", 'node_n_l2_muscle'),
         ("ss_moe", "🧬 阶段专家 MOE · 7 专家 + 先验门控路由 (在役)", 'ss_moe', "library.py", 'node_ss_moe'),
         ("n_moveit", "🧭 MoveIt 运动规划 · SDK 直驱桥(Orin)", 'n_moveit', "library.py", 'node_moveit'),
+        ("ss_seg", "🧩 开放词汇分割 (SAM3 分割anything)", 'ss_seg', "library.py", 'node_ss_seg'),
     ],
     "L3": [
         ("ssskill", "🛠 L3 技能序列编排", 'ss_skill', "library.py", 'node_ss_skill'),

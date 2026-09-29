@@ -211,8 +211,14 @@
       <input class="hint" id="hintTxt" placeholder="例：只标光模块和插槽，不要标托盘整体；绿色端头朝下的算光模块">
       <div class="row">
         <button class="go sm" id="bxVlm" onclick="bxRehint()">🧠 按提示重新标注(L5)</button>
+        <button class="go sm" id="bxSeg" onclick="bxSegRun()">🧩 开放词汇分割(SAM3)</button>
         <button class="sm" onclick="gen('sim'); setTimeout(loadBoxes, 4000);">🎯 重建仿真元素</button>
         <button class="sm" onclick="gen('det'); setTimeout(loadBoxes, 3000);">🔍 重跑 YOLO</button>
+      </div>
+      <div class="note" style="margin:6px 0 0">
+        🧩 <b>开放词汇分割</b>用上面「提示词」框里的词当<b>概念</b>（逗号分隔，<b>必须英文</b>，例：<code>green connector,socket,robot gripper</code>；留空 = 这三个默认概念。实测中文提示词返回 0 实例），
+        跑 SAM3 把该概念的<b>每一个实例</b>圈成像素级掩膜（品红轮廓 + 半透明填充，掩膜外轮廓上没有矩形框）。
+        它与 YOLO/大模型框并存，可一样点选删除。首次调用要加载权重（约 10~30s），之后每次约百毫秒级。
       </div>
       <div class="kv"><span class="k">结果</span><span id="bxMsg" style="color:#8b98a5;font-size:13px">—</span></div>
       <div class="kv"><span class="k">上轮指示</span><span id="vlmHint" style="color:#8b98a5;font-size:13px">—</span></div>
@@ -513,6 +519,8 @@ function hull(pts){                                // 凸包(点数少, 直算)
 }
 function bColor(b){ var c = b.color || [200,200,200]; return 'rgb(' + c[2] + ',' + c[1] + ',' + c[0] + ')'; }
 function bShape(b){
+  // 🧩 掩膜(origin=seg): 用**真实轮廓**画多边形+命中(不是外接矩形) —— 页面看到的形状与叠加帧一致
+  if (b.kind === 'mask' && b.contour && b.contour.length >= 3) return { poly: b.contour };
   var pts = (b.corners || []).filter(Boolean);
   if (b.kind === '3d' && pts.length >= 4) return { poly: hull(pts) };
   return { box: b.xyxy };
@@ -616,6 +624,41 @@ async function bxAct(kind, ids){
     $('bxMsg').textContent = '❌ 请求失败: ' + e.message;
     toast('❌ 请求失败: ' + e.message, 6000);
   }
+}
+async function bxSegRun(){
+  // 🧩 开放词汇分割 (SAM3): 用「提示词」框里的词当**概念**(逗号分隔), 圈出该概念的每一个实例的像素掩膜
+  //    结果按 origin='seg' 进规格 ⇒ 与 sim/vlm/det 并存, 可点选/删除(和别的框同规矩)
+  var h = ($('hintTxt').value || '').trim();
+  var b = $('bxSeg'); b.disabled = true; var old = b.textContent; b.textContent = '⏳ SAM3 分割中…';
+  var t0 = Date.now();
+  $('bxMsg').textContent = '已请求开放词汇分割（cam=' + CAM + '）' +
+    (h ? ('，概念「' + h.slice(0, 40) + '」') : '，用默认概念(green connector,socket,robot gripper)') +
+    ' · 首次要加载权重，约 10~30s…';
+  try {
+    var r = await fetch(API + '/seg?cam=' + encodeURIComponent(CAM) +
+                        '&texts=' + encodeURIComponent(h) + '&three_d=1',
+                        { signal: AbortSignal.timeout(240000) });
+    var j = await r.json();
+    var secs = ((Date.now() - t0) / 1000).toFixed(1);
+    if (j.ok){
+      var det = (j.instances || []).slice(0, 6).map(function(it){
+        return (it.label || '?') + ' ' + (it.score != null ? it.score.toFixed(2) : '--') +
+               ' ' + (it.area_px != null ? (it.area_px + 'px') : '') +
+               (it.c3d ? (' → z=' + it.c3d.z_mm.toFixed(0) + 'mm') : '');
+      }).join(' · ');
+      $('bxMsg').textContent = '✅ 分割完成 ' + secs + 's：' + (j.msg || ('实例 ' + j.count)) +
+        (det ? (' · ' + det) : '') + ' · 3D 成功 ' + (j.n_3d != null ? j.n_3d : '?') + '/' + j.count;
+      toast('🧩 分割完成：' + j.count + ' 个实例掩膜（' + secs + 's）', 6000);
+    } else {
+      $('bxMsg').textContent = '❌ ' + (j.msg || '分割失败') + '（' + secs + 's）';
+      toast('❌ ' + (j.msg || '分割失败'), 8000);
+    }
+  } catch (e) {
+    $('bxMsg').textContent = '❌ 请求失败: ' + e.message +
+      '（服务没起？python tools/sam3_seg.py --serve --port 8796）';
+  }
+  b.disabled = false; b.textContent = old;
+  loadBoxes(); pollSpec();
 }
 async function bxRehint(){
   var h = ($('hintTxt').value || '').trim();

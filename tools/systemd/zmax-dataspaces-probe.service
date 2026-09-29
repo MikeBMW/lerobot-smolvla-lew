@@ -1,0 +1,21 @@
+[Unit]
+Description=Z-MAX 全局数据空间全链路探针 (DDS → live.json, 供控制台/网页读)
+Documentation=file:/home/ubuntu/zmax_rel/docs/design/global_data_space_mapping_20260929.md
+After=network-online.target zmax-dds-pub.service zmax-dds-ss.service
+Wants=network-online.target
+# 发布端/守护先起来, 探针再订阅(顺序只影响首帧, TransientLocal 话题会补 latest)
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zmax_rel
+Environment=PYTHONUNBUFFERED=1
+Environment=ZMAX_REPO=/home/ubuntu/zmax_rel
+Environment=ZMAX_DATASPACE_LIVE=/home/ubuntu/zmax_data/dataspace/live.json
+# 必须 dds-venv(cyclonedds 只装在这里; 主 venv 不许被污染) —— 「DDS → JSON 桥」
+ExecStart=/home/ubuntu/dds-venv/bin/python /home/ubuntu/zmax_rel/src/lerobot/dataspace/probe.py --watch --interval 2
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

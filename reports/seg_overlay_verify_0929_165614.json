@@ -1,0 +1,76 @@
+{
+ "at": "2026-09-29 16:56:11",
+ "mode": "saved",
+ "cam": "arm",
+ "texts": [
+  "green connector",
+  "socket",
+  "robot gripper"
+ ],
+ "verdict": {
+  "pass": true,
+  "fails": []
+ },
+ "evidence": {
+  "frame": "/home/ubuntu/zmax_data/scene_survey/arm_now.jpg",
+  "sam3": {
+   "load_s": 1.2604708671569824,
+   "cold_s": 2.7,
+   "infer_ms": 1410.0,
+   "n": 6,
+   "dtype": "bf16",
+   "size_px": 1008,
+   "weights": "/home/ubuntu/zmax_data/models/sam3_hf",
+   "vram_peak_gb": 2.11
+  },
+  "yolo": {
+   "note": "ok (best.pt)",
+   "cls": {
+    "peg": [
+     272.426,
+     146.473,
+     311.985,
+     223.583
+    ]
+   },
+   "iou": {
+    "green connector": {
+     "best_iou": 0.0,
+     "yolo_cls": null
+    }
+   }
+  },
+  "mask3d": [
+   {
+    "ok": false,
+    "reason": "深度源不新鲜: 龄 12000.5s > 20s (容器 ros_depth_stream 未常驻)"
+   },
+   {
+    "ok": false,
+    "reason": "深度源不新鲜: 龄 12000.5s > 20s (容器 ros_depth_stream 未常驻)"
+   },
+   {
+    "ok": false,
+    "reason": "深度源不新鲜: 龄 12000.5s > 20s (容器 ros_depth_stream 未常驻)"
+   },
+   {
+    "ok": false,
+    "reason": "深度源不新鲜: 龄 12000.5s > 20s (容器 ros_depth_stream 未常驻)"
+   },
+   {
+    "ok": false,
+    "reason": "深度源不新鲜: 龄 12000.5s > 20s (容器 ros_depth_stream 未常驻)"
+   },
+   {
+    "ok": false,
+    "reason": "深度源不新鲜: 龄 12000.5s > 20s (容器 ros_depth_stream 未常驻)"
+   }
+  ],
+  "render": {
+   "diff_px": 17488,
+   "inside_poly": 1764,
+   "outside_poly": 15724,
+   "n_polys": 6
+  }
+ }
+}

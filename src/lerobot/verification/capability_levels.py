@@ -67,6 +67,15 @@ CAPABILITY_LEVELS = {
              "**互补一致率 1.000** (夹紧度=1−开度, 既有约定) · grasped 一致率 0.995。"
              "**缺口如实标**: 通道 2/3 (前向/侧向力) 在引擎恒 0 —— 真机触觉才有 (用例 F-B13)。",
              "groups": ["tac", "sssensor", "sobs"]},
+            {"fid": "L2-A14", "name": "开放词汇分割", "desc": "SAM3 分割anything: 一帧 + 概念提示词(文本/框/点) → "
+             "该概念的**所有实例掩膜**(像素级) + 掩膜→base 3D(深度中位 × 手眼 × TCP 真值)。"
+             "架构定位 = L2 感知原语(与 L2-A01 YOLO 检测同级, 从\"框\"升级到\"轮廓\"、从固定类升级到开放词汇); "
+             "概念提示词由 L5 给(VLM/人/工单), 本能力只执行不造概念。"
+             "落点: 算法内核 src/lerobot/policies/sam3_seg/(与 policies/yolo_3d 同级) + 调用方 tools/sam3_seg.py · "
+             "权重 facebook/sam3 848M 逐文件镜像(本地 transformers Sam3Model, 不用外网) + "
+             "常驻服务 127.0.0.1:8796 + 叠加规格 origin='seg'(kind=mask, 品红轮廓+半透明填充)。"
+             "**未证提升不得进默认档**: 默认按需调用(画布节点双击/服务 POST), 不逐帧常开。",
+             "groups": ["seg", "yolo", "2d3d"]},
         ],
     },
     "L3": {

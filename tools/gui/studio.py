@@ -3444,16 +3444,62 @@ class DataSpaceModule(QWidget):
         self.refresh()
 
     def _build(self):
-        from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
+        from PyQt5.QtWidgets import (QAbstractItemView, QHeaderView, QTabWidget, QTableWidget,
+                                     QTableWidgetItem)
         bl = QVBoxLayout(self)
         bl.setContentsMargins(18, 18, 18, 18)
         bl.setSpacing(10)
 
-        title = QLabel("🌐 全局数据空间 — node ↔ 数据对象 全息映射")
+        title = QLabel("🌐 全局数据空间 — 节点↔数据对象 全息映射 · DDS 全链路 topic 可视化 · 数据闭环")
         title.setFont(QFont("Arial", 13, QFont.Bold))
         title.setStyleSheet(f"color:{SYS2_COLOR}; background:transparent; border:none;")
         bl.addWidget(title)
 
+        # 2026-09-29(老倪: 「全链路 topic 可视化 + 全面数据质量管理 + 数据闭环」进控制台):
+        #   做进**本页的 Tab** —— 不开第 13 个模块卡(功能重复入口被老倪投诉过), 也不做嵌套 Tab。
+        #   数据源: /home/ubuntu/zmax_data/dataspace/{live.json, loop.json} + 注册表 src/lerobot/dataspace/topics.py
+        # 🚌 总线状态条(CANoe 的 measurement bar): 档位/活报文/错误数/累计报文/刷新龄
+        self.lbl_bus = QLabel("🚌 总线: 等待探针…")
+        self.lbl_bus.setFont(QFont("Arial", 10))
+        self.lbl_bus.setStyleSheet(f"color:{C_GREEN}; background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px 10px;")
+        bl.addWidget(self.lbl_bus)
+
+        self._tabs = QTabWidget()
+        self._tabs.setStyleSheet(f"QTabBar::tab {{ background:{C_BG2}; color:{C_WHITE}; padding:6px 12px; }}"
+                                 f"QTabBar::tab:selected {{ background:{C_CARD}; color:{SYS2_COLOR}; }}")
+        # 🚌 DDS 总线控制台(2026-09-29 老倪: 「所有数据都要有 topic … 工程上随时可探测 … 参考
+        #    Vector CANoe 做 DDS 总线, 状态空间工程导出的 json 可加载到总线上」) —— 6 个窗口:
+        #    总线架构 / 报文追踪 / 统计 / 信号 / 质量告警 / 回灌(Restbus)
+        self.bus_panel = None
+        try:
+            from dds_bus import build_tabs as _bus_build
+            self.bus_panel = _bus_build(self._tabs, status_hint=self._bus_status)
+        except Exception as e:                                                   # noqa: BLE001
+            import traceback
+            er = QLabel(f"⚠️ DDS 总线视图不可用: {e}\n{traceback.format_exc()[-600:]}")
+            er.setWordWrap(True)
+            self._tabs.addTab(er, "🚌 总线架构")
+
+        self.dds_head = None
+        try:
+            from dds_space import build_widget as _dds_build
+            self.dds_head = _dds_build(self, into_tabs=self._tabs)   # 头部(档位/刷新/导出) + 4 个 Tab
+            bl.addWidget(self.dds_head)
+            # 去重: 总线那组里已有「⚠ 质量告警」(报文规则 + 闭环门), dds_space 的那份是重复入口
+            _dup = [i for i in range(self._tabs.count())
+                    if self._tabs.tabText(i).strip() == "⚠ 质量告警"]
+            for _i in reversed(_dup[1:]):        # 保留最早的那个(总线那份), 其余删掉
+                _w = self._tabs.widget(_i)
+                self._tabs.removeTab(_i)
+                _w.setParent(None)
+        except Exception as e:                                                   # noqa: BLE001
+            bl.addWidget(QLabel(f"⚠️ DDS 数据空间视图不可用: {e}"))
+
+        # ① 原有「全息映射」→ 第 1 个 Tab
+        wrap = QWidget()
+        wl = QVBoxLayout(wrap)
+        wl.setContentsMargins(6, 6, 6, 6)
+        wl.setSpacing(8)
         top = QHBoxLayout()
         self.lbl_summary = QLabel("加载中…")
         self.lbl_summary.setFont(QFont("Arial", 10))
@@ -3465,7 +3511,7 @@ class DataSpaceModule(QWidget):
         btn.setStyleSheet(f"background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px 16px;")
         btn.clicked.connect(self.refresh)
         top.addWidget(btn)
-        bl.addLayout(top)
+        wl.addLayout(top)
 
         self._table = QTableWidget()
         self._table.setColumnCount(7)
@@ -3476,13 +3522,25 @@ class DataSpaceModule(QWidget):
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._table.setStyleSheet(f"QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER}; }}"
                                   f"QHeaderView::section {{ background:{C_BG2}; color:{SYS2_COLOR}; border:1px solid {C_BORDER}; padding:6px; font-weight:bold; }}")
-        bl.addWidget(self._table, 1)
+        wl.addWidget(self._table, 1)
 
         self.lbl_issues = QLabel("")
         self.lbl_issues.setFont(QFont("Arial", 10))
         self.lbl_issues.setWordWrap(True)
         self.lbl_issues.setStyleSheet(f"color:{C_RED}; background:transparent; border:none;")
-        bl.addWidget(self.lbl_issues)
+        wl.addWidget(self.lbl_issues)
+
+        self._tabs.insertTab(0, wrap, "🗂 全息映射 (节点↔数据对象)")
+        bl.addWidget(self._tabs, 1)
+
+    def _bus_status(self, s):
+        """总线状态条文案(来自 dds_bus.BusPanel.status_line)"""
+        try:
+            self.lbl_bus.setText(str(s))
+            col = C_RED if "错误 0" not in str(s) else C_GREEN
+            self.lbl_bus.setStyleSheet(f"color:{col}; background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px 10px;")
+        except Exception:                                                        # noqa: BLE001
+            pass
 
     def refresh(self):
         try:
