@@ -1,12 +1,12 @@
 {
  "kind": "zmax_live_url",
- "url": "https://57c60736d81fd7.lhr.life",
- "stream": "https://57c60736d81fd7.lhr.life/wall.mjpg?k=zmax-live&w=240&q=45&fps=2",
- "snapshot": "https://57c60736d81fd7.lhr.life/wall.jpg?k=zmax-live&w=560&q=72",
+ "url": "https://c992d41481f6fb.lhr.life",
+ "stream": "https://c992d41481f6fb.lhr.life/wall.mjpg?k=zmax-live&w=240&q=45&fps=2",
+ "snapshot": "https://c992d41481f6fb.lhr.life/wall.jpg?k=zmax-live&w=560&q=72",
  "token": "zmax-live",
  "readonly": true,
  "note": "只读通道: GET 白名单放行; POST 一律 403;/gen 与真机控制永不放行",
  "source": "4060 工位机 (146.x 私网, 主动出网)",
  "changed": true,
- "at": "2026-09-29T18:03:04"
+ "at": "2026-09-29T18:48:05"
 }

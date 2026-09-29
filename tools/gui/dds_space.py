@@ -178,6 +178,8 @@ def build_widget(parent=None, into_tabs=None):
         def __init__(self, parent=None):
             super().__init__(parent)
             self.setStyleSheet(DARK)
+            self.setAttribute(Qt.WA_StyledBackground, True)   # ★ 同上: 否则整条工具条漏出调色板亮底
+            self.setAutoFillBackground(False)
             v = QVBoxLayout(self)
             v.setContentsMargins(8, 6, 8, 6)
             v.setSpacing(6)
