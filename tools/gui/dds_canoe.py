@@ -74,6 +74,15 @@ def _num(v, nd=2, suffix=""):
         return f"{v}{suffix}"
 
 
+def _short_val(v, keep=3):
+    """详情面板里把"长序列"折成一行 —— 否则 ss_plan 的 joints_path(768 个数) 会把 24 个字段名额占满,
+    真正要看的 n_points / end_err_mm / gate_* 全被挤出去。"""
+    if isinstance(v, (list, tuple)) and len(v) > keep * 2:
+        body = ", ".join(("%.4g" % x) if isinstance(x, float) else str(x) for x in list(v)[:keep])
+        return "[%s, …] (共 %d 个)" % (body, len(v))
+    return str(v)
+
+
 def _pad(label, width=14):
     """中文按 2 列宽补齐 → 详情面板的值列能对齐成一竖线(质检: 破折号 x2560-2576 漂移)"""
     w = sum(2 if ord(ch) > 0x2E80 else 1 for ch in str(label))
@@ -570,7 +579,15 @@ class BusView(QWidget):
         root_m.setFont(0, f_tr)
         root_m.setForeground(0, QColor(C_BLUE))
         self.tree.addTopLevelItem(root_m)
-        for key in sorted(msgs):
+        # 🔴 活跃在前: 左面板高度有限(实测只放得下 ~8 行/15 条), 纯字母序会把正在跑的 ss_plan
+        #   排到第 12 行 ⇒ 老倪在页面上根本看不到他要"逐帧对"的那条。活跃的排前面,
+        #   组内再按字母序(顺序仍然可预期)。
+        def _alive_rank(k):
+            _t = topics.get(k) or {}
+            _hz = _t.get("hz")
+            return (0 if isinstance(_hz, (int, float)) and _hz > 0 else 1, str(k))
+
+        for key in sorted(msgs, key=_alive_rank):
             m = msgs[key] or {}
             if only_alive and not topics.get(key):
                 continue
@@ -879,11 +896,21 @@ class BusView(QWidget):
                     "", "质量判据(逐条)"]
             for r in (t.get("rules") or []):
                 out.append("  %s %-12s %s" % ("✔" if r.get("ok") else "✘", r.get("rule", ""), r.get("msg", "")))
+            # 最近一帧摘要(来自 trace.jsonl 的 digest —— 探针对 ss_plan 写的是一行可读摘要,
+            # 而不是 768 个数字; 老倪要"逐帧对", 这行就是他直接读的那行)
+            _dg = ""
+            for _rec in reversed(self._trace_rows[-600:]):
+                if str(_rec.get("topic", "")).split("/")[-1] in (key, str(t.get("topic", "")).split("/")[-1]) \
+                        and _rec.get("digest"):
+                    _dg = str(_rec["digest"])
+                    break
+            if _dg:
+                out += ["", "🧾 最近一帧摘要 (trace digest)", "  " + _dg]
             f = t.get("fields") or {}
             if f:
                 out += ["", "载荷字段(实测值)"]
                 for k in list(f)[:24]:
-                    out.append("  " + _pad(k, 18) + str(f[k]))
+                    out.append("  " + _pad(k, 18) + _short_val(f[k]))
         elif kind == "signal":
             for s in (db.get("signals") or []):
                 if s.get("sid") == key:
