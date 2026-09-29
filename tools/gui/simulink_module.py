@@ -5,11 +5,12 @@ Z-MAX Simulink 模式 · GUI 控制台引擎
 对标 Simulink 交互: 0帧起手 → 模块库拖拽 → 连线 → 双击参数 → 运行/单步/停止
 与 Web comfyui.html 共用 simulink-spec.md v1.0 节点规范 (JSON 完全一致)
 """
-import json, math, random, time, os, sys, glob, tempfile
+import json, math, random, re, time, os, sys, glob, tempfile
 from PyQt5.QtCore import Qt, QRectF, QPointF, QTimer, pyqtSignal, QLineF, QThread
 from PyQt5.QtGui import (QPainter, QPainterPath, QPainterPathStroker, QColor, QPen, QBrush, QFont,
                          QPixmap, QTransform,  # 🐛 2026-08-18: 画布内嵌视频帧需要 (原只在 play_mlp_rollout 局部 import → _mlp_show NameError 静默)
-                         QPolygonF, QLinearGradient, QRadialGradient, QKeySequence)
+                         QPolygonF, QLinearGradient, QRadialGradient, QKeySequence,
+                         QFontMetrics)  # 🎨 2026-09-29: "短显示名" 度量用 (模块级, 不再每处局部 import)
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGraphicsView,
                              QGraphicsScene, QGraphicsItem, QGraphicsObject,
                              QLabel, QPushButton, QToolButton, QFrame, QSpinBox,
@@ -107,14 +108,35 @@ DW = 280  # 节点默认宽度 (240→280: 可用宽 204→228, 字不再贴徽�
 #   加上标题 9→8→7 逐节点自适应降字号 ⇒ 观感"大小不一/挤/显示不全"。
 #   统一规格 (全画布一致, 不再逐节点变): 统一字体族 + 固定字号 + 固定行数 + 超出省略号(+悬停显示全名)
 NODE_FONT = "Noto Sans CJK SC"   # 统一字体族 (实测本机可用, 中英度量一致; 缺则 Qt 回退系统默认)
-NODE_TITLE_PT = 9                # 标题固定 9pt Bold (取消 9/8/7 自适应)
-NODE_SUB_PT = 8                  # 次要文字固定 8pt
+NODE_TITLE_PT = 10               # 🎨 2026-09-29: 标题固定 10pt Bold (9→10; 配合下方"短显示名"后
+                                 #   单行放得下, 比原来"9pt 挤两行"更清楚 — 老倪: 字少+完整+不遮挡)
+NODE_SUB_PT = 9                  # 次要文字固定 9pt (8→9)
 NODE_PAD_L = 14                  # 标题左内边距
 NODE_PAD_R = 56                  # 标题右内边距 (给状态徽章留位)
-NODE_TITLE_LINES = 2             # 标题最多两行 (超出 → 最后一行省略号, 悬停看全名) 
+NODE_TITLE_LINES = 2             # 标题最多两行 (超出 → 最后一行省略号, 悬停看全名)
+# 🎨 2026-09-29 老倪: 「节点字体显示, 不要太多字数, 要显示完整, 不要被遮挡了」——
+#   实测(73 个非背景节点): 名字平均 18.7 字 · 最长 41 字 · 31 个要折两行 ⇒ 框里字多行密,
+#   观感就是"挤/显示不全/被遮挡"。做法 = **显示名 ≠ 数据名**:
+#     · 数据里的 node["name"] 一个字都不改 (节点 id / 连线 / 引擎映射 / 审计全按原名, 零回归);
+#     · 只把**画进框里的字**裁成短标签 (去括号补充 → 按分隔符只留放得下的段) —— 全名进 tooltip;
+#     · 框宽按"短标签"自适应 (autofit_node_width), 于是单行放得下 = 字更少但更完整更大。
+NODE_LABEL_MAX_PX = 300          # 单行标签像素上限 (超出按分隔符截段, 再超才省略号)
 # 🟡🟢🔴 画布顶部通栏状态横幅 (L5 闭环进度) — 2026-09-28 老倪: 节点小字读不出来 ⇒ 通栏大字
 BANNER_FONT_FAMILY = "Noto Sans CJK SC"
 BANNER_FONT_PT = 15              # 15pt Bold (比状态栏 11pt 大一档, 画布顶部一眼可读)
+
+# 🎨 2026-09-29 老倪「没有横向拖动的拖动条」: 画布 view 的横/纵滚动条加粗 (16px) + 高对比 (蓝),
+#   一眼看得见、鼠标抓得住 (原来 8px 暗灰手柄几乎看不出是能拖的条)。
+CANVAS_SCROLLBAR_QSS = """
+QScrollBar:vertical { background:#161b22; width:16px; margin:0; border:none; }
+QScrollBar::handle:vertical { background:#4d8fdb; border-radius:6px; min-height:30px; }
+QScrollBar::handle:vertical:hover { background:#58a6ff; }
+QScrollBar:horizontal { background:#161b22; height:16px; margin:0; border:none; }
+QScrollBar::handle:horizontal { background:#4d8fdb; border-radius:6px; min-width:30px; }
+QScrollBar::handle:horizontal:hover { background:#58a6ff; }
+QScrollBar::add-line, QScrollBar::sub-line { width:0; height:0; background:transparent; }
+QScrollBar::add-page, QScrollBar::sub-page { background:transparent; }
+"""
 
 
 def _node_font(pt, bold=False):
@@ -122,6 +144,57 @@ def _node_font(pt, bold=False):
     f = QFont(NODE_FONT, pt)
     f.setBold(bool(bold))
     return f
+
+
+_BRACKET_RE = re.compile(r"[（(【\[〔][^（()）【】\[\]〔〕]{0,80}[）)】\]〕]")
+_LABEL_SEPS = ("·", "→", "|", "：", ":")
+
+
+def _strip_brackets(text, rounds=4):
+    """去掉括号里的补充说明 (（…）(…)【…】[…]〔…〕) — 反复删到稳定 (含多组/嵌套)。"""
+    s = str(text or "")
+    for _ in range(rounds):
+        new = _BRACKET_RE.sub("", s)
+        if new == s:
+            break
+        s = new
+    return re.sub(r"\s{2,}", " ", s).strip().strip("·-—、,， ").strip()
+
+
+def node_display_name(name, max_px=None):
+    """🎨 2026-09-29: 画进节点框里的**短标签** (数据名一字不改)。
+
+    规则 (确定性, 与绘制同一套字体度量):
+      ① 去括号补充 —— "🧮 流形引擎 (Manifold Engine · 编码→投影)" → "🧮 流形引擎"
+      ② 仍超预算 → 按分隔符 (·→|：) 逐段累加, 只留放得下的段 (至少留第一段)
+      ③ 仍超 → 省略号 (调用方给 tooltip 补全名)
+    max_px=None ⇒ 只做 ① (调用方自己量宽)。
+    """
+    s = str(name or "").strip()
+    if not s:
+        return s
+    s = _strip_brackets(s)
+    if not s:
+        return str(name)
+    if max_px:
+        try:
+            fm = QFontMetrics(_node_font(NODE_TITLE_PT, True))
+        except Exception:
+            return s
+        if fm.horizontalAdvance(s) > max_px:
+            # 按分隔符 (· → | ：) 只保留**放得下的前缀**, 且保留原分隔符样式 (不把 "→" 改成 "·")
+            keep = None
+            for m in re.finditer(r"\s*(?:·|→|\||：|:)\s*", s):
+                cand = s[:m.start()].rstrip().strip("·-—、,，")
+                if not cand:
+                    continue
+                if fm.horizontalAdvance(cand) > max_px:
+                    break
+                keep = cand
+            s = keep or s
+            if fm.horizontalAdvance(s) > max_px:
+                s = fm.elidedText(s, Qt.ElideRight, int(max_px))
+    return s or str(name)
 
 
 def _wrap_title(text, fm, avail, max_lines=NODE_TITLE_LINES):
@@ -175,31 +248,42 @@ def _wrap_title(text, fm, avail, max_lines=NODE_TITLE_LINES):
         lines = lines[:-1] + [last] if lines else [last]
     return lines[:max_lines], truncated
 
-def autofit_node_width(node, max_w=380):
-    """🎨 2026-09-12 老倪「不裁字」: 按统一字号把节点宽度撑到"名字放得下"。
+def autofit_node_size(node, max_w=380):
+    """🎨 2026-09-12 / 2026-09-29 老倪「不裁字 · 不挤 · 不遮挡」: 按**短显示名**把方框自适应到"放得下"。
 
-    规则 (与绘制同一套度量, 所以撑过的框一定装得下):
-      · 单行放得下 → 不动; 需要更宽但 ≤max_w → 直接撑到单行宽 (最整齐)
-      · 单行超 max_w → 撑到"两行放得下"的宽度 (两行是标题上限)
-    返回 True = 改过宽度 (调用方用于统计/日志)。
+    规则 (与绘制同一套度量 + 同一条短名规则, 所以撑过的框一定装得下):
+      · 宽度: 短标签单行放得下 ⇒ 撑到单行宽 (上限 max_w=380, 不小于默认 DW)
+      · 高度: 标题行数(≤2) × 行高 + 上下留白; 需要更高就长高 (宁可长高也不压字)
+    返回 True = 改过尺寸 (调用方用于统计/日志)。
     """
     try:
-        from PyQt5.QtGui import QFontMetrics as _FM
-        fm = _FM(_node_font(NODE_TITLE_PT, True))
+        fm = QFontMetrics(_node_font(NODE_TITLE_PT, True))
     except Exception:
         return False
-    name = str(node.get("name") or "")
-    if not name or node.get("type") == "row_bg":
+    if not str(node.get("name") or "") or node.get("type") == "row_bg":
         return False
-    w = int(node.get("w") or DW)
-    need1 = fm.horizontalAdvance(name) + NODE_PAD_L + NODE_PAD_R
-    if need1 <= w:
+    disp = node_display_name(node.get("name"), NODE_LABEL_MAX_PX)
+    if not disp:
         return False
-    if need1 <= max_w:
-        node["w"] = int(max(DW, need1))
-    else:
-        node["w"] = int(max(DW, min(max_w, need1 // 2 + NODE_PAD_L + NODE_PAD_R + 24)))
-    return True
+    w0, h0 = int(node.get("w") or DW), int(node.get("h") or DH)
+    need1 = fm.horizontalAdvance(disp) + NODE_PAD_L + NODE_PAD_R
+    if need1 <= w0:
+        w = w0
+    elif need1 <= max_w:
+        w = int(max(DW, need1))
+    else:  # 超过 380 → 两行放得下即可
+        w = int(max(DW, min(max_w, need1 // 2 + NODE_PAD_L + NODE_PAD_R + 24)))
+    # 高度: 短名后一般单行; 真放不下时按两行留高 (10pt 行高 ≈ 18px)
+    _lines = max(1, min(NODE_TITLE_LINES, int(math.ceil(fm.horizontalAdvance(disp) / max(40.0, w - NODE_PAD_R)))))
+    h = max(h0, int(_lines * (fm.height() + 1) + 26))
+    changed = (w != w0) or (h != h0)
+    node["w"], node["h"] = w, h
+    return changed
+
+
+def autofit_node_width(node, max_w=380):
+    """兼容旧调用名 (= autofit_node_size)。"""
+    return autofit_node_size(node, max_w)
 
 
 # 🎯 状态空间变量监控 → 画布连线映射 (2026-08-20 老倪: 选中右侧变量高亮对应连线)
@@ -2890,12 +2974,23 @@ class SimNodeItem(QGraphicsObject):
             #   (状态空间节点x=100/row_bg x=-20 → 104px; Model Zoo 节点x=120/row_bg x=-146 → 250px)
             _minx = getattr(self, "_bg_min_node_x", None)
             if _minx is None:
+                # 🎨 2026-09-29 老倪「方框里的字显示不全 / 要自适应」根因实测:
+                #   原来取的是**全画布**最小节点 x (本画布 = 0) ⇒ 每条色带的名字区都被压到
+                #   下限 80px ⇒ 15 条色带**全部**被截成 "🔧 L2 基础辅助功能…"(实测 15/15 截断)。
+                #   改为**按本行色带自己的**内部节点算 (节点中心 y 落在本带内): 实测名字区
+                #   80px → 284~10000+px, 名字才真能显示完整。
                 try:
-                    _minx = min((n.get("x", 0) for n in self.scene_ref.nodes
-                                 if n.get("type") != "row_bg"), default=self.pos().x() + 250)
-                    self._bg_min_node_x = _minx
+                    _bx = float(self.node.get("x", 0))
+                    _by = float(self.node.get("y", 0))
+                    _bh = float(self.node.get("h", 244))
+                    _ys, _ye = _by + 8, _by + _bh - 8
+                    _cand = [float(n.get("x", 0)) for n in self.scene_ref.nodes
+                             if n.get("type") != "row_bg"
+                             and _ys <= float(n.get("y", 0)) + float(n.get("h", DH)) / 2.0 <= _ye]
+                    _minx = min(_cand) if _cand else _bx + 240
                 except Exception:
                     _minx = self.pos().x() + 250
+                self._bg_min_node_x = _minx
             avail_w = max(80.0, float(_minx - self.pos().x() - 16))
             _aw = int(avail_w)
             painter.setPen(QColor("#ffffff") if _CUR_THEME != "light" else QColor("#000000"))
@@ -2904,12 +2999,14 @@ class SimNodeItem(QGraphicsObject):
             # 🐛 2026-08-28 老倪"字体大": 12→10 起, 下限 9→8
             # 🐛 2026-09-09 老倪"还是大, 挤": 10→9 起, 下限 8→7
             # 🎨 2026-09-12 老倪: 统一规格 — 固定 9pt Bold + 最多两行 + 省略号 (原 9→7 自适应 = 大小不一)
+            # 🎨 2026-09-29: 再加"短显示名"(去括号补充) —— 名字区够宽时名字显示完整, 全名进 tooltip
             painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
             fm = painter.fontMetrics()
-            _bg_lines, _bg_trunc = _wrap_title(name, fm, _aw)
+            _bg_disp = node_display_name(name, None)   # 窄名字区(80px)交给 2 行折行, 不再硬截前缀
+            _bg_lines, _bg_trunc = _wrap_title(_bg_disp, fm, _aw)
             try:
-                if _bg_trunc:
-                    self.setToolTip(f"{name}\n(背景行放不下, 显示已省略)")
+                if _bg_trunc or str(_bg_disp) != str(name):
+                    self.setToolTip(f"{name}\n(色带名字区显示短标签, 悬停可见完整名称)")
             except Exception:
                 pass
             if len(_bg_lines) > 1:
@@ -3059,16 +3156,20 @@ class SimNodeItem(QGraphicsObject):
         avail = max(40, self.w - NODE_PAD_R)
         painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
         _fm = painter.fontMetrics()
-        _lines, _trunc = _wrap_title(name, _fm, avail)
+        # 🎨 2026-09-29 老倪「不要太多字数 · 要显示完整 · 不要被遮挡」:
+        #   框里画的是**短显示名** (去括号补充 + 只留放得下的段), 数据名一字不改 ⇒ 零回归;
+        #   短名一般单行放得下 ⇒ 不再"两行小字挤在框里", 观感=字少但更完整。
+        paint_name = node_display_name(name, NODE_LABEL_MAX_PX)
+        _lines, _trunc = _wrap_title(paint_name, _fm, avail)
         disp = "\n".join(_lines)
-        try:      # 省略号时用 tooltip 补全 (鼠标悬停即可看到完整节点名)
-            if _trunc:
-                self.setToolTip(f"{name}\n(节点框放不下, 显示已省略)")
-            elif str(self.toolTip() or "").startswith(name):
+        try:      # 短名/省略号时用 tooltip 补全 (鼠标悬停即可看到完整节点名)
+            if _trunc or str(paint_name) != str(name):
+                self.setToolTip(f"{name}\n(框内显示短标签, 悬停可见完整名称)")
+            elif str(self.toolTip() or "").startswith(str(name)):
                 self.setToolTip("")
         except Exception:
             pass
-        _draw_lines = _lines if _lines else [name]
+        _draw_lines = _lines if _lines else [paint_name]
         # 🧩 2026-09-27 老倪: 节点里有实时帧时也按"视频节点"排版 (名字落左下, 画面居中不压字)
         _has_live_frame = (self.video_pixmap is not None and not self.video_pixmap.isNull())
         if params.get("video") or _has_live_frame:
@@ -3077,7 +3178,7 @@ class SimNodeItem(QGraphicsObject):
             painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
             _fm2 = painter.fontMetrics()
             painter.drawText(QRectF(6, self.h - 18, self.w - 12, 14), Qt.AlignVCenter | Qt.AlignLeft,
-                             _fm2.elidedText(name, Qt.ElideRight, self.w - 12))
+                             _fm2.elidedText(str(paint_name), Qt.ElideRight, self.w - 12))
         else:
             _gfx = t in ("yolo_gate", "train_gate", "mode_switch", "switch", "coord_overlay")
             painter.setPen(QColor(pal["title"]))
@@ -3654,6 +3755,11 @@ class SimCanvas(QGraphicsView):
         self._last_hover_pos = None
         self._scale = 1.0  # 🐛 2026-08-22 修正: QSS px→pt 已放大字体(随DPI), _scale 再放大40%→双重放大字体过大挤爆节点/方块. 回 1.0 (Ctrl+滚轮可再调)
         self.scale(self._scale, self._scale)  # 应用初始缩放; Ctrl+滚轮仍可再调(0.2~3.0)
+        # 🎨 2026-09-29 老倪「没有横向拖动的拖动条」: 画布滚动条加粗+高对比 (见 CANVAS_SCROLLBAR_QSS)
+        try:
+            self.setStyleSheet(CANVAS_SCROLLBAR_QSS)
+        except Exception:
+            pass
         # ↩️ Ctrl+Z 撤销 (2026-08-07 老倪: 挪动背景行回不去上一步)
         # WidgetWithChildrenShortcut: 焦点在画布内才触发, 不抢搜索框/输入框的原生撤销
         from PyQt5.QtWidgets import QShortcut

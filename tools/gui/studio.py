@@ -318,6 +318,21 @@ C_GRAY      = "#8b949e"
 C_DIM       = "#484f58"
 C_BORDER    = "#30363d"
 
+# 🎨 2026-09-29 老倪「没有横向拖动的拖动条 / 窗口里的东西看不全」:
+#   实测根因 = 滚动条只有 8px 宽 + 手柄暗灰(#484f58), 在深色背景上几乎看不出是"能拖的条";
+#   且横向滚动条此前**没有任何 QSS 规则**(走 Qt 默认, 更细)。这里给一套**粗(16px)+高对比(蓝)**
+#   的滚动条样式, 需要的地方用 widget 级样式表挂上 (widget 级 = 一定压得住页面级旧规则)。
+SCROLLBAR_QSS = f"""
+QScrollBar:vertical {{ background:{C_BG2}; width:16px; margin:0; border:none; }}
+QScrollBar::handle:vertical {{ background:#4d8fdb; border-radius:6px; min-height:30px; }}
+QScrollBar::handle:vertical:hover {{ background:{C_BLUE}; }}
+QScrollBar:horizontal {{ background:{C_BG2}; height:16px; margin:0; border:none; }}
+QScrollBar::handle:horizontal {{ background:#4d8fdb; border-radius:6px; min-width:30px; }}
+QScrollBar::handle:horizontal:hover {{ background:{C_BLUE}; }}
+QScrollBar::add-line, QScrollBar::sub-line {{ width:0; height:0; background:transparent; }}
+QScrollBar::add-page, QScrollBar::sub-page {{ background:transparent; }}
+"""
+
 # ═══ 浅色调色板 (2026-08-16 老倪: 编辑菜单 → UI风格 浅色; 08-16 九版: 背景灰度统一)
 # Vector CANoe 窗口实测: 背景单一浅灰 #e0e0e0 (81%) + 白卡片 + 黑边框黑字 + 朱红点缀
 L_BG        = "#e0e0e0"
@@ -711,7 +726,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.16.4")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.16.5")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -1690,6 +1705,65 @@ class _HwFetcher(QThread):
         self._stop = True
 
 
+class ReflowCardRow(QWidget):
+    """🎨 2026-09-29 老倪「方框的自适应布局」——卡片按**可用宽度**自动换列。
+
+    与"写死 3 张横排"的区别: 窗口/面板被拉窄时, QHBoxLayout 只能把卡片压到 minimumWidth
+    以下 → 卡片被裁/挤出可视区 (现场观感 = "显示不全")。这里按每一列的最小卡宽算得出
+    最多能放几列, 再换列 (3→2→1), 于是**永远放得下**, 不需要横向拖动也能看全。
+    """
+
+    def __init__(self, cards, min_card_w=260, spacing=12, max_cols=3, parent=None):
+        super().__init__(parent)
+        self._cards = list(cards)
+        self._min_w = int(min_card_w)
+        self._spacing = int(spacing)
+        self._max_cols = int(max_cols)
+        self._cols = 0
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self._grid = QGridLayout(self)
+        self._grid.setSpacing(self._spacing)
+        self._grid.setContentsMargins(0, 0, 0, 0)
+
+    def _cols_for_width(self, w):
+        w = int(max(1, w))
+        per = self._min_w + self._spacing
+        return max(1, min(self._max_cols, max(1, (w + self._spacing) // per)))
+
+    def cols(self):
+        return self._cols
+
+    def reflow_for(self, width=None):
+        """按给定(或当前)宽度重排; 返回是否真的改了列数。"""
+        w = int(width if width else self.width())
+        if w <= 1:
+            return False
+        cols = self._cols_for_width(w)
+        if cols == self._cols and self._grid.count() == len(self._cards):
+            return False
+        while self._grid.count():
+            it = self._grid.takeAt(0)
+            if it is not None and it.widget() is not None:
+                it.widget().setParent(None)
+        for i, c in enumerate(self._cards):
+            self._grid.addWidget(c, i // cols, i % cols)
+        for cc in range(self._max_cols):
+            try:
+                self._grid.setColumnStretch(cc, 1 if cc < cols else 0)
+            except Exception:
+                pass
+        self._cols = cols
+        return True
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self.reflow_for(e.size().width())
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self.reflow_for(self.width())
+
+
 class HomeWidget(QWidget):
     module_clicked = pyqtSignal(str)
 
@@ -1702,9 +1776,10 @@ class HomeWidget(QWidget):
     def _build(self):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea{border:none;}")
-        scroll.setStyleSheet(scroll.styleSheet() + "QScrollBar{background:transparent;}")
+        # 🎨 2026-09-29 老倪: 原来横向条**永远关掉**(ScrollBarAlwaysOff) ⇒ 内容一旦宽过窗口
+        #   就既看不到右边也**没有横向拖动条**。改按需出现 (有拖得动的就出现)。
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setStyleSheet("QScrollArea{border:none;}" + SCROLLBAR_QSS)   # 🎨 粗+高对比滚动条
 
         page = QWidget()
         page.setStyleSheet(f"background:{C_BG};")
@@ -1927,9 +2002,10 @@ class HomeWidget(QWidget):
             th.addWidget(sub)
             th.addStretch()
             fl.addLayout(th)
-            # 3 张卡横排 (🐛 2026-08-08: 删 Architecture 后列表非3倍数 — 越界防护)
-            row = QHBoxLayout()
-            row.setSpacing(12)
+            # 🎨 2026-09-29 老倪「方框的自适应布局」: 3 张卡横排 → 按可用宽度**自动换列**
+            #   (宽 ≥ 约 850px 三列 / 窄了一行两列 / 再窄一列) —— 窗口拉窄时不再把卡片挤出可视区。
+            #   (🐛 2026-08-08: 删 Architecture 后列表非 3 倍数 — 越界防护保留)
+            _row_cards = []
             for c in range(3):
                 idx = gi * 3 + c
                 if idx >= len(modules):
@@ -1938,8 +2014,8 @@ class HomeWidget(QWidget):
                 card = ModuleCard(mid, icon, title, syslbl, desc, syslbl.split("·")[0].strip(), color,
                                   veh_id=f"VEH.{idx + 1}")  # 🌐 2026-08-09 老倪: VEH.1~VEH.12 对话 ID (点号)
                 card.clicked.connect(self.module_clicked.emit)
-                row.addWidget(card)
-            fl.addLayout(row)
+                _row_cards.append(card)
+            fl.addWidget(ReflowCardRow(_row_cards, max_cols=3))
             outer.addWidget(frame)
         container = QWidget()
         container.setStyleSheet("background:transparent;")
@@ -7066,8 +7142,10 @@ class HardwareModule(SubModuleWidget):
         
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar{width:8px;}")
+        # 🎨 2026-09-29: 横向条改按需 (原 AlwaysOff ⇒ 宽了也没法拖); 去掉 width:8px 覆盖,
+        #   用全局 14px 高对比滚动条 (老倪: 拖不动/看不见)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;}" + SCROLLBAR_QSS)
         scroll.setWidget(container)
         self._build_shell(scroll)
 
@@ -8307,8 +8385,9 @@ class ConfigModule(SubModuleWidget):
         
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea{border:none;}")
+        # 🎨 2026-09-29: 横向条改按需 (原 AlwaysOff ⇒ 宽了也没法拖)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setStyleSheet("QScrollArea{border:none;}" + SCROLLBAR_QSS)
         
         body = QWidget()
         bl = QVBoxLayout()
@@ -10900,7 +10979,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.4 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.5 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10908,9 +10987,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.4 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.5 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.16.5: 控制台 v5.16.5 — UI 可读性与自适应 (老倪: 「窗口没有显示完全 + 没有横向拖动的拖动条 + 节点字太多被遮挡」) ①**窗口入屏**: 新增 `_fit_window_to_screen()` (尺寸/位置双夹紧进可用工作区, 留 8px 边距, 不贴死屏幕边缘) — 启动时与 show 后各夹一次, 并留 /tmp/studio_show_diag.log 取证; 菜单新增「🖥 窗口适配屏幕 (Ctrl+Shift+F)」+「🔲 全屏切换 (F11)」。②**滚动条看得见/抓得住**: 实测根因 = 滚动条仅 8px + 手柄暗灰(#484f58), 横向条**此前没有任何 QSS 规则**; 新增 `SCROLLBAR_QSS`(纵/横 16px + 蓝手柄 #4d8fdb + hover 高亮) 挂到首页/硬件页/另一页滚动区 + 画布 view(`CANVAS_SCROLLBAR_QSS`), 三处 `ScrollBarAlwaysOff → AsNeeded`(原来内容宽过窗口就既看不到右边也没有横向条)。像素取证: 改造前右缘蓝色列为 0 条(只剩两条灰线), 改造后 16 列蓝色手柄 1838..1853。③**方框(色带)字显示不全 —— 真根因**: 色带名字区宽度原按**全画布**最小节点 x 算(本画布 = 0) ⇒ 15 条色带的名字区**全部**被压到下限 80px ⇒ 15/15 全部截成「🔧 L2 基础辅助功能…」。改为按**本行色带自己的**内部节点算(节点中心 y 落在本带内) ⇒ 名字区 80px → 284~11070px, 实测 **15/15 完整显示**。④**画布节点字: 字少 + 完整 + 不遮挡 (显示名 ≠ 数据名)**: 节点名字平均 18.7 字/最长 41 字 ⇒ 框里挤两行。新增 `node_display_name()`(去括号补充 → 按分隔符 · → | 只保留放得下的前缀, 保留原分隔符样式) + `autofit_node_size()`(按**短名**自适应框宽, 并按行数长高, 宁可长高不压字)。数据里的 node["name"] **一个字都不改**(id/连线/引擎映射/审计零回归), 全名进 tooltip。标题字号 9→10pt、次要 8→9pt。同口径实测(两边各走自己的 autofit): 老 73 节点两行 6 个/标题宽中位 161px 最大 385px → 新 **两行 0 个**/中位 129px 最大 277px, 截断 0。⑤**渲染自检**: 88 节点逐个走真实 `paint()` → **异常 0**(paint 抛异常 = Qt 直接 abort 整个 GUI), 标题截断 0。⑥**方框自适应布局**: 首页 12 张模块卡改 `ReflowCardRow`(按可用宽度自动换列 3→2→1, 单元验证 1500/1000→3 列 · 600→2 列 · 500 以下→1 列; 本机 1920 屏仍 3 列)。⑦红线: 未下发任何真机动作; 未改在役指针/默认档; 画布 JSON 未改(node name/x/y/w 原样, 只在内存里自适应)。
         # v5.16.4: 控制台 v5.16.4 — 流形引擎主标定参数 M (老倪: 质量=结构的副产物/等效惯量)。引擎 `ManifoldEngine` 新增有惯性二阶分支 `a=F/M ⇒ Δx=F·dt²/M` (默认 `inertia=False` ⇒ **零回归**, 与旧一阶过阻尼逐位相同); 物理类比等效惯量 / 信息论类比交叉熵 H(p,q)→Fisher-Hessian 曲率尺度, 过阻尼 = M→0 (速度∝力, 旧 GD)。标定层新增**流形引擎标定**节点 `n_calib_mani`「🧮 流形引擎标定 · 主参数 M」: 主参数 M (默认 1.0, 范围 0~8, 单位/含义齐备) **可读可写** —— 真源 `config/calib/zmax_manifold.json` → `tools/zmax_params.py` (`manifold_M`/`manifold_inertia`/`write_manifold_M`, CLI `--m <v> [--inertia on|off]`), 并入 `calib.json` `manifold_engine` 域 (只更新该键, 不动其他标定域); 标定层 `calibration_layer.py` 新增 `MANIFOLD_CALIB` 域与 `manifold_summary()`。画布**真接线** (标定层/潜空-流形 → 本节点 → 流形引擎/接触流形/流形专家, 5 条前向边) ⇒ 87→**88 节点** / 173→**178 连线**; 能力清单加 `L4-C16`。零回归取证: L2 **275/275** · L4 **178/178** (与基线一致); 数值实验 `tools/manifold_M_experiment.py`: inertia 关 与 M=0 均与旧一阶**逐位相同**, M=1 首步 Δx=1e-4(=|F|dt²/M) 且场反转后仍前进 (动量), 过阻尼立刻反向。红线: 只读旁路不下发真机动作; 未改在役指针/默认档。
         # v5.16.3: 控制台 v5.16.3 — 现场人机在环互动 + 场景叠加校正闭环 · 新增「HIL↔L5 互动环」(tools/l5_hil_agent.py): 只读轮询 ECS 中转的人机在环指示 → 抓臂上相机实帧 →   调**状态空间工程引擎的 L5**(left_right/state_space/scene_vlm.py :: SceneVLM)理解 → 复用严格 JSON 提示词   把框写到叠加页 vlm 层(自动标注) → 带 seq 回执给人机在环界面; 现场停顿点(P_n)自动触发同一理解环。   红线不变: 动作类指示一律只记账待授权, 绝不代发真机动作; 引擎不可用时回退并如实标明来源。 · 场景叠加新增 `trace` 层(黄 · 真机 TCP 实测轨迹) + 参考点标记 P_n; 实测轨迹按 2mm 抽稀, 每次停顿自动落参考点。 · 现场实时链工具化: live_motion_recorder(50Hz 真关节+TCP, 原子落盘) · live_pause_marker(停顿点+trace 发布) ·   live_plan_segment(同源规划段: 两端真机真值, 按执行器守卫 ≤50mm/下降≤20mm/自转≤10° 分段) ·   l2_dispatch_watch(只读镜像 l2_daemon 下发链, 替代断点; 已兼容新旧日志格式)。 · 修正: L5 槽位工具退出码语义(0=已记录/有框 · 1=待确认或0框 · 2=参数错)并在 0 框/待确认时打印原因分解;   深度判据由「查容器名 ros_depth_stream」改为按**源文件龄**(与 cam_live_stream 同口径, 修掉假离线);   project_slot 缺/非法几何不再 TypeError 崩溃(只出中心点投影, ok=False, 不编造角点)。 · 已实测: 引擎 L5 判读 0.6~1.5s(thinking 关), 带框提示词一次 4 框[光模块,光模块,标定板,托盘]; 现场抓拍-投影链路   cmd_record 返回码 0(status=已记录)。
         # v5.16.2: MoveIt「只规划」入口落地 + 同源闸判据(实测未过): 真机 6 关节喂 FK 与真 /robot/tcp_pose 差 261.5mm/137.5° ⇒ 该 URDF 与真机不同源, MoveIt 轨迹暂不能贴到真机画面; 新增 tools/moveit_real_state_probe.py(domain0 只读抓真机状态, BEST_EFFORT) + tools/moveit_same_source_check.py(判据 <5mm 且 <2°) + 证据落 reports/moveit/
@@ -12048,6 +12128,38 @@ class StudioMainWindow(QMainWindow):
             return
         L2SkillDialog(self).exec_()
 
+    # 🖥 2026-09-29 老倪「窗口没有显示完全 / 没有横向拖动条」两项界面自愈
+    def _fit_self_to_screen(self):
+        """一键把主窗口按回屏幕内 (尺寸/位置夹紧), 记进日志便于取证。"""
+        try:
+            if self.isMaximized():
+                self.setWindowState(self.windowState() & ~Qt.WindowMaximized)
+                QApplication.processEvents()
+            ch, why = _fit_window_to_screen(self)
+            try:
+                with open("/tmp/studio_show_diag.log", "a") as _df:
+                    _df.write(f"{time.time():.1f} menu fit_to_screen changed={ch} {why}\n")
+            except Exception:
+                pass
+            self.statusBar().showMessage(
+                f"🖥 窗口适配屏幕: {'已调整 ' if ch else '本来就在屏内 '}· {why}", 6000)
+        except Exception as e:
+            try:
+                self.statusBar().showMessage(f"🖥 适配失败: {e}", 6000)
+            except Exception:
+                pass
+
+    def _toggle_fullscreen(self):
+        """F11 全屏/还原 (全屏 = 连 GNOME 顶栏都不要, 画面最大化)。"""
+        try:
+            if self.isFullScreen():
+                self.showNormal()
+                self._fit_self_to_screen()
+            else:
+                self.showFullScreen()
+        except Exception:
+            pass
+
     def _build_menubar(self):
         """构建专业开发环境菜单栏"""
         self.repo_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12127,6 +12239,17 @@ class StudioMainWindow(QMainWindow):
             act = QAction(label, self)
             act.triggered.connect(self._mk_nav_func(target))
             m_view.addAction(act)
+
+        # 🖥 2026-09-29 老倪「窗口没有显示完全」: 一键把窗口按回屏幕内 (含尺寸/位置夹紧)
+        m_view.addSeparator()
+        act_fit = QAction("🖥 窗口适配屏幕 (按回屏内)", self)
+        act_fit.setShortcut("Ctrl+Shift+F")
+        act_fit.triggered.connect(self._fit_self_to_screen)
+        m_view.addAction(act_fit)
+        act_full = QAction("🔲 全屏切换 (F11)", self)
+        act_full.setShortcut("F11")
+        act_full.triggered.connect(self._toggle_fullscreen)
+        m_view.addAction(act_full)
 
         # ====== 编辑菜单 (2026-08-16 老倪: UI风格 + 字体大小 全局设置) ======
         m_edit = mb.addMenu("编辑(&E)")
@@ -12783,9 +12906,18 @@ def _build_global_qss():
         btn_br_hover = C_BLUE
         btn_bg_pressed = C_BLUE + "55"
     return f"""
-        QScrollBar:vertical {{ background: transparent; width: 8px; margin: 0; }}
-        QScrollBar::handle:vertical {{ background: {C_DIM}; border-radius: 4px; min-height: 20px; }}
+        /* 🎨 2026-09-29 老倪「没有横向拖动的拖动条」——实测根因: 滚动条太细(8px)+手柄太暗,
+           现场看不出能不能拖; 横向条此前**根本没有规则**(走 Qt 默认)。统一加粗到 14px +
+           高对比手柄 (蓝), 两个方向都有: 一眼看得见, 鼠标能抓住拖。 */
+        QScrollBar:vertical {{ background: {C_BG2}; width: 14px; margin: 0; border-left: 1px solid {C_BORDER}; }}
+        QScrollBar::handle:vertical {{ background: {C_BLUE}; border-radius: 5px; min-height: 28px; }}
+        QScrollBar::handle:vertical:hover {{ background: {C_BLUE}; border: 1px solid {C_WHITE}; }}
+        QScrollBar:horizontal {{ background: {C_BG2}; height: 14px; margin: 0; border-top: 1px solid {C_BORDER}; }}
+        QScrollBar::handle:horizontal {{ background: {C_BLUE}; border-radius: 5px; min-width: 28px; }}
+        QScrollBar::handle:horizontal:hover {{ background: {C_BLUE}; border: 1px solid {C_WHITE}; }}
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
+        QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
         QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 4px; }}
         QToolTip {{ background: {C_BG2}; color: {C_WHITE}; border: 1px solid {C_BORDER}; padding: 4px 8px; }}
         QToolTip:hover {{ background: {C_BG2}; }}
@@ -12847,6 +12979,38 @@ def _build_global_qss():
             outline: none;
         }}
     """
+
+
+def _fit_window_to_screen(win, margin=8):
+    """🖥 2026-09-29 老倪「窗口没有显示完全」: 把窗口**整个**按回可用工作区内。
+
+    尺寸超可用区就缩, 位置越界就挪回 (留 margin 边距, 不贴死屏幕边缘 —— 贴死时窗口
+    自己的边框/阴影落在屏外, 看起来就是"没显示全")。最大化状态不动 (那是 WM 的事)。
+    返回 (changed, 说明字符串) — 说明串会写进 /tmp/studio_show_diag.log 供取证。
+    """
+    try:
+        from PyQt5.QtGui import QGuiApplication
+        scr = QGuiApplication.primaryScreen()
+        if scr is None:
+            return False, "no-screen"
+        ag = scr.availableGeometry()
+        if win.isMaximized() or win.isFullScreen():
+            fr = win.frameGeometry()
+            return False, (f"maximized {fr.width()}x{fr.height()}@{fr.x()},{fr.y()} "
+                           f"(可用 {ag.width()}x{ag.height()}@{ag.x()},{ag.y()})")
+        fr = win.frameGeometry()
+        tw = min(fr.width(), max(640, ag.width() - 2 * margin))
+        th = min(fr.height(), max(480, ag.height() - 2 * margin))
+        tx = min(max(fr.x(), ag.x() + margin), max(ag.x() + margin, ag.x() + ag.width() - tw - margin))
+        ty = min(max(fr.y(), ag.y() + margin), max(ag.y() + margin, ag.y() + ag.height() - th - margin))
+        changed = (tw, th, tx, ty) != (fr.width(), fr.height(), fr.x(), fr.y())
+        if changed:
+            win.resize(tw, th)
+            win.move(tx, ty)
+        return changed, (f"{fr.width()}x{fr.height()}@{fr.x()},{fr.y()} → "
+                         f"{tw}x{th}@{tx},{ty} (可用 {ag.width()}x{ag.height()})")
+    except Exception as e:
+        return False, f"err {e}"
 
 
 def main():
@@ -13029,6 +13193,13 @@ def main():
                             1400, 900)
         else:
             win.setGeometry(60, 40, 1400, 900)
+        # 🖥 2026-09-29 老倪「窗口没有显示完全」: 起手就按回可用工作区 (尺寸/位置都夹紧)
+        try:
+            _ch, _why = _fit_window_to_screen(win)
+            with open("/tmp/studio_show_diag.log", "a") as _df:
+                _df.write(f"{time.time():.1f} fit_to_screen changed={_ch} {_why}\n")
+        except Exception:
+            pass
     except Exception:
         win.setGeometry(60, 40, 1400, 900)
     # 🐛 2026-08-15/08-16 历史注释: 延迟 show + splash 占位 (splash 已提前到 win 前创建,
@@ -13063,6 +13234,16 @@ def main():
                     except Exception:
                         pass
                 _oneshot(win, 800, _do_max)
+            else:
+                # 🖥 2026-09-29: 非最大化时, show 之后再按一次 (show 后才有真实 frameGeometry)
+                def _do_fit():
+                    try:
+                        _ch, _why = _fit_window_to_screen(win)
+                        with open("/tmp/studio_show_diag.log", "a") as _df:
+                            _df.write(f"{time.time():.1f} after-show fit changed={_ch} {_why}\n")
+                    except Exception:
+                        pass
+                _oneshot(win, 400, _do_fit)
             try:
                 with open("/tmp/studio_show_diag.log", "a") as _df:
                     _df.write(f"{time.time():.1f} after show: visible={win.isVisible()} minimized={win.isMinimized()} state={int(win.windowState())}\n")
