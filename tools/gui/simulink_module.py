@@ -14416,15 +14416,19 @@ class SimulinkModule(QWidget):
                         why = "%s: %s" % (_k, _v.get("reason") or "失败")
                         break
             return "🔴 L5 ❌ 失败: %s" % (str(why)[:90] or "未知原因"), "error"
-        if status == "done":
+        if status in ("done", "done_with_gaps"):
             _ticks = []
             for _k, _lab in (("L2_full", "L2 全量"), ("L3_lora", "L3 LoRA"),
                              ("L4_lora", "L4 LoRA"), ("merge", "merge")):
                 _v = res.get(_k)
                 if _v is not None:
                     _ticks.append("%s %s" % (_lab, "✓" if _v.get("ok") else "✗"))
+            # 🐛 2026-09-29: 终态口径新增 done_with_gaps (链路跑通但有如实记录的缺口, 如
+            #   "尚未演示槽位"/"L2 零检出未过闸") —— 别再让编排把它报成"失败", 也别装作全绿。
+            _gaps = st.get("gaps") or []
+            _gtxt = (" · ⚠️ 缺口 " + ",".join(str(g) for g in _gaps)) if _gaps else ""
             return ("🟢 L5 ✅ 完成 · " + (" ".join(_ticks) if _ticks else "全链已跑完 (%d/%d)"
-                                         % (done, total)), "ok")
+                                         % (done, total)) + _gtxt, "ok")
         return "", "note"
 
     def _l5_lines_from_state(self, st: dict) -> list:
@@ -14433,7 +14437,8 @@ class SimulinkModule(QWidget):
             return ["L5 闭环: 未启动 — 点 ▶运行 启动", "(自动标注 6 路 → L2/L3/L4 监督 → 训练)"]
         done = st.get("stages_done") or []
         cur = st.get("stage") or "-"
-        badge = {"running": "运行中", "done": "已完成", "failed": "失败"}.get(st.get("status"), st.get("status"))
+        badge = {"running": "运行中", "done": "已完成", "failed": "失败",
+                 "done_with_gaps": "已完成·有缺口"}.get(st.get("status"), st.get("status"))
         d = st.get("stage_detail") or {}
         _dn, _tt = self._l5_progress(st)
         l1 = "L5 %s · 阶段 %s · 完 %d/%d" % (badge, cur, _dn, _tt)
