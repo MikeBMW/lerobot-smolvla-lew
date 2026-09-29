@@ -1,0 +1,83 @@
+画布 state_space_obs.json · 节点 73 (不含色带) · 连线 178
+注册表: 149 个 key
+
+节点                                 档     线 key                执行函数                   文件:行
+-----------------------------------------------------------------------------------------
+① 接近 · SK01                        -     2 sssk1              node_ss_atomic         src/lerobot/engineering/nodes/library.py:3484
+② 对位 · SK02                        -     3 sssk2              node_ss_atomic         src/lerobot/engineering/nodes/library.py:3484
+③ 下降 · SK03                        -     3 sssk3              node_ss_atomic         src/lerobot/engineering/nodes/library.py:3484
+④ 抓取 · SK04                        -     3 sssk4              node_ss_atomic         src/lerobot/engineering/nodes/library.py:3484
+⑤ 抬起 · SK05                        -     3 sssk5              node_ss_atomic         src/lerobot/engineering/nodes/library.py:3484
+⑥ 转移 · SK06                        -     3 sssk6              node_ss_atomic         src/lerobot/engineering/nodes/library.py:3484
+⑦ 插入 · SK07                        -     3 sssk7              node_ss_atomic         src/lerobot/engineering/nodes/library.py:3484
+⑧ 完成 · SK08                        -     3 sssk8              node_ss_atomic         src/lerobot/engineering/nodes/library.py:3484
+⚡ 前馈加速器                            -     8 ss_ff              node_ss_s2             src/lerobot/engineering/nodes/library.py:2298
+🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 en  -     5 sw_world           node_sw_world          src/lerobot/engineering/nodes/library.py:1147
+🌍 物理世界                             -     7 ss_world           node_ss_exec           src/lerobot/engineering/nodes/library.py:2512
+🌐 Web 智能体桥 · 远程提示词                 -     2 n_web_agent        node_web_agent         src/lerobot/engineering/nodes/library.py:3040
+🎥 操作视频                             -     2 ss_video           node_ss_video          src/lerobot/engineering/nodes/library.py:2545
+🎥 真实场景叠加 · 双眼 (sim2real)           -     2 n_realscene_live   node_realscene_live    src/lerobot/engineering/nodes/library.py:4747
+🎬 插拔渲染视频 (从 Z-MAX 引擎取出 · 实况窗)      -     2 sw_video           node_sw_video          src/lerobot/engineering/nodes/library.py:1183
+🎯 Flow-Matching Action Head (DiT)  -     7 action_head        node_action_head       src/lerobot/engineering/nodes/library.py:504
+🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零  -     4 sw_intact          node_sw_intact         src/lerobot/engineering/nodes/library.py:1128
+🎯 YOLO 目标检测                        -     7 ss_yolo            node_ss_yolo           src/lerobot/engineering/nodes/library.py:3297
+👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)    -     6 n_dsvl             node_dsvl              src/lerobot/engineering/nodes/library.py:2951
+📈 先验动力学预测器                         -     2 ss_dyn             node_ss_dyn            src/lerobot/engineering/nodes/library.py:2434
+📈 旁路实时可视化 (当前阶段/残差/接触概率)           -     1 ss_bypass_viz      node_ss_bypass_viz     src/lerobot/engineering/nodes/library.py:4235
+📊 仿真波形                             -     4 ss_scope           node_ss_scope          src/lerobot/engineering/nodes/library.py:2579
+📐 2D→3D 解算                         -     8 yolo_align         node_yolo_align        src/lerobot/engineering/nodes/library.py:1678
+📐 板坐标系定位 (工序坐标系·免手眼)               -     6 n_board_frame      node_n_board_frame     src/lerobot/engineering/nodes/library.py:4436
+📚 工程记忆 · 技能与经验库                    -     2 n_eng_mem          node_ss_eng_mem        src/lerobot/engineering/nodes/library.py:3071
+📝 任务指令 · MES/自然语言                  -     4 ss_llm_in          node_ss_llm_in         src/lerobot/engineering/nodes/library.py:3221
+📡 融合定位                             -     7 ss_sensor          node_ss_s1             src/lerobot/engineering/nodes/library.py:2272
+📦 metaworld 数据源                    -    14 data               node_metaworld_data    src/lerobot/engineering/nodes/library.py:395
+🔀 训练/推理                            -     2 mode_switch        node_mode_switch       src/lerobot/engineering/nodes/library.py:193
+🔍 外观质量检测                           -     3 ss_aoi             node_ss_aoi            src/lerobot/engineering/nodes/library.py:3328
+🔍 异常推理器 (LLM)                      -     5 ss_reason          node_ss_reason         src/lerobot/engineering/nodes/library.py:2815
+🔗 跨层连接 · 记忆图谱                      -     4 ss_mem_links       node_ss_mem_links      src/lerobot/memory/mem_nodes.py:253
+🔮 意图直读 · Direct                    -     2 ss_intent_direct   node_ss_intent_direc   src/lerobot/memory/mem_nodes.py:291
+🔮 自适应状态估计器                         -     3 ss_est             node_ss_s2             src/lerobot/engineering/nodes/library.py:2298
+🖐 触觉感知                             -     2 yolo_tactile       node_yolo_tactile      src/lerobot/engineering/nodes/library.py:1792
+🖥 Z700 真机信号 (全信号观测 · 物理世界输出)       -     6 ss_z700_signals    node_ss_z700_signals   src/lerobot/engineering/nodes/library.py:4261
+🙋 HIL 人机在环 · 状态↔指示                 -     2 n_hil              node_hil               src/lerobot/engineering/nodes/library.py:3000
+🛡 安全执行边界 (饱和限幅)                    -     9 ss_limit           node_ss_s3             src/lerobot/engineering/nodes/library.py:2476
+🤖 机器人执行器                           -     2 ss_act             node_ss_exec           src/lerobot/engineering/nodes/library.py:2512
+🧠 VLM 通用视觉编码器 (SmolVLA)            -    10 ss_vlm             node_ss_vlm            src/lerobot/engineering/nodes/library.py:3750
+🧠 前馈激活直方图                          -     2 ss_ff_hist         node_ss_ff_hist        src/lerobot/engineering/nodes/library.py:2358
+🧠 总装记忆中枢 (前额叶总装 · 三层协同)            -    10 ss_mem_share       node_ss_mem_share      src/lerobot/memory/mem_nodes.py:140
+🧠 意图丛 · 四槽语法                       -     2 ss_intent_bundle   node_ss_intent_bundl   src/lerobot/memory/mem_nodes.py:190
+🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)        -     8 ss_pred            node_ss_pred           src/lerobot/engineering/nodes/library.py:3843
+🧩 Feature 功能清单                     -     2 ss_feature         node_ss_feature        src/lerobot/engineering/nodes/library.py:4118
+🧩 SU(2) 统一状态空间 (二阶特殊酉群)            -     7 ss_obs             node_ss_su2            src/lerobot/engineering/nodes/library.py:2629
+🧪 光模块插拔 · 环境渲染图像源 (Z-MAX 引擎逐帧真图)   -     4 sw_ds              node_sw_ds             src/lerobot/engineering/nodes/library.py:1088
+🧪 状态校正器                            -     4 ss_correct         node_ss_dyn            src/lerobot/engineering/nodes/library.py:2434
+🧬 阶段专家 MOE · 7 专家 + 先验门控路由 (在役)    -     5 ss_moe             node_ss_moe            src/lerobot/engineering/nodes/library.py:4330
+🧭 3D 视图                            -     2 ss_3d_view         node_ss_3d_view        src/lerobot/engineering/nodes/library.py:2560
+🧭 MoveIt 运动规划 · SDK 直驱桥(Orin)      -    10 n_moveit           node_moveit            src/lerobot/engineering/nodes/library.py:2983
+🧭 动作调制器                            -    14 ss_sched           node_ss_s3             src/lerobot/engineering/nodes/library.py:2476
+🧭 能力档位                             -     5 ss_cap             node_ss_cap            src/lerobot/engineering/nodes/library.py:3906
+🧮 性能流形 · 耦合代价 (V_p/η)              -     6 ss_mani_p          node_ss_mani           src/lerobot/engineering/nodes/library.py:3596
+🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)          -     7 ss_mani_c          node_ss_mani           src/lerobot/engineering/nodes/library.py:3596
+🧮 标定层 · 引力-斥力-动作                   -     4 ss_calib           node_ss_calib          src/lerobot/engineering/nodes/library.py:3366
+🧮 流形引擎 (Manifold Engine · 编码→投影→度  -    11 ss_mani_eng        node_ss_mani_eng       src/lerobot/engineering/nodes/library.py:4536
+🧮 流形引擎标定 · 主参数 M (状态空间结构参数 · 等效惯量  -     5 n_calib_mani       node_ss_calib_mani     src/lerobot/engineering/nodes/library.py:4631
+🧮 潜空-流形                            -     5 ss_lat             node_ss_lat            src/lerobot/engineering/nodes/library.py:3412
+💪 L2 肌肉记忆技能库 (光模块抓放循环)             L2    2 n_l2_muscle        node_n_l2_muscle       src/lerobot/engineering/nodes/library.py:4469
+🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)          L2    6 ss_mem_l2          node_ss_mem_l2         src/lerobot/memory/mem_nodes.py:34
+🧬 技能词典 · L2 动作基                    L2    2 ss_skill_dict      node_ss_skill_dict     src/lerobot/memory/mem_nodes.py:224
+🎛 L3 · SmolVLA LoRA 微调 · 接入中       L3    3 ss_lora_l3         node_ss_lora_l3        src/lerobot/engineering/nodes/library.py:4390
+🚀 L3 · 长程序列规划 (记忆: 海马体)            L3    4 ss_mem_l3          node_ss_mem_l3         src/lerobot/memory/mem_nodes.py:68
+🛠 L3 技能序列编排                        L3   13 ss_skill           node_ss_skill          src/lerobot/engineering/nodes/library.py:2896
+🧠 L3 长程序列规划器 (场景理解驱动)              L3    6 ss_llm             node_ss_llm            src/lerobot/engineering/nodes/library.py:2783
+🎛 L4 · INTACT LoRA 微调 (r8/α16) ·   L4    3 ss_lora_l4         node_ss_lora_l4        src/lerobot/engineering/nodes/library.py:4358
+🎯 INTACT (L4) · 工作安全 + 物理世界导航      L4    6 intact             node_intact            src/lerobot/engineering/nodes/library.py:829
+🎯 INTACT 意图解码器 (L4 → L3 条件)        L4    8 intact_dec         node_intact_dec        src/lerobot/engineering/nodes/library.py:850
+🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)     L4    3 ss_world           node_ss_exec           src/lerobot/engineering/nodes/library.py:2512
+🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图   L4    4 ss_mem_field       node_ss_mem_field      src/lerobot/memory/mem_nodes.py:380
+🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模  L5    6 n_dsvl             node_dsvl              src/lerobot/engineering/nodes/library.py:2951
+🧿 L5 · 视觉语言自动标注 → L2/L3/L4 监督 → 自  L5    4 l5_loop            node_l5_loop           src/lerobot/engineering/nodes/library.py:4768
+
+无执行注册: 0
+孤岛(连线=0): 0
+
+落盘: reports/ss_node_debug_map_20260929_111652.json

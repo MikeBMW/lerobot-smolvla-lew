@@ -157,6 +157,13 @@ def core_idea(stage, ev, obs7):
 def build_snapshot():
     obs7, stage, ts, age = real_obs()
     ev = event_pred(obs7)
+    # 🐛 2026-09-29 修 (L5 闭环 ⓪ interact 阶段整链 aborted 的根因):
+    #   原实现只在 `not stage` 分支里赋值 stage_note, 但下面无条件引用它 →
+    #   真机 tap 上报了 prod_stage 时抛 UnboundLocalError: cannot access local
+    #   variable 'stage_note' → build_snapshot 抛异常 → stage_interact 判 ok=False
+    #   → L5 标注→训练闭环在第 0 阶段就退出 (后面 annotate/supervision/训练全不启动)。
+    #   默认空串: 阶段是产线真报的, 本就不需要"推算阶段"说明。
+    stage_note = ""
     if not stage:
         stage = _derived_stage(obs7)
         stage_note = ("真机 tap 的 prod_stage 为空 (产线主程序未运行/未上报) → 上行为**推算阶段**(由夹爪+z 速度导出), "

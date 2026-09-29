@@ -160,7 +160,13 @@ def run_batch(cams, push_overlay=False, send_w=SEND_W) -> dict:
     outdir = OUTROOT / ("batch_" + stamp)
     outdir.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
-    with cf.ThreadPoolExecutor(max_workers=max(1, len(cams))) as ex:      # 6 路并行(网络等待型)
+    # 🐛 2026-09-29 修 (L5 闭环 ①annotate 实测 6 路里 4 路 503): 原来 max_workers=len(cams)
+    #   = 6 路**同时**打同一个云端视觉档 → 网关瞬时过载 503 (4/6 整路丢失, 监督数据缺口)。
+    #   并发数改为可配 ZMAX_ANNOT_WORKERS (默认 0 = 保持旧行为 6 路并行, 逐字不变);
+    #   过载环境下设小值 (如 3) 降低突发, 配合 call_vlm 的指数退避+抖动重试。
+    _w = int(os.environ.get("ZMAX_ANNOT_WORKERS", "0") or 0) or max(1, len(cams))
+    _w = max(1, min(_w, max(1, len(cams))))
+    with cf.ThreadPoolExecutor(max_workers=_w) as ex:                    # 网络等待型 → 线程即可
         recs = list(ex.map(lambda c: annotate(c, outdir, send_w), cams))
     dt = time.time() - t0
     summ = {"batch": stamp, "dir": str(outdir), "ts": time.strftime("%F %T"),

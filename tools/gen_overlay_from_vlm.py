@@ -92,12 +92,41 @@ def call_vlm(jpg_bytes: bytes, w: int, h: int, timeout: int = 300,
                                  headers={"Authorization": "Bearer " + key(),
                                           "Content-Type": "application/json"}, method="POST")
     t0 = time.time()
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        d = json.loads(r.read().decode() or "{}")
-    msg = ((d.get("choices") or [{}])[0].get("message") or {})
-    txt = (msg.get("content") or "").strip()
-    return {"txt": txt, "reasoning": msg.get("reasoning_content") or "",
-            "model": d.get("model"), "usage": d.get("usage"), "latency_s": time.time() - t0}
+    # 🐛 2026-09-29 修 (L5 闭环 ①annotate 阶段实测 4/6 路整路丢失):
+    #   实测 summary: 6 路里 4 路 err="HTTPError: HTTP Error 503: Service Unavailable"
+    #   → 同一批标注只剩 2 路有效 → 监督数据缺口 → 下游 L2/L3/L4 训练数据不完整。
+    #   根因: 云端视觉档会**瞬时限流/过载** (503/429), 原来一次不成就整路放弃。
+    #   现按"可重试传输错误"重试 (5xx/429/超时/URLError), 指数退避 + 抖动;
+    #   非可重试的 4xx (如 400 请求体错/401 鉴权) 立即抛出, 不掩盖真错。
+    #   次数可用 ZMAX_VLM_RETRY 覆盖 (默认 4 次); 0 或 1 = 关掉重试 (回到旧行为)。
+    import random as _rnd
+    from urllib.error import HTTPError as _HTTPError, URLError as _URLError
+    _tries = max(1, int(os.environ.get("ZMAX_VLM_RETRY", "4") or 4))
+    _last = None
+    for _i in range(_tries):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                d = json.loads(r.read().decode() or "{}")
+            msg = ((d.get("choices") or [{}])[0].get("message") or {})
+            txt = (msg.get("content") or "").strip()
+            # 200 但 content 空 = 已知瞬态 (与 max_tokens 不足同症状) → 也重试
+            if not txt and _i < _tries - 1:
+                _last = RuntimeError("content 空 (200)")
+                time.sleep(min(30.0, 5.0 * (2 ** _i)) + _rnd.uniform(0, 2))
+                continue
+            return {"txt": txt, "reasoning": msg.get("reasoning_content") or "",
+                    "model": d.get("model"), "usage": d.get("usage"), "latency_s": time.time() - t0,
+                    "attempts": _i + 1}
+        except _HTTPError as _e:
+            _code = int(getattr(_e, "code", 0) or 0)
+            _last = _e
+            if _code and not (_code >= 500 or _code == 429):
+                raise                                  # 4xx (非限流) = 真错, 不重试不掩盖
+        except (_URLError, TimeoutError, OSError) as _e:
+            _last = _e
+        if _i < _tries - 1:
+            time.sleep(min(30.0, 5.0 * (2 ** _i)) + _rnd.uniform(0, 2))
+    raise _last if _last is not None else RuntimeError("call_vlm 失败")
 
 
 def parse_json(txt: str) -> dict:
