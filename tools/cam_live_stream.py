@@ -42,6 +42,16 @@ import threading
 import time
 import urllib.error
 import urllib.parse
+
+# 🔐 真动授权的**单一真源**(文件 ctl_auth.py): 原来授权只活在本进程内存里 ⇒ ①GUI/脚本/自动流程
+#   直接写 l2_cmd.fifo 完全绕过它 ②执行器下发前也不校验 ⇒ 撤销前排队的动作照样下发。
+#   老倪 2026-09-29: 「我都取消授权了，手臂怎么还在动；点1 技能也要服从手动控制台的授权」
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    import ctl_auth as CA
+except Exception as _e:                                                 # noqa: BLE001
+    CA = None
+    print("!! ctl_auth 导入失败: %s ⇒ 真动授权将无法工作(运动侧一律拒发)" % _e, flush=True)
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -492,22 +502,30 @@ _CTL_AUTH = {"until": 0.0, "since": 0.0, "ip": "", "window": 300.0, "events": []
 
 
 def _auth_info() -> dict:
-    left = max(0.0, float(_CTL_AUTH["until"]) - time.time())
-    return {"armed": left > 0.0, "left_s": round(left, 1),
-            "window_s": round(float(_CTL_AUTH["window"]), 1),
-            "ip": _CTL_AUTH["ip"], "since": _CTL_AUTH["since"],
-            "events": _CTL_AUTH["events"][-6:]}
+    """真动授权状态 —— 读**单一真源**(ctl_auth.py 的文件), 执行器/GUI/脚本共用同一份。"""
+    if CA is None:
+        return {"armed": False, "left_s": 0.0, "window_s": 0.0, "ip": "", "since": 0.0,
+                "epoch": 0, "events": [], "err": "ctl_auth 不可用"}
+    st = CA.info()
+    try:                                        # 🛑 撤销时由 ctl_revoke_stop 写的"在途叫停"实况
+        _ls = json.loads(open(os.path.expanduser("~/zmax_data/ctl_last_stop.json"), encoding="utf-8").read())
+    except Exception:                                                   # noqa: BLE001
+        _ls = None
+    return {"armed": bool(st["armed"]), "left_s": st["left_s"], "window_s": st["window"],
+            "ip": st["ip"], "since": st["since"], "epoch": st["epoch"],
+            "revoked_at": st["revoked_at"], "events": st["events"][-6:], "last_stop": _ls}
 
 
 def _auth_set(on: bool, ip: str = "", note: str = "") -> dict:
-    """授权/撤销真动。on=True 重新计时; on=False 立刻失效(并留审计)。"""
+    """授权/撤销真动。on=True 重新计时(epoch+1); on=False 立刻失效**且 epoch+1** ⇒ 已签发未下发的
+    命令(带旧 epoch)在 L2 执行器里一律作废 —— 这样"等慢层 300s 期间人点了撤销"也不会再动。"""
     t = time.time()
+    if CA is None:
+        return _auth_info()
     if on:
-        _CTL_AUTH.update({"until": t + float(_CTL_AUTH["window"]), "since": t, "ip": ip})
+        CA.grant(ip=ip, note=note)
     else:
-        _CTL_AUTH["until"] = 0.0
-    _CTL_AUTH["events"].append({"t": t, "on": bool(on), "ip": ip, "note": note})
-    del _CTL_AUTH["events"][:-40]
+        CA.revoke(ip=ip, note=note)
     print("[授权] %s %s ip=%s %s" % ("🔓 真动已授权" if on else "🔒 真动已撤销",
           time.strftime("%H:%M:%S", time.localtime(t)), ip, note), flush=True)
     try:
@@ -1256,6 +1274,11 @@ def _ctl_move(req: dict) -> dict:
         if gap < float(_CTL["min_gap"]):
             return {"ok": False, "msg": "太快了(距上一条 %.1fs < %.1fs), 防连点把臂当摇杆刷"
                     % (gap, _CTL["min_gap"])}
+    # 🔐 带上"签发时的授权 epoch": 执行器下发前会比对; 撤销 (+1) 后旧命令一律作废(在途也能拦)
+    try:
+        cmd["auth_epoch"] = CA.epoch() if CA is not None else None
+    except Exception:                                                   # noqa: BLE001
+        cmd["auth_epoch"] = None
     try:
         fd = os.open(_L2_FIFO, os.O_WRONLY | os.O_NONBLOCK)
     except OSError as e:
@@ -2305,7 +2328,12 @@ function applyAuth(a){                          // 服务端状态是唯一真�
   const was=ARMED;
   ARMED=!!a.armed; AUTH_LEFT=a.left_s||0; ARMWIN=a.window_s||ARMWIN; AUTH_IP=a.ip||'';
   if(was&&!ARMED){
-    $('#msg').textContent='⌛ 授权已到期(或已被撤销) —— 自动回到未授权(现场安全)。要继续操作就先重新授权';
+    const ls=a.last_stop||null, fresh=ls&&ls.ts&&(Date.now()/1000-ls.ts<180);
+    let extra='';
+    if(fresh&&ls.stopped) extra=' ⏹ 已对**在途动作**下达停止(/robot_stop 成功) —— 臂不会再多走。';
+    else if(fresh) extra=' ⏹ 近 3 分钟内没有已下发的动作, 无需叫停。';
+    else extra=' ⚠️ 已经下发到控制器的动作无法收回(慢速指令会走完), 只能等它到位或按急停 —— 本次已自动尝试叫停在途动作。';
+    $('#msg').textContent='⌛ 授权已到期(或已被撤销) —— 自动回到未授权(现场安全)。要继续操作就先重新授权'+extra;
     $('#msg').className='wa';
   }
   paintArm();

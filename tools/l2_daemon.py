@@ -10,6 +10,17 @@
 import json, os, re, subprocess, sys, threading, time
 import urllib.request
 
+# 🔐 真动授权(8793 手动控制台)的单一真源 —— 所有运动下发的**唯一收口**(chan_send/服务调用/夹爪)
+#   2026-09-29 老倪: 「我都取消授权了，手臂怎么还在动；金手指检测的点1技能，也要服从手动控制台的授权」
+#   原来授权只活在 8793 进程内存里: ①GUI/脚本/自动流程直接写 FIFO 完全绕过它;
+#   ②本执行器下发前也不校验 ⇒ 撤销前排队的动作会在 VL 慢层等 300s 之后才真下发。
+try:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import ctl_auth as CA
+except Exception as _e:                                                 # noqa: BLE001
+    CA = None
+    print("!! ctl_auth 导入失败(%s) ⇒ 运动下发将**一律拒发**(fail-closed, 现场安全优先)" % _e, flush=True)
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOST = "tashan@192.168.23.66"
 FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
@@ -383,6 +394,11 @@ def _service_call(st):
     """
     if not st.get("srv") or not st.get("type"):
         return False, "服务步缺少 srv/type"
+    _a_ok, _a_why = _auth_guard(str(st.get("srv")) + " " + str(st.get("name") or ""), "服务步")
+    if not _a_ok:
+        log("🛑 被拦(真动授权): %s | 服务步=%s" % (_a_why, str(st.get("srv"))[:70]))
+        return False, _a_why
+    _mark_dispatch(_CUR.get("skill") or "服务步", "服务步", str(st.get("srv"))[:100])
     cmd = PRE + _service_cmd(st)
     t0 = time.time()
     try:
@@ -420,6 +436,11 @@ def _gripper_cmd(st):
 
 def _call_remote(cmd, timeout=40):
     """同步跑一条远端 ROS 服务命令 → (ok, 输出)。夹爪/力控这类必须看真实回执。"""
+    _a_ok, _a_why = _auth_guard(str(cmd), "夹爪/力控")
+    if not _a_ok:
+        log("🛑 被拦(真动授权): %s | 本条=%s" % (_a_why, str(cmd)[:70]))
+        return False, _a_why
+    _mark_dispatch(_CUR.get("skill") or "夹爪/力控", "夹爪/力控", str(cmd)[:100])
     try:
         r = subprocess.run(["ssh", "-o", "BatchMode=yes", HOST, PRE + cmd],
                            capture_output=True, text=True, timeout=timeout)
@@ -1106,11 +1127,47 @@ def _vl_reuse_ok(desc: str):
                   % (age, d.get("intent_seq"), d.get("risk_level"), d.get("ts_str")))
 
 
+# ===== 🔐 真动授权闸 (8793 手动控制台 · 2026-09-29) =====
+#   口径: **凡是能让臂/夹爪动的下发, 一律要此刻有授权**(不是"签发时有"); 撤销 ⇒ 立刻失效。
+#   停/复位类永远放行(闸门不许挡急停)。
+_CUR = {"epoch": None, "skill": "", "t": 0.0}      # 当前正在处理的 FIFO 命令(签发时的授权 epoch)
+DISPATCH_MARK = os.path.expanduser("~/zmax_data/l2_last_dispatch.json")
+
+
+def _auth_guard(call: str, kind: str = "运动"):
+    """(ok, why): 该条下发此刻是否被授权。CA 缺失 ⇒ 拒发(现场安全优先)。"""
+    if any(k in (call or "") for k in _VL_ALWAYS_ALLOW):
+        return True, "停机/复位类 ⇒ 放行(闸门不挡急停)"
+    if CA is None:
+        return False, "🛑 ctl_auth 不可用(单一真源缺失) ⇒ 拒发: 运动一律要过 8793 授权"
+    ok, why = CA.check(_CUR.get("epoch"))
+    if not ok:
+        return False, why                        # 只回原因; "🛑 被拦(层)" 前缀由 _note_block/调用方统一加
+    return True, why
+
+
+def _mark_dispatch(skill: str, kind: str, extra: str = ""):
+    """下发留痕 —— 撤销时需要知道"刚才有没有真下发", 由 ctl_revoke_stop 决定要不要叫停。"""
+    try:
+        with open(DISPATCH_MARK, "w", encoding="utf-8") as f:
+            json.dump({"ts": time.time(), "ts_str": time.strftime("%F %T"), "skill": skill,
+                       "kind": kind, "extra": extra[:120], "auth_epoch": _CUR.get("epoch")}, f, ensure_ascii=False)
+    except Exception:                                                   # noqa: BLE001
+        pass
+
+
 def _vl_wait_intent(seq: int, desc: str) -> bool:
     """等到 VL 基于本次意图给出裁决(最多 VL_INTENT_WAIT_S 秒); 等不到 ⇒ 不拿旧裁决放行。"""
     t0 = time.time()
     while time.time() - t0 < VL_INTENT_WAIT_S:
         time.sleep(2.0)
+        # 🔐 等慢层期间**每一步都复核真动授权**: 人已点「撤销」⇒ 本条立即作废(现场实测存在的窗口:
+        #   点授权 → 排队等慢层 300s → 期间撤销 → 原来照样下发, 表现为"取消了授权还在动")
+        _aok, _awhy = _auth_guard("motion", "等慢层")
+        if not _aok:
+            log("⏹ %s ⇒ 本条立即作废(不再等裁决, 绝不下发)" % _awhy)
+            _note_block("真动授权·8793 手动控制台", "%s ⇒ 等慢层期间被撤销, 本条作废(未下发)" % _awhy)
+            return False
         try:
             d = json.loads(open(VL_VERDICT_PATH, encoding="utf-8").read())
         except Exception:                                               # noqa: BLE001
@@ -1245,6 +1302,14 @@ def chan_send(call, intent_desc=None):
     #   而执行器是单线程 ⇒ 挂住期间后续任何技能全部排队不动(表现为"点了没反应")。
     #   夹爪不属于臂运动(位置 Δ=0) ⇒ 免意图等待; 仍走下面的 VL 闸门(快层反射强制, fail-closed 不变)。
     _LAST_BLOCK.clear()          # 每条下发重新判定 —— 别把上一条的"被拦原因"带过来
+    # 🔐 真动授权闸: 所有运动下发**唯一收口** ⇒ 授权也必须在这里强制(8793 手动控制台撤销 ⇒ 立刻失效)。
+    #    老倪 2026-09-29: 「我都取消授权了，手臂怎么还在动；点1 技能也要服从手动控制台的授权」
+    _a_ok, _a_why = _auth_guard(call, "运动")
+    if not _a_ok:
+        log("🛑 被拦(真动授权): %s | 本条=%s" % (_a_why, str(call)[:70]))
+        _note_block("真动授权·8793 手动控制台", "%s | 本条=%s" % (_a_why, str(call)[:60]))
+        return False
+    _mark_dispatch(_CUR.get("skill") or str(call)[:40], "运动", str(call)[:100])
     _is_grip = bool(intent_desc) and ("gripper" in call or "L2.grip_" in call or "grip_open" in call or "grip_close" in call)
     if _is_grip:
         log("🎯 夹爪类动作 ⇒ 免意图等待(非臂运动), 仍过快层反射闸门: %s" % intent_desc)
@@ -1265,11 +1330,13 @@ def chan_send(call, intent_desc=None):
                 log("🎯 已把本次动作告知 VL: %s (等针对该动作的裁决, 上限 %.0fs · %s)"
                     % (intent_desc, VL_INTENT_WAIT_S, _rwhy))
                 if not _vl_wait_intent(_seq, intent_desc):
-                    log("🛡 VL 安全闸: %.0fs 内未等到针对本次动作的裁决 ⇒ 从严拒发(绝不拿旧/异动作裁决放行)"
-                        % VL_INTENT_WAIT_S)
-                    _note_block("慢层·VL 判断",
-                                "%.0fs 内未等到针对本次动作的裁决 ⇒ 从严拒发(裁决 seq=%s 未更新 · 复用也不行: %s)"
-                                % (VL_INTENT_WAIT_S, _seq, _rwhy))
+                    # 未放行的两种可能: ①真动授权被撤(上面已单独记账) ②VL 慢层没在 %.0fs 内出裁决
+                    if not _LAST_BLOCK:
+                        log("🛡 VL 安全闸: %.0fs 内未等到针对本次动作的裁决 ⇒ 从严拒发(绝不拿旧/异动作裁决放行)"
+                            % VL_INTENT_WAIT_S)
+                        _note_block("慢层·VL 判断",
+                                    "%.0fs 内未等到针对本次动作的裁决 ⇒ 从严拒发(裁决 seq=%s 未更新 · 复用也不行: %s)"
+                                    % (VL_INTENT_WAIT_S, _seq, _rwhy))
                     return False
     if _vl_gate_blocks(call):
         return False
@@ -1335,6 +1402,8 @@ def main():
                 # 🐛 2026-09-20 21:22 现场: 注册表热加载原来只在主循环顶部做 → 改完注册表后的
                 #   **第一条**指令仍用旧表(新建的 L2.slot2 被判"未知技能", 第二条才认)。现在每条指令前重读。
                 reg = maybe_reload(reg)
+                # 🔐 记下本条命令**签发时**的授权 epoch: 撤销会 +1 ⇒ 旧 epoch 的命令在执行层一律作废
+                _CUR.update({"epoch": spec.get("auth_epoch"), "skill": spec.get("skill") or "", "t": time.time()})
                 try:
                     log("受理: " + dispatch(reg, spec, chan))
                 except Exception as e:

@@ -1,0 +1,19 @@
+[Unit]
+Description=Z-MAX 撤销授权 ⇒ 在途动作立即叫停 (授权 epoch 看门人)
+Documentation=file:/home/ubuntu/zmax/docs/zmax
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+Environment=PYTHONUNBUFFERED=1
+Environment=ZMAX_STOP_WINDOW=180
+ExecStart=/home/ubuntu/zmax_rel/gui-venv311/bin/python -u tools/ctl_revoke_stop.py
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/zmax-ctl-stop.log
+StandardError=append:/var/log/zmax-ctl-stop.log
+
+[Install]
+WantedBy=multi-user.target

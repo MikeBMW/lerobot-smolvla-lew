@@ -752,7 +752,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.16.26")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.16.27")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11276,7 +11276,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.26 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.27 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11284,9 +11284,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.26 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.27 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.16.27: v5.16.27 — 真动授权收敛成单一真源: 撤销后手臂不再动(点1 与一切路径都服从 8793 手动控制台授权)  老倪现场: 「8793/station 我都取消授权了，手臂怎么还在动；金手指检测的点1技能，也要服从手动控制台的授权」  根因(实测, 两条并存): 1) 授权只活在 8793 那个进程的**内存**里 ⇒ 其它会动臂的路径(GUI 原子技能/脚本/自动流程/AOI 伺服,    实测有 18 个文件直接写 ~/zmax_data/l2_cmd.fifo)**完全绕过**它 —— 授权对它们形同虚设。 2) 执行器(l2_daemon)下发前**不校验**授权 ⇒ 「点授权 → 命令排队等 VL 慢层(上限 300s) → 期间人点撤销    → 照样下发」。现场表现就是"取消了授权还在动"。另: 已下发给控制器的慢速动作(speed=8, 实测 30~90s    才到位)不会因为点撤销就停 —— 这一条以前根本没人管。  改法: · 新增 tools/ctl_auth.py —— 真动授权的**单一真源**(文件 ~/zmax_data/ctl_auth.json):   armed=until>now(到期自动失效) + 单调 epoch(每次授权/撤销 +1)。8793 页面与执行器共用同一份。 · 8793 侧(cam_live_stream): _auth_info/_auth_set 改读写该真源; 写 FIFO 的命令带上签发时的 auth_epoch。 · 执行器侧(l2_daemon)在**唯一收口** chan_send + 服务步(_service_call) + 夹爪/力控(_call_remote)   一律 `_auth_guard`: ①此刻必须有授权(不是"签发时有") ②命令 epoch 必须不小于当前 epoch(撤销即作废);   ③等 VL 慢层期间每 2s 复核, 一撤立刻作废本条(绝不下发)。停机/复位类白名单永远放行(闸门不挡急停)。   ctl_auth 不可用 ⇒ fail-closed 一律拒发。 · 新增 tools/ctl_revoke_stop.py + zmax-ctl-stop.service —— 带外看门人: 撤销瞬间若近 180s 内有真下发,   立刻调机器人 /robot_stop(std_srvs/Trigger) 把**在途**运动停下; 全程审计(谁能查谁撤销/停了没有)。 · 页面: 撤销后横幅明说"已对在途动作下达停止(/robot_stop 成功)"或"已下发到控制器的动作无法收回";   /ctl/status 的 auth 增加 last_stop 实况。  实测证据(全部真跑): · 未授权 + arm=1 点『回到金手指点1』→ HTTP 403 denied, 且**没有**任何 FIFO 写入/执行器日志行。 · 绕过网页直接写 FIFO 真动命令(未授权) → 执行器: 🛑 被拦(真动授权): 拒绝 ✓(臂零位移) · 授权 → 写真动命令 → 命令正在等 VL 慢层 → **点撤销** → 1s 内: ⏹ 本条立即作废(未下发), 日志中「已下发」计数=0;   同时看门人: ⏹ 已在途停止 /robot_stop success(4.7s, 机器人回执 stop ec=0 操作成功完成)。
         # v5.16.26: 🛰 数据空间页: ss_plan 一眼可见 + 详情直接给出那一帧摘要  背景: MoveIt plan-only 的轨迹已镜像成 DDS `zmax/ss_plan`(0.5Hz · 每帧 ~23KB · 累计 189 帧 · verdict=ok)。 但老倪要"逐帧对"时撞到两个现实问题, 像素质检+离屏探针各量了一遍:  1) **看不到那条**: 左面板「报文」树是纯字母序 ⇒ `ss_plan` 排第 12/15 行, 而面板只放得下 ~8 行    (视口 462px / 行高 52px) ⇒ 页面上根本看不见。修法: **活跃在前**(hz>0 优先, 组内仍字母序)    ⇒ 现在顺序 heartbeat | hw_state | ss_action | ss_calib | ss_diag | **ss_plan** | ss_state | …,    `ss_plan` 排第 5 行, 不用滚动就在视野里。  2) **看不到那几个数**: Trace 表 9 列只有 话题/类型/判决/概率/生产者/发送者/跟踪号/QoS,    全帧真正要看的 `n_points` / `end_err_mm` / `同源闸` 一个都不在。修法: 详情面板新增    **「🧾 最近一帧摘要 (trace digest)」** —— 探针给 ss_plan 写的是一行可读摘要而不是 768 个数字:      `plan-only: n=123 (joints_path 738 / tcp_path 369) plan_code=1 时长=12.11s 终点误差=2.967mm       FK起点差=261.351mm 同源闸=0[同源闸不过: FK(真关节)与真机 TCP 差 261.4mm (>5mm)…] age=0.50s`    同时把载荷字段里的长序列折叠成 `[0.16, -0.0616, -2.545, …] (共 366 个)` —— 否则 joints_path    一个字段就把 24 个字段名额占满, end_err_mm / gate_* 全被挤出去(实测确认现在都在)。  实测: 离屏探针打印详情面板全文, ss_plan 的 类型/QoS/设计·实测频率/抖动/丢包/帧龄/累计报文/字节/ 匹配发布者/质量判决/灯/生产者 + 3 条质量判据 + 摘要 + 18 个载荷字段 全部到位。
         # v5.16.25: 🧩 画布页顶部工具条: 6 个勾选框与按钮**同高** (收掉最后一块暗带)  像素质检(修前, 实际截图逐像素)报: 第1行 x611-2554 (宽 1943px = 顶宽 63.3%) 在 y43-59 有一条 **17px 连续暗带** —— 6 个勾选框 pill 的盒底 y≈42, 同排按钮盒底 y≈57, **矮 15px** 且整体偏上。 离屏复测同一件事: 按钮 h=70 / 勾选框 h=55 ⇒ 差 15px (两路独立测量一致)。  根因: 工具条是自写 FlowLayout, **按 sizeHint 排布** —— `QCheckBox` 的 sizeHint 天生比 `QPushButton` 矮 (pill 里那个 14px 指示块比按钮的纯文字行占位小), 所以 `setMinimumHeight(30)` 对它**无效** (minimumHeight 量到 30, 几何还是 55)。  修法: 把勾选框 pill 的**纵向 padding 从 6px 提到 14px**(横向 12px 不变) —— 离屏扫描若干取值:   pad=6→55 · 9→61 · 12→67 · 13→69 · **14→71** · 16→75  (按钮恒 70) ⇒ pad=14 时勾选框 h=71 vs 按钮 h=70 (差 1px), 同 y=6 对齐。  实测复核 (修后, 现场 3068x1862 截图 + 像素): 勾选框那一段的"纯底色连续行" **21 行 → 6 行** (剩下 6 行是两排按钮之间本来就该有的行距), 全段 >99% 底色行 26 → 11。文字对比度不变 (11.2~11.5:1)。
         # v5.16.24: 🪟 老倪「独立打开的全局数据空间的最大化按钮不好用」→ 真根因 + 实证  根因: 原来那个独立窗口是 `QDialog(主窗口)` —— 有 parent 的 Qt 对话框, mutter 会把它当       **附属窗(transient dialog)**, 标题栏最大化钮灰着/点不动。 修法: 改成 **无 parent 的真顶层 QMainWindow** + 显式 `Qt.Window|Minimize|Maximize|Close`:       · `_NET_WM_WINDOW_TYPE` = **NORMAL** (原来会是 dialog 类)       · `_NET_WM_ALLOWED_ACTIONS` 现在含 **MAXIMIZE_HORZ / MAXIMIZE_VERT / MINIMIZE / FULLSCREEN**       · 深色主题不丢 (app.setStyleSheet 是**应用级** QSS, 与 parent 无关)       · 控制台退出时随 aboutToQuit 一起关, 不留孤儿窗 实测 (wmctrl 量几何):       开窗 2640x1200 @ (588,873)  →  最大化 **3068x1862 @ (132,212)** = 正好是控制台那块屏的工作区       →  还原回 2640x1200 @ (588,873) ✅ (最大化/还原/最小化/双击标题栏都可用) 最大化后内容真铺满 (像素): 全屏非背景 16.8%, 顶测量条 12.9% / 左信号表 13.4% / 右详情 15.7% / 底部页签 12.9%       ⇒ 不是"放大了还是一小块/大空白"。  另: 首次摆位加了一道"实测几何夹回屏内"(show() 之后 350ms 按真实 frameGeometry 夹, 不信推算 ——     本机 fractional scaling 下 move()/resize() 与 screen().geometry() 不在同一坐标空间)。
