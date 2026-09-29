@@ -81,6 +81,14 @@ def http_get(url, timeout=20):
     try:
         with urllib.request.urlopen(url, timeout=timeout) as r:
             return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        # ⚠️ 2026-09-30 踩坑: 4xx/5xx 也说明"服务活着"。原来走 except Exception 会丢状态码(st=0),
+        #    于是验收认不出 10082 那条**合法 404**("/last_result 尚无检测结果") ⇒ 首帧推理慢时假失败 ⇒ 误回滚。
+        try:
+            body = e.read()
+        except Exception:                      # noqa: BLE001
+            body = b""
+        return e.code, body
     except Exception as e:  # noqa: BLE001
         return 0, str(e).encode()
 
@@ -139,7 +147,11 @@ def verify(port, test_capture=True):
             if st == 200:
                 break
             time.sleep(3)
-        legal404 = st == 404 and "尚无检测结果".encode() in body
+        # ⚠️ 2026-09-30 踩坑: Flask jsonify 默认 ensure_ascii=True ⇒ 中文在 body 里是 \u5c1a\u65e0…,
+        #    只比对 UTF-8 原文会漏判"合法 404" ⇒ 首帧推理慢(要加载模型)时假失败 ⇒ **误触发自动回滚**。
+        #    这里把"还没出结果"的三种形态都当合法: 原始中文 / \u 转义 / 空 body(服务刚起来)。
+        _esc = "".join("\\u%04x" % ord(c) for c in "尚无检测结果")
+        legal404 = st == 404 and (not body or "尚无检测结果".encode() in body or _esc.encode() in body)
         ok &= chk("/last_result 判决通道", st == 200 or legal404,
                   ("200 " if st == 200 else "404-尚无(在等/推理慢) ") + body[:60].decode("utf-8", "replace"))
     n_before = _stable_total()          # 取基准: 等检测线程落盘稳定(见 _stable_total 注释)
@@ -235,13 +247,22 @@ def main():
     log("   " + start_pair().strip().replace("\n", " / "))
 
     # ⑤ 验收
+    # ⚠️ 2026-09-30 踩坑: 只该用**本轮真换了文件**的那一路当判据。原来两路都当判据 ⇒
+    #    另一台相机自己抽风(10083 grab 出 46 字节)会把本轮的修复误判成失败 ⇒ 触发回滚,
+    #    而回滚会把**本轮新文件**换成本轮之前的内容(把刚修好的版本滚掉)。没换文件的那路只报状态。
+    changed = {port for (port, _src, nm) in pair
+               if any(f["name"] == nm and not f["same"] for f in report["files"])}
     ok_all = True
     for port, _src, name in pair:
         ok, detail = verify(port)
-        ok_all &= ok
         report["verify"][str(port)] = detail
+        if port not in changed:
+            log("⑤ %d (本轮未换文件, 仅报状态): %s" % (port, "OK" if ok else "⚠️ 异常(与本轮改动无关)"))
+            continue
+        ok_all &= ok
         log("⑤ %d %s" % (port, "\n     ".join(detail)))
-    log("⑤ 验收结果: %s" % ("全部通过 ✅" if ok_all else "有失败 ❌"))
+    log("⑤ 验收结果: %s%s" % ("全部通过 ✅" if ok_all else "有失败 ❌",
+                            "" if changed else " (本轮无文件变化, 无判据)"))
 
     # ⑥ 失败 → 回滚
     if not ok_all:
