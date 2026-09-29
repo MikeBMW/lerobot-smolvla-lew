@@ -223,6 +223,121 @@ _FILL_ON = os.environ.get("ZMAX_FILL", "1") != "0"
 FILL_ALPHA = float(os.environ.get("ZMAX_FILL_ALPHA", "0.22"))    # 整体轮廓
 FILL_TOP_ALPHA = float(os.environ.get("ZMAX_FILL_TOP_ALPHA", "0.32"))  # 顶面加浓(俯视必见 ⇒ 体积感来源)
 
+# ── 管道渲染 (2026-09-29): 把 origin=plan/trace 的 path3d 路点画成"能读出三维"的立体管道 ──
+#   老倪口径: 细折线看不出"管子/进深", 必须 ①线宽随投影深度(近粗远细) ②每隔几站画截面环
+#   ③明暗双色(管体主色+高光/暗边)勾出圆柱感 ④端点圆帽。几何仍走既有的 K+手眼投影
+#   (base_to_cam/cam_to_px), 这里只做 2D 成像 —— 不碰标定, 不改 spec 字段语义。
+TUBE_W_MIN = float(os.environ.get("ZMAX_TUBE_WMIN", "3"))            # 远端管径(px)
+TUBE_W_MAX = float(os.environ.get("ZMAX_TUBE_WMAX", "14"))           # 近端管径(px)
+TUBE_RING_EVERY = int(os.environ.get("ZMAX_TUBE_RING_EVERY", "10"))  # 每隔几个路点画一个截面环
+TUBE_SHADE = 0.55                                                    # 管体主色 = origin 色 × 该系数(暗面)
+TUBE_DARK = 0.22                                                     # 暗边/轮廓
+TUBE_EDGE_PX = int(os.environ.get("ZMAX_TUBE_EDGE_PX", "2"))         # 暗边描边粗细
+
+
+def _cscale(col, k):
+    """origin 色 × 明暗系数 → 合法 BGR 三元组"""
+    return tuple(int(max(0, min(255, round(float(c) * k)))) for c in col)
+
+
+def _unit2(dx, dy):
+    n = math.hypot(dx, dy)
+    return (dx / n, dy / n) if n > 1e-9 else (0.0, 0.0)
+
+
+def tube_widths(zc, wmin, wmax):
+    """相机系深度(米) → 每点管径(px)。近(z 小)粗、远(z 大)细。
+
+    以**本段路径自身**的深度跨度归一化; 跨度极小(近乎等深)时退回中值宽度,
+    免得把"本来就等深"的一段画出假透视。
+    """
+    z = np.asarray(zc, float)
+    zmin, zmax = float(np.min(z)), float(np.max(z))
+    if zmax - zmin < 1e-3:
+        return np.full(len(z), (wmin + wmax) / 2.0)
+    t = (zmax - z) / (zmax - zmin)                # 0=最远 → 1=最近
+    return wmin + (wmax - wmin) * t
+
+
+def draw_path_tube(img, uv, zc, col, W, H, base_w=4.0, ring_every=None,
+                   wmin=TUBE_W_MIN, wmax=TUBE_W_MAX):
+    """沿图像折线 uv 画一根立体管道(原地, BGR)。返回 (段数, (最小管径, 最大管径))。
+
+    uv:(N,2) px   zc:(N,) 相机系深度(m)   col: origin 色(BGR)   base_w: 规格 width(管径缩放档)
+    三要素都在这里: ①逐段四边形填充(宽度随深度) ②每隔 ring_every 点一个截面环
+    ③暗边+内侧高光带 ④端点圆帽。
+    """
+    import cv2
+    P = np.asarray(uv, float)
+    z = np.asarray(zc, float)
+    N = len(P)
+    if N < 2:
+        return 0, (0.0, 0.0)
+    scale = max(0.5, min(2.0, float(base_w) / 4.0))   # width 仍是"粗细档", 只改成缩放管径(≤2×)
+    wmin, wmax = wmin * scale, wmax * scale
+    wid = tube_widths(z, wmin, wmax)
+    full = tuple(int(c) for c in col)                 # origin 原色(高光带/圆帽)
+    body = _cscale(col, TUBE_SHADE)                   # 管体主色(暗面)
+    dark = _cscale(col, TUBE_DARK)                    # 暗边/轮廓
+    ring_c = _cscale(col, 0.80)                       # 截面环
+
+    # 每点局部切向 → 法向(把有宽度的管壁撑开)
+    nrm = []
+    for i in range(N):
+        a, b = P[max(0, i - 1)], P[min(N - 1, i + 1)]
+        tx, ty = _unit2(b[0] - a[0], b[1] - a[1])
+        nrm.append((-ty, tx))
+    nrm = np.asarray(nrm, float)
+
+    def off(i, s):                                    # 沿法向偏移 s 个半管径的像素点(管壁)
+        w = wid[i] / 2.0
+        return (int(round(P[i, 0] + nrm[i, 0] * w * s)),
+                int(round(P[i, 1] + nrm[i, 1] * w * s)))
+
+    def sh(i, f):                                     # 沿法向偏移 f*wid[i] 的像素点(高光带)
+        return (int(round(P[i, 0] + nrm[i, 0] * wid[i] * f)),
+                int(round(P[i, 1] + nrm[i, 1] * wid[i] * f)))
+
+    # ① 管体: 逐段填充"左右边缘"四边形 ⇒ 段宽=两端深度插值出的管径(近粗远细)
+    n_seg = 0
+    for i in range(N - 1):
+        q = np.array([off(i, -1), off(i + 1, -1), off(i + 1, 1), off(i, 1)], np.int32)
+        if abs(cv2.contourArea(q)) >= 1.0:
+            cv2.fillConvexPoly(img, q, body, cv2.LINE_AA)
+        else:                                         # 退化段(两端几乎重合)⇒ 退化成粗线
+            cv2.line(img, off(i, 0), off(i + 1, 0), body,
+                     max(1, int(round(min(wid[i], wid[i + 1]) / 2.0))), cv2.LINE_AA)
+        n_seg += 1
+    for i in range(N):                                # 关节圆头: 拐弯处不留缝
+        cv2.circle(img, (int(round(P[i, 0])), int(round(P[i, 1]))),
+                   max(1, int(round(wid[i] / 2.0))), body, -1, cv2.LINE_AA)
+
+    # ③ 明暗双色: 暗边(+法向轮廓) + 内侧高光带(-法向) ⇒ 圆柱受光感
+    for i in range(N - 1):
+        cv2.line(img, off(i, 1), off(i + 1, 1), dark, TUBE_EDGE_PX, cv2.LINE_AA)
+    hi_th = max(1, int(round(float(np.mean(wid)) * 0.22)))
+    for i in range(N - 1):
+        cv2.line(img, sh(i, -0.32), sh(i + 1, -0.32), full, hi_th, cv2.LINE_AA)
+
+    # ② 截面环: 每隔 ring_every 点画一个切面椭圆(沿切向压扁) + 法向十字刻度
+    re = max(1, int(ring_every if ring_every else TUBE_RING_EVERY))
+    for i in list(range(0, N, re)) + ([N - 1] if (N - 1) % re else []):
+        half = max(2, int(round(wid[i] / 2.0)))
+        ang = math.degrees(math.atan2(nrm[i, 1], nrm[i, 0]))
+        cv2.ellipse(img, (int(round(P[i, 0])), int(round(P[i, 1]))),
+                    (half, max(1, int(round(half * 0.38)))), ang, 0, 360, ring_c, 1, cv2.LINE_AA)
+        for s in (-1, 1):                             # 管壁刻度(法向两端)
+            cv2.line(img, off(i, s * 0.55), off(i, s * 0.98), ring_c, 1, cv2.LINE_AA)
+
+    # ④ 端点圆帽: 首末点实心圆 + 暗边 ⇒ 看得到"管口"
+    for i in (0, N - 1):
+        c = (int(round(P[i, 0])), int(round(P[i, 1])))
+        r = max(2, int(round(wid[i] / 2.0)))
+        cv2.circle(img, c, r, full, -1, cv2.LINE_AA)
+        cv2.circle(img, c, r, dark, 1, cv2.LINE_AA)
+
+    return n_seg, (float(wid.min()), float(wid.max()))
+
 
 def base_to_cam(P_base, X_cam2tcp, tcp7) -> np.ndarray:
     """base 系点 → 相机系点（要判 z<=0 的角点, 投不了就得整盒丢弃）"""
@@ -335,6 +450,16 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
     cam_spec = (spec.get("cameras") or {}).get(cam) or {}
     boxes = cam_spec.get("boxes") or []
 
+    # 🧩 管道叠放次序(仅渲染层, 不动数据): 点多的长轨迹(实测)先铺底、点少的短路径(规划段)后画 ⇒
+    #    短的规划管道不会被长的实测管道整条盖死(2026-09-29 实测: trace 403 点会盖掉 plan 7 点)。
+    #    只重排 path3d 之间的先后, 其余框(3D盒/2D框)的相对次序与索引不变。
+    _pidx = [i for i, b in enumerate(boxes) if b.get("pts3d")]
+    if len(_pidx) > 1:
+        _plist = sorted((boxes[i] for i in _pidx), key=lambda b: -len(b.get("pts3d") or []))
+        boxes = list(boxes)
+        for _k, _i in enumerate(_pidx):
+            boxes[_i] = _plist[_k]
+
     he_ok = bool(he["ok"] and tcp7 is not None)
     deleted = set((spec.get("deleted") or {}).get(cam) or [])
     _ids = {}
@@ -356,8 +481,10 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
         info = {"id": bid, "label": label, "origin": b.get("origin"), "conf": b.get("conf"),
                 "color": [int(c) for c in col]}
 
-        # ── 3D 折线(路径/轨迹): 逐段投影后一次画成连通笔画 ⇒ 是"一条线", 不是一串小盒 ──
+        # ── 3D 管道(路径/轨迹): 逐段投影后画成一根**立体管道**(可读出三维), 不是一条线 ──
         #    规格元素: {"kind":"path3d", "pts3d":[[x,y,z],...], "width":3, "origin":...}
+        #    2026-09-29: 从细线改为管道 —— ①管径随投影深度(近粗远细) ②每隔若干路点一个截面环
+        #    ③明暗双色(管体+高光/暗边) ④端点圆帽; 几何仍沿用既有 base_to_cam/cam_to_px 投影。
         if b.get("pts3d"):
             if not he_ok:
                 skipped.append((label, "无手眼/TCP")); continue
@@ -375,21 +502,38 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
                     (uv[:, 0] > -1.5 * W) & (uv[:, 0] < 2.5 * W) &
                     (uv[:, 1] > -1.5 * H) & (uv[:, 1] < 2.5 * H))
             pts, nseg = [], 0
-            lw = int(b.get("width", 3))
+            _w0 = float(b.get("width", 4))           # 保留 width 字段: 现在是"管径粗细档"(缩放 ≤2×)
             _dmax = float(np.hypot(W, H)) * 1.2      # 单段像素长上限(防"视锥外投影"拉出横贯全帧的长条)
+            okseg = []
             for i in range(len(P) - 1):
                 if not (good[i] and good[i + 1]):
-                    continue
+                    okseg.append(False); continue
                 if float(np.hypot(uv[i][0] - uv[i + 1][0], uv[i][1] - uv[i + 1][1])) > _dmax:
-                    skipped.append((label, "折线段超长(投影出画面)已跳过")); continue
-                p1 = (int(round(float(uv[i][0]))), int(round(float(uv[i][1]))))
-                p2 = (int(round(float(uv[i + 1][0]))), int(round(float(uv[i + 1][1]))))
-                cv2.line(img, p1, p2, col, lw, cv2.LINE_AA)
-                pts += [p1, p2]; nseg += 1
+                    skipped.append((label, "折线段超长(投影出画面)已跳过")); okseg.append(False); continue
+                okseg.append(True)
+            # 连续可用段 → 连续折线(run): 断开处各画一根管道, 绝不跨界连线
+            runs, cur = [], []
+            for i in range(len(P) - 1):
+                if okseg[i]:
+                    cur = [i, i + 1] if not cur else cur + [i + 1]
+                elif cur:
+                    runs.append(cur); cur = []
+            if cur:
+                runs.append(cur)
+            w_lo, w_hi = 1e9, 0.0
+            for run in runs:
+                if len(run) < 2:
+                    continue
+                ns, (wl, wh) = draw_path_tube(img, uv[run], zc[run], col, W, H, base_w=_w0)
+                nseg += ns
+                w_lo, w_hi = min(w_lo, wl), max(w_hi, wh)
+                for k in run:                        # 记像素范围(供页面/取证)
+                    pts.append((int(round(float(uv[k, 0]))), int(round(float(uv[k, 1])))))
             if nseg == 0:
                 skipped.append((label, "折线整段在视锥外")); continue
             A = np.asarray(pts, float)
             info.update(kind="path3d", corners=None, z_mm=None, n_seg=int(nseg),
+                        tube_px=[round(w_lo, 1), round(w_hi, 1)] if w_hi >= w_lo else None,
                         xyxy=[float(A[:, 0].min()), float(A[:, 1].min()),
                               float(A[:, 0].max()), float(A[:, 1].max())],
                         clipped=bool(((A[:, 0] < 0) | (A[:, 0] > W) | (A[:, 1] < 0) | (A[:, 1] > H)).any()))
