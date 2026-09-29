@@ -3072,8 +3072,11 @@ class SimNodeItem(QGraphicsObject):
         if t == "row_bg":
             p = self.node.get("params", {})
             color = QColor(p.get("bg", "#26418f"))
-            w = self.node.get("w", DW)
-            h = self.node.get("h", 244)
+            # 🎨 2026-09-29 修: 原来写 `node.get("h", 244)` —— 但**没写 h 的色带**在 __init__ 里
+            #   self.h 取的是 DH(110) ⇒ 画出来是 244 高、比自己的框高 134px, 标题被垂直居中到
+            #   y≈122 (框外) = "画到框外/字跑到框下面"。统一用 self.w/self.h (item 自己的几何)。
+            w = self.w
+            h = self.h
             painter.setRenderHint(QPainter.Antialiasing)
             # 整行色带: 深色底(alpha 120) + 色相(alpha 90) 叠加 — 深色画布上颜色清晰可见,
             # 不会因 alpha 过低显示成黑色块 (2026-08-05 修复: 原 alpha=40 在 #0a0a0f 画布上≈黑)
@@ -3113,7 +3116,7 @@ class SimNodeItem(QGraphicsObject):
                 try:
                     _bx = float(self.node.get("x", 0))
                     _by = float(self.node.get("y", 0))
-                    _bh = float(self.node.get("h", 244))
+                    _bh = float(self.h)   # 🎨 2026-09-29: 用 item 自己的高度 (原 node.get("h",244) 与 self.h 可能不一致)
                     _ys, _ye = _by + 8, _by + _bh - 8
                     _cand = [float(n.get("x", 0)) for n in self.scene_ref.nodes
                              if n.get("type") != "row_bg"
@@ -3140,14 +3143,18 @@ class SimNodeItem(QGraphicsObject):
                     self.setToolTip(f"{name}\n(色带名字区显示短标签, 悬停可见完整名称)")
             except Exception:
                 pass
+            # 🎨 2026-09-29: 名字区宽度 _aw 是按"本带内部节点"算的, 可能**大于色带本身宽**
+            #   (实测 flow_zzzz 一条色带算出 3630px > 带宽 2916px) ⇒ 标题会画出色带右边被裁。
+            #   这里把**绘制矩形**夹到色带宽度内 (折行宽度不变, 只是不越出框)。
+            _draw_w = int(max(40.0, min(float(_aw), float(self.w) - 16.0)))
             if len(_bg_lines) > 1:
                 _lh = fm.height() + 1
                 _yy = h / 2 - _lh
                 for _i, _ln in enumerate(_bg_lines):
-                    painter.drawText(QRectF(8, _yy + _i * _lh, _aw, _lh),
+                    painter.drawText(QRectF(8, _yy + _i * _lh, _draw_w, _lh),
                                      Qt.AlignVCenter | Qt.AlignLeft, _ln)
             else:
-                painter.drawText(QRectF(8, 0, _aw, h), Qt.AlignVCenter | Qt.AlignLeft,
+                painter.drawText(QRectF(8, 0, _draw_w, h), Qt.AlignVCenter | Qt.AlignLeft,
                                  (_bg_lines or [name])[0])
             # 左上角小标: 可编辑提示
             # 🎨 2026-09-29: 8pt 太细/太暗 (VLM 目检也读出"辨识困难") → 统一 9pt + 提亮
@@ -3217,14 +3224,19 @@ class SimNodeItem(QGraphicsObject):
             _cap_cur = str(params.get("cap_level", "L2") or "L2").upper()
             # 🎯 2026-09-10: L4D 档并入 L4 (90° 抗干扰演示); 2026-09-28 增 L5
             _cap_cur = {"L4D": "L4"}.get(_cap_cur, _cap_cur if _cap_cur in ("L2", "L3", "L4", "L5") else "L2")
+            # 🎨 2026-09-29 老倪:「能力档位 这个节点的字太多了, 太挤了 … 像这样的情况, 不要出现, 看不清的情况」
+            #   原来标题写死 16 字「🧭 能力档位 (数据源层 · 单击直选/双击循环)」+ 9pt Arial(无中文字形)
+            #   ⇒ 一行画不下被硬裁 + 和下面的 radio 挤在一起。现在:
+            #   ① 标题只用**短标签**(走 node_display_name, ≤10 字, 与全画布同一套字体/规格);
+            #   ② 括号里的操作提示搬进 tooltip (节点悬停能看), 不在框里挤;
+            #   ③ 档位说明压到 ≤10 字 (一行放得下, 不再省略号);
+            #   ④ 子标签放不下就不画 (宁可少画, 不可挤/裁)。
+            _cap_lab = node_display_name(self.node.get("name") or "🧭 能力档位",
+                                         NODE_LABEL_MAX_PX) or "🧭 能力档位"
             painter.setPen(QColor(pal["title"]))
-            painter.setFont(QFont("Arial", 9, QFont.Bold))
-            painter.drawText(QRectF(12, 6, self.w - 24, 18), Qt.AlignVCenter | Qt.AlignLeft,
-                             "🧭 能力档位 (数据源层 · 单击直选/双击循环)")
-            # 🎯 2026-09-10: L4 = 抗干扰 90° 演示全链 (老倪: 点 L4 要看到来料转台把光模块
-            #   水平转90°→绕z抓横→治具回正→插入→AOI→光耦合; 原 L4D 演示并入, 原 L4 自主恢复
-            #   真实链 (±15° 干扰重试) 由 CLI/测试可达)
-            # 🧿 2026-09-28: L5 = 大模型视觉语言自动标注 (L2/L3/L4 监督数据) + 标注完自动训练
+            painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
+            painter.drawText(QRectF(12, 4, self.w - 24, 20), Qt.AlignVCenter | Qt.AlignLeft, _cap_lab)
+            # 🎯 2026-09-10: L4 = 抗干扰 90° 演示全链; 🧿 2026-09-28: L5 = 大模型标注+自动训练
             _caps = [("L2", "插装"), ("L3", "全链"), ("L4", "抗干扰"), ("L5", "标注训")]
             _cw = (self.w - 24) / 4.0
             for _i, (_k, _kd) in enumerate(_caps):
@@ -3241,9 +3253,16 @@ class SimNodeItem(QGraphicsObject):
                 painter.setPen(QColor("#e6edf3") if _on else QColor("#8b949e"))
                 painter.setFont(_node_font(NODE_TITLE_PT, bold=bool(_on)))
                 painter.drawText(QRectF(_cx + 20, 28, _cw - 16, 18), Qt.AlignVCenter | Qt.AlignLeft, _k)
-                painter.setFont(_node_font(NODE_SUB_PT))
-                painter.setPen(QColor("#8b949e"))
-                painter.drawText(QRectF(_cx + 20, 44, _cw - 12, 14), Qt.AlignVCenter | Qt.AlignLeft, _kd)
+                # 子标签: 量过放得下才画 (放不下不画, 避免"看不清")
+                _kfm = QFontMetrics(_node_font(NODE_SUB_PT))
+                _kw = _cw - 16
+                _ks = _kd
+                if _kfm.horizontalAdvance(_ks) > _kw:
+                    _ks = _kfm.elidedText(_ks, Qt.ElideRight, int(_kw))
+                if _kfm.horizontalAdvance(_ks) <= _kw:
+                    painter.setFont(_node_font(NODE_SUB_PT))
+                    painter.setPen(QColor("#8b949e"))
+                    painter.drawText(QRectF(_cx + 20, 44, _kw, 14), Qt.AlignVCenter | Qt.AlignLeft, _ks)
             # 🧿 2026-09-28 老倪: **L5 档的运行进度直接画在"能力档位"节点上**
             #   他点的就是这个节点 → 不打开任何日志就能看见阶段在动。
             #   (只写 /tmp/simulink_log.txt = 他眼里"点了没反应" —— 现场实锤过)
@@ -3258,14 +3277,14 @@ class SimNodeItem(QGraphicsObject):
                     painter.setFont(_node_font(NODE_SUB_PT, bold=(_i == 0)))
                     painter.drawText(QRectF(12, 58 + _i * 16, self.w - 24, 15),
                                      Qt.AlignVCenter | Qt.AlignLeft, _tx)
-            # desc (当前档说明, 底部小字) — 统一 8pt + 省略号 (不越框)
+            # desc (当前档说明, 底部小字) — 🎨 2026-09-29 老倪「字太多太挤」: 每档压到 ≤10 字, 一行放得下
+            #   (原 L4/L5 说明 30~50 字 ⇒ 只能靠省略号, 现场看就是"看不清"; 详细链路在 tooltip/文档)
             painter.setFont(_node_font(NODE_SUB_PT))
             painter.setPen(QColor("#8b949e"))
-            _capdesc = {"L2": "基础: 插装即完成 (insert 8段)",
-                        "L3": "L3 全链: 插→拔→AOI→放回 (13段)",
-                        "L4": "L4 抗干扰 90°: 来料转90°→绕z抓横→回正→插拔→AOI→光耦合 (全真物理)",
-                        "L5": "L5 标注→训练: VLM 自动标注(6路) → L2/L3/L4 监督 → 自动训练(L2全量/L3·L4 LoRA→merge) "
-                              "(▶运行启动, 后台异步)"}.get(_cap_cur, "")
+            _capdesc = {"L2": "插装即完成 · 8 段",
+                        "L3": "全链: 插→拔→AOI→放回",
+                        "L4": "抗干扰 90° 全链 · 真物理",
+                        "L5": "自动标注 → 自动训练"}.get(_cap_cur, "")
             _cfm = painter.fontMetrics()
             painter.drawText(QRectF(12, self.h - 22, self.w - 24, 16), Qt.AlignVCenter | Qt.AlignLeft,
                              _cfm.elidedText(_capdesc, Qt.ElideRight, self.w - 24))
@@ -3548,13 +3567,20 @@ class SimNodeItem(QGraphicsObject):
         # 📥 Excel 导出按钮 (2026-08-20 老倪: 🛠技能编排器 / 🎯YOLO 节点右下角)
         if params.get("skill_composer") or params.get("detection_targets"):
             try:
-                btn = QRectF(self.w - 38, self.h - 22, 34, 18)
+                # 🎨 2026-09-29: 原来 34px 宽的按钮里塞 43px 的「📥 导出」9pt Arial ⇒ 字被按钮裁掉
+                #   (老倪: 不要"看不清"的情况)。统一字体 + 加宽按钮 + 量过再画(必要时省略号)。
+                btn = QRectF(self.w - 52, self.h - 22, 48, 18)
                 painter.setPen(QPen(QColor("#a371f7"), 1))
                 painter.setBrush(QColor("#2d1b4e"))
                 painter.drawRoundedRect(btn, 4, 4)
                 painter.setPen(QColor("#e6edf3"))
-                painter.setFont(QFont("Arial", 9, QFont.Bold))
-                painter.drawText(btn, Qt.AlignCenter, "📥 导出")
+                _bfm = QFontMetrics(_node_font(NODE_SUB_PT, bold=True))
+                painter.setFont(_node_font(NODE_SUB_PT, bold=True))
+                _btxt = "📥 导出"
+                _bw = btn.width() - 6
+                if _bfm.horizontalAdvance(_btxt) > _bw:
+                    _btxt = _bfm.elidedText(_btxt, Qt.ElideRight, int(_bw))
+                painter.drawText(btn, Qt.AlignCenter, _btxt)
             except Exception:
                 pass
 
