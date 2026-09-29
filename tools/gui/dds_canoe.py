@@ -27,7 +27,7 @@ from PyQt5.QtWidgets import (QAbstractItemView, QCheckBox, QFrame, QHBoxLayout, 
 
 # ── 调色板(与控制台主色一致) ──
 C_BG, C_BG2, C_CARD, C_BORDER = "#0d1117", "#161b22", "#1c2333", "#30363d"
-C_WHITE, C_GRAY, C_DIM, C_BLUE = "#ffffff", "#8b949e", "#484f58", "#58a6ff"
+C_WHITE, C_GRAY, C_DIM, C_BLUE = "#ffffff", "#8b949e", "#6e7681", "#58a6ff"  # C_DIM 提亮: 原 #484f58 对比度仅 2.3:1(质检: 几乎看不见)
 C_GREEN, C_YELLOW, C_RED, C_PURPLE = "#3fb950", "#d29922", "#f85149", "#bc8cff"
 C_BAR = "#2f81f7"     # CANoe 的 Bar 是实心蓝 #0072C5, 深色主题里提亮
 C_SEL = "#243a52"     # CANoe 选中行浅蓝 #AFD7F1 的深色对应
@@ -71,6 +71,12 @@ def _num(v, nd=2, suffix=""):
         return f"{float(v):.{nd}f}{suffix}"
     except Exception:                                                        # noqa: BLE001
         return f"{v}{suffix}"
+
+
+def _pad(label, width=14):
+    """中文按 2 列宽补齐 → 详情面板的值列能对齐成一竖线(质检: 破折号 x2560-2576 漂移)"""
+    w = sum(2 if ord(ch) > 0x2E80 else 1 for ch in str(label))
+    return str(label) + " " * max(1, width - w)
 
 
 def _hhmmss(t):
@@ -261,6 +267,7 @@ class BusView(QWidget):
             f"QTreeWidget::item:selected {{ background:{C_SEL}; }}"
             f"QHeaderView::section {{ background:{C_CARD}; color:{C_GRAY}; border:none; padding:4px; }}")
         self.tree.setUniformRowHeights(True)
+        self.tree.header().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)   # 列头左对齐=与内容同列
         self.tree.setItemDelegateForColumn(4, BarDelegate(self.tree))
         h = self.tree.header()
         h.setSectionResizeMode(0, QHeaderView.Stretch)
@@ -319,6 +326,7 @@ class BusView(QWidget):
         self.tb.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.tb.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tb.setShowGrid(True)
+        self.tb.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         th = self.tb.horizontalHeader()
         for i in range(9):
             th.setSectionResizeMode(i, QHeaderView.ResizeToContents)
@@ -371,6 +379,8 @@ class BusView(QWidget):
             t.setEditTriggers(QAbstractItemView.NoEditTriggers)
             t.setSelectionBehavior(QAbstractItemView.SelectRows)
             lay.addWidget(t, 1)
+        self.tb_loop.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.tb_alert.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         lh = self.tb_loop.horizontalHeader()
         for i in (0, 1, 3):
             lh.setSectionResizeMode(i, QHeaderView.ResizeToContents)
@@ -710,8 +720,8 @@ class BusView(QWidget):
                         item.setForeground(QColor(C_GREEN if v >= 99 else C_YELLOW if v > 0 else C_GRAY))
                     except Exception:                                        # noqa: BLE001
                         pass
-                elif r % 2:
-                    item.setForeground(QColor(C_GRAY))
+                if r % 2:                                              # 质检: 整行变灰让半张表"褪色" ⇒ 改浅底斑马纹
+                    item.setBackground(QColor("#12171e"))
                 self.tb.setItem(r, c, item)
         self.tb.setUpdatesEnabled(True)
 
@@ -740,6 +750,13 @@ class BusView(QWidget):
                 if not r.get("ok"):
                     alerts.append((r.get("level", "warn"), t.get("topic", key),
                                    "%s: %s" % (r.get("rule", "—"), r.get("msg", ""))))
+        seen, uniq = set(), []
+        for a in alerts:                                                       # 质检: 同一规则+同文本重复出现 ⇒ 去重
+            k = (a[0], a[1], a[2])
+            if k not in seen:
+                seen.add(k)
+                uniq.append(a)
+        alerts = uniq
         rank = {"fail": 0, "error": 0, "warn": 1, "unknown": 2}
         alerts.sort(key=lambda a: rank.get(a[0], 9))
         self.tb_alert.setRowCount(len(alerts))
@@ -778,47 +795,51 @@ class BusView(QWidget):
         if kind == "topic":
             t = topics.get(key) or {}
             m = (db.get("messages") or {}).get(key) or {}
-            out += ["🚌 报文  %s" % (t.get("topic") or m.get("topic") or key), "─" * 46,
-                    "类型        %s" % (t.get("type") or m.get("type", "—")),
-                    "QoS         %s" % (t.get("qos") or m.get("qos", "—")),
-                    "设计频率    %s" % _num(t.get("hz_design") or m.get("hz_design"), 2, " Hz"),
-                    "实测频率    %s" % _num(t.get("hz"), 2, " Hz"),
-                    "抖动        %s" % _num(t.get("jitter_ms"), 2, " ms"),
-                    "丢包        %s" % _num(t.get("loss_pct"), 1, " %"),
-                    "帧龄        %s" % _num(t.get("age_s"), 2, " s"),
-                    "累计报文    %s" % t.get("count", "—"),
-                    "字节        %s" % t.get("bytes", "—"),
-                    "匹配发布者  %s" % t.get("matched_pubs", "—"),
-                    "质量判决    %s (score %s)" % (t.get("verdict", "—"), _num(t.get("score"), 2)),
-                    "灯          %s %s" % (LAMP_ICON.get(t.get("lamp"), ""), t.get("lamp_reason", "")),
-                    "生产者      %s" % m.get("producer", "—"), "", "质量判据(逐条)"]
+            lamp_txt = "%s %s" % (LAMP_ICON.get(t.get("lamp") or "", "—"),
+                                  t.get("lamp_reason") or "")
+            out += ["🚌 报文  %s" % (t.get("topic") or m.get("topic") or key),
+                    "─" * 52,
+                    _pad("类型", 14) + str(t.get("type") or m.get("type", "—")),
+                    _pad("QoS", 14) + str(t.get("qos") or m.get("qos", "—")),
+                    _pad("设计频率", 14) + _num(t.get("hz_design") or m.get("hz_design"), 2, " Hz"),
+                    _pad("实测频率", 14) + _num(t.get("hz"), 2, " Hz"),
+                    _pad("抖动", 14) + _num(t.get("jitter_ms"), 2, " ms"),
+                    _pad("丢包", 14) + _num(t.get("loss_pct"), 1, " %"),
+                    _pad("帧龄", 14) + _num(t.get("age_s"), 2, " s"),
+                    _pad("累计报文", 14) + str(t.get("count", "—")),
+                    _pad("字节", 14) + str(t.get("bytes", "—")),
+                    _pad("匹配发布者", 14) + str(t.get("matched_pubs", "—")),
+                    _pad("质量判决", 14) + "%s (score %s)" % (t.get("verdict", "—"), _num(t.get("score"), 2)),
+                    _pad("灯", 14) + lamp_txt.strip(),
+                    _pad("生产者", 14) + str(m.get("producer", "—")),
+                    "", "质量判据(逐条)"]
             for r in (t.get("rules") or []):
                 out.append("  %s %-12s %s" % ("✔" if r.get("ok") else "✘", r.get("rule", ""), r.get("msg", "")))
             f = t.get("fields") or {}
             if f:
                 out += ["", "载荷字段(实测值)"]
                 for k in list(f)[:24]:
-                    out.append("  %-16s %s" % (k, f[k]))
+                    out.append("  " + _pad(k, 18) + str(f[k]))
         elif kind == "signal":
             for s in (db.get("signals") or []):
                 if s.get("sid") == key:
-                    out += ["🔗 信号  %s  (连线 %s)" % (key, s.get("link_id", "—")), "─" * 46,
-                            "来源        %s . %s" % (s.get("src"), s.get("src_port", "?")),
-                            "            %s" % s.get("src_name", ""),
-                            "去向        %s . %s" % (s.get("dst"), s.get("dst_port", "?")),
-                            "            %s" % s.get("dst_name", ""),
-                            "标签        %s" % s.get("label", "—"),
-                            "层级        %s" % s.get("layer", "—"),
-                            "话题        %s" % s.get("topic", "—")]
+                    out += ["🔗 信号  %s  (连线 %s)" % (key, s.get("link_id", "—")), "─" * 52,
+                            _pad("来源", 14) + "%s . %s" % (s.get("src"), s.get("src_port", "?")),
+                            _pad("", 14) + str(s.get("src_name", "")),
+                            _pad("去向", 14) + "%s . %s" % (s.get("dst"), s.get("dst_port", "?")),
+                            _pad("", 14) + str(s.get("dst_name", "")),
+                            _pad("标签", 14) + str(s.get("label", "—")),
+                            _pad("层级", 14) + str(s.get("layer", "—")),
+                            _pad("话题", 14) + str(s.get("topic", "—"))]
                     break
         else:
             n = (db.get("nodes") or {}).get(key) or {}
-            out += ["🧩 节点  %s" % key, "─" * 46,
-                    "名称        %s" % n.get("name", "—"),
-                    "类型        %s" % n.get("type", "—"),
-                    "层级        %s" % n.get("layer", "—"),
-                    "画布坐标    (%s, %s)" % (n.get("x"), n.get("y")),
-                    "出/入线数   tx %s / rx %s" % (n.get("tx", 0), n.get("rx", 0))]
+            out += ["🧩 节点  %s" % key, "─" * 52,
+                    _pad("名称", 14) + str(n.get("name", "—")),
+                    _pad("类型", 14) + str(n.get("type", "—")),
+                    _pad("层级", 14) + str(n.get("layer", "—")),
+                    _pad("画布坐标", 14) + "(%s, %s)" % (n.get("x"), n.get("y")),
+                    _pad("出/入线数", 14) + "tx %s / rx %s" % (n.get("tx", 0), n.get("rx", 0))]
         return "\n".join(out)
 
     def _fill_detail(self):

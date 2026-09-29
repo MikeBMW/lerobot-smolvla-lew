@@ -752,7 +752,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.16.17")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.16.18")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11170,7 +11170,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.17 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.18 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11178,9 +11178,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.17 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.18 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.16.18: UI(数据空间 CANoe 版) **按视觉质检报告修 5 处实证缺陷** 质检(vision 子代理逐像素)发现并已修: ① **Trace 半张表"褪色"**: 原来奇数行整行设灰前景(136-157, 对比 6.7:1) vs 偶数行近白(18:1), 背景却相同 ⇒ 取消整行变灰, 改**隔行浅底斑马纹**(#12171e), 文字一律亮色。实测前 20 行变灰列数 = 0。 ② **质量告警重复行**: 同一规则+同文本重复渲染 ⇒ 加 (级别,对象,问题) 三元组去重。实测重复 0 条。 ③ **列头与内容错位 32-42px**(列头默认居中而单元格左对齐) ⇒ tree/Trace/闭环/告警 四张表 `setDefaultAlignment(左对齐)`。 ④ **详情面板值列不齐**(破折号漂移 x2560-2576; 中文宽度按 1 计导致空格补不齐) ⇒ 新增 `_pad()` **按中文 2 列宽补齐**到 14 列, 报文/信号/节点三种详情统一走它; 顺手修「灯」行只有标签没有值。 ⑤ **暗灰对比度 2.3:1 几乎看不见**(无信号行的状态点/文本) ⇒ C_DIM 由 #484f58 提亮到 #6e7681。 另复核(上版质检提到的疑点): **树空文本行 = 0**(「名称列全空」实为子行缩进, 非缺字); 树 3 顶层组/14 报文/5 信号层/5 节点层; Trace 500 行×9 列; 各填充步骤 ≤0.01s; 出图 /tmp/canoe_v3.png。 红线: 未下发真机动作; 未改在役指针/默认档/画布数据。
         # v5.16.17: UI(全局数据空间) **按 CANoe 16 主界面逐像素基准再对齐** (老倪参考图: portal.vector.com/de/web/help/canoe-demo) 依据: vision 子代理读 CANoe 16 官方截图 1067x810 得到的实测布局(三窗格 + 顶部测量组 + 底部标签栏)。 ①**顶部测量组**照 CANoe: 左端两个大按钮 **⚡Start(黄) / ⬢Stop(灰)**, 右侧 状态/档位/刷新龄+拍照/报文 活跃·允许·注册/灯 🟢🟡🔴⚫/测量计时(0:00:00), 等价 CANoe 的 Measurement 组 + 右下计时读数。 ②**上排左 = CANoe 的 Data 面板**: 表结构照抄 CANoe 列名 **Name | Value | Unit | Last Value Time [s] | Bar**; 值是实测 Hz(单位 Hz), Last Value Time 取该话题在 trace.jsonl 的最后一帧帧龄, **Bar = 实测/设计 Hz 的实心蓝条**(自绘 BarDelegate, 色 #2f81f7, 对应 CANoe #0072C5)。 ③**中 = CANoe 的 Trace 面板, 整宽** (原来是挤在中间一列, 这是与 CANoe 最大的差异): 列名照 CANoe Trace **Time | Name | Object Type | Classification | Probability [%] | Sender Name | Sender Id | Tracking Id | Group**, Time 用「测量时间」(相对起点 3 位小数, CANoe 同款), 最新在顶。 ④**Trace 面板自带工具条** (照 CANoe 面板工具条): ⏸暂停 / **Δt**(Time 列切「与同话题上一帧的时间差」, CANoe 同款) / 🔍过滤 / 🗑清屏 / 📤导出 CSV。 ⑤**底部标签栏**照 CANoe 的 Configuration|Measurement|Data Window: **🔁 数据闭环 | ⚠ 质量告警(N)** 两个页签 + 右下 拍照时间。 ⑥数据全真实: busdb.json(74节点/182信号/14报文) · live.json(每话题 hz/丢包/jitter/帧龄/规则/灯) · trace.jsonl · loop.json; 缺测 '—' 不许 0 冒充。旧 12-Tab 收进「🗂 经典视图」开关, 入口零丢失。 ⑦实测(离屏, 192DPI 同现场口径): 构造 0.1s; 各步耗时 ≤0.01s; **信号树 3 顶层组 / Trace 500 行×9 列 / 闭环 9 行 / 告警 6 行**; 截图 2792x1600 出图; 无异常。 ⑧红线: 未下发真机动作; 未改在役指针/默认档/画布数据。需重启控制台后现场可见。
         # v5.16.16: UI(全局数据空间) **按 CANoe 主窗口范式重做** (老倪: 「全局数据空间 参考 https://portal.vector.com/de/web/help/canoe-demo 重新设计UI」) ①**旧版问题**: 该页是「12 个 Tab 堆叠」—— 总线架构/报文追踪/统计/信号/质量告警/回灌/全息映射/DDS 空间… 全平铺成一行 Tab, 第一屏既看不到全景也不成"工作台", 与 CANoe「多窗格同时在线」的用法相反。 ②**新版 = 新模块 `tools/gui/dds_canoe.py`**(`build_view(main_win)`, 1000ms 自刷新), 五区同时在线:     测量条(●测量/档位/刷新龄+**拍照时间**/报文 活跃·允许·注册/**灯 🟢🟡🔴⚫**/记录·刷新·导出CSV·复制详情·经典视图)     中左 **信号浏览器**(报文14 → 信号182 按层分级 → 节点74, 行内带实时值/字节/质量灯)     中中 **Trace**(7 列: 时刻/报文/类型/序号/字节/值·载荷摘要/方向, 最新在顶, **值变化行高亮**)     中右 **详情**(选中对象全属性: 类型/QoS/设计vs实测Hz/抖动/丢包/帧龄/质量判据逐条/载荷字段, 双击可复制)     底部 **数据闭环 S0…(gate/owner/状态·证据)** + **⚠ 质量告警(红/黄/黑)** ③**数据全真实**: `busdb.json`(画布导出的 DBC: 节点74/信号182/报文14) + `live.json`(每话题 hz/丢包/jitter/帧龄/规则/灯) + `trace.jsonl`(总线帧) + `loop.json`(闭环阶段)。缺测一律 `—`(**不许 0 冒充**), 实时量一律带帧龄与拍照时间。 ④**旧入口零丢失**: 右上「🗂 经典视图」开关一键切回原 12-Tab 视图(两套都在内存, 只显示其一)。 ⑤**实测(离屏 QT_FONT_DPI=192 = 现场口径)**: 信号浏览器 3 顶层组/14 报文/182 信号 · Trace 400 行×7 列 · 闭环 9 行 · 告警 6 行 · 测量条读到 `档位 calib · 刷新龄 0.9s · 拍照 19:48:24 · 活跃6/允许7/注册14 · 🟢3🟡1🔴2⚫1` · 点树/点 Trace 行详情联动 · **裁切标签 0** · **需要横拉条的滚动区 无** · 页面宽 2828 == 视口 2828 · 异常 0 · 经典视图来回切换正常。截图 `/tmp/canoe_view.png`(2792x1650)。 ⑥红线: 未下发任何真机动作; 未改在役指针/默认档/画布数据; 只新增模块 + DataSpaceModule 接线(旧 Tab 全部保留)。需**重启控制台**后现场可见。
         # v5.16.15: UI(窗口适配) 收口 v5.16.14 的**底部余量** —— 一条必须写下来的取证教训 现象: 应用自报夹紧结果 `3068x1936@124,56`(底边 1992 ≤ 屏 2000, 看起来**没问题**), 但 **WM 真实外框窗口**实测 `3124x1994@104,40`(底边 2034) —— **mutter 的 CSD 外框/阴影不计入 `frameGeometry()`**, 按应用口径算"刚好贴着屏底"时, 真实外框已经出屏 ~34px。修法: 手动适配的纵向预算再留 **48px** 安全边(`_ah = 可用高 - 2*margin - 48`), 宁可矮一点也不能被切。 取证口径(重要, 已固化成习惯): ①判断"窗口有没有出屏"**不能只用 `frameGeometry()`**, 要交叉核对 `xdotool getwindowgeometry` + `wmctrl -lG`, 并认清 mutter 会给每个窗口配一个 `mutter-x11-frames` 外框窗口(用 `xdotool getwindowpid` 认领, 别把它当成"第二个控制台实例")。②主屏可见线(y<2000)以下的 framebuffer **可能是陈旧的**(X 不会重绘没被任何显示器显示的区域) ⇒ 那块拍到"控制台配色"**不能**直接判成"内容被切", 需要重启后重拍才算证。 实测: 夹紧逻辑单测(伪造"越界最大化"窗口) → `showNormal + resize(784,536) + move(8,56)` 全在可用区内; 在屏内的最大化窗口不动。红线: 未下发任何真机动作; 未改在役指针/默认档/画布数据。
