@@ -704,6 +704,18 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
                 # 标签放**轮廓外**(不透明底片贴在掩膜上会盖掉填充与轮廓 —— 3D 盒分支同款教训)
                 _box=[round(float((xs.min() + xs.max()) / 2.0), 1),
                       round(float(ys.min()), 1), round(float(ys.max()), 1)])
+        # ── 2D 折线/辅助线(pts2d): 像素级标注, 不需要手眼/TCP ──
+        #   2026-09-30 老倪: "画的线不是以相机坐标系为轴, 要以世界坐标系为轴, 要平行于横梁"
+        #   ⇒ 世界平行的线在图像里是**过同一消失点**的斜线, 轴对齐盒子画不出来, 必须有折线元素。
+        elif b.get("pts2d"):
+            P2 = np.array([[float(t[0]), float(t[1])] for t in b["pts2d"]], float)
+            if len(P2) < 2:
+                skipped.append((label, "折线点不足")); continue
+            cv2.polylines(img, [np.round(P2).astype(np.int32)], False, col,
+                          int(b.get("width", 2)), cv2.LINE_AA)
+            xyxy = [float(P2[:, 0].min()), float(P2[:, 1].min()),
+                    float(P2[:, 0].max()), float(P2[:, 1].max())]
+            info.update(kind="line2d", corners=None, xyxy=xyxy, z_mm=None, clipped=False)
         # ── 2D 框(det/vlm 只有像素框): 保持矩形, 无色框材质 ──
         elif b.get("xyxy"):
             x1, y1, x2, y2 = [float(t) for t in b["xyxy"]]
@@ -783,7 +795,15 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
     #   只重画几何, 不重做标签, 不进 drawn(统计口径与删除语义保持不变)。
     _gcol = ORIGIN_STYLE["guide"][0]
     for b in boxes:
-        if b.get("origin") != "guide" or not b.get("xyxy"):
+        if b.get("origin") != "guide":
+            continue
+        if b.get("pts2d"):
+            P2 = np.array([[float(t[0]), float(t[1])] for t in b["pts2d"]], float)
+            if len(P2) >= 2:
+                cv2.polylines(img, [np.round(P2).astype(np.int32)], False, _gcol,
+                              int(b.get("width", 2)), cv2.LINE_AA)
+            continue
+        if not b.get("xyxy"):
             continue
         gx1, gy1, gx2, gy2 = [float(t) for t in b["xyxy"]]
         cv2.rectangle(img, (int(max(0, gx1)), int(max(0, gy1))),
