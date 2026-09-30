@@ -248,6 +248,7 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
            white-space:pre-wrap;word-break:break-all;user-select:text"></pre></div>
     <div class="panel" id="p_slots"><div class="cap"><span class="ttl">📍 号位 1~7 (示教点)</span>
       <span class="meta" id="m_slots">…</span></div>
+      <div id="m_slots_auth" style="padding:6px 10px 0;font-size:14px"></div>
       <div class="slotbar" id="slotbar"></div>
       <div class="row" style="padding:0 10px 4px"><span id="slot_msg" style="font-size:13px;opacity:.9"></span></div>
       <div id="n_slots" style="padding:4px 10px 10px;font-size:14px;color:#8b949e;line-height:1.5"></div>
@@ -417,6 +418,7 @@ function paintArm(){
     : '现场安全: 只让守在机器旁的人授权 —— 点「🔓 授权真动」→ 再点一次「⚠️ 现场确认无人」。授权 '
       +Math.round(ARMWIN/60)+' 分钟自动失效; 刷新页面也回到未授权(不记忆)。';
   document.body.classList.toggle('locked',!on);
+  paintSlotAuth();          // 📍 号位面板的授权状态条(同一份 ARMED/AUTH_LEFT, 1.5s 刷新)
 }
 async function armClick(){
   if(ARMED){                                   // 撤销
@@ -878,6 +880,22 @@ addEventListener('keydown',(e)=>{
    点绿按钮 = 下发该号位技能, 走与「侧面点1/金手指点1」同一条路:
    白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作。 */
 const _SLOT_ST={};
+/* 🔐 号位面板上的常驻授权状态条 (2026-09-30 老倪: 「3号位 7号位怎么不好使？」—— 真因是 5 分钟
+   授权窗在 2号位 阶段2 之前到期, 3/7 号位就只剩"演练算目标"了, 现场只看到"点了不动")。
+   poll() → applyAuth() → paintArm() 每 1.5s 走到这里, 所以状态永远是最新的。 */
+function paintSlotAuth(){
+  const el=$('#m_slots_auth'); if(!el) return;
+  if(!ARMED){
+    el.innerHTML='<span style="color:#f0c674;font-weight:700">⛔ 未授权 —— 现在点号位只会算目标, '
+      +'机械臂不会动; 先点右侧「🔓 授权真动」再二次确认</span>';
+  }else if(AUTH_LEFT<75){
+    el.innerHTML='<span style="color:#f0c674;font-weight:700">⚠️ 授权只剩 '+Math.floor(AUTH_LEFT)+'s —— '
+      +'两阶段技能(先到正上方再下降)可能走到一半被拦, 完成后要重授才能继续</span>';
+  }else{
+    el.innerHTML='<span style="color:#3fb950">✅ 真动已授权 · 剩 '+Math.floor(AUTH_LEFT/60)+'分'
+      +String(Math.max(0,Math.floor(AUTH_LEFT%60))).padStart(2,'0')+'秒</span>';
+  }
+}
 function gotoSlot(n,skill,btn){
   if(!_SLOT_ST[n]) _SLOT_ST[n]={};
   return gotoTeachPoint(btn,_SLOT_ST[n],skill,'『'+n+'号位』','#slot_msg','去'+n+'号位');
