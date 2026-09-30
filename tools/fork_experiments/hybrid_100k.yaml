@@ -1,0 +1,23 @@
+# ZmaxHybrid PushT 100K 训练
+output_dir: outputs/zmax_hybrid_100k
+job_name: zmax_hybrid_100k
+
+policy:
+  type: zmax_hybrid
+  push_to_hub: false
+  freeze_smolvlm: true
+  chunk_size: 7
+  n_action_steps: 7
+  gradient_checkpointing: true
+  torch_dtype: float16
+  device: cuda
+  state_dim: 2
+  action_dim: 2
+
+dataset:
+  repo_id: lerobot/pusht
+
+batch_size: 64
+steps: 100000
+num_workers: 4
+save_freq: 10000

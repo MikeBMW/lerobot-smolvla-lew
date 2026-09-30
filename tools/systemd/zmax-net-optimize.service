@@ -1,0 +1,19 @@
+# 2026-09-30 由 tools/zmax_bootstrap.py 的 systemd 步骤装回本机;
+# 本文件从 /etc/systemd/system/zmax-net-optimize.service 收回仓库。
+# 密钥类值已替换为 ${ZMAX_AGENT_TOKEN}/${ZMAX_ECS_PW}, 真值放 /home/ubuntu/zmax_data/secrets/zmax.env (600)。
+[Unit]
+Description=Z-MAX 开机网络性能优化 + 体检台账 (sysctl/WiFi省电/DNS预热/实测台账)
+Documentation=file:/home/ubuntu/zmax/reports/sys_maintenance_20260925.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/ubuntu/zmax/tools/zmax_net_optimize.sh
+RemainAfterExit=yes
+TimeoutStartSec=150
+# 失败也要留下痕迹, 但绝不阻塞开机
+SuccessExitStatus=0 1
+
+[Install]
+WantedBy=multi-user.target

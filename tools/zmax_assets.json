@@ -1,0 +1,224 @@
+{
+  "schema": "zmax-assets/1",
+  "updated": "2026-09-30",
+  "note": "zmax 基线仓库的资产清单。仓库只放代码/技能/记忆;模型与数据按本清单的约定路径落盘,首次 clone 时由 tools/zmax_bootstrap.sh 识别(已下载的绝不重下)。",
+  "conventions": {
+    "ZMAX_CODE": "/home/ubuntu/zmax",
+    "ZMAX_DATA": "/home/ubuntu/zmax_data",
+    "ZMAX_MODELS": "${ZMAX_DATA}/models",
+    "ZMAX_HF_HOME": "${ZMAX_DATA}/hf_cache",
+    "STABLEWM_HOME": "${ZMAX_DATA}/stable-wm-cache",
+    "ZMAX_SECRETS": "${ZMAX_DATA}/secrets",
+    "ZMAX_REPOS": "/home/ubuntu",
+    "env_file": "${ZMAX_DATA}/zmax_paths.env",
+    "rule": "所有下载默认落到 ZMAX_MODELS(模型) 或 ZMAX_HF_HOME(HF 缓存) 或 STABLEWM_HOME(数据集/训练缓存);第三方仓库源码落 ZMAX_REPOS/<repo>。任何脚本都不许往 /tmp 或仓库里写大文件。",
+    "mirror": "国内镜像 HF_ENDPOINT=https://hf-mirror.com (bootstrap 自动带上)"
+  },
+  "assets": [
+    {
+      "id": "sam3_hf",
+      "kind": "model",
+      "desc": "SAM3 开放词汇分割权重(L5 视觉/场景叠加用)",
+      "needed_by": ["L5视觉", "开放词汇分割", "场景叠加"],
+      "path": "${ZMAX_MODELS}/sam3_hf",
+      "alt_paths": ["/home/ubuntu/zmax_data/models/sam3_hf"],
+      "size_gb": 3.28,
+      "required": false,
+      "fetch": {
+        "method": "hf",
+        "repo": "facebook/sam3",
+        "include": ["model.safetensors", "config.json", "*.json", "*.txt"],
+        "gated": "manual",
+        "note": "facebook/sam3 是 gated=manual: 需 HF 账号申请授权 + HF_TOKEN。备选: 从本机/备份直接拷 sam3_hf 目录(含 model.safetensors 3.2G), 不必重下。"
+      }
+    },
+    {
+      "id": "yolo_weights",
+      "kind": "model",
+      "desc": "L2 检测在役权重(yolo_peg_live.pt 是软链)",
+      "needed_by": ["L2检测", "AOI", "状态空间感知"],
+      "path": "${ZMAX_MODELS}/weights/yolov8s.pt",
+      "alt_paths": ["/home/ubuntu/yolov8s.pt", "${ZMAX_MODELS}/weights/yolo26n.pt"],
+      "size_gb": 0.02,
+      "required": true,
+      "fetch": {
+        "method": "url",
+        "urls": [
+          "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8s.pt"
+        ],
+        "note": "也可以让 ultralytics 自己拉: python -c \"from ultralytics import YOLO; YOLO('yolov8s.pt')\" (会落在当前目录)。"
+      }
+    },
+    {
+      "id": "smolvlm2_500m",
+      "kind": "model",
+      "desc": "SmolVLM2-500M-Video-Instruct(感知层小 VLM)",
+      "needed_by": ["VLM感知", "状态空间 scene_vlm 节点"],
+      "path": "${ZMAX_HF_HOME}/hub/models--HuggingFaceTB--SmolVLM2-500M-Video-Instruct",
+      "alt_paths": ["/home/ubuntu/.cache/huggingface/hub/models--HuggingFaceTB--SmolVLM2-500M-Video-Instruct"],
+      "size_gb": 1.94,
+      "required": false,
+      "fetch": {
+        "method": "hf",
+        "repo": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+        "include": ["model.safetensors", "*.json", "*.txt"],
+        "note": "**必须带 include**: 不带会把 onnx/ 5.4G 一起拉下来(总 7.37G)。只下 safetensors 是 1.94G。"
+      }
+    },
+    {
+      "id": "qwen25_vl_3b",
+      "kind": "model",
+      "desc": "Qwen2.5-VL-3B-Instruct(总装/宏观记忆/场景理解层)",
+      "needed_by": ["L5场景理解", "宏观记忆 SS_MACRO", "场景节点"],
+      "path": "${ZMAX_HF_HOME}/hub/models--Qwen--Qwen2.5-VL-3B-Instruct",
+      "alt_paths": ["/home/ubuntu/.cache/huggingface/hub/models--Qwen--Qwen2.5-VL-3B-Instruct"],
+      "size_gb": 7.0,
+      "required": false,
+      "fetch": {
+        "method": "hf",
+        "repo": "Qwen/Qwen2.5-VL-3B-Instruct",
+        "note": "14 个文件 7GB。"
+      }
+    },
+    {
+      "id": "intact_weights",
+      "kind": "model",
+      "desc": "INTACT(LeWM) 世界模型权重 — L4 认知层的直驱方案",
+      "needed_by": ["L4认知", "世界模型", "轨迹预测"],
+      "path": "/home/ubuntu/INTACT-JEPA/checkpoints_hf",
+      "alt_paths": ["/home/ubuntu/INTACT-JEPA/checkpoints-paper"],
+      "size_gb": 2.5,
+      "required": false,
+      "fetch": {
+        "method": "hf",
+        "repo": "INTACT-JEPA/INTACT",
+        "download_root": "${ZMAX_DATA}/intact_weights",
+        "note": "hub 上 41 个 tar.gz 合计 7GB(每个 300MB)。只要用到的那几组: --include 'INTACT-unified/*' 之类; 解压后放到 checkpoints_hf/。"
+      }
+    },
+    {
+      "id": "lora_l3",
+      "kind": "model-self",
+      "desc": "L3 调度 LoRA 初始化权重(lora_l3_init.pt 系列 4 份)",
+      "needed_by": ["L3调度", "LoRA 注入"],
+      "path": "${ZMAX_DATA}/lora_l3_init.pt",
+      "alt_paths": [],
+      "alt_globs": ["${ZMAX_DATA}/**/lora_l3_init.pt", "${ZMAX_CODE}/reports/**/lora_l3_init.pt"],
+      "size_gb": 0.05,
+      "required": false,
+      "fetch": {"method": "self", "note": "训练产物: 用 lora_inject.py / lora 训练脚本重做, 或从备份盘恢复。仓库不含权重(大文件不进库)。"}
+    },
+    {
+      "id": "hjepa_zflow",
+      "kind": "model-self",
+      "desc": "hJEPA / z-flow 头权重",
+      "needed_by": ["L4世界模型头"],
+      "path": "${ZMAX_MODELS}/hjepa_zflow_model.pt",
+      "alt_paths": ["${ZMAX_CODE}/models/hjepa_zflow_model.pt"],
+      "size_gb": 0.01,
+      "required": false,
+      "fetch": {"method": "self", "note": "训练产物, 同 lora_l3。"}
+    },
+    {
+      "id": "calib_geom",
+      "kind": "runtime-self",
+      "desc": "手眼/几何真值(box3d_state.json, handeye_state.json, ss_geom_calib)",
+      "needed_by": ["真机3D", "AR叠加", "抓取"],
+      "path": "${ZMAX_DATA}/handeye_state.json",
+      "alt_paths": ["${ZMAX_CODE}/models/handeye_state.json", "${ZMAX_DATA}/box3d_state.json", "${ZMAX_DATA}/calib.json", "${STABLEWM_HOME}/ss_geom_calib"],
+      "alt_globs": ["${ZMAX_DATA}/**/handeye_state.json", "${ZMAX_DATA}/**/calib.json"],
+      "size_gb": 0.01,
+      "required": false,
+      "fetch": {"method": "self", "note": "**现场标定真值**: 不能从网上恢复。要么从备份恢复, 要么现场重标(手眼 TSAI / 平面几何标定脚本在 tools/)。全新环境跑仿真/演示不受影响。"}
+    },
+    {
+      "id": "ds_cube_single_expert",
+      "kind": "dataset",
+      "desc": "cube_single_expert.h5 — 世界模型/BC 主训练集",
+      "needed_by": ["世界模型训练", "BC 训练", "官方评测复现"],
+      "path": "${STABLEWM_HOME}/datasets/cube_single_expert.h5",
+      "alt_paths": [],
+      "size_gb": 94.9,
+      "required": false,
+      "fetch": {
+        "method": "hf-dataset",
+        "repo": "quentinll/lewm-cube",
+        "file": "cube_single_expert.tar.zst",
+        "compressed_gb": 43.0,
+        "unpack_to": "${STABLEWM_HOME}/datasets/",
+        "note": "hub 上是 43G 的 tar.zst, 官方提供 .zst 压缩包, **解压后才是 94.9G 的 h5**。磁盘必须预留 ≥145G(压缩包+解压)。断点续传见 skill dataset-archive-provisioning。"
+      }
+    },
+    {
+      "id": "ds_optical_insert",
+      "kind": "dataset-self",
+      "desc": "optical_insert_v5/v6_disturb.h5(自采集的训练集, 6.9G/4.0G)",
+      "needed_by": ["L4/L3 域内训练"],
+      "path": "${STABLEWM_HOME}/datasets/optical_insert_v6_disturb.h5",
+      "alt_paths": ["${STABLEWM_HOME}/datasets/optical_insert_v5_disturb.h5"],
+      "size_gb": 11.0,
+      "required": false,
+      "fetch": {"method": "self", "note": "自采集+生成: 有采集/生成脚本(工具在 tools/), 也可从备份恢复。"}
+    },
+    {
+      "id": "wm_checkpoints",
+      "kind": "model-self",
+      "desc": "世界模型/世界模型头训练产物(intact_goal_*, unified_v*, stage_moe*, lora_200 等 26 个 run)",
+      "needed_by": ["L4认知", "L3调度", "策略评估"],
+      "path": "${STABLEWM_HOME}/checkpoints",
+      "size_gb": 40.0,
+      "required": false,
+      "fetch": {"method": "self", "note": "训练产物, 保护区 26 个 run 不清理。新机器上要么从备份恢复, 要么重训(train 脚本在 repo)。"}
+    },
+    {
+      "id": "rokae_sdk",
+      "kind": "vendor",
+      "desc": "珞石(xCore) 机器人 SDK + tcp_out 位姿管道",
+      "needed_by": ["真机位姿", "真机动作"],
+      "path": "${ZMAX_DATA}/rokae_sdk",
+      "alt_paths": [],
+      "size_gb": 0.26,
+      "required": false,
+      "fetch": {"method": "vendor", "note": "厂商提供 + 现场配置(控制器 IP/端口)。无真机时这套链路本来就不可用, 不影响仿真/演示。"}
+    },
+    {
+      "id": "runtime_dirs",
+      "kind": "runtime",
+      "desc": "运行时数据目录骨架(状态流/空间探针/相机帧/场景/学习数据)",
+      "needed_by": ["状态空间引擎", "工位总览", "数据闭环"],
+      "path": "${ZMAX_DATA}",
+      "alt_paths": [],
+      "size_gb": 0.0,
+      "required": true,
+      "fetch": {"method": "mkdir", "dirs": ["ss_live", "runtime", "dataspace", "real_cam", "l5_corners", "l5_slots", "l2_autolearn", "ss_bypass", "agent_hub", "models", "secrets", "backups", "logs"], "note": "--apply 自动建; 建完写 ${ZMAX_DATA}/zmax_paths.env。"}
+    },
+    {
+      "id": "venvs",
+      "kind": "env",
+      "desc": "三个 venv: gui-venv311(3.11, GUI/推流/状态空间主机侧, 在仓库目录内且已 gitignore) / lerobot-venv(3.12, 训练+自动循环) / dds-venv(3.11, DDS 中间件)",
+      "needed_by": ["控制台GUI", "训练", "DDS遥测", "服务"],
+      "path": "${ZMAX_CODE}/gui-venv311",
+      "alt_paths": ["/home/ubuntu/lerobot-venv", "/home/ubuntu/dds-venv", "/home/ubuntu/INTACT-JEPA/.venv(3.10)"],
+      "size_gb": 0.0,
+      "required": true,
+      "fetch": {"method": "venv", "note": "requirements 在仓库里(requirements*.txt / pyproject.toml); 缺 venv 时报里出安装命令, --venvs 才真建(建一次要几百 MB 下载)。"}
+    },
+    {
+      "id": "systemd_units",
+      "kind": "env",
+      "desc": "systemd 服务单元(工位总览/推流/agent-hub/DDS/ECS 桥/网关/数据挂载等)",
+      "needed_by": ["开机自启", "常驻服务"],
+      "path": "${ZMAX_CODE}/tools/systemd",
+      "alt_paths": ["/etc/systemd/system"],
+      "size_gb": 0.0,
+      "required": false,
+      "fetch": {"method": "systemd", "note": "--systemd 把仓库里的单元装到 /etc/systemd/system 并 daemon-reload; 带密钥的单元已改成 EnvironmentFile=读 ${ZMAX_SECRETS}/zmax.env。"}
+    }
+  ],
+  "secrets": {
+    "desc": "本机密钥不进仓库",
+    "file": "${ZMAX_SECRETS}/zmax.env",
+    "keys": ["ZMAX_AGENT_TOKEN", "ZMAX_ECS_PW", "ZMAX_TUNNEL_TOKEN", "HF_TOKEN(可选, 下 gated 模型用)"],
+    "note": "tools/secret_scan.py 每次提交前扫; 命中即拒。"
+  }
+}

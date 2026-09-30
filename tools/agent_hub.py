@@ -99,8 +99,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _ok_token(self, q) -> bool:
         """v2 (2026-09-29): 允许多个 token(逗号分隔)。
-        起因: 工控机上那条轮询循环带的 token 是 `ZMAX_AOI_KeepAlive`(不是 agent 脚本里的 `zmax-7ce74c7f`),
-        一直 403 ⇒ 通道"看着断着"其实客户端活着。多 token 兼容, 不让一个字的差异卡死整条链路。"""
+        起因: 工控机上那条轮询循环带的 token 与 agent 脚本里的写法不同(一个是轮询态、一个是固定串),
+        一直 403 ⇒ 通道"看着断着"其实客户端活着。多 token 兼容, 不让一个字的差异卡死整条链路。
+        ⚠️ 2026-09-30: token 真值不再写进代码/单元 —— 见 _resolve_token(), 从 env 或本机 secrets 读。"""
         v = (q.get("t", [""])[0] or "")
         return bool(v) and (v == STATE["token"] or v in (STATE.get("tokens") or set()))
 
@@ -169,12 +170,39 @@ class Handler(SimpleHTTPRequestHandler):
         return self._json(404, {"ok": False, "msg": "no route"})
 
 
+def _resolve_token(cli_token: str) -> str:
+    """token 真值来源优先级: --token 参数 → 环境变量 ZMAX_AGENT_TOKEN → 本机 secrets 文件。
+
+    2026-09-30: 以前真值直接写在这份代码和 systemd 单元里 ⇒ 公开仓库等于把通道密钥贴出去。
+    现在代码/单元里只有 `$ZMAX_AGENT_TOKEN` 占位, 真值只落在 /home/ubuntu/zmax_data/secrets/zmax.env (600)。
+    找不到值就 fail-closed(拒绝启动), 不当成"没密钥也能跑"。
+    """
+    if cli_token:
+        return cli_token
+    v = (os.environ.get("ZMAX_AGENT_TOKEN") or "").strip()
+    if v:
+        return v
+    for p in (os.environ.get("ZMAX_SECRETS_FILE") or "", "/home/ubuntu/zmax_data/secrets/zmax.env"):
+        if not p or not os.path.isfile(p):
+            continue
+        try:
+            for ln in open(p, encoding="utf-8"):
+                if ln.strip().startswith("ZMAX_AGENT_TOKEN="):
+                    return ln.split("=", 1)[1].strip()
+        except OSError:
+            continue
+    raise SystemExit(
+        "缺少 agent hub token: 给 --token、或设置环境变量 ZMAX_AGENT_TOKEN、\n"
+        "或写入 /home/ubuntu/zmax_data/secrets/zmax.env (键名 ZMAX_AGENT_TOKEN)。\n"
+        "首次部署: bash tools/zmax_bootstrap.sh --secrets  可生成占位文件。")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8794)
     ap.add_argument("--bind", default="0.0.0.0")
     ap.add_argument("--dir", default=".")
-    ap.add_argument("--token", default="", help="可逗号分隔多个(兼容旧客户端)")
+    ap.add_argument("--token", default="", help="可逗号分隔多个(兼容旧客户端); 缺省从 env/secrets 读")
     ap.add_argument("--enqueue", default="")
     a = ap.parse_args()
     if a.enqueue:
@@ -183,8 +211,7 @@ def main():
                 f.write(json.dumps({"cmd": a.enqueue, "t": time.time()}, ensure_ascii=False) + "\n")
         print("已入队: %s" % a.enqueue)
         return
-    if not a.token:
-        raise SystemExit("必须给 --token")
+    a.token = _resolve_token(a.token)
     STATE["token"] = a.token.split(",")[0].strip()
     STATE["tokens"] = {x.strip() for x in a.token.split(",") if x.strip()}
     Handler.token = a.token

@@ -1,0 +1,21 @@
+# 2026-09-30 由 tools/zmax_bootstrap.py 的 systemd 步骤装回本机;
+# 本文件从 /etc/systemd/system/zmax-tunnel-proxy.service 收回仓库。
+# 密钥类值已替换为 ${ZMAX_AGENT_TOKEN}/${ZMAX_ECS_PW}/${ZMAX_TUNNEL_TOKEN}, 真值放 /home/ubuntu/zmax_data/secrets/zmax.env (600)。
+[Unit]
+Description=Z-MAX 只读闸门代理 (8791 -> 8891, 只放行 GET 白名单; 公网穿透必经此口)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=-/home/ubuntu/zmax_data/secrets/zmax.env
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/tunnel_proxy.py --port 8891 --upstream 127.0.0.1:8791 --token ${ZMAX_TUNNEL_TOKEN}
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/zmax-tunnel-proxy.log
+StandardError=append:/var/log/zmax-tunnel-proxy.log
+
+[Install]
+WantedBy=multi-user.target

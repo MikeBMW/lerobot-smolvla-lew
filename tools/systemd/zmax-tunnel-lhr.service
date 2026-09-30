@@ -1,0 +1,21 @@
+# 2026-09-30 由 tools/zmax_bootstrap.py 的 systemd 步骤装回本机;
+# 本文件从 /etc/systemd/system/zmax-tunnel-lhr.service 收回仓库。
+# 密钥类值已替换为 ${ZMAX_AGENT_TOKEN}/${ZMAX_ECS_PW}, 真值放 /home/ubuntu/zmax_data/secrets/zmax.env (600)。
+[Unit]
+Description=Z-MAX 公网隧道 (localhost.run -> 只读闸门 8891)
+After=network-online.target zmax-tunnel-proxy.service
+Wants=network-online.target
+Wants=zmax-tunnel-proxy.service
+
+[Service]
+Type=simple
+User=ubuntu
+# 免密 ssh 直连 localhost.run, 只需要出网(无需开任何入站端口)。保持长连。
+ExecStart=/usr/bin/ssh -T -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/home/ubuntu/.ssh/lhr_known_hosts -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -o BatchMode=yes -R 80:localhost:8891 nokey@localhost.run
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/zmax-tunnel.log
+StandardError=append:/var/log/zmax-tunnel.log
+
+[Install]
+WantedBy=multi-user.target

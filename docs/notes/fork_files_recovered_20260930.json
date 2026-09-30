@@ -1,0 +1,414 @@
+{
+ "when": "2026-09-30",
+ "count": 68,
+ "items": [
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/_train_temp.py",
+   "to": "tools/fork_experiments/_train_temp.py",
+   "sha256_12": "6a230eb8b9d5",
+   "bytes": 3191
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/analyze_model.py",
+   "to": "tools/fork_experiments/analyze_model.py",
+   "sha256_12": "0b2c566786e9",
+   "bytes": 3399
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/analyze_smolvla_deep.py",
+   "to": "tools/fork_experiments/analyze_smolvla_deep.py",
+   "sha256_12": "d3a6a897f04a",
+   "bytes": 7450
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/bench.py",
+   "to": "tools/fork_experiments/bench.py",
+   "sha256_12": "25a014d82c8e",
+   "bytes": 4081
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/collect.py",
+   "to": "tools/fork_experiments/collect.py",
+   "sha256_12": "0301433221db",
+   "bytes": 2011
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/config_left_right.yaml",
+   "to": "tools/fork_experiments/config_left_right.yaml",
+   "sha256_12": "efd9f1c2f1d6",
+   "bytes": 967
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/config_smolvla_mini.yaml",
+   "to": "tools/fork_experiments/config_smolvla_mini.yaml",
+   "sha256_12": "02bf2b931b02",
+   "bytes": 708
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/debug_hybrid.py",
+   "to": "tools/fork_experiments/debug_hybrid.py",
+   "sha256_12": "42d72632340c",
+   "bytes": 1573
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/debug_norm.py",
+   "to": "tools/fork_experiments/debug_norm.py",
+   "sha256_12": "f962322a9f5b",
+   "bytes": 1698
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/debug_preprocessor.py",
+   "to": "tools/fork_experiments/debug_preprocessor.py",
+   "sha256_12": "4435fac0123b",
+   "bytes": 2039
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/debug_train.py",
+   "to": "tools/fork_experiments/debug_train.py",
+   "sha256_12": "532115a7fbc2",
+   "bytes": 10521
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/debug_wm.py",
+   "to": "tools/fork_experiments/debug_wm.py",
+   "sha256_12": "b8842c6bebe2",
+   "bytes": 1976
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/deep_trace.py",
+   "to": "tools/fork_experiments/deep_trace.py",
+   "sha256_12": "13d9fe68548e",
+   "bytes": 16307
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/eval.py",
+   "to": "tools/fork_experiments/eval.py",
+   "sha256_12": "d6358a31cdee",
+   "bytes": 1149
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/eval2.py",
+   "to": "tools/fork_experiments/eval2.py",
+   "sha256_12": "9e7cbe081335",
+   "bytes": 1443
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/eval_diffusion_pusht.py",
+   "to": "tools/fork_experiments/eval_diffusion_pusht.py",
+   "sha256_12": "4e4266c00112",
+   "bytes": 1780
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/eval_metaworld_zmax_v2.py",
+   "to": "tools/fork_experiments/eval_metaworld_zmax_v2.py",
+   "sha256_12": "f43350afb9ce",
+   "bytes": 9572
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/eval_more_examples.py",
+   "to": "tools/fork_experiments/eval_more_examples.py",
+   "sha256_12": "fd137fd92c3f",
+   "bytes": 7093
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/eval_norm.py",
+   "to": "tools/fork_experiments/eval_norm.py",
+   "sha256_12": "1b50b7074565",
+   "bytes": 1583
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/eval_smolvla_pusht.py",
+   "to": "tools/fork_experiments/eval_smolvla_pusht.py",
+   "sha256_12": "f0995fcddf50",
+   "bytes": 2692
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/eval_tuned.py",
+   "to": "tools/fork_experiments/eval_tuned.py",
+   "sha256_12": "01a22d7ab12e",
+   "bytes": 1502
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/eval_wm_compare_v3.py",
+   "to": "tools/fork_experiments/eval_wm_compare_v3.py",
+   "sha256_12": "302c12bc3aa1",
+   "bytes": 7144
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/eval_zmax_hybrid.py",
+   "to": "tools/fork_experiments/eval_zmax_hybrid.py",
+   "sha256_12": "e15aa6a2af15",
+   "bytes": 1640
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/h_jepa_zflow.py",
+   "to": "tools/fork_experiments/h_jepa_zflow.py",
+   "sha256_12": "f67943b94efe",
+   "bytes": 3099
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/hook_trace.py",
+   "to": "tools/fork_experiments/hook_trace.py",
+   "sha256_12": "2e7892a94d1a",
+   "bytes": 3672
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/hybrid_100k.yaml",
+   "to": "tools/fork_experiments/hybrid_100k.yaml",
+   "sha256_12": "e9a1da0798a7",
+   "bytes": 401
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/hybrid_metaworld.yaml",
+   "to": "tools/fork_experiments/hybrid_metaworld.yaml",
+   "sha256_12": "3c9d3d9c8bd2",
+   "bytes": 424
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/hybrid_metaworld_100k.yaml",
+   "to": "tools/fork_experiments/hybrid_metaworld_100k.yaml",
+   "sha256_12": "bfdbb79649a7",
+   "bytes": 738
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/hybrid_quick.yaml",
+   "to": "tools/fork_experiments/hybrid_quick.yaml",
+   "sha256_12": "bdc11b36a525",
+   "bytes": 399
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/hybrid_trace.py",
+   "to": "tools/fork_experiments/hybrid_trace.py",
+   "sha256_12": "faf3707755a7",
+   "bytes": 3839
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/hybrid_train.yaml",
+   "to": "tools/fork_experiments/hybrid_train.yaml",
+   "sha256_12": "70ed39c59d9b",
+   "bytes": 170
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/infer_camera.py",
+   "to": "tools/fork_experiments/infer_camera.py",
+   "sha256_12": "4ad6d4dec13c",
+   "bytes": 5381
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/infer_realtime.py",
+   "to": "tools/fork_experiments/infer_realtime.py",
+   "sha256_12": "09520b690311",
+   "bytes": 4177
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/infer_smolvla.py",
+   "to": "tools/fork_experiments/infer_smolvla.py",
+   "sha256_12": "bf490ffd088e",
+   "bytes": 2044
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/jepa_encoder.py",
+   "to": "tools/fork_experiments/jepa_encoder.py",
+   "sha256_12": "438662024432",
+   "bytes": 425
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/jepa_predictor.py",
+   "to": "tools/fork_experiments/jepa_predictor.py",
+   "sha256_12": "dcddb85daed1",
+   "bytes": 551
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/layer_trace.py",
+   "to": "tools/fork_experiments/layer_trace.py",
+   "sha256_12": "246090bde218",
+   "bytes": 8314
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/record.py",
+   "to": "tools/fork_experiments/record.py",
+   "sha256_12": "12c3cd53a6fa",
+   "bytes": 1515
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/record_tuned.py",
+   "to": "tools/fork_experiments/record_tuned.py",
+   "sha256_12": "66a9e25b8ec0",
+   "bytes": 1524
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/rollout.py",
+   "to": "tools/fork_experiments/rollout.py",
+   "sha256_12": "25f0369998b7",
+   "bytes": 1666
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/rollout_smolvla.py",
+   "to": "tools/fork_experiments/rollout_smolvla.py",
+   "sha256_12": "e41c4ff2a19c",
+   "bytes": 1877
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/smolvla_infer_test.py",
+   "to": "tools/fork_experiments/smolvla_infer_test.py",
+   "sha256_12": "9f6eb81f13f2",
+   "bytes": 3955
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/step_by_step.py",
+   "to": "tools/fork_experiments/step_by_step.py",
+   "sha256_12": "040099e2d2e2",
+   "bytes": 10619
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/test_hybrid_step.py",
+   "to": "tools/fork_experiments/test_hybrid_step.py",
+   "sha256_12": "13734cd59f60",
+   "bytes": 1462
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/test_smolvla.py",
+   "to": "tools/fork_experiments/test_smolvla.py",
+   "sha256_12": "521c1bbab414",
+   "bytes": 1339
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/tools/dds_hw_aggregator.py",
+   "to": "tools/dds_hw_aggregator.py",
+   "sha256_12": "ecbba4977afc",
+   "bytes": 10934
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/tools/gpu_load_guard.py",
+   "to": "tools/gpu_load_guard.py",
+   "sha256_12": "05f0d64717b1",
+   "bytes": 5238
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/tools/gui/zmax_telemetry.py",
+   "to": "tools/gui/zmax_telemetry.py",
+   "sha256_12": "d0547336b9fa",
+   "bytes": 8700
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/tools/ros2_interfaces/log/COLCON_IGNORE",
+   "to": "tools/ros2_interfaces/log/COLCON_IGNORE",
+   "sha256_12": "e3b0c44298fc",
+   "bytes": 0
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/tools/ss_telemetry_daemon.py",
+   "to": "tools/ss_telemetry_daemon.py",
+   "sha256_12": "a6637b38552f",
+   "bytes": 13567
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/trace_train.py",
+   "to": "tools/fork_experiments/trace_train.py",
+   "sha256_12": "88cecd428433",
+   "bytes": 10047
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/train_config.yaml",
+   "to": "tools/fork_experiments/train_config.yaml",
+   "sha256_12": "49b37c0f1f33",
+   "bytes": 215
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/train_h_jepa.py",
+   "to": "tools/fork_experiments/train_h_jepa.py",
+   "sha256_12": "5b852313c566",
+   "bytes": 2777
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/train_hjepa_3level.py",
+   "to": "tools/fork_experiments/train_hjepa_3level.py",
+   "sha256_12": "c6e5638d460b",
+   "bytes": 6164
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/train_hjepa_metaworld.py",
+   "to": "tools/fork_experiments/train_hjepa_metaworld.py",
+   "sha256_12": "a02b6f5673e1",
+   "bytes": 6743
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/train_lew_10step.py",
+   "to": "tools/fork_experiments/train_lew_10step.py",
+   "sha256_12": "abcc8f5ba8e4",
+   "bytes": 4630
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/train_mini.py",
+   "to": "tools/fork_experiments/train_mini.py",
+   "sha256_12": "c672971fc3f7",
+   "bytes": 2387
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/train_mini_v2.py",
+   "to": "tools/fork_experiments/train_mini_v2.py",
+   "sha256_12": "26e88bc66f96",
+   "bytes": 6150
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/train_smolvla.py",
+   "to": "tools/fork_experiments/train_smolvla.py",
+   "sha256_12": "32610e5c9c65",
+   "bytes": 3062
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/train_smolvla_full.py",
+   "to": "tools/fork_experiments/train_smolvla_full.py",
+   "sha256_12": "58757f0afc74",
+   "bytes": 2716
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/train_smolvla_mini.py",
+   "to": "tools/fork_experiments/train_smolvla_mini.py",
+   "sha256_12": "185e79b5e061",
+   "bytes": 4169
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/train_synth.py",
+   "to": "tools/fork_experiments/train_synth.py",
+   "sha256_12": "a1e107f2a1bb",
+   "bytes": 2953
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/tune.py",
+   "to": "tools/fork_experiments/tune.py",
+   "sha256_12": "62ddfe7b59bc",
+   "bytes": 1513
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/verify_grpc_inference.py",
+   "to": "tools/fork_experiments/verify_grpc_inference.py",
+   "sha256_12": "1ffb4719d719",
+   "bytes": 9413
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/verify_grpc_v2.py",
+   "to": "tools/fork_experiments/verify_grpc_v2.py",
+   "sha256_12": "cd1ae5b214da",
+   "bytes": 5788
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/verify_grpc_v3.py",
+   "to": "tools/fork_experiments/verify_grpc_v3.py",
+   "sha256_12": "5e8415e6edea",
+   "bytes": 6008
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/z_config.py",
+   "to": "tools/fork_experiments/z_config.py",
+   "sha256_12": "e674390c25e2",
+   "bytes": 655
+  },
+  {
+   "from": "/home/ubuntu/lerobot-smolvla-lew/zmax_full_pipeline.py",
+   "to": "tools/fork_experiments/zmax_full_pipeline.py",
+   "sha256_12": "1071179f8d4e",
+   "bytes": 5179
+  }
+ ]
+}

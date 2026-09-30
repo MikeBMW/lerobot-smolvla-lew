@@ -1,0 +1,13 @@
+# 2026-09-30 由 tools/zmax_bootstrap.py 的 systemd 步骤装回本机;
+# 本文件从 /etc/systemd/system/zmax-swapfile.service 收回仓库。
+# 密钥类值已替换为 ${ZMAX_AGENT_TOKEN}/${ZMAX_ECS_PW}, 真值放 /home/ubuntu/zmax_data/secrets/zmax.env (600)。
+[Unit]
+Description=Z-MAX LiveUSB swapfile via loop device
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'if ! swapon --show | grep -q "/dev/loop"; then LOOP=$(losetup -f --show /swapfile) && swapon "$LOOP" && echo "swap on $LOOP"; fi'
+
+[Install]
+WantedBy=multi-user.target

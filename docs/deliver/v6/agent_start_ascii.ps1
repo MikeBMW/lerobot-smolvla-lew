@@ -2,7 +2,7 @@
 # Every 3s: fetch one command from 4060 (192.168.23.50), run it in a CHILD powershell,
 # post the output back. rev2: a bad command can no longer kill this loop
 # (isolated child process + try/catch everywhere) - rev1 died once on a command that threw.
-$t = 'zmax-7ce74c7f'
+$t = $env:ZMAX_AGENT_TOKEN
 $base = 'http://192.168.23.50:8794/agent'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $here) { $here = 'D:\xspace\ultralytics_AOI' }

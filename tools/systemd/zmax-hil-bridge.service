@@ -1,0 +1,20 @@
+# 2026-09-30 由 tools/zmax_bootstrap.py 的 systemd 步骤装回本机;
+# 本文件从 /etc/systemd/system/zmax-hil-bridge.service 收回仓库。
+# 密钥类值已替换为 ${ZMAX_AGENT_TOKEN}/${ZMAX_ECS_PW}, 真值放 /home/ubuntu/zmax_data/secrets/zmax.env (600)。
+[Unit]
+Description=Z-MAX HIL 人机在环桥 (状态空间状态 → ECS web hil.html; 收人的指示)
+Documentation=https://datadrive.world/hil.html
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/hil_bridge.py --watch --interval 5
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

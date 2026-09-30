@@ -1,0 +1,26 @@
+# 2026-09-30 由 tools/zmax_bootstrap.py 的 systemd 步骤装回本机;
+# 本文件从 /etc/systemd/system/zmax-web-agent-bridge.service 收回仓库。
+# 密钥类值已替换为 ${ZMAX_AGENT_TOKEN}/${ZMAX_ECS_PW}, 真值放 /home/ubuntu/zmax_data/secrets/zmax.env (600)。
+[Unit]
+Description=Z-MAX L5 Web 智能体桥 (web agent 提示词 → 状态空间只读功能 → 回执)
+Documentation=file:/home/ubuntu/zmax/docs/TASK_LEDGER_20260925.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# ⚠️ 坑: 别用 root 跑 — 它会在 reports/ 里写出 root:root 的 state/audit 文件, 之后用户态工具全部写不动
+#    (实测 PermissionError: web_agent_bridge_state.json)。服务只需仓库读 + 出网。
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/ss_web_agent.py --watch --interval 5
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/web-agent-bridge.log
+StandardError=append:/var/log/web-agent-bridge.log
+# 只读: 白名单内无任何真机动作; 动作类提示词由桥自身拒答并记审计
+
+[Install]
+WantedBy=multi-user.target

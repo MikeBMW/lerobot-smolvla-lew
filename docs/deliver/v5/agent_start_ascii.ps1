@@ -1,7 +1,7 @@
 # Z-MAX reverse channel to 4060 (2026-09-27). ASCII only, PS 5.1 safe.
 # Every 3s: fetch one command from 4060 (192.168.23.50), run it, post the output back.
 # Close this window (or Ctrl+C) to disconnect immediately. No credentials, no registry, no autostart.
-$t = 'zmax-7ce74c7f'
+$t = $env:ZMAX_AGENT_TOKEN
 $base = 'http://192.168.23.50:8794/agent'
 Write-Host ('[ZMAX] connecting to ' + $base + ' ...') -ForegroundColor Cyan
 try {

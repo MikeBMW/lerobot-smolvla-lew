@@ -1,0 +1,23 @@
+# 2026-09-30 由 tools/zmax_bootstrap.py 的 systemd 步骤装回本机;
+# 本文件从 /etc/systemd/system/ss-remote-tap.service 收回仓库。
+# 密钥类值已替换为 ${ZMAX_AGENT_TOKEN}/${ZMAX_ECS_PW}, 真值放 /home/ubuntu/zmax_data/secrets/zmax.env (600)。
+[Unit]
+Description=Z-MAX 远程只读采集 (4060侧, 订阅Orin生产感知; Orin零程序)
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+ExecStartPre=/usr/local/bin/ss_tap_netwait.sh
+ExecStartPre=-/usr/bin/docker rm -f ss-remote-tap
+ExecStart=/usr/bin/docker run --rm --name ss-remote-tap --network host \
+  -e ROS_DOMAIN_ID=0 -e SS_OUT=/out -e SS_INFER_URL=http://127.0.0.1:8790/infer \
+  -v /home/ubuntu/zmax:/repo:ro -v /home/ubuntu/zmax_ss_remote:/out \
+  ros:humble-ros-base bash -c "source /opt/ros/humble/setup.bash && exec python3 /repo/tools/ss_remote_tap.py --rate 10"
+ExecStopPost=-/usr/bin/docker rm -f ss-remote-tap
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

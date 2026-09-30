@@ -1,0 +1,21 @@
+# 2026-09-30 由 tools/zmax_bootstrap.py 的 systemd 步骤装回本机;
+# 本文件从 /etc/systemd/system/aoi-feishu-push.service 收回仓库。
+# 密钥类值已替换为 ${ZMAX_AGENT_TOKEN}/${ZMAX_ECS_PW}, 真值放 /home/ubuntu/zmax_data/secrets/zmax.env (600)。
+[Unit]
+Description=Z-MAX AOI 裁减图实时推飞书 (只读监听工控机 /last_result, 不触发拍照)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Environment=PYTHONUNBUFFERED=1
+Type=simple
+WorkingDirectory=/home/ubuntu/zmax
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/aoi_feishu_push.py --watch --interval 8
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/aoi-feishu-push.log
+StandardError=append:/var/log/aoi-feishu-push.log
+# 只读监听: 绝不触发产线拍照 (老倪红线: 不为推送连拍)
+
+[Install]
+WantedBy=multi-user.target

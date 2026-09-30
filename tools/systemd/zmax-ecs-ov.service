@@ -1,0 +1,19 @@
+# 2026-09-30 由 tools/zmax_bootstrap.py 的 systemd 步骤装回本机;
+# 本文件从 /etc/systemd/system/zmax-ecs-ov.service 收回仓库。
+# 密钥类值已替换为 ${ZMAX_AGENT_TOKEN}/${ZMAX_ECS_PW}, 真值放 /home/ubuntu/zmax_data/secrets/zmax.env (600)。
+[Unit]
+Description=Z-MAX ECS 反向隧道 [overlay] (只读闸门 127.0.0.1:8891 → ECS 127.0.0.1:18791)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+EnvironmentFile=/etc/zmax-ecs-ov.env
+ExecStart=/usr/bin/sshpass -e /usr/bin/ssh -NT -o StrictHostKeyChecking=no -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R 127.0.0.1:18791:127.0.0.1:8891 root@39.102.211.79
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/zmax-ecs-ov.log
+StandardError=append:/var/log/zmax-ecs-ov.log
+
+[Install]
+WantedBy=multi-user.target

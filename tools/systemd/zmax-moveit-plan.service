@@ -1,0 +1,18 @@
+# 2026-09-30 由 tools/zmax_bootstrap.py 的 systemd 步骤装回本机;
+# 本文件从 /etc/systemd/system/zmax-moveit-plan.service 收回仓库。
+# 密钥类值已替换为 ${ZMAX_AGENT_TOKEN}/${ZMAX_ECS_PW}, 真值放 /home/ubuntu/zmax_data/secrets/zmax.env (600)。
+[Unit]
+Description=Z-MAX MoveIt plan-only 容器+逐轮规划器 (起 zmax-moveit, 只规划不执行)
+After=network-online.target docker.service zmax-moveit-plan-req.service
+Wants=network-online.target
+Before=zmax-dds-ss.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash /home/ubuntu/zmax/tools/moveit_live_up.sh up
+ExecStop=/bin/bash /home/ubuntu/zmax/tools/moveit_live_up.sh down
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target
