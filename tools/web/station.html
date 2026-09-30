@@ -709,8 +709,14 @@ async function poll(){
           : '控制器报警详情: '+_ce.join(' | '))
         +'<br>'+(r.error_reason||'')+'</div>';
     }
-    $('#robot2').textContent='急停 '+(r.estop?'有':'无')+' · 碰撞 '+(r.collision?'有':'无')
-      +' · 状态帧龄 '+fmt(r.age_s,2)+'s ('+(s.motion_armed?'服务侧已授权真动':'服务侧未授权=只能演练')+')';
+    /* 🛡 诚实性(2026-09-30): 急停/碰撞 来自控制器状态源, 实测帧龄 33 小时 ⇒ **停更的"无急停"不能当
+       "现在没有急停"**。超 10s 就把结论标失效, 明确写"勿据此判安全"(它正是「真动前三查」的依据)。 */
+    const _rStale=(typeof r.age_s==='number'&&r.age_s>10);
+    $('#robot2').innerHTML=(_rStale
+      ? '<span class="bad">⚠ 控制器状态源已静止 '+fmt(r.age_s,1)+'s ⇒ 下面「急停/碰撞」是最后一帧的旧值, 勿据它判安全(现场以示教器/急停按钮为准)</span>'
+        +' · 旧值: 急停 '+(r.estop?'<b>有</b>':'无')+' · 碰撞 '+(r.collision?'<b>有</b>':'无')
+      : '急停 '+(r.estop?'<b>有</b>':'无')+' · 碰撞 '+(r.collision?'<b>有</b>':'无')+' · 状态帧龄 '+fmt(r.age_s,2)+'s')
+      +' ('+(s.motion_armed?'服务侧已授权真动':'服务侧未授权=只能演练')+')';
     if(tp.xyz&&tp.xyz[0]!==null&&tp.xyz[0]!==undefined){
       /* 🅰️🅱️🅲 2026-09-30 老倪: 「我能看到机器人的位姿输出, 世界坐标系的 x y z a b c, 你的输出要跟这个值一样」
          ⇒ 位姿按示教器/产线同口径显示 x y z (m) + a b c (度, SDK 原生 p6[3..5], endInRef)。 */
