@@ -7,6 +7,14 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 # Z-MAX Console — 维护指南
 
+## 🔎 数据空间视图(dds_canoe.BusView)顶部搜索
+- 位置: 顶栏(测量组)最右端 = `ed_find` + `lb_find`, 按名筛**信号表**(报文/信号/节点)三组, 不是 Trace(Trace 另有 `ed_search` 只筛帧)。
+- 坑①: 清空搜索时**必须递归取消 hidden**(`_unhide_all`, 根+叶子一起); 只把根 un-hide 会出现“组标题出来了、叶子还藏着”。
+- 坑②: 信号表会被 `reload(force_tree=True)`(「只看活报文」勾选/刷新钮)整棵重建 ⇒ 重建函数末尾必须再调一次筛选, 否则用户打了一半的词白打。
+- 坑③: 可搜文本 = 各列文字 + tooltip + column0 的 `Qt.UserRole`(话题 key/类型常藏在里面) ⇒ `ss_plan` / `zmax/ss_plan` / `zmax::SSPlan` 三种写法都能命中。
+- 无 GUI 环境验证: `QT_QPA_PLATFORM=offscreen` + `gui-venv311/bin/python` 起 `build_view(None, standalone=True)`, 显式 `v.reload(force_tree=True)` 再跑 1.8s 事件循环后树才建出来(只 processEvents() 得 0 条)。
+- 数据空间里的名字对照: MoveIt 规划输出 = `ss_plan`(`zmax/ss_plan`, `zmax::SSPlan`); 状态空间引擎动作 = `ss_action`; 搜 `moveit` 还能命中画布节点「🧭 MoveIt 运动规划 · SDK 直驱桥(Orin)」与连线信号。
+
 > 📌 refs: veh-id-system,ssh-remote-gpu,config-center-excel,relay-middleware,simulink-id-and-skill-tokens,wsl-display-links,simulink-flow-json,gui-navigation,devflow-panel-pdf-2026-08-15,gui-debug-and-crash-forensics
 > 🐛 「断点进不去」不是代码没跑: 先 `ss -ltnp | grep 5678` —— **无监听 = 控制台是非调试模式**(studio.py 只在 `ZMAX_DEBUG=1` 时 listen), 要用 `ZMAX_DEBUG=1` 起或 F5「🚀 全新调试进程」;
 > 再确认节点"逐行执行"链 `_trace_exec` 的 `sys.settrace` 没顶掉调试器(`debugpy.is_client_connected()` 为假时它会装 —— 判据必须在**执行过程中**读 `sys.gettrace()`, 返回后再读被 finally 清成 None)。
