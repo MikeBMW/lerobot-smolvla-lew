@@ -8,7 +8,7 @@ NTP回拨8h(勿动RTC)→节拍用monotonic, 负帧龄拒用
 §
 长命令写脚本; sudo免密; 网络优化=zmax-net-optimize
 §
-L5=DeepSeek视觉: 须短提示+小JSON(长提示⇒吃光tokens); timeout≥300; 走G.call_vlm
+L5=DeepSeek视觉: 短提示+小JSON(长提示吃光tokens); timeout≥300; 走G.call_vlm
 §
 飞书99991663=token过期→重启gateway; 长文≥1.5k须拆条
 §
@@ -36,7 +36,7 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈是数据
 §
 记忆五层: L2/L3/L4+总装Qwen(SS_MACRO); 势场喂obs[0:3]
 §
-真源: calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2; LoRA=lora_inject.py
+真源calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2; LoRA=lora_inject.py
 §
 L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT稳态101ms冷6.7s→须常驻
 §
@@ -44,22 +44,20 @@ L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT稳态101ms
 §
 LoRA需merge(否则零动作伪装'没提升'): merge_lora_ckpt.py; 判假A/B=逐位同
 §
-老倪APP: 手机=WebView壳·桌面studio.py
-§
-ECS relay: /agent/{prompt,reply} + /hil/state + /orin/status; 站点根=/www/wwwroot/datadrive.world; 新网页必挂首页入口; 免密不通→ZMAX_ECS_PW口令可用; 公网只读: /ov/叠加+/st/工位总览, nginx须^~
+ECS relay: /agent/{prompt,reply}+/hil/state+/orin/status; 站点根=/www/wwwroot/datadrive.world; 新网页挂首页入口; 免密不通→ZMAX_ECS_PW; 公网只读/ov+/st, nginx须^~
 §
 遥测DDS: 只测试/标定/诊断,量产关; 开关 env>运行时>文件~/.zmax_telemetry_mode; 守护=zmax-dds-ss.service
 §
 GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音逐步日志+workers↑;负载用窗口平均判
 §
-工程根=/home/ubuntu/zmax(唯一, main; 提交/调试/推送都在这); 旧名 zmax_rel/zmax_dds 是软链; mac-hw=lerobot-smolvla-lew(领先main 536); DDS=tools/dds/
+工程根=/home/ubuntu/zmax=独立仓库(MikeBMW/zmax public; 路径统一无zmax_rel); 入库=代码+技能docs/skills/hermes-all+记忆docs/memory(守卫tools/repo_guard.py); 数据全在zmax_data(ss_live/runtime/stable-wm-cache软链); fork=lerobot-smolvla-lew(mac-hw)另一仓
 §
 控制台: 禁反复重启GUI(投诉过;改码攒批+先问); 字体一次到位
 §
-场景叠加: overlay_spec按origin存框(deleted抑制); 手眼TSAI闭环1.74mm准(旧'915°'错)
+场景叠加: overlay_spec按origin存框(deleted抑制); 手眼TSAI闭环1.74mm准
 §
-我=主节点+自主进化: 工控机+Orin全归我; AOI禁10084/10085用10082/10083(200=受理,判决读/last_result); 工控机任务 ZMAX_Agent+ZMAX_AOI_KeepAlive(每分); 更新=aoi_remote_deploy.py; 通道=zmax-agent-hub.service(8794,数据~/zmax_data/agent_hub禁/tmp)+station_cmd.py
+我=主节点: 工控机+Orin全归我; AOI禁10084/10085用10082/10083(200=受理,判决读/last_result); 工控机任务ZMAX_Agent+ZMAX_AOI_KeepAlive; 更新=aoi_remote_deploy.py; 通道=zmax-agent-hub.service(8794,数据~/zmax_data/agent_hub禁/tmp)+station_cmd.py
 §
 动作授权只从工位总览8793; 代发前先授权
 §
-位姿=rokae_tcp_sampler→rokae_sdk/tcp_out/latest.json(全0=会话陈旧⇒restart容器; 新订阅者收不到tcp_pose); 8793页真源=tools/web/station.html热读
+位姿=rokae_tcp_sampler→rokae_sdk/tcp_out/latest.json(全0=会话陈旧⇒restart容器); 8793页真源=tools/web/station.html热读

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=一键安装 Hermes (静静)
+Comment=双击安装 Hermes 到本系统,装完桌面会出现 [Hermes (静静)] 图标
+Exec=bash -lc 'export PATH="$HOME/.local/bin:$PATH"; exec bash "$(dirname %k)/hermes-restore.sh"'
+Icon=utilities-terminal
+Terminal=true
+Categories=Development;
