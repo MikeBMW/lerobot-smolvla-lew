@@ -37,6 +37,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -579,6 +580,8 @@ _CTL_ABS_SKILLS = {
 # 📍 号位 1~7 (2026-09-30 老倪): 页面「有记录=绿 / 没记录=灰」的判据**只能在服务端算** ——
 #   页面自己判会出现"以为自己能发"的假绿(点位真值在执行器侧的示教点库, 页面读不到)。
 _POINT_SLOTS = {1: "slot1", 2: "slot2", 3: "slot3", 4: "slot4", 5: "slot5", 6: "slot6", 7: "slot7"}
+# 📝 允许"记住此点"写入的点位名(白名单): 只号位 —— 防手误把别的点名写坏/写歪。
+_POINT_RECORD_ALLOW = set(_POINT_SLOTS.values())
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -625,6 +628,63 @@ def _ctl_points() -> dict:
         })
     return {"ok": True, "slots": out, "green": sum(1 for _s in out if _s["ready"]), "n": len(out),
             "points_file": "data/skills/l2_atomic/taught_points.json"}
+
+
+def _ctl_record_point(body: dict) -> dict:
+    """📝 把**当前** TCP 真值记成号位示教点 (2026-09-30 老倪: 「4 5 6 号位, 你能自己实现记录么？」)。
+
+    零运动 —— 记录只是"读真值 + 落盘", 所以不需要真动授权; 但仍然:
+      · 只允许号位名 ``slot1..slot7``(防手误写坏别名的点);
+      · 由 ``tools/record_l2_point.py`` 连采 6 帧判静止(极差 >1e-4m ⇒ 拒记), 并校验四元数自洽(4 分量);
+      · 写前自动备份, 覆盖已有记录时回执里带 ``overwrote`` 让页面二次确认。
+    页面路径: 点动到位 → 号位面板「📝 记住此点」→ POST /ctl/record_point → 按钮变绿。
+    """
+    name = str((body or {}).get("name") or "").strip()
+    if name not in _POINT_RECORD_ALLOW:
+        return {"ok": False, "code": 400,
+                "msg": "只允许号位点位 %s (收到 %r)" % ("/".join(sorted(_POINT_RECORD_ALLOW)), name)}
+    dry = bool((body or {}).get("dry"))
+    try:
+        _ns = max(4, min(12, int((body or {}).get("samples") or 6)))
+    except (TypeError, ValueError):
+        _ns = 6
+    cmd = [sys.executable or "python3", os.path.join(_REPO_ROOT, "tools", "record_l2_point.py"),
+           "--name", name, "--samples", str(_ns), "--json"]
+    _note = str((body or {}).get("note") or "").strip()
+    if _note:
+        cmd += ["--desc", _note]
+    if dry:
+        cmd.append("--dry")
+    try:
+        _r = subprocess.run(cmd, capture_output=True, text=True, timeout=150)
+    except Exception as _e:                                                   # noqa: BLE001
+        return {"ok": False, "msg": "记录脚本执行失败: %s" % str(_e)[:160]}
+    _out = None
+    for _l in reversed((_r.stdout or "").splitlines()):
+        _l = _l.strip()
+        if _l.startswith("{") and _l.endswith("}"):
+            try:
+                _out = json.loads(_l)
+                break
+            except ValueError:
+                continue
+    if _out is None:
+        return {"ok": False, "msg": "记录脚本无 JSON 回执: %s" % ((_r.stdout or _r.stderr or "")[-240:])}
+    _out["dry"] = dry
+    _out["tail"] = "\n".join([_x for _x in (_r.stdout or "").splitlines() if not _x.strip().startswith("{")][-6:])
+    if _out.get("ok") and not dry:
+        log_line = ("[记录点] %s ← (%.4f, %.4f, %.4f) · n=%s · 极差 %.1e m%s"
+                    % (name, _out["pos"][0], _out["pos"][1], _out["pos"][2], _out.get("n_samples"),
+                       _out.get("spread_pos_m") or 0.0, " · 覆盖" if _out.get("overwrote") else ""))
+        print(log_line, flush=True)
+        try:
+            with open(_CTL_LOG, "a", encoding="utf-8") as _f:
+                _f.write(json.dumps({"t": time.time(), "record_point": name, "pos": _out["pos"],
+                                     "by": str((body or {}).get("by") or ""),
+                                     "client": "8793"}, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+    return _out
 
 
 def _read_json(path: str, default=None):
@@ -3045,6 +3105,10 @@ class Handler(BaseHTTPRequestHandler):
                         if on else "🔒 已撤销授权: 现在点方向键只算目标, 机械臂不会动"})
         elif p in ("/ctl/move", "/api/ctl/move"):
             out = _ctl_move(body if isinstance(body, dict) else {})
+        elif p in ("/ctl/record_point", "/api/ctl/record_point"):
+            # 📝 把当前 TCP 真值记成号位示教点(零运动, 不需要真动授权; 只允许 slot1~slot7)。
+            #    2026-09-30 老倪: 「4 5 6 号位, 你能自己实现记录么？」 ⇒ 现场点动到位后一键记住。
+            out = _ctl_record_point(body if isinstance(body, dict) else {})
         elif p in ("/boxes/delete", "/api/boxes/delete"):
             # 🗑 删除选中的叠加框(操作者点选后)
             out = _boxes_edit(str((body or {}).get("cam") or "arm"),

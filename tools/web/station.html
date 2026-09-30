@@ -250,6 +250,15 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       <span class="meta" id="m_slots">…</span></div>
       <div id="m_slots_auth" style="padding:6px 10px 0;font-size:14px"></div>
       <div class="slotbar" id="slotbar"></div>
+      <div class="row" style="padding:6px 10px 0">
+        <span class="k">📝 记住此点(把当前 TCP 真值记成号位 · 零运动):</span>
+        <span class="seg" id="sRecSlot">
+          <button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button>
+          <button data-v="4">4</button><button data-v="5">5</button><button data-v="6">6</button>
+          <button data-v="7">7</button></span>
+        <button id="recbtn" onclick="recPoint()" style="font-size:16px;font-weight:700" title="把机械臂当前 TCP 位姿记成该号位的示教点: 服务端连采 6 帧判静止(极差>1e-4m 拒记)后写入 data/skills/l2_atomic/taught_points.json; 记录本身不下发任何运动, 所以不需要真动授权 —— 但臂必须停稳">✅ 记为该号位</button>
+        <span id="rec_msg" style="font-size:13px;opacity:.9"></span>
+      </div>
       <div class="row" style="padding:0 10px 4px"><span id="slot_msg" style="font-size:13px;opacity:.9"></span></div>
       <div id="n_slots" style="padding:4px 10px 10px;font-size:14px;color:#8b949e;line-height:1.5"></div>
     </div>
@@ -899,6 +908,37 @@ function paintSlotAuth(){
 function gotoSlot(n,skill,btn){
   if(!_SLOT_ST[n]) _SLOT_ST[n]={};
   return gotoTeachPoint(btn,_SLOT_ST[n],skill,'『'+n+'号位』','#slot_msg','去'+n+'号位');
+}
+/* 📝 记住此点 (2026-09-30 老倪「4 5 6 号位, 你能自己实现记录么？」): 记录本身是**零运动** ——
+   只读当前 TCP 真值 → 服务端连采 6 帧判静止(极差 >1e-4m 拒记)+四元数自洽校验 → 写示教点库。
+   所以不需要真动授权, 但臂必须停稳。已有记录的号位要 8 秒内再点一次才覆盖(生产点位别手滑)。 */
+let REC_SLOT=null, REC_PENDING=0;
+seg('sRecSlot',v=>{REC_SLOT=parseInt(v,10);
+  $('#rec_msg').textContent='已选 '+REC_SLOT+'号位 → 点右边「✅ 记为该号位」';});
+async function recPoint(){
+  const m=$('#rec_msg'), b=$('#recbtn');
+  if(!REC_SLOT){ m.textContent='先选要记的号位(1~7)'; return; }
+  const known=(($('#slotbar').dataset.sig)||'').charAt(REC_SLOT-1)==='1';
+  if(known && Date.now()-REC_PENDING>8000){
+    REC_PENDING=Date.now();
+    m.innerHTML='⚠️ <b>'+REC_SLOT+'号位已有记录</b> —— 覆盖会改掉在用的点位; 8 秒内再点一次确认覆盖';
+    return;
+  }
+  REC_PENDING=0; b.disabled=true; m.textContent='⏳ 连采 6 帧判静止(约 4~15s, 臂不能动)…';
+  try{
+    const j=await post('/ctl/record_point',{name:'slot'+REC_SLOT,note:'页面📝记住此点(8793)'},40000);
+    if(j.ok){
+      m.innerHTML=(j.dry?'(演练,未落盘) ':'✅ ')+'slot'+REC_SLOT+' 已记录 · pos=('
+        +j.pos.map(x=>Number(x).toFixed(4)).join(', ')+') · '+j.n_samples+' 帧 · 极差 '
+        +(Number(j.spread_pos_m)*1e6).toFixed(1)+'µm'+(j.overwrote?' · <b>已覆盖旧值</b>':'');
+      $('#rec_msg').className='ok';
+      $('#slotbar').dataset.sig='';            // 强制重建 ⇒ 该号位按钮立刻变绿
+      loadSlots();
+    }else{
+      m.innerHTML='❌ '+(j.msg||'记录失败')+(j.tail?(' · '+j.tail):''); m.className='bad';
+    }
+  }catch(e){ m.textContent='❌ 请求失败: '+e; m.className='bad'; }
+  b.disabled=false;
 }
 async function loadSlots(){
   try{
