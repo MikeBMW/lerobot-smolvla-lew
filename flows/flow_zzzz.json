@@ -1,0 +1,4665 @@
+{
+  "format": "zmax-simulink",
+  "version": "1.0",
+  "name": "untitled",
+  "sim": {
+    "dt": 0.01,
+    "t_end": 10.0,
+    "solver": "fixed-step"
+  },
+  "nodes": [
+    {
+      "id": "n1789997247251qa1",
+      "type": "row_bg",
+      "name": "📦 数据源 (metaworld 环境 + 真机信号 · 供给全部层级)",
+      "x": -126,
+      "y": 120,
+      "w": 6216,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "bg": "#12263f",
+        "model": "state_space",
+        "source": "metaworld",
+        "desc": "📦 数据源 (metaworld 环境 + 真机信号 · 供给全部层级)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 294
+    },
+    {
+      "id": "n1789997247253os2",
+      "type": "row_bg",
+      "name": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+      "x": -126,
+      "y": 932,
+      "w": 9506,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "bg": "#1e1b4b",
+        "model": "state_space",
+        "desc": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+        "source": "src/lerobot/policies/left_right/state_space/planner.py"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 418
+    },
+    {
+      "id": "n1789997247254cu4",
+      "type": "row_bg",
+      "name": "🏆 L4 记忆 · 筹划 (世界模型预测/恢复策略入库)",
+      "x": -126,
+      "y": 1400,
+      "w": 2306,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "row_bg": true,
+        "state_space": true,
+        "desc": "🏆 L4 记忆 · 筹划 (世界模型预测/恢复策略入库)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 294
+    },
+    {
+      "id": "n1789997247255337",
+      "type": "row_bg",
+      "name": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+      "x": -126,
+      "y": 1744,
+      "w": 10196,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "state_space": true,
+        "desc": "🏆 L4 专家自主功能 · 标定与流形世界模型"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 418
+    },
+    {
+      "id": "n1789997247255678",
+      "type": "row_bg",
+      "name": "🚀 L3 记忆 · 长程规划 (跨段技能序列 入库)",
+      "x": -126,
+      "y": 2212,
+      "w": 1926,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "row_bg": true,
+        "state_space": true,
+        "desc": "🚀 L3 记忆 · 长程规划 (跨段技能序列 入库)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 294
+    },
+    {
+      "id": "n17899972472560v2",
+      "type": "row_bg",
+      "name": "🚀 L3 高级自动功能 · VLM 编码 + Flow-Matching",
+      "x": -126,
+      "y": 2556,
+      "w": 9516,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "bg": "#4b2d8e",
+        "model": "高级层·VLM 编码",
+        "desc": "🚀 L3 高级自动功能 · VLM 编码 + Flow-Matching"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 294
+    },
+    {
+      "id": "n1789997247256avu",
+      "type": "row_bg",
+      "name": "🔧 L2 记忆 · 肌肉记忆 (固化标杆 → 快速直通)",
+      "x": -126,
+      "y": 2900,
+      "w": 1926,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "row_bg": true,
+        "state_space": true,
+        "desc": "🔧 L2 记忆 · 肌肉记忆 (固化标杆 → 快速直通)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 294
+    },
+    {
+      "id": "n1789997247257nse",
+      "type": "row_bg",
+      "name": "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)",
+      "x": -126,
+      "y": 3244,
+      "w": 1476,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "bg": "#12263f",
+        "model": "state_space",
+        "source": "tools/gui/yolo_perception.py",
+        "desc": "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 418
+    },
+    {
+      "id": "n17899972472574zg",
+      "type": "row_bg",
+      "name": "🔧 L2 基础辅助功能 · 感知融合 (传感器 → 43D 状态)",
+      "x": -126,
+      "y": 3712,
+      "w": 1926,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "bg": "#12263f",
+        "model": "state_space",
+        "desc": "🔧 L2 基础辅助功能 · 感知融合 (传感器 → 43D 状态)",
+        "source": "src/lerobot/policies/left_right/state_space/perception.py"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 294
+    },
+    {
+      "id": "n1789997247257tau",
+      "type": "row_bg",
+      "name": "🔧 L2 基础辅助功能 · 分段控制小模型 (估计/预测/校正/前馈)",
+      "x": -126,
+      "y": 4056,
+      "w": 9846,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "bg": "#1a1030",
+        "model": "state_space",
+        "desc": "🔧 L2 基础辅助功能 · 分段控制小模型 (估计/预测/校正/前馈)",
+        "source": "src/lerobot/policies/left_right/state_space/parallel.py"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 294
+    },
+    {
+      "id": "n1789997247258nlk",
+      "type": "row_bg",
+      "name": "🔧 L2 基础辅助功能 · 状态机决策 (动作调制 · 安全限幅)",
+      "x": -126,
+      "y": 4400,
+      "w": 2916,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "bg": "#3a1015",
+        "model": "state_space",
+        "desc": "🔧 L2 基础辅助功能 · 状态机决策 (动作调制 · 安全限幅)",
+        "source": "src/lerobot/policies/left_right/state_space/cognition.py"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 294
+    },
+    {
+      "id": "n1789997247258p9n",
+      "type": "row_bg",
+      "name": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+      "x": -126,
+      "y": 4744,
+      "w": 5226,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "bg": "#2d2350",
+        "model": "state_space",
+        "desc": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+        "source": "tools/gui/node_logic.py node_ss_skill"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 790
+    },
+    {
+      "id": "n17899972472598a9",
+      "type": "row_bg",
+      "name": "🔧 L2 基础辅助功能 · 执行层 (执行器 → 物理闭环)",
+      "x": -126,
+      "y": 5584,
+      "w": 5886,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "bg": "#123a22",
+        "model": "state_space",
+        "desc": "🔧 L2 基础辅助功能 · 执行层 (执行器 → 物理闭环)",
+        "source": "src/lerobot/policies/left_right/state_space/execution.py"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 294
+    },
+    {
+      "id": "n1789997247259l5t",
+      "type": "row_bg",
+      "name": "🧩 验证层 · Feature/Test 质量门 (回路外元层)",
+      "x": -126,
+      "y": 5928,
+      "w": 6216,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "state_space": true,
+        "desc": "🧩 验证层 · Feature/Test 质量门 (回路外元层)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 418
+    },
+    {
+      "id": "n1789997247259yq4",
+      "type": "row_bg",
+      "name": "🔭 可视化层 · 观察器 (旁路/3D/视频/直方图)",
+      "x": -126,
+      "y": 6396,
+      "w": 11496,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "desc": "🔭 可视化层 · 观察器 (旁路/3D/视频/直方图)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 294
+    },
+    {
+      "id": "n1789997247260onm",
+      "type": "hardware",
+      "name": "📡 传感器融合",
+      "x": 470,
+      "y": 3732,
+      "w": 280,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "state_space": true,
+        "desc": "[基础·分段小模型] 传感器融合: RGB-D + 力觉 + 触觉 → 43D 统一状态向量 (obs)",
+        "source": "src/lerobot/policies/left_right/state_space/perception.py",
+        "source_symbol": "def fuse_sensors"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.040"
+    },
+    {
+      "id": "n1789997247273f0m",
+      "type": "system",
+      "name": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
+      "x": 1460,
+      "y": 3732,
+      "w": 280,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "state_space": true,
+        "su2_unified_state": true,
+        "group": "SU(2) = {U ∈ C^2x2 : U†U = I, det U = 1}",
+        "map_law": "ω = π·tanh(gain·‖v‖)·v̂ (有界映射律, θ<π 不绕圈, 方向保留)",
+        "blocks": "L2=43D obs 几何误差 | L3=流形规划(进度/偏离/剩余) | L4=安全动作(u_sat/接触/η) | L5=大模型意图",
+        "observables": "θ偏离角 / n̂状态方向 / |w|收敛度 / 逐层剥离贡献 / 层间不可交换性 / Fubini-Study 距离",
+        "viz_tools": "Bloch球 + S³分量 + 层贡献 + 反演剥离 + 距离矩阵 + 节点映射 (双击开观测面板)",
+        "desc": "[统一状态·群] SU(2) 二阶特殊酉群: 原 43D 统一状态向量降为群里的 L2 输入块; 全部层(L2/L3/L4/L5)与全部节点数据按有界映射律映成群元素, 群乘法=层合成(不可交换=层间耦合), 反演剥离读每层贡献; 群恒等元 ⇔ 场景收敛",
+        "source": "src/lerobot/policies/left_right/state_space/su2.py",
+        "source_symbol": "class SU2UnifiedState"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "in3",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        },
+        {
+          "id": "out2",
+          "label": "out2",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.041"
+    },
+    {
+      "id": "n1789997247281nqe",
+      "type": "model",
+      "name": "⚡ 前馈加速器",
+      "x": 2126,
+      "y": 4076,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "ff_accel": true,
+        "w_ff": 0.3,
+        "desc": "[基础·分段小模型] 前馈加速器 (原左脑 MLP): 快路径 — obs→建议动作 u_ff (权重 30%)",
+        "source": "src/lerobot/policies/left_right/state_space/parallel.py",
+        "source_symbol": "class FeedforwardAccelerator"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "DiT action",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "标杆 u_ff",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "obs 43D (前馈主输入)",
+          "dtype": "any"
+        },
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.043"
+    },
+    {
+      "id": "n17899972472821wd",
+      "type": "model",
+      "name": "🔮 自适应状态估计器",
+      "x": 1790,
+      "y": 4076,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "kalman_estimator": true,
+        "desc": "[基础·分段小模型] 自适应状态估计器 (教学卡尔曼, A/K/B 标定; 2026-09-06 修正: 非右脑 — 训练右脑=前向世界模型, 真权重在📈先验动力学预测器)",
+        "source": "src/lerobot/policies/left_right/state_space/parallel.py",
+        "source_symbol": "class AdaptiveStateEstimator"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        },
+        {
+          "id": "out2",
+          "label": "out2",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.042"
+    },
+    {
+      "id": "n17899972472822i7",
+      "type": "model",
+      "name": "📈 先验动力学预测器",
+      "x": 2462,
+      "y": 4076,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "prior_predict": true,
+        "desc": "[基础·分段小模型] 先验动力学预测器: 预测 next_obs — 训练右脑 WorldModel 真权重接入点 (contact_of/next位置, models/ss_right_brain.npz); 线性 A·x+B·u 为守卫回退",
+        "source": "src/lerobot/policies/left_right/state_space/dynamics.py"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.044"
+    },
+    {
+      "id": "n1789997247283zcp",
+      "type": "model",
+      "name": "🧪 状态校正器",
+      "x": 5750,
+      "y": 4076,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "state_corrector": true,
+        "desc": "[基础·分段小模型] 状态校正器: 残差 r = z_k − ĥ(x̂ₖ₋) & 接触概率 — 卡尔曼更新核心",
+        "source": "src/lerobot/policies/left_right/state_space/cognition.py",
+        "source_symbol": "def state_correction"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "in3",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        },
+        {
+          "id": "out2",
+          "label": "out2",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.045"
+    },
+    {
+      "id": "n1789997247283gvw",
+      "type": "system",
+      "name": "🧭 动作调制器",
+      "x": 3520,
+      "y": 4420,
+      "w": 280,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "state_space": true,
+        "action_modulator": true,
+        "desc": "[基础·分段小模型] 动作调制器 (原状态机, 握有否决权): 6阶段状态机 + 否决权 + 按阶段动作融合 (力控插入)",
+        "source": "src/lerobot/policies/left_right/state_space/cognition.py",
+        "source_symbol": "def decide"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "任务Token序列 (LLM)",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "恢复建议 (异常推理)",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "工作空间势场 (总装记忆)",
+          "dtype": "any"
+        },
+        {
+          "id": "in4",
+          "label": "流程势场 (L3记忆)",
+          "dtype": "any"
+        },
+        {
+          "id": "in5",
+          "label": "标杆直通建议 (L2记忆)",
+          "dtype": "any"
+        },
+        {
+          "id": "in6",
+          "label": "质量门 (AOI)",
+          "dtype": "any"
+        },
+        {
+          "id": "in7",
+          "label": "u_ff 前馈建议",
+          "dtype": "any"
+        },
+        {
+          "id": "in8",
+          "label": "contact+残差 (状态校正器)",
+          "dtype": "any"
+        },
+        {
+          "id": "in6",
+          "label": "in6",
+          "dtype": "any"
+        },
+        {
+          "id": "in7",
+          "label": "in7",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.046",
+      "hl": false
+    },
+    {
+      "id": "n1789997247283r07",
+      "type": "system",
+      "name": "🛡 安全执行边界 (饱和限幅)",
+      "x": 3856,
+      "y": 4420,
+      "w": 280,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "state_space": true,
+        "sat_limit": true,
+        "desc": "[基础·分段小模型] 安全执行边界: 饱和限幅 — 阶段切换与动作融合后输出物理指令",
+        "source": "src/lerobot/policies/left_right/state_space/safety.py",
+        "source_symbol": "def saturate"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.047"
+    },
+    {
+      "id": "n1789997247283sza",
+      "type": "hardware",
+      "name": "🤖 机器人执行器",
+      "x": 5090,
+      "y": 5604,
+      "w": 280,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "state_space": true,
+        "desc": "[基础·分段小模型] 机器人执行器 (机械臂/夹爪): 接收物理指令执行",
+        "source": "src/lerobot/policies/left_right/state_space/execution.py",
+        "source_symbol": "class RobotExecutor"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.059"
+    },
+    {
+      "id": "n1789997247283g04",
+      "type": "hardware",
+      "name": "🌍 物理世界",
+      "x": 5426,
+      "y": 5604,
+      "w": 280,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "state_space": true,
+        "desc": "[基础·分段小模型] 物理世界: 执行结果 → 传感器反馈 z_k → 卡尔曼校正闭环",
+        "source": "src/lerobot/policies/left_right/state_space/execution.py",
+        "source_symbol": "class PhysicalWorld"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.060"
+    },
+    {
+      "id": "n178999724728438w",
+      "type": "model",
+      "name": "📊 仿真波形",
+      "x": 9050,
+      "y": 6416,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "state_space_scope": true,
+        "desc": "仿真波形: 双击显示最近一次仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)",
+        "viz_kind": "scope"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "in3",
+          "dtype": "any"
+        },
+        {
+          "id": "in4",
+          "label": "in4",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.065"
+    },
+    {
+      "id": "n1789997247284euu",
+      "type": "model",
+      "name": "🎥 操作视频",
+      "x": 11030,
+      "y": 6416,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "state_space_rollout": true,
+        "desc": "操作视频: 双击打开 metaworld 训练后 rollout 视频对比窗口 (多模型同步播放)",
+        "viz_kind": "video"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.067"
+    },
+    {
+      "id": "n1789997247284gxt",
+      "type": "model",
+      "name": "🎯 YOLO 目标检测",
+      "x": 470,
+      "y": 3264,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "model": "yolov8s",
+        "classes": "peg/hole/hand",
+        "state_space": true,
+        "source": "src/lerobot/policies/yolo_3d/yolo_state_aligner.py",
+        "desc": "[基础·分段小模型] 感知层·B1 目标识别定位: YOLO 检测光模块/插座/料盘/缺陷等 22 个目标 (类别/位姿/方向, 指标含 mAP/推理时间); 双击=目标清单, 右下角导出=Excel",
+        "detection_targets": true,
+        "source_symbol": "class YoloStateAligner"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.035"
+    },
+    {
+      "id": "n17899972472845rb",
+      "type": "condition",
+      "name": "📐 2D→3D 解算",
+      "x": 1142,
+      "y": 3264,
+      "w": 280,
+      "icon": "❖",
+      "color": "#a371f7",
+      "params": {
+        "method": "depth|hand-eye",
+        "intrinsics": "camera_K",
+        "state_space": true,
+        "source": "src/lerobot/policies/yolo_3d/yolo_state_aligner.py",
+        "desc": "[基础·分段小模型] 感知层·B2 空间位姿感知: YOLO 2D框中心 + 相机反投影 → 目标 3D 坐标 → 增强 43D 状态向量",
+        "source_symbol": "def detect_3d"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.037"
+    },
+    {
+      "id": "n1789997247284zmd",
+      "type": "hardware",
+      "name": "🖐 触觉感知",
+      "x": 470,
+      "y": 3388,
+      "w": 280,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "force_res": "0.1N",
+        "tactile_dim": 4,
+        "state_space": true,
+        "source": "src/lerobot/policies/yolo_3d/gen_tactile.py",
+        "desc": "[基础·分段小模型] 夹爪开度+接触力 (metaworld 真值) → 4D 触觉 [grasp/contact/dir]",
+        "source_symbol": "def synth_tactile"
+      },
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.038"
+    },
+    {
+      "id": "n1789997247285ekd",
+      "type": "model",
+      "name": "🔍 外观质量检测",
+      "x": 806,
+      "y": 3388,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "target": "金手指/端面/外观",
+        "state_space": true,
+        "desc": "[基础·分段小模型] 感知层·B5 外观质量检测 (AOI): 金手指划痕/端面脏污/外观缺陷判定 → 上报监控 (良率支撑)。【2026-09-20 接线·v4.2 几何】原始图 → 状态空间区域检测/伺服引导: ①区域检测 GET /region?grab=1 = 原始图坐标系的**金手指区域**(只含焊盘排, 实测~1455x70; 不含下方实心金带与塑料亮边沿) + 对焦清晰度 focus ②触发检测 POST /capture_detect (异步, 判决只打工控机终端) ③规范化裁剪 GET /picture?kind=crop = **金手指纵向拉长到 960x960 方图**(与 imgsz=960 对齐, 喂 YOLO); GET /picture?kind=natural = 原比例 1455x70(目检); GET /crop_info = 指标(残余倾角/金覆盖/高亮占比) ④对准+对焦伺服 L2.aoi_gold_align → tools/aoi_gold_servo.py (区域偏差→L2小步进; 沿光轴退火找 focus 峰值; 默认 dry-run)",
+        "aoi_interfaces": {
+          "region": "http://192.168.23.23:10082/region?grab=1",
+          "capture": "http://192.168.23.23:10082/capture_detect",
+          "picture_origin": "http://192.168.23.23:10082/picture",
+          "picture_crop_stretched_960": "http://192.168.23.23:10082/picture?kind=crop",
+          "picture_crop_natural": "http://192.168.23.23:10082/picture?kind=natural",
+          "crop_quality": "http://192.168.23.23:10082/crop_info",
+          "servo_skill": "L2.aoi_gold_align"
+        },
+        "crop_geometry_v4_2": {
+          "golden_fingers_native": "1455x70 (焊盘排, 21:1)",
+          "canonical_for_yolo": "960x960 (纵向拉伸填满, 与 imgsz=960 对齐)",
+          "excluded": "下方实心金带(y1180-1265) 与 塑料本体亮边沿(y>=1258)",
+          "quality_metric": "残余倾角 -0.94~0.61 px/1000 (在原比例版上算)"
+        }
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.039"
+    },
+    {
+      "id": "n17899972472851nw",
+      "type": "hardware",
+      "name": "📦 metaworld 数据源",
+      "x": 140,
+      "y": 140,
+      "w": 280,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "src_switch": true,
+        "src_state": "真机",
+        "source": "metaworld",
+        "task": "peg-insert-side-v3",
+        "frames": 4800,
+        "state_dim": 39,
+        "action_dim": 4,
+        "policy": "left_right",
+        "run_env": true,
+        "state_space": true,
+        "desc": "[数据源层] 运行环境数据源: 仿真(metaworld 39D/4D 演示) ⇄ 真机(4060 远程只读订阅 Orin: TCP位姿+姿态/六关节/六维力/夹爪/机器人状态/图像) — 点节点上的「仿真/真机」拨钮或右键菜单切换; 双击=按当前模式运行真实模型 (🚀训练/📷推理)"
+      },
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        },
+        {
+          "id": "out2",
+          "label": "out2",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.001"
+    },
+    {
+      "id": "n1789997247285urx",
+      "type": "mode_switch",
+      "name": "🔀 训练/推理",
+      "x": 476,
+      "y": 140,
+      "w": 280,
+      "icon": "🔀",
+      "color": "#3fb950",
+      "params": {
+        "mode": "train",
+        "state_space": true,
+        "desc": "[基础·分段小模型] 运行模式选择 (三态, 双击循环切换): 📷推理=加载真实模型 rollout / 🚀训练=训练真实模型(仿真 metaworld) / 🎯真机数据L2训练=边干边学闭环 (真机帧采集+自动标注 → 训练 → 新鲜帧同口径对照 → 有提升才上在役)。选🎯后点「▶ 运行」即按真实数据开训 (相机标定未就绪时只走伪标注, 如实标注 gap)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.002"
+    },
+    {
+      "id": "n1789997247285u62",
+      "type": "hardware",
+      "name": "📝 任务指令 · MES/自然语言",
+      "x": 9050,
+      "y": 952,
+      "w": 280,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "state_space": true,
+        "task_input": true,
+        "desc": "大模型层·输入: MES 工单/自然语言指令 + **场景图通道** (in1 仿真 metaworld 渲染帧 / in2 引擎真图 / in3 真机帧与位姿) → 视觉大模型(SceneVLM: 本地 Qwen2.5-VL-3B 或 API) 场景理解 → 🧠任务规划器 (planner.py); 无模型时规则回退并如实标注",
+        "source": "src/lerobot/policies/left_right/state_space/planner.py",
+        "source_symbol": "class TaskPlanner"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "in3",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.017"
+    },
+    {
+      "id": "n1789997247285ym6",
+      "type": "model",
+      "name": "🧠 L3 长程序列规划器 (场景理解驱动)",
+      "x": 1594,
+      "y": 952,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "task_planner": true,
+        "llm": "Qwen3-7B (可插拔, 未配置走规则)",
+        "desc": "任务规划器 TaskPlanner: 指令/场景 → 技能Token序列 (242条原子技能库, 规则校验后) → 下发状态机",
+        "source": "src/lerobot/policies/left_right/state_space/planner.py",
+        "source_symbol": "class TaskPlanner"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        },
+        {
+          "id": "in4",
+          "label": "in4",
+          "dtype": "any"
+        },
+        {
+          "id": "in5",
+          "label": "in5",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.013"
+    },
+    {
+      "id": "n178999724728597x",
+      "type": "model",
+      "name": "🔍 异常推理器 (LLM)",
+      "x": 2780,
+      "y": 952,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "exception_reasoner": true,
+        "llm": "Qwen3-7B (可插拔)",
+        "desc": "异常推理器 ExceptionReasoner: 连续否决/阶段卡死/未接触 → 异常分类 + 恢复建议",
+        "source": "src/lerobot/policies/left_right/state_space/planner.py",
+        "source_symbol": "class ExceptionReasoner"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "in3",
+          "dtype": "any"
+        },
+        {
+          "id": "in4",
+          "label": "in4",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.015"
+    },
+    {
+      "id": "n1789997247286s4j",
+      "type": "model",
+      "name": "🛠 L3 技能序列编排",
+      "x": 6080,
+      "y": 952,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "skill_composer": true,
+        "llm": "Qwen3-7B (可插拔)",
+        "desc": "技能编排器 SkillComposer: 五大作业场景定义 (steps→技能序列, performance→参数覆盖默认) / 新型号规格 → 技能序列+力阈值/节拍",
+        "source": "src/lerobot/policies/left_right/state_space/planner.py",
+        "source_symbol": "class SkillComposer"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "in3",
+          "dtype": "any"
+        },
+        {
+          "id": "in4",
+          "label": "in4",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.016"
+    },
+    {
+      "id": "n1789997247286kt2",
+      "type": "model",
+      "name": "🧮 标定层 · 引力-斥力-动作",
+      "x": 2028,
+      "y": 1764,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "calib_layer": true,
+        "desc": "[L4 标定·地图校准 回路外] 引力(快速动作标定: Kp+阶段限速) — 斥力(状态预测标定: 卡尔曼/接触/否决) — 动作(新: DiT action 输出标定量, 输入见 ssdec 连线); 潜空间域已独立至「🧮 潜空-流形」节点 (L4 流形输入); 源码 calibration_layer.py",
+        "source": "src/lerobot/calibration/calibration_layer.py",
+        "source_symbol": "class CalibrationLayer"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "in3",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.026"
+    },
+    {
+      "id": "n1789997247286fjj",
+      "type": "model",
+      "name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
+      "x": 1692,
+      "y": 1764,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "mani_layer": true,
+        "desc": "[专家·世界模型] 接触流形 ContactManifold: e=T−hand 沿通道轴分解 → 切向 e∥(测地线进度)+法向 e⊥(离流形漂移→弯曲风险), V=½‖e‖², V̇=−e·v; 通道: 垂直(z 对销)/孔轴(x 入孔); 源码 manifold_layer.py",
+        "source": "src/lerobot/manifold/manifold_layer.py",
+        "source_symbol": "class ContactManifold"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.025"
+    },
+    {
+      "id": "n17899972472861ub",
+      "type": "model",
+      "name": "🧮 性能流形 · 耦合代价 (V_p/η)",
+      "x": 1310,
+      "y": 1888,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "mani_layer": true,
+        "desc": "[专家·世界模型] 性能流形 PerformanceManifold: δ=销头−孔底 → V_p=½δᵀWδ(横向重权), 估计耦合效率 η=exp(−V_p/σ²) (高斯光束近似), ∇V_p 最优对准方向; 真机接光功率计标定 W/σ; 源码 manifold_layer.py",
+        "source": "src/lerobot/manifold/manifold_layer.py",
+        "source_symbol": "class PerformanceManifold"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.030"
+    },
+    {
+      "id": "n1789997247287u61",
+      "type": "model",
+      "name": "🧮 潜空-流形",
+      "x": 2364,
+      "y": 1764,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "calib_layer": true,
+        "desc": "[L4 潜空间/世界模型流形标定] 潜空间=世界模型预测流形 (地图几何标定: 维度/类别/速度场 prior_A) + 轨迹观测 PCA 有效维实测; 输入: L4 流形(接触/性能) + 潜状态/先验预测; 源码 calibration_layer.py LATENT_CALIB",
+        "source": "src/lerobot/calibration/calibration_layer.py",
+        "source_symbol": "LATENT_CALIB"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.027"
+    },
+    {
+      "id": "n1789997247296u1n",
+      "type": "model",
+      "name": "🧩 Feature 功能清单",
+      "x": 5750,
+      "y": 5948,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "verif_layer": true,
+        "desc": "Feature 功能清单: 状态空间系统全部 feature 汇总 (A引擎 7/B六层 11/C感知链 4/D规划 3/E元层 5/F画布 4/G手动 10); 源码 verification_layer.py FEATURES",
+        "source": "src/lerobot/verification/verification_layer.py",
+        "source_symbol": "FEATURES = ["
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.061"
+    },
+    {
+      "id": "n1789997247305fok",
+      "type": "model",
+      "name": "🧪 Test 用例执行",
+      "x": 5750,
+      "y": 6072,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "verif_layer": true,
+        "desc": "Test 用例执行: 跑自动化套件 F-A01~F-F04 (引擎/六层/感知/规划/元层/画布映射), PASS/FAIL+数值证据; 单跑 ZMAX_VERIF_ONLY=F-xx; 源码 verification_layer.py t_F_* 断言",
+        "source": "src/lerobot/verification/verification_layer.py",
+        "source_symbol": "class VerificationLayer"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.062"
+    },
+    {
+      "id": "n1789997247305sle",
+      "type": "model",
+      "name": "🧠 前馈激活直方图",
+      "x": 9710,
+      "y": 6416,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "desc": "前馈激活直方图 — 读 ⚡前馈加速器探针, 三层512激活分布 (稀疏/能量/ReLU截断)",
+        "source": "tools/gui/node_logic.py · node_ss_ff_hist",
+        "viz_kind": "hist"
+      },
+      "inputs": [
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.066"
+    },
+    {
+      "id": "n1789997247305aiu",
+      "type": "model",
+      "name": "🧭 3D 视图",
+      "x": 5750,
+      "y": 6416,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "desc": "3D 分层视图 — Apollo 风格 (YOLO框/末端轨迹/处理层叠加, 每层可开关)",
+        "source": "tools/gui/node_logic.py · node_ss_3d_view",
+        "viz_kind": "3d"
+      },
+      "inputs": [
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.064"
+    },
+    {
+      "id": "n1789997247305xio",
+      "type": "model",
+      "name": "📈 旁路实时可视化 (当前阶段/残差/接触概率)",
+      "x": 2450,
+      "y": 6416,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "viz_kind": "bypass",
+        "desc": "[可视化层·回路外] 旁路逐帧记录 → 当前阶段(13 段状态机)/残差(m)/接触概率 实时曲线, 500ms 刷新; 同窗显示六层调用数 · 零下行自证(rclpy/socket/写回) · 缺口计数 · 数据源新鲜度",
+        "source": "tools/gui/ss_bypass_view.py",
+        "source_symbol": "class SSBypassView"
+      },
+      "inputs": [
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.063"
+    },
+    {
+      "id": "n1789997247306z3r",
+      "type": "model",
+      "name": "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)",
+      "x": 812,
+      "y": 140,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "viz_kind": "z700_signals",
+        "desc": "[可视化层·回路外] 输入 = 🌍物理世界输出。显示全部真机信号: TCP 位置+姿态四元数+坐标系 · 六关节位置/速度(含关节名) · 六维力/力矩 · 夹爪开度 · 触觉 4D · 机器人电源/运行/报警/急停/碰撞 · 产线阶段 · 采样率与新鲜度 · 缺通道清单; 附状态空间旁路当前阶段/残差/接触概率",
+        "source": "tools/gui/ss_bypass_view.py",
+        "source_symbol": "class Z700SignalsView"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.003"
+    },
+    {
+      "id": "n1789997247306ti7",
+      "type": "model",
+      "name": "① 接近 · SK01",
+      "x": 4772,
+      "y": 4764,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "skill_layer": true,
+        "skill": {
+          "template": "SK01",
+          "stage": "接近"
+        },
+        "desc": "[基础·分段小模型] 原子技能 ① 接近 (SK01): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+        "source": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+        "source_symbol": "class SK01Approach"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.051"
+    },
+    {
+      "id": "n1789997247306g7c",
+      "type": "model",
+      "name": "② 对位 · SK02",
+      "x": 2780,
+      "y": 4764,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "skill_layer": true,
+        "skill": {
+          "template": "SK02",
+          "stage": "对位"
+        },
+        "desc": "[基础·分段小模型] 原子技能 ② 对位 (SK02): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+        "source": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+        "source_symbol": "class SK02Align"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.048"
+    },
+    {
+      "id": "n1789997247306bxi",
+      "type": "model",
+      "name": "③ 下降 · SK03",
+      "x": 2780,
+      "y": 4888,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "skill_layer": true,
+        "skill": {
+          "template": "SK03",
+          "stage": "下降"
+        },
+        "desc": "[基础·分段小模型] 原子技能 ③ 下降 (SK03): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+        "source": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+        "source_symbol": "class SK03Descend"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.052"
+    },
+    {
+      "id": "n17899972473071y7",
+      "type": "model",
+      "name": "④ 抓取 · SK04",
+      "x": 2780,
+      "y": 5012,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "skill_layer": true,
+        "skill": {
+          "template": "SK04",
+          "stage": "抓取"
+        },
+        "desc": "[基础·分段小模型] 原子技能 ④ 抓取 (SK04): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+        "source": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+        "source_symbol": "class SK04Grasp"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.053"
+    },
+    {
+      "id": "n1789997247307irr",
+      "type": "model",
+      "name": "⑤ 抬起 · SK05",
+      "x": 2780,
+      "y": 5136,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "skill_layer": true,
+        "skill": {
+          "template": "SK05",
+          "stage": "抬起"
+        },
+        "desc": "[基础·分段小模型] 原子技能 ⑤ 抬起 (SK05): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+        "source": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+        "source_symbol": "class SK05Lift"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.054"
+    },
+    {
+      "id": "n1789997247307x56",
+      "type": "model",
+      "name": "⑥ 转移 · SK06",
+      "x": 2780,
+      "y": 5260,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "skill_layer": true,
+        "skill": {
+          "template": "SK06",
+          "stage": "转移"
+        },
+        "desc": "[基础·分段小模型] 原子技能 ⑥ 转移 (SK06): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+        "source": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+        "source_symbol": "class SK06Transfer"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.055"
+    },
+    {
+      "id": "n17899972473073ac",
+      "type": "model",
+      "name": "⑦ 插入 · SK07",
+      "x": 3116,
+      "y": 5260,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "skill_layer": true,
+        "skill": {
+          "template": "SK07",
+          "stage": "插入"
+        },
+        "desc": "[基础·分段小模型] 原子技能 ⑦ 插入 (SK07): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+        "source": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+        "source_symbol": "class SK07Insert"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.056"
+    },
+    {
+      "id": "n1789997247307m7c",
+      "type": "model",
+      "name": "⑧ 完成 · SK08",
+      "x": 3452,
+      "y": 5260,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "skill_layer": true,
+        "skill": {
+          "template": "SK08",
+          "stage": "完成"
+        },
+        "desc": "[基础·分段小模型] 原子技能 ⑧ 完成 (SK08): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+        "source": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+        "source_symbol": "class SK08Complete"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.057"
+    },
+    {
+      "id": "n1789997247307zjh",
+      "type": "model",
+      "name": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+      "x": 1160,
+      "y": 2576,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "desc": "[高级·端到端模仿学习] 高级·Encoder (SmolVLA): 真实 SmolVLM2 视觉编码 — 图像帧 → 潜空间 z R960 (encode_stage); 源码 src/lerobot/policies/smolvla_lew/vlm_encoder.py",
+        "vlm": true,
+        "state_space": true,
+        "source": "src/lerobot/policies/smolvla_lew/vlm_encoder.py",
+        "source_symbol": "class SmolVLMEncoder"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.032"
+    },
+    {
+      "id": "n1789997247307a1x",
+      "type": "model",
+      "name": "🎯 Flow-Matching Action Head (DiT)",
+      "x": 1810,
+      "y": 2576,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "desc": "[高级·端到端模仿学习] Decoder: 状态空间 ActionHead — 潜空间 z → 4D 动作块 (StateSpaceActionHead); 源码 src/lerobot/policies/smolvla_lew/state_space_action_head.py",
+        "decoder": true,
+        "state_space": true,
+        "source": "src/lerobot/policies/smolvla_lew/action_head.py",
+        "source_symbol": "class SmolVLALewActionHead"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "潜空间 z (VLM)",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "L4 条件 (INTACT 解码器)",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "接触流形坐标",
+          "dtype": "any"
+        },
+        {
+          "id": "in4",
+          "label": "性能流形代价",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.033"
+    },
+    {
+      "id": "n17899972473077lv",
+      "type": "model",
+      "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+      "x": 9710,
+      "y": 1764,
+      "w": 300,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "desc": "[L4 策略] INTACT (zju3dv/INTACT-JEPA, MIT) 意图-动作: 共享 local/goal 动作律 + 四槽语法 [z, m_t, z⊙m_t, A(a_{t-1})] → 一次前向直接出 action chunk (**零候选搜索**, 无 CEM); **数据源直接接入 metaworld** (MT1 peg-insert-side-v3, 真渲染帧 224² + 39D 现场读); 🧩 **三路入线口径** (2026-09-16 老倪「L2 应与 L4 兼容」): in1 = 数据源真帧+39D; in2 = L2 感知融合状态 (YOLO→2D→3D→传感器融合, L4 引擎路径 vision=True 时生效); in3 = L2 前馈蒸馏 MLP 的 u_ff (L4 档 SS_USE_MLP=1 时真身参与, 否则装配期被解析覆盖); 输出 → 意图解码器 ssintact_dec → L3; 实现 src/lerobot/policies/intact/modeling_intact.py (2026-09-13 从 manifold/intact_node 迁移) · 设计 docs/design/zmax_l4_intact_policy.md\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 策略壳 modeling_intact.py · 节点 runtime/node.py",
+        "expert": true,
+        "state_space": true,
+        "intact": true,
+        "data_source": "metaworld",
+        "decoder": "ssintact_dec",
+        "source": "src/lerobot/policies/intact/service.py",
+        "source_symbol": "def run_once(",
+        "source_note": "编排 service.py (run_once) · 策略壳 modeling_intact.py · 节点 runtime/node.py"
+      },
+      "inputs": [
+        {
+          "id": "in4",
+          "label": "in4",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.029"
+    },
+    {
+      "id": "n1789997247308f5u",
+      "type": "model",
+      "name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+      "x": 1000,
+      "y": 1764,
+      "w": 300,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "desc": "[L4 → L3] INTACT 意图解码器 (src/lerobot/policies/intact/decoder.py): **两路输出**: ①→DiT 的 L3 条件 (未标定不注入) ②→流形专家预测器的意图 m_int (z_t 口径用; 活跃 z7 口径下当门控) · 把 INTACT 的意图/潜空间解码成 L3 能吃的条件 —— ① u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT 现读引擎源码, 无需标定) ② L3 流形条件向量 (需标定 models/intact_l3_map.json, 未标定则**拒绝返回并计数**, 不写死映射 = 不假接入); 所在 L4 行 = 只在 L4 档执行, L3 档链路逐位不变\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py",
+        "expert": true,
+        "state_space": true,
+        "decoder": true,
+        "source": "src/lerobot/policies/intact/service.py",
+        "source_symbol": "def run_once(",
+        "source_note": "编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py"
+      },
+      "inputs": [
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "in3",
+          "dtype": "any"
+        },
+        {
+          "id": "in5",
+          "label": "in5",
+          "dtype": "any"
+        },
+        {
+          "id": "in4",
+          "label": "in4",
+          "dtype": "any"
+        },
+        {
+          "id": "in6",
+          "label": "in6",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.023"
+    },
+    {
+      "id": "n1789997247308avj",
+      "type": "model",
+      "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+      "x": 1356,
+      "y": 1764,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "desc": "[专家·世界模型 L4] **入线两条意图通道**: ①活跃口径 z7 = 引擎几何潜空间 R7 + 引擎几何意图 (target−peg_head), 来自 📐 2D→3D 解算; ②z_t 口径 = INTACT 潜空间 192 + 意图增量 m_int=δ(z_goal−z_t), 来自 🎯 INTACT 意图解码器 (该口径 LOSO R² 全负未启用, 但解码器的 m_int 仍作为门控/存在性条件参与, w=m_int_weight×SS_L4_INTENT_LINE_W×ready) · JEPA predictor 链路: LatentPredictor (z_t+a_t→z') → ManifoldReadout (接触/性能流形坐标 6 维, 真值对齐) → StateSpaceActionHead (流形→4D 动作); 源码 src/lerobot/manifold/predictor_layer.py",
+        "expert": true,
+        "state_space": true,
+        "source": "src/lerobot/manifold/predictor_layer.py",
+        "source_symbol": "class WorldModelPredictor"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.024"
+    },
+    {
+      "id": "n1789997247308rml",
+      "type": "model",
+      "name": "🧭 能力档位",
+      "x": 1148,
+      "y": 140,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "desc": "[数据源层·能力档位] 双击循环切换: L2 基础(插装成功) → L3 +smolvla(插→拔→AOI→放回全链) → L4 +流形预测世界模型(失败自主恢复直到完成)。档位驱动 ▶运行任务链配置。",
+        "state_space": true,
+        "cap_level": "L2",
+        "cap_switch": true
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.004"
+    },
+    {
+      "id": "n1789997247308ajs",
+      "type": "model",
+      "name": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+      "x": 1460,
+      "y": 2920,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.034"
+    },
+    {
+      "id": "n1789997247308d9g",
+      "type": "model",
+      "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+      "x": 1460,
+      "y": 2232,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.031"
+    },
+    {
+      "id": "n178999724730880y",
+      "type": "model",
+      "name": "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
+      "x": 1460,
+      "y": 1420,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.021"
+    },
+    {
+      "id": "n17899972473093tm",
+      "type": "model",
+      "name": "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
+      "x": 1796,
+      "y": 1420,
+      "w": 330,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "mem_field": true,
+        "desc": "[总装机记忆·势场联络] L2 肌肉记忆: 每条技能冠军轨迹→技能势场 Φ_SK (谷底=真跑末点 · σ=谷宽 · 触发/速度上限取技能库真值) · L3 工艺流程记忆: 按真实段时长(真跑帧数)加权组合→流程势场 Φ_process(x,t), 谷底随时序从 SK01 连续移到 SK07 · L4 物理工作空间记忆: Φ_process + 障碍场(孔壁/台面 引擎现场几何) + 世界模型预测项 · 输出 −∇Φ = 意图(方向/速率/技能/置信) 给 L4 INTACT 链按层叠加(blend_action)。逐层开关 = data/memory_layers.json (默认全关=零干预, 逐步打开)。源码 src/lerobot/memory/potential_field.py · 节点 mem_nodes.node_ss_mem_field",
+        "source": "src/lerobot/memory/potential_field.py"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.022"
+    },
+    {
+      "id": "n1789997247309xx2",
+      "type": "model",
+      "name": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+      "x": 1258,
+      "y": 952,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "in3",
+          "dtype": "any"
+        },
+        {
+          "id": "in4",
+          "label": "in4",
+          "dtype": "any"
+        },
+        {
+          "id": "in5",
+          "label": "in5",
+          "dtype": "any"
+        },
+        {
+          "id": "in6",
+          "label": "in6",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.012"
+    },
+    {
+      "id": "n1789997247309ar1",
+      "type": "model",
+      "name": "🅰️ 通用算子 A · 参数写入",
+      "x": 3788,
+      "y": 5260,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "universal_op": true,
+        "op_tag": "A",
+        "desc": "[基础·通用万能节点] 参数写入 (SET): L4 动态参数 → 目标原子技能 — 把 L4 预测/世界模型算出的参数 (速度/阈值/增益/目标点) 写入被选中的原子技能实例; 万能接口: 任何技能可被写入",
+        "source": "tools/gui/node_logic.py · node_ss_abc",
+        "purpose": "L4 动态参数更新 (通用接口)",
+        "source_symbol": "def node_ss_abc(ctx):"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.058"
+    },
+    {
+      "id": "n1789997247310g9a",
+      "type": "model",
+      "name": "🅱️ 通用算子 B · 参数微调",
+      "x": 4100,
+      "y": 4764,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "universal_op": true,
+        "op_tag": "B",
+        "desc": "[基础·通用万能节点] 参数微调 (Δ-ADJUST): 运行时增量调整 — 遇阻/偏差时按 L4 预测动态 ± 调整技能参数 (如降速/增力/重对准幅度), 不重写整组参数; 万能接口: 任何技能可被微调",
+        "source": "tools/gui/node_logic.py · node_ss_abc",
+        "purpose": "L4 动态参数更新 (通用接口)",
+        "source_symbol": "def node_ss_abc(ctx):"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.049"
+    },
+    {
+      "id": "n1789997247310knk",
+      "type": "model",
+      "name": "🅾️ 通用算子 C · 参数校验",
+      "x": 4436,
+      "y": 4764,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "universal_op": true,
+        "op_tag": "C",
+        "desc": "[基础·通用万能节点] 参数校验 (VALIDATE): 安全限值校验 — 写入/微调后的参数须过 🛡 安全类别4栏位红线 (力/速度/位姿限值), 越界拒绝并回退; 万能接口: 任何技能参数统一走此闸",
+        "source": "tools/gui/node_logic.py · node_ss_abc",
+        "purpose": "L4 动态参数更新 (通用接口)",
+        "source_symbol": "def node_ss_abc(ctx):"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.050"
+    },
+    {
+      "id": "n1789997247310784",
+      "type": "model",
+      "name": "🧠 意图丛 · 四槽语法",
+      "x": 1790,
+      "y": 1076,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "desc": "goal/from/skill/gate — 层间只传意图 Δz=z_g−z_t, 动作只在 L2 生成 (INTACT 同构接口)",
+        "source": "src/lerobot/memory/mem_nodes.py · node_ss_intent_bundle",
+        "bundle": true
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.018"
+    },
+    {
+      "id": "n1789997247310vgo",
+      "type": "model",
+      "name": "🧬 技能词典 · L2 动作基",
+      "x": 6410,
+      "y": 1076,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "desc": "{skill → Δz/n_ok} — L4 预测 Δz 后在此词典 kNN 直读技能 (无需动作空间搜索)",
+        "source": "src/lerobot/memory/mem_nodes.py · node_ss_skill_dict",
+        "bundle": true
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.019"
+    },
+    {
+      "id": "n1789997247310gw8",
+      "type": "model",
+      "name": "🔗 跨层连接 · 记忆图谱",
+      "x": 1930,
+      "y": 952,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "desc": "层间链接 links (L4筹划→L3流程→L2技能) + 意图检索 recall (距离门防负迁移)",
+        "source": "src/lerobot/memory/mem_nodes.py · node_ss_mem_links",
+        "bundle": true
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "in3",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.014"
+    },
+    {
+      "id": "n1789997247310rrt",
+      "type": "model",
+      "name": "🔮 意图直读 · Direct",
+      "x": 8390,
+      "y": 1764,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "desc": "Δz → 技能最近邻, 无搜索 (参照 INTACT Direct 2.9–5.5ms)",
+        "source": "src/lerobot/memory/mem_nodes.py · node_ss_intent_direct",
+        "bundle": true
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.028"
+    },
+    {
+      "id": "n178999724731152v",
+      "type": "row_bg",
+      "name": "🌍 L4 · 光模块插拔链 (环境渲染 → INTACT → 引擎 → 视频)",
+      "x": -126,
+      "y": 464,
+      "w": 11216,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "bg": "#1a2332",
+        "model": "zmax-engine",
+        "source": "intact_sw",
+        "desc": "🌍 L4 · 光模块插拔链 (环境渲染 → INTACT → 引擎 → 视频)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 418
+    },
+    {
+      "id": "n17899972473118sm",
+      "type": "data",
+      "name": "🧪 光模块插拔 · 环境渲染图像源 (Z-MAX 引擎逐帧真图)",
+      "x": 10812,
+      "y": 484,
+      "w": 330,
+      "icon": "📊",
+      "color": "#58a6ff",
+      "params": {
+        "desc": "[L4 数据源] Z-MAX 引擎逐帧渲染真图 (224×224 RGB, 来自 RealStateSpaceSim · metaworld peg-insert-side-v3 + MUJOCO_GL=egl 离屏渲染), 由 tools/intact_sw_optical_bridge.py 写 spool/*.jpg + status.json + status.jsonl; 真图判据 frame_std>5 (实测 ~56)",
+        "sw_bridge": true,
+        "kind": "render_frames",
+        "source": "tools/intact_sw_optical_bridge.py --spool",
+        "source_symbol": "def "
+      },
+      "inputs": [
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "in3",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 120,
+      "nid": "VEH.5.007"
+    },
+    {
+      "id": "n17899972473114ce",
+      "type": "model",
+      "name": "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)",
+      "x": 10040,
+      "y": 484,
+      "w": 330,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "desc": "[L4 中间策略] INTACT-JEPA 本域微调权重 (u 口径数据集 optical_insert_v4 训练, 从官方 pusht 权重初始化): 渲染图像+目标帧(解析链成功末帧)+动作历史 → 一次前向出动作块 (零候选搜索 candidate_action_steps=0) → 唯一变换=训练归一化逆运算 a_raw=z·std+mean → 按引擎 u→act 约定下发 (act[:3]=clip(u/K_ACT) · act[3]=CLOSE if u[3]>0.5); 封装 src/lerobot/policies/intact/ · 桥 tools/intact_sw_optical_bridge.py",
+        "intact": true,
+        "sw_bridge": true,
+        "task": "optical_insert",
+        "policy": "intact_goal_optical_insert_v4_s3072 (自动挑最新 epoch)",
+        "source": "src/lerobot/policies/intact/runtime/node.py"
+      },
+      "inputs": [
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "in3",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 120,
+      "nid": "VEH.5.005"
+    },
+    {
+      "id": "n1789997247311t5k",
+      "type": "hardware",
+      "name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+      "x": 10426,
+      "y": 484,
+      "w": 330,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "desc": "[L4 硬件层] Z-MAX 六层引擎 RealStateSpaceSim (metaworld peg-insert-side-v3 真接触/夹持/插入动力学): 每步接收 INTACT 模型动作 → env.step 真下发 (引擎既有直驱入口 _direct_act, 不经解析控制器) → 逐帧渲染回数据源; 同 seed 另跑解析链对照(插入 + 插→拔→AOI 全链)作可达性基线; 出 480² 逐帧 mp4 存 reports/intact_sw/video",
+        "sw_bridge": true,
+        "sim": true,
+        "env": "metaworld/peg-insert-side-v3 (RealStateSpaceSim)",
+        "source": "tools/intact_sw_optical_bridge.py",
+        "source_symbol": "def "
+      },
+      "inputs": [
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 120,
+      "nid": "VEH.5.006"
+    },
+    {
+      "id": "n1789997247311kg3",
+      "type": "data",
+      "name": "🎬 插拔渲染视频 (从 Z-MAX 引擎取出 · 实况窗)",
+      "x": 10700,
+      "y": 608,
+      "w": 330,
+      "icon": "📊",
+      "color": "#58a6ff",
+      "params": {
+        "desc": "[L4 可视化·回路外观察器] 从 Z-MAX 引擎取出的渲染视频 (480², 10fps): 模型直驱在环录像(打标真模型/真推理次数/模型输出/插入深度) + 同 seed 解析链对照 (插入 / 插→拔→AOI 全链) + 合集, 存 reports/intact_sw/video; 双击开互动查看器看任意帧信号 (不参与自动运行链)",
+        "viz_kind": "sw_video",
+        "sw_bridge": true,
+        "source": "tools/intact_sw_optical_bridge.py --video-dir",
+        "source_symbol": "def "
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 120,
+      "nid": "VEH.5.008"
+    },
+    {
+      "id": "n1789997247312z6q",
+      "type": "model",
+      "name": "📚 工程记忆 · 技能与经验库",
+      "x": 140,
+      "y": 952,
+      "w": 300,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "eng_memory": true,
+        "desc": "工程记忆 = docs/memory/*.md (跨端同步记忆) + Hermes 记忆 (MEMORY/USER) + 技能库清单; 读真实文件 → 汇总条数/落盘时间 → 同步进 🧠总装记忆中枢 (顶层宏观记忆, macro_memory.uplink)",
+        "source": "src/lerobot/memory/eng_memory.py · collect/sync_to_macro",
+        "source_symbol": "class EngMemory"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.009"
+    },
+    {
+      "id": "n1789997247312ta7",
+      "type": "model",
+      "name": "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
+      "x": 882,
+      "y": 952,
+      "w": 320,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "vlm_llm": true,
+        "model": "DeepSeek-V4.1-Flash Vision (本机已配 key, 零申请) / Qwen2.5-VL-3B 本地 / Qwen3-VL / qwen-vl-max (API)",
+        "desc": "大模型层**视觉通路** (2026-09-19 实测可用): 环境帧/引擎真图/真机帧 → 场景理解 JSON (目标/在不在夹爪/画面质量/光照/背景/标定建议) → 任务规划器·异常推理器·技能编排器·意图解码器·总装记忆。 默认走 **DeepSeek Vision (deepseek-flash / V4.1-Flash, 本机 ~/.hermes/.env 已配 key, 关思考后真机帧实测 1.36s)**; 可换 Qwen: SS_VLM_URL=https://dashscope.aliyuncs.com/compatible-mode/v1 + SS_VLM_KEY + SS_VLM_MODEL=qwen-vl-max; 或本地开源 Qwen2.5-VL-3B (无需 key) / Qwen3-VL。无模型时只给规则回退摘要并如实标注。源码 scene_vlm.py + tools/vlm_worker.py",
+        "source": "src/lerobot/policies/left_right/state_space/scene_vlm.py",
+        "source_symbol": "class SceneVLM"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "in3",
+          "dtype": "any"
+        },
+        {
+          "id": "in4",
+          "label": "in4",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.011"
+    },
+    {
+      "id": "n17899972473122cx",
+      "type": "model",
+      "name": "🧿 DeepSeek-VL · 场景理解 (大模型层)",
+      "x": 496,
+      "y": 952,
+      "w": 330,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "state_space": true,
+        "vlm_llm": true,
+        "model": "deepseek-flash (DeepSeek-V4.1-Flash, Vision ✓, 本机 key 已配)",
+        "desc": "**当前生效的视觉语言大模型**: 环境帧/引擎真图/真机帧 + MES 工单 → 场景判读 (目标/位置/在不在夹爪/朝向/画面质量/光照/背景/标定建议) → 场景理解层 👁 → LLM 层。 人机在环: 模型只出『判读+建议』, 机械臂动作一律由操作员确认后下发。 右键 = 打开判读结果窗口 (场景理解字段表 + 实时画面 + 历史 + 三个动作按钮); 实测冷启动 60~134s / 缓存命中 ~1s (DeepSeek thinking 默认 high); 可切 Qwen (SS_VLM_URL/KEY/MODEL) 或本地 Qwen2.5-VL-3B/Qwen3-VL",
+        "source": "src/lerobot/policies/left_right/state_space/scene_vlm.py",
+        "source_symbol": "class SceneVLM (provider=deepseek)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in1",
+          "dtype": "any"
+        },
+        {
+          "id": "in2",
+          "label": "in2",
+          "dtype": "any"
+        },
+        {
+          "id": "in3",
+          "label": "in3",
+          "dtype": "any"
+        },
+        {
+          "id": "in4",
+          "label": "in4",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out1",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.010"
+    },
+    {
+      "id": "n1789997247312moq",
+      "type": "condition",
+      "name": "📐 板坐标系定位 (工序坐标系·免手眼)",
+      "x": 806,
+      "y": 3264,
+      "w": 280,
+      "icon": "❖",
+      "color": "#a371f7",
+      "params": {
+        "kind": "real",
+        "real": true,
+        "dock": "board_frame",
+        "source": "tools/board_frame_module.py",
+        "desc": "真机帧 → 板检测(20点/反色/排镜像) → 模块射线∩板平面 → 模块在板坐标(x,y)mm。绕开手拖位姿精度限制; 精度~1mm(图像决定)。",
+        "out": "模块在板坐标系 (x,y) mm · 离板面 mm · 板距 m · conf"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 110,
+      "nid": "VEH.5.036"
+    },
+    {
+      "id": "n1789997247312pkl",
+      "type": "model",
+      "name": "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
+      "x": 800,
+      "y": 1400,
+      "w": 280,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "kind": "real",
+        "real": true,
+        "skill": "data/skills/l2_muscle/光模块_抓放循环_v1.json",
+        "bridge": "tools/l2_ros2_bridge.py",
+        "layer": "L2",
+        "desc": "L2 肌肉记忆: 对准→下降→夹紧(force40)→抬起; 由 L3 序列调用, 经 l2_ros2_bridge(ROS2) 转发 Orin"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 124,
+      "nid": "VEH.5.020"
+    }
+  ],
+  "links": [
+    {
+      "id": "l1789997247312p2",
+      "f": "n17899972473114ce",
+      "t": "n1789997247311t5k",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "动作块 (零搜索)",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247321pj",
+      "f": "n1789997247311t5k",
+      "t": "n17899972473118sm",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "渲染回流 (闭环)",
+      "_fo": 0,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247321x2",
+      "f": "n1789997247311t5k",
+      "t": "n1789997247311kg3",
+      "f_port": "out2",
+      "t_port": "in1",
+      "label": "SW 渲染视频 (3D)",
+      "_fo": 1,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247322sj",
+      "f": "n17899972472851nw",
+      "t": "n17899972473077lv",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "metaworld 真渲染帧 224² + 39D (数据源直接接入)",
+      "_fo": 0,
+      "_no": 12,
+      "_ti": 0,
+      "_mi": 4
+    },
+    {
+      "id": "l1789997247322pl",
+      "f": "n1789997247260onm",
+      "t": "n17899972473077lv",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "↩ L2 融合状态 39D (YOLO→2D→3D→融合) — L4 档同档运行",
+      "_fo": 0,
+      "_no": 2,
+      "_ti": 1,
+      "_mi": 4
+    },
+    {
+      "id": "l1789997247322ao",
+      "f": "n1789997247281nqe",
+      "t": "n17899972473077lv",
+      "f_port": "out2",
+      "t_port": "in3",
+      "label": "↩ L2 前馈 MLP u_ff (SS_USE_MLP=1 档内接线)",
+      "_fo": 0,
+      "_no": 3,
+      "_ti": 2,
+      "_mi": 4
+    },
+    {
+      "id": "l1789997247322kz",
+      "f": "n17899972472851nw",
+      "t": "n1789997247307zjh",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "图像/视频帧",
+      "_fo": 1,
+      "_no": 12,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l17899972473228c",
+      "f": "n17899972472851nw",
+      "t": "n1789997247284gxt",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "图像流",
+      "_fo": 2,
+      "_no": 12,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247322jx",
+      "f": "n17899972472851nw",
+      "t": "n1789997247284zmd",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "触觉数据",
+      "_fo": 3,
+      "_no": 12,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247323ja",
+      "f": "n17899972472851nw",
+      "t": "n1789997247260onm",
+      "f_port": "out2",
+      "t_port": "in1",
+      "label": "状态流 39D",
+      "_fo": 4,
+      "_no": 12,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247323qe",
+      "f": "n1789997247309xx2",
+      "t": "n1789997247285ym6",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "总装上下文 → 任务规划",
+      "_fo": 0,
+      "_no": 6,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l17899972473231z",
+      "f": "n1789997247309xx2",
+      "t": "n178999724728597x",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "总装上下文 → 异常推理",
+      "_fo": 1,
+      "_no": 6,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l17899972473237p",
+      "f": "n1789997247309xx2",
+      "t": "n178999724730880y",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "总装下发 → L4 筹划",
+      "_fo": 2,
+      "_no": 6,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247323ra",
+      "f": "n1789997247309xx2",
+      "t": "n1789997247308d9g",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "总装下发 → L3 流程",
+      "_fo": 3,
+      "_no": 6,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247324o6",
+      "f": "n1789997247309xx2",
+      "t": "n1789997247308ajs",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "总装下发 → L2 肌肉记忆",
+      "_fo": 4,
+      "_no": 6,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247324pz",
+      "f": "n1789997247285ym6",
+      "t": "n1789997247283gvw",
+      "f_port": "out1",
+      "t_port": "in3",
+      "label": "技能Token序列",
+      "_fo": 0,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 9
+    },
+    {
+      "id": "l178999724732450",
+      "f": "n178999724730880y",
+      "t": "n17899972473093tm",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "工作空间势场 Φ_global (障碍/预测)",
+      "_fo": 0,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247325w3",
+      "f": "n17899972473093tm",
+      "t": "n1789997247283gvw",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "意图 −∇Φ → 调度",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 9
+    },
+    {
+      "id": "l1789997247334ez",
+      "f": "n1789997247308f5u",
+      "t": "n1789997247308avj",
+      "f_port": "out1",
+      "t_port": "in3",
+      "label": "意图 m_int → 预测器条件 (z_t 口径: z_t+δ; 活跃口径 z7 见 2D→3D 入线)",
+      "_fo": 0,
+      "_no": 3,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247335zt",
+      "f": "n1789997247286fjj",
+      "t": "n178999724728438w",
+      "f_port": "out1",
+      "t_port": "in3",
+      "label": "接触流形 (e∥进度/e⊥偏离/V)",
+      "_fo": 0,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 4
+    },
+    {
+      "id": "l1789997247335ms",
+      "f": "n17899972472861ub",
+      "t": "n178999724728438w",
+      "f_port": "out1",
+      "t_port": "in4",
+      "label": "性能流形 (δ⊥错位/插深/η)",
+      "_fo": 0,
+      "_no": 2,
+      "_ti": 1,
+      "_mi": 4
+    },
+    {
+      "id": "l1789997247335g4",
+      "f": "n1789997247308d9g",
+      "t": "n17899972473093tm",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "流程势场 Φ_process (权重时序)",
+      "_fo": 0,
+      "_no": 3,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247336ga",
+      "f": "n1789997247308d9g",
+      "t": "n1789997247283gvw",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "长程流程 → 调度参考",
+      "_fo": 1,
+      "_no": 3,
+      "_ti": 2,
+      "_mi": 9
+    },
+    {
+      "id": "l17899972473368n",
+      "f": "n1789997247307zjh",
+      "t": "n1789997247308avj",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "⬆ 潜空间 z (VLM)",
+      "_fo": 0,
+      "_no": 5,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247336zy",
+      "f": "n1789997247307zjh",
+      "t": "n1789997247286fjj",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "⬆ 潜空间 z",
+      "_fo": 1,
+      "_no": 5,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247337q0",
+      "f": "n1789997247307zjh",
+      "t": "n17899972472861ub",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "⬆ 潜空间 z",
+      "_fo": 2,
+      "_no": 5,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247337u3",
+      "f": "n1789997247307zjh",
+      "t": "n1789997247307a1x",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "潜空间 z",
+      "_fo": 3,
+      "_no": 5,
+      "_ti": 0,
+      "_mi": 5
+    },
+    {
+      "id": "l17899972473372m",
+      "f": "n1789997247307a1x",
+      "t": "n1789997247281nqe",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "action→前馈层 (练熟固化=肌肉记忆快通道)",
+      "_fo": 0,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 4
+    },
+    {
+      "id": "l1789997247338ry",
+      "f": "n1789997247308ajs",
+      "t": "n17899972473093tm",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "技能势场 Φ_SK (谷底/σ/触发)",
+      "_fo": 0,
+      "_no": 4,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247338cp",
+      "f": "n1789997247308ajs",
+      "t": "n1789997247281nqe",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "标杆 u_ff 快通道",
+      "_fo": 1,
+      "_no": 4,
+      "_ti": 1,
+      "_mi": 4
+    },
+    {
+      "id": "l1789997247338v9",
+      "f": "n1789997247308ajs",
+      "t": "n1789997247283gvw",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "标杆直通建议 → 调度",
+      "_fo": 2,
+      "_no": 4,
+      "_ti": 3,
+      "_mi": 9
+    },
+    {
+      "id": "l1789997247339lq",
+      "f": "n1789997247284gxt",
+      "t": "n1789997247307zjh",
+      "f_port": "out1",
+      "t_port": "in3",
+      "label": "检测框 token",
+      "_fo": 0,
+      "_no": 5,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247339w9",
+      "f": "n1789997247284gxt",
+      "t": "n17899972472845rb",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "检测框 2D",
+      "_fo": 1,
+      "_no": 5,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l17899972473401m",
+      "f": "n1789997247284gxt",
+      "t": "n1789997247285ekd",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "检测区域",
+      "_fo": 2,
+      "_no": 5,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247340mx",
+      "f": "n17899972472845rb",
+      "t": "n1789997247308avj",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "⬆ 几何 手/销/孔 (z R7)",
+      "_fo": 0,
+      "_no": 6,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247341om",
+      "f": "n17899972472845rb",
+      "t": "n1789997247286fjj",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "⬆ 几何 手/销/孔",
+      "_fo": 1,
+      "_no": 6,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247341wn",
+      "f": "n17899972472845rb",
+      "t": "n17899972472861ub",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "⬆ 几何 销/孔",
+      "_fo": 2,
+      "_no": 6,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l17899972473423h",
+      "f": "n17899972472845rb",
+      "t": "n1789997247273f0m",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "感知坐标 3D",
+      "_fo": 3,
+      "_no": 6,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247342dd",
+      "f": "n1789997247284zmd",
+      "t": "n1789997247273f0m",
+      "f_port": "out1",
+      "t_port": "in3",
+      "label": "触觉 4D",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247342u6",
+      "f": "n1789997247285ekd",
+      "t": "n1789997247283gvw",
+      "f_port": "out1",
+      "t_port": "in5",
+      "label": "↩ 反馈: 质量门",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 4,
+      "_mi": 9
+    },
+    {
+      "id": "l17899972473439a",
+      "f": "n1789997247260onm",
+      "t": "n1789997247273f0m",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "融合特征",
+      "_fo": 1,
+      "_no": 2,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l17899972473432z",
+      "f": "n1789997247273f0m",
+      "t": "n1789997247281nqe",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "obs 43D",
+      "_fo": 0,
+      "_no": 4,
+      "_ti": 2,
+      "_mi": 4
+    },
+    {
+      "id": "l17899972473446n",
+      "f": "n1789997247273f0m",
+      "t": "n17899972472821wd",
+      "f_port": "out2",
+      "t_port": "in1",
+      "label": "obs 43D",
+      "_fo": 1,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247344sg",
+      "f": "n1789997247281nqe",
+      "t": "n1789997247305sle",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "激活探针",
+      "_fo": 1,
+      "_no": 3,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247345r1",
+      "f": "n17899972472821wd",
+      "t": "n17899972472822i7",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "潜状态",
+      "_fo": 0,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247345ms",
+      "f": "n17899972472821wd",
+      "t": "n1789997247283zcp",
+      "f_port": "out2",
+      "t_port": "in1",
+      "label": "潜状态",
+      "_fo": 1,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247346r0",
+      "f": "n17899972472822i7",
+      "t": "n1789997247283zcp",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "next_obs 预测",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247346r3",
+      "f": "n1789997247283gvw",
+      "t": "n1789997247283r07",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "阶段切换与动作融合",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247347o7",
+      "f": "n1789997247309ar1",
+      "t": "n1789997247310g9a",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "写入后 → 微调",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247347mf",
+      "f": "n1789997247310g9a",
+      "t": "n1789997247310knk",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "微调后 → 校验",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247348qn",
+      "f": "n1789997247310knk",
+      "t": "n1789997247306ti7",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "校验通过 → 原子技能参数",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247349z0",
+      "f": "n1789997247306ti7",
+      "t": "n1789997247283sza",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "技能执行指令",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 9
+    },
+    {
+      "id": "l178999724734985",
+      "f": "n1789997247306g7c",
+      "t": "n1789997247283sza",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "技能执行指令",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 9
+    },
+    {
+      "id": "l1789997247350kn",
+      "f": "n1789997247306bxi",
+      "t": "n1789997247283sza",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "技能执行指令",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 2,
+      "_mi": 9
+    },
+    {
+      "id": "l1789997247350fq",
+      "f": "n17899972473071y7",
+      "t": "n1789997247283sza",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "技能执行指令",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 3,
+      "_mi": 9
+    },
+    {
+      "id": "l1789997247351nw",
+      "f": "n1789997247307irr",
+      "t": "n1789997247283sza",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "技能执行指令",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 4,
+      "_mi": 9
+    },
+    {
+      "id": "l178999724735250",
+      "f": "n1789997247307x56",
+      "t": "n1789997247283sza",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "技能执行指令",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 5,
+      "_mi": 9
+    },
+    {
+      "id": "l1789997247352u0",
+      "f": "n17899972473073ac",
+      "t": "n1789997247283sza",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "技能执行指令",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 6,
+      "_mi": 9
+    },
+    {
+      "id": "l1789997247353md",
+      "f": "n1789997247307m7c",
+      "t": "n1789997247283sza",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "技能执行指令",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 7,
+      "_mi": 9
+    },
+    {
+      "id": "l1789997247353vj",
+      "f": "n1789997247283sza",
+      "t": "n1789997247283g04",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "执行结果",
+      "_fo": 0,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247354sh",
+      "f": "n1789997247283g04",
+      "t": "n1789997247283zcp",
+      "f_port": "out1",
+      "t_port": "in3",
+      "label": "↩ 观测反馈: z_k (传感器)",
+      "_fo": 0,
+      "_no": 7,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247355x5",
+      "f": "n1789997247283g04",
+      "t": "n1789997247296u1n",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "引擎轨迹 全系统",
+      "_fo": 1,
+      "_no": 7,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l178999724735599",
+      "f": "n1789997247283g04",
+      "t": "n1789997247305fok",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "引擎轨迹 全系统",
+      "_fo": 2,
+      "_no": 7,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247356c7",
+      "f": "n1789997247283g04",
+      "t": "n178999724728438w",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "引擎轨迹 (总迹: 距离/前馈/残差/接触/流形)",
+      "_fo": 3,
+      "_no": 7,
+      "_ti": 2,
+      "_mi": 4
+    },
+    {
+      "id": "l1789997247356x2",
+      "f": "n1789997247283g04",
+      "t": "n1789997247305aiu",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "引擎状态/帧",
+      "_fo": 4,
+      "_no": 7,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247357l3",
+      "f": "n17899972472851nw",
+      "t": "n1789997247305xio",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "数据源信号 (仿真/真机) → 旁路观察",
+      "_fo": 5,
+      "_no": 12,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17899972473589c",
+      "f": "n1789997247283g04",
+      "t": "n1789997247284euu",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "轨迹",
+      "_fo": 5,
+      "_no": 7,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l178999724735824",
+      "f": "n1789997247283r07",
+      "t": "n1789997247310g9a",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "🛡 限幅后控制 → 通用算子 B",
+      "_fo": 0,
+      "_no": 3,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247359vo",
+      "f": "n1789997247283r07",
+      "t": "n1789997247310knk",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "🛡 限幅后控制 → 通用算子 C",
+      "_fo": 1,
+      "_no": 3,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247360qj",
+      "f": "n1789997247283r07",
+      "t": "n1789997247306ti7",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "🛡 限幅后控制 → ① 接近 SK01",
+      "_fo": 2,
+      "_no": 3,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l17899972473608c",
+      "f": "n17899972472851nw",
+      "t": "n1789997247285u62",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "仿真 metaworld 渲染帧 → 场景理解 (VLM)",
+      "_fo": 6,
+      "_no": 12,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247361n6",
+      "f": "n1789997247306z3r",
+      "t": "n1789997247285u62",
+      "f_port": "out1",
+      "t_port": "in3",
+      "label": "真机帧/位姿 → 场景理解 (VLM)",
+      "_fo": 0,
+      "_no": 4,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247362sl",
+      "f": "n17899972472851nw",
+      "t": "n1789997247286s4j",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "环境/型号规格 → 技能编排",
+      "_fo": 7,
+      "_no": 12,
+      "_ti": 0,
+      "_mi": 4
+    },
+    {
+      "id": "l1789997247362ee",
+      "f": "n1789997247306z3r",
+      "t": "n1789997247286s4j",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "真机实况 (帧+位姿) → 技能编排",
+      "_fo": 1,
+      "_no": 4,
+      "_ti": 1,
+      "_mi": 4
+    },
+    {
+      "id": "l17899972473634s",
+      "f": "n1789997247273f0m",
+      "t": "n178999724728597x",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "43D 状态/阶段 → 异常归因",
+      "_fo": 2,
+      "_no": 4,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l17899972473642r",
+      "f": "n178999724728597x",
+      "t": "n1789997247286s4j",
+      "f_port": "out1",
+      "t_port": "in3",
+      "label": "异常归因 → 技能修正",
+      "_fo": 0,
+      "_no": 2,
+      "_ti": 2,
+      "_mi": 4
+    },
+    {
+      "id": "l1789997247364qi",
+      "f": "n1789997247312z6q",
+      "t": "n1789997247309xx2",
+      "f_port": "out1",
+      "t_port": "in5",
+      "label": "工程记忆 (docs/memory+技能) → 总装",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247365ec",
+      "f": "n1789997247308ajs",
+      "t": "n1789997247310gw8",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "L2 记忆 → 图谱建链",
+      "_fo": 3,
+      "_no": 4,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247366rb",
+      "f": "n1789997247308d9g",
+      "t": "n1789997247310gw8",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "L3 记忆 → 图谱建链",
+      "_fo": 2,
+      "_no": 3,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247367ma",
+      "f": "n178999724730880y",
+      "t": "n1789997247310gw8",
+      "f_port": "out1",
+      "t_port": "in3",
+      "label": "L4 记忆 → 图谱建链",
+      "_fo": 1,
+      "_no": 2,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247368tp",
+      "f": "n1789997247286s4j",
+      "t": "n1789997247310vgo",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "新技能注册 → 技能词典",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247369lc",
+      "f": "n1789997247308f5u",
+      "t": "n1789997247310rrt",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "Δz → 意图直读",
+      "_fo": 1,
+      "_no": 3,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247369p1",
+      "f": "n1789997247285ym6",
+      "t": "n1789997247310784",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "规划 → 意图四槽 (goal/from/skill/gate)",
+      "_fo": 1,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247371m8",
+      "f": "n17899972472851nw",
+      "t": "n1789997247285urx",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "环境数据源 → 训练/推理模式",
+      "_fo": 8,
+      "_no": 12,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247371ce",
+      "f": "n1789997247285urx",
+      "t": "n1789997247308rml",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "模式 → 能力档位",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247372qy",
+      "f": "n1789997247308rml",
+      "t": "n17899972473077lv",
+      "f_port": "out1",
+      "t_port": "in4",
+      "label": "档位 L4 → INTACT 策略",
+      "_fo": 0,
+      "_no": 4,
+      "_ti": 3,
+      "_mi": 4
+    },
+    {
+      "id": "l1789997247373i4",
+      "f": "n1789997247308rml",
+      "t": "n1789997247307zjh",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "档位 L3 → VLM 编码",
+      "_fo": 1,
+      "_no": 4,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247374u3",
+      "f": "n1789997247308rml",
+      "t": "n1789997247281nqe",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "档位 L2 → 前馈加速器",
+      "_fo": 2,
+      "_no": 4,
+      "_ti": 3,
+      "_mi": 4
+    },
+    {
+      "id": "l1789997247375fz",
+      "f": "n17899972472845rb",
+      "t": "n1789997247286kt2",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "检测框/反投影 → 标定层校验",
+      "_fo": 4,
+      "_no": 6,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247376tw",
+      "f": "n1789997247307zjh",
+      "t": "n1789997247287u61",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "VLM 潜空间 → 几何/速度场标定",
+      "_fo": 4,
+      "_no": 5,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247376hy",
+      "f": "n17899972472851nw",
+      "t": "n1789997247308f5u",
+      "f_port": "out1",
+      "t_port": "in3",
+      "label": "数据源真帧 224²+39D → 意图解码输入",
+      "_fo": 9,
+      "_no": 12,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247377lv",
+      "f": "n1789997247306z3r",
+      "t": "n1789997247308f5u",
+      "f_port": "out1",
+      "t_port": "in5",
+      "label": "真机帧+编码器位姿 → 意图解码输入",
+      "_fo": 2,
+      "_no": 4,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247378u8",
+      "f": "n17899972472851nw",
+      "t": "n17899972473122cx",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "环境帧 (metaworld 渲染) → 视觉理解",
+      "_fo": 10,
+      "_no": 12,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247379h3",
+      "f": "n1789997247312ta7",
+      "t": "n1789997247285ym6",
+      "f_port": "out1",
+      "t_port": "in5",
+      "label": "↩ 场景文字理解 → 任务规划 (LLM 感知视觉)",
+      "_fo": 0,
+      "_no": 5,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247380y7",
+      "f": "n1789997247312ta7",
+      "t": "n178999724728597x",
+      "f_port": "out1",
+      "t_port": "in4",
+      "label": "场景理解 → 异常推理",
+      "_fo": 1,
+      "_no": 5,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247381dc",
+      "f": "n1789997247312ta7",
+      "t": "n1789997247286s4j",
+      "f_port": "out1",
+      "t_port": "in4",
+      "label": "场景/型号理解 → 技能编排",
+      "_fo": 2,
+      "_no": 5,
+      "_ti": 3,
+      "_mi": 4
+    },
+    {
+      "id": "l178999724738224",
+      "f": "n1789997247312ta7",
+      "t": "n1789997247308f5u",
+      "f_port": "out1",
+      "t_port": "in6",
+      "label": "↩ 视觉语义条件 → 意图解码",
+      "_fo": 3,
+      "_no": 5,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l178999724738360",
+      "f": "n1789997247312ta7",
+      "t": "n1789997247309xx2",
+      "f_port": "out1",
+      "t_port": "in6",
+      "label": "↩ 场景知识 → 总装记忆",
+      "_fo": 4,
+      "_no": 5,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247384fd",
+      "f": "n17899972472851nw",
+      "t": "n17899972473118sm",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "数据源场景/规格 → 环境渲染",
+      "_fo": 11,
+      "_no": 12,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247385v0",
+      "f": "n17899972473077lv",
+      "t": "n17899972473114ce",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "**桥**: L4 策略同一契约 (微调权重/动作接口)",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247386uw",
+      "f": "n1789997247283g04",
+      "t": "n1789997247311t5k",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "**桥**: 同一 Z-MAX 物理引擎 (真物理闭环)",
+      "_fo": 6,
+      "_no": 7,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247387ns",
+      "f": "n1789997247311kg3",
+      "t": "n1789997247284euu",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "演示链渲染视频 → 操作视频 (可视化统一)",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247388ta",
+      "f": "n1789997247308rml",
+      "t": "n17899972473114ce",
+      "f_port": "out1",
+      "t_port": "in3",
+      "label": "档位 L4 → 演示链策略",
+      "_fo": 3,
+      "_no": 4,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247389yb",
+      "f": "n1789997247284gxt",
+      "t": "n17899972473118sm",
+      "f_port": "out1",
+      "t_port": "in3",
+      "label": "检测目标清单 → 渲染标注",
+      "_fo": 3,
+      "_no": 5,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l17899972473905r",
+      "f": "n17899972472845rb",
+      "t": "n1789997247305aiu",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "3D 边界框 → 3D 视图",
+      "_fo": 5,
+      "_no": 6,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247391m9",
+      "f": "n1789997247273f0m",
+      "t": "n178999724728438w",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "43D 状态 → 仿真波形",
+      "_fo": 3,
+      "_no": 4,
+      "_ti": 3,
+      "_mi": 4
+    },
+    {
+      "id": "l178999724739294",
+      "f": "n1789997247283sza",
+      "t": "n1789997247305fok",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "执行结果 → 用例执行",
+      "_fo": 1,
+      "_no": 2,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l17899972473939w",
+      "f": "n1789997247309xx2",
+      "t": "n1789997247296u1n",
+      "f_port": "out1",
+      "t_port": "in2",
+      "label": "总装记忆 → 功能清单核对",
+      "_fo": 5,
+      "_no": 6,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247394la",
+      "f": "n17899972473122cx",
+      "t": "n1789997247312ta7",
+      "f_port": "out1",
+      "t_port": "in4",
+      "label": "DeepSeek-V4-Flash 判读结果 → 场景理解层 (人机在环)",
+      "_fo": 0,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247396xq",
+      "f": "n1789997247284gxt",
+      "t": "n1789997247312moq",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "YOLO 2D 框 → 射线 (L2 感知)",
+      "_fo": 4,
+      "_no": 5,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247397tr",
+      "f": "n17899972473122cx",
+      "t": "n1789997247312moq",
+      "f_port": "out1",
+      "t_port": "in3",
+      "label": "VL 场景判读 → 工序纠错 (L3 理解)",
+      "_fo": 1,
+      "_no": 2,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247398ez",
+      "f": "n1789997247312moq",
+      "t": "n1789997247309xx2",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "模块位姿 → 总装记忆",
+      "_fo": 0,
+      "_no": 3,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l17899972473996n",
+      "f": "n1789997247312moq",
+      "t": "n17899972472845rb",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "板坐标系 3D 定位 → 3D 框/目标点",
+      "_fo": 1,
+      "_no": 3,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l178999724740014",
+      "f": "n1789997247312moq",
+      "t": "n1789997247283gvw",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "工序坐标系目标 → 动作调制",
+      "_fo": 2,
+      "_no": 3,
+      "_ti": 5,
+      "_mi": 9
+    },
+    {
+      "id": "l1789997247401td",
+      "f": "n1789997247306z3r",
+      "t": "n1789997247312moq",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "真机帧 → 板检测 (20 圆点)",
+      "_fo": 3,
+      "_no": 4,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247403wk",
+      "f": "n1789997247312pkl",
+      "t": "n1789997247283gvw",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "L2 肌肉记忆 → 动作调制",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 6,
+      "_mi": 9
+    },
+    {
+      "id": "l1789997247404oh",
+      "f": "n1789997247281nqe",
+      "t": "n1789997247283gvw",
+      "f_port": "out2",
+      "t_port": "in6",
+      "label": "前馈 u_ff → 动作融合",
+      "_fo": 2,
+      "_no": 3,
+      "_ti": 7,
+      "_mi": 9
+    },
+    {
+      "id": "l1789997247405ms",
+      "f": "n1789997247308f5u",
+      "t": "n1789997247307a1x",
+      "f_port": "out1",
+      "t_port": "in5",
+      "label": "L4 条件 → L3 DiT",
+      "_fo": 2,
+      "_no": 3,
+      "_ti": 1,
+      "_mi": 5
+    },
+    {
+      "id": "l17899972474066q",
+      "f": "n1789997247286fjj",
+      "t": "n1789997247307a1x",
+      "f_port": "out1",
+      "t_port": "in5",
+      "label": "接触流形坐标",
+      "_fo": 1,
+      "_no": 2,
+      "_ti": 2,
+      "_mi": 5
+    },
+    {
+      "id": "l17899972474073j",
+      "f": "n17899972472861ub",
+      "t": "n1789997247307a1x",
+      "f_port": "out1",
+      "t_port": "in5",
+      "label": "性能流形代价",
+      "_fo": 1,
+      "_no": 2,
+      "_ti": 3,
+      "_mi": 5
+    },
+    {
+      "id": "l1789997247409se",
+      "f": "n1789997247287u61",
+      "t": "n1789997247307a1x",
+      "f_port": "out1",
+      "t_port": "in5",
+      "label": "潜空间 → 动作头条件",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 4,
+      "_mi": 5
+    },
+    {
+      "id": "l17899972474105j",
+      "f": "n1789997247308avj",
+      "t": "n1789997247286fjj",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "预测流形 (JEPA)",
+      "_fo": 0,
+      "_no": 3,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247412iy",
+      "f": "n1789997247308avj",
+      "t": "n17899972472861ub",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "预测流形 (JEPA)",
+      "_fo": 1,
+      "_no": 3,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l1789997247413n5",
+      "f": "n1789997247286kt2",
+      "t": "n1789997247287u61",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "几何标定 → 潜空间标定",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 2
+    },
+    {
+      "id": "l1789997247414ru",
+      "f": "n178999724728597x",
+      "t": "n1789997247283gvw",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "↩ 反馈: 恢复建议",
+      "_fo": 1,
+      "_no": 2,
+      "_ti": 8,
+      "_mi": 9
+    },
+    {
+      "id": "l1789997247415a8",
+      "f": "n1789997247308avj",
+      "t": "n1789997247309ar1",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "L4 动态参数 (世界模型预测)",
+      "_fo": 2,
+      "_no": 3,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1789997247417lm",
+      "f": "n1789997247307a1x",
+      "t": "n1789997247283sza",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "action 直通执行端 (端到端快路径)",
+      "_fo": 1,
+      "_no": 2,
+      "_ti": 8,
+      "_mi": 9
+    }
+  ]
+}

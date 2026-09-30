@@ -1,0 +1,18 @@
+[Unit]
+Description=Z-MAX state-space 4060 inference service (SS local infer, 127.0.0.1:8790)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+# ⚠️ 一律指 main 工作树 (2026-09-29 老倪: 逻辑代码只能有一个 CICD 路径)。
+#    原来写 lerobot-smolvla-lew —— 那是**另一棵分支检出**(mac-hw), 会造成"脚本在 main、库在 mac-hw"。
+WorkingDirectory=/home/ubuntu/zmax
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/lerobot-venv/bin/python tools/ss_local_infer_server.py --port 8790
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

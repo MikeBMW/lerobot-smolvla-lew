@@ -1,0 +1,39 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Z-MAX CICD 报告 v1.1.0</title>
+<style>
+body{font-family:Consolas,monospace;background:#0d1117;color:#c9d1d9;padding:32px;max-width:900px;margin:0 auto}
+h1{color:#58a6ff;border-bottom:2px solid #30363d;padding-bottom:8px}
+h2{color:#00d4aa;margin-top:28px}
+table{border-collapse:collapse;width:100%;margin:8px 0}
+td{border:1px solid #30363d;padding:8px 12px;font-size:13px}
+.badge{display:inline-block;padding:4px 16px;border-radius:12px;background:#2ea043;color:#fff;font-weight:700}
+.tag{background:#1f6feb;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px}
+.meta{color:#8b949e;font-size:12px}
+</style></head><body>
+<h1>🚀 Z-MAX CICD 闭环报告 <span class="tag">v1.1.0</span></h1>
+<p class="meta">生成时间: 2026-08-02 11:33:40 · commit <span class="tag">2b4610d5</span></p>
+<p><span class="badge">PASS</span> &nbsp; 全链路 8/8 环节通过</p>
+
+<h2>📈 训练指标 (4060)</h2>
+<table><tr><td style="color:#8b949e">steps</td><td><b>2000</b></td></tr><tr><td style="color:#8b949e">final_loss</td><td><b>1.31</b></td></tr><tr><td style="color:#8b949e">grad_norm</td><td><b>36.501</b></td></tr><tr><td style="color:#8b949e">samples</td><td><b>16000</b></td></tr><tr><td style="color:#8b949e">epochs</td><td><b>99.4</b></td></tr><tr><td style="color:#8b949e">throughput</td><td><b>17.8 step/s</b></td></tr><tr><td style="color:#8b949e">duration</td><td><b>1m52s</b></td></tr><tr><td style="color:#8b949e">device</td><td><b>RTX 4060 Laptop 8GB</b></td></tr><tr><td style="color:#8b949e">checkpoint</td><td><b>002000</b></td></tr><tr><td style="color:#8b949e">model_size</td><td><b>84MB</b></td></tr></table>
+
+<h2>🔗 CICD 链路状态</h2>
+<table><tr><th style="text-align:left">环节</th><th>状态</th><th style="text-align:left">详情</th></tr><tr><td>4060 本地训练 (ACT)</td><td style="text-align:center">✅</td><td>2000步 loss 1.310 · 17.8 step/s · 1m52s</td></tr><tr><td>模型 → ECS 中转</td><td style="text-align:center">✅</td><td>84MB 流式上传 HTTP 200 (38.1s)</td></tr><tr><td>ECS → MAC 拉取</td><td style="text-align:center">✅</td><td>弹栈式 /latest + /peek 只读保护</td></tr><tr><td>MAC → Orin 部署</td><td style="text-align:center">✅</td><td>cicd_pull_deploy.py 已验证 · ~/.zmax/models/</td></tr><tr><td>Orin 推理服务</td><td style="text-align:center">✅</td><td>:8766 /infer · CUDA · WS+HTTP双心跳</td></tr><tr><td>控制台状态反馈</td><td style="text-align:center">✅</td><td>/orin/status · GUI 状态条 5s轮询 · WS 订阅</td></tr><tr><td>Simulink 验证 CI</td><td style="text-align:center">✅</td><td>8项模型检查 · GitHub Actions 自动触发</td></tr><tr><td>GitHub 版本</td><td style="text-align:center">⏳</td><td>v1.1.0 tag + Release</td></tr></table>
+
+<h2>🧪 Simulink 模型验证 (8项)</h2>
+<table>
+<tr><th style="text-align:left">检查项</th><th>结果</th></tr>
+<tr><td>格式检查 (format=zmax-simulink)</td><td style="color:#2ea043">✅ PASS</td></tr>
+<tr><td>版本检查</td><td style="color:#2ea043">✅ PASS</td></tr>
+<tr><td>节点 Schema 检查</td><td style="color:#2ea043">✅ PASS</td></tr>
+<tr><td>连线检查</td><td style="color:#2ea043">✅ PASS</td></tr>
+<tr><td>拓扑 DAG 检查 (无环)</td><td style="color:#2ea043">✅ PASS</td></tr>
+<tr><td>端口匹配检查</td><td style="color:#2ea043">✅ PASS</td></tr>
+<tr><td>参数类型检查</td><td style="color:#2ea043">✅ PASS</td></tr>
+<tr><td>仿真执行测试</td><td style="color:#2ea043">✅ PASS</td></tr>
+</table>
+
+<h2>📦 部署产物</h2>
+<p>模型: <b>act_closed_loop_v110/checkpoints/002000</b> (84MB safetensors)</p>
+<p>目标: Orin (:8766 推理服务) · 状态上报: ECS /orin/status</p>
+<p>版本: <b>Z-MAX v1.1.0</b> (LeRobot 0.5.2 基础)</p>
+</body></html>

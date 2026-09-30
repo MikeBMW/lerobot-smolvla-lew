@@ -1,0 +1,22 @@
+[Unit]
+Description=Z-MAX Arm SDK direct bridge on Orin (xCoreSDK -> 192.168.23.160, no ROS2 stack needed)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tashan
+WorkingDirectory=/home/tashan
+Environment=PYTHONUNBUFFERED=1
+Environment=ZMAX_CTRL_IP=192.168.23.160
+Environment=ZMAX_SDK_BRIDGE_PORT=39061
+ExecStart=/usr/bin/python3 /home/tashan/zmax_arm_sdk_bridge.py
+Restart=always
+RestartSec=5
+# 资源护栏: 不打搅产线 (SDK 会话是共享资源, 低频调用)
+CPUQuota=20%
+MemoryMax=300M
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

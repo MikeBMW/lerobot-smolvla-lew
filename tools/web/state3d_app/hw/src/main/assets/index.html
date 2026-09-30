@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>Z-MAX 硬件监控</title>
+<style>
+:root{--bg:#0A0E17;--card:#141B2D;--gold:#F5A623;--green:#10B981;--red:#EF4444;--yellow:#F59E0B;--text:#E2E8F0;--dim:#94A3B8}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text);font-family:'PingFang SC','Noto Sans CJK SC',sans-serif;padding:12px;font-size:14px}
+h1{font-size:17px;margin-bottom:2px}
+.meta{color:var(--dim);font-size:11px;margin-bottom:10px}
+.card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:10px;border:1px solid rgba(255,255,255,.06)}
+.card.gold{border-color:rgba(245,166,35,.5)}
+.card h2{font-size:13px;color:var(--dim);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:13px}
+.row:last-child{border-bottom:none}
+.row .k{color:var(--dim)}
+.row .v{font-weight:600}
+.big{font-size:20px;font-weight:700;color:var(--gold)}
+.bar{height:8px;background:rgba(255,255,255,.08);border-radius:4px;margin:6px 0 10px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:4px;transition:width .6s}
+.g{background:var(--green)}.y{background:var(--yellow)}.r{background:var(--red)}.o{background:var(--gold)}
+.badge{padding:2px 8px;border-radius:9px;font-size:11px;font-weight:600}
+.bg-g{background:rgba(16,185,129,.2);color:var(--green)}
+.bg-r{background:rgba(239,68,68,.2);color:var(--red)}
+.bg-y{background:rgba(245,158,11,.2);color:var(--yellow)}
+.btn{display:block;width:100%;background:var(--gold);color:#000;border:none;padding:12px;border-radius:10px;font-size:15px;font-weight:700;margin-top:6px}
+.btn:active{opacity:.7}
+.foot{text-align:center;color:var(--dim);font-size:10px;margin-top:10px;opacity:.7;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>🖥 Z-MAX 硬件监控</h1>
+<div class="meta">数据源: 公网 JSON（每 2 分钟更新） · <span id="ts">---</span></div>
+
+<div class="card gold" id="c4060"><h2>🎮 4060（静静·工作端） · CUDA <span class="badge bg-y" id="b4060">加载中</span></h2><div id="d4060">读取中…</div></div>
+
+<div class="card" id="cmac"><h2>🍎 Mac（小芳·备份端） · MPS <span class="badge bg-y" id="bmac">加载中</span></h2><div id="dmac">读取中…</div></div>
+
+<button class="btn" onclick="load()">🔄 刷新</button>
+<div class="foot">Z-MAX · 智蜂创元<br>显存/利用率 = 真实采集（nvidia-smi）</div>
+
+<script>
+// 数据源: GitHub mac 分支的公网 JSON（4060 每 2 分钟自动同步写入）
+// 源①: ECS relay（每 3 秒刷新, 含 4060+Mac 两台, CORS 已允许）
+var RELAY = 'https://datadrive.world/api/relay/latest';
+// 源②/③: 公网 JSON 兜底（每 2 分钟）
+var URLS = [
+  'https://raw.githubusercontent.com/MikeBMW/lerobot-smolvla-lew/mac/docs/web/robot-status.json',
+  'https://cdn.jsdelivr.net/gh/MikeBMW/lerobot-smolvla-lew@mac/docs/web/robot-status.json'
+];
+
+// relay 包 → 统一格式
+function fromRelay(j){
+  var ms = (j && j.data && j.data.machines) || {};
+  var out = { metadata: {}, hardware: null, hardware_mac: null };
+  var keys = Object.keys(ms);
+  for(var i=0;i<keys.length;i++){
+    var k = keys[i], v = ms[k] || {}, g = v.gpu || {}, mem = v.mem || {}, dk = v.disk || {}, cpu = v.cpu || {};
+    if(k.indexOf('4060') >= 0 || String(g.backend).toLowerCase()==='cuda'){
+      out.hardware = { name: (v.host||'4060'), vram_used_mb: g.vram_used_mb, vram_total_mb: g.vram_total_mb,
+        vram_used_pct: g.vram_used_pct, gpu_util_pct: g.util_pct, gpu_temp_c: g.temp_c, gpu_power_w: g.power_w,
+        gpu_clk_mhz: g.clk_mhz, cpu_util_pct: cpu.percent, cpu_cores: cpu.cores,
+        mem_used_gb: mem.used_gb, mem_total_gb: mem.total_gb, disk_free_gb: dk.free_gb,
+        train_steps_per_s: null };
+      out.metadata.hardware_updated = new Date().toLocaleTimeString('zh-CN');
+    } else if(k.toLowerCase().indexOf('mac')>=0 || String(g.backend).toLowerCase()==='mps'){
+      out.hardware_mac = { node: k, backend: g.backend||'mps', device_name: v.host||'Mac',
+        stale: false, age_s: null, mem_avail_gb: mem.avail_gb, mem_total_gb: mem.total_gb,
+        disk_free_gb: dk.free_gb, cpu_util_pct: cpu.percent, cpu_cores: cpu.cores, note: (v.host||'Mac')+' · MPS' };
+    }
+  }
+  return out;
+}
+function nz(x,d){ if(x===null||x===undefined||x==='') return '—'; if(typeof x==='number'){ return d===undefined? x : x.toFixed(d);} return x; }
+function bar(pct){
+  pct = Math.max(0, Math.min(100, pct||0));
+  var c = pct>85? 'r' : (pct>60? 'y':'g');
+  return '<div class="bar"><i class="'+c+'" style="width:'+pct+'%"></i></div>';
+}
+function set(id,cls,txt){ var e=document.getElementById(id); if(e){ e.textContent=txt; e.className='badge '+cls; } }
+
+function render(d){
+  var hw = d.hardware || {};
+  document.getElementById('ts').textContent = (d.metadata||{}).hardware_updated || '---';
+  if(hw && hw.name){
+    set('b4060','bg-g','在线');
+    var vp = hw.vram_used_pct!=null? hw.vram_used_pct : 0;
+    document.getElementById('d4060').innerHTML =
+      '<div class="row"><span class="k">显卡</span><span class="v">'+ (hw.name||'') +'</span></div>'+
+      '<div class="row"><span class="k">显存占用</span><span class="v big">'+ nz(hw.vram_used_mb,0) +' / '+ nz(hw.vram_total_mb,0) +' MB · '+ nz(hw.vram_used_pct,1) +'%</span></div>'+
+      bar(vp)+
+      '<div class="row"><span class="k">GPU 利用率</span><span class="v">'+ nz(hw.gpu_util_pct) +'%</span></div>'+
+      bar(hw.gpu_util_pct)+
+      '<div class="row"><span class="k">温度 / 功耗</span><span class="v">'+ nz(hw.gpu_temp_c) +'°C / '+ nz(hw.gpu_power_w,1) +'W</span></div>'+
+      '<div class="row"><span class="k">SM 时钟</span><span class="v">'+ nz(hw.gpu_clk_mhz) +' MHz</span></div>'+
+      '<div class="row"><span class="k">CPU</span><span class="v">'+ nz(hw.cpu_util_pct,1) +'% · '+ nz(hw.cpu_cores) +'核</span></div>'+
+      '<div class="row"><span class="k">内存</span><span class="v">'+ nz(hw.mem_used_gb,1) +' / '+ nz(hw.mem_total_gb,1) +' GB</span></div>'+
+      '<div class="row"><span class="k">磁盘可用</span><span class="v">'+ nz(hw.disk_free_gb,1) +' GB</span></div>'+
+      '<div class="row"><span class="k">训练吞吐</span><span class="v">'+ nz(hw.train_steps_per_s) +' 步/s</span></div>';
+  } else {
+    set('b4060','bg-y','等待上报');
+    document.getElementById('d4060').innerHTML = '<div style="color:var(--dim)">未取到 4060 数据，点下方刷新</div>';
+  }
+  var mc = d.hardware_mac;
+  if(mc && !mc.stale){
+    set('bmac','bg-g','在线');
+    document.getElementById('dmac').innerHTML =
+      '<div class="row"><span class="k">型号</span><span class="v">'+ (mc.device_name||mc.node||'Mac') +'</span></div>'+
+      '<div class="row"><span class="k">内存</span><span class="v">'+ nz(mc.mem_avail_gb,1) +' / '+ nz(mc.mem_total_gb,1) +' GB</span></div>'+
+      '<div class="row"><span class="k">磁盘可用</span><span class="v">'+ nz(mc.disk_free_gb,1) +' GB</span></div>'+
+      '<div class="row"><span class="k">CPU</span><span class="v">'+ nz(mc.cpu_util_pct,1) +'% · '+ nz(mc.cpu_cores) +'核</span></div>'+
+      '<div class="row"><span class="k">数据龄</span><span class="v">'+ nz(mc.age_s) +' s</span></div>';
+  } else {
+    set('bmac','bg-y','等待上报');
+    document.getElementById('dmac').innerHTML = '<div style="color:var(--dim)">Mac 未上报（小芳需跑 mac_hw_report.py --dds）</div>';
+  }
+}
+
+function load(){
+  fetch(RELAY+'?t='+Date.now(),{cache:'no-store'})
+    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(j){ var d=fromRelay(j); if(d.hardware || d.hardware_mac){ render(d); return; } throw new Error('relay 无数据'); })
+    .catch(function(){
+      var i=0;
+      function tryNext(){
+        if(i>=URLS.length){ return; }
+        fetch(URLS[i++]+'?t='+Date.now(),{cache:'no-store'})
+          .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+          .then(function(d){ render(d); })
+          .catch(function(e){ tryNext(); });
+      }
+      tryNext();
+    });
+}
+load();
+setInterval(load, 60000);   // 每 60 秒自动刷新
+</script>
+</body>
+</html>

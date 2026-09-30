@@ -1,0 +1,3 @@
+type: sub_state_machine
+path: state_machines/抓取放置/state_machine.yaml
+next: done

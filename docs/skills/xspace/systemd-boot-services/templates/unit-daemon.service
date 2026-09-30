@@ -1,0 +1,20 @@
+[Unit]
+# 常驻监听/守护 (例如: 轮询真机判决并推图)。GUI 类请改用 Restart=no, 见 SKILL.md §1。
+Description=<一句话说清它常驻在干什么, 以及"只读/绝不做的事">
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/abs/path/to/repo
+# ⚠️ print/watch 型 Python 必须加这行, 否则日志是空的、无法核验
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/abs/path/to/repo/<venv>/bin/python /abs/path/to/repo/tools/<名>.py --watch
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/<名>.log
+StandardError=append:/var/log/<名>.log
+# 红线写在这里, 让下一个人看得见: 例如"只读, 绝不触发产线拍照"
+
+[Install]
+WantedBy=multi-user.target

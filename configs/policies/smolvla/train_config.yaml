@@ -1,0 +1,13 @@
+output_dir: outputs/smolvla_metaworld
+job_name: smolvla_metaworld_test
+
+policy:
+  type: smolvla
+  push_to_hub: false
+
+dataset:
+  repo_id: lerobot/metaworld_mt50
+  episodes: [0, 1, 2, 3, 4]
+
+batch_size: 1
+steps: 300

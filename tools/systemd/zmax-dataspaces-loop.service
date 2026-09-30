@@ -1,0 +1,20 @@
+[Unit]
+Description=Z-MAX 数据闭环证据采集器 (九环节 → loop.json, 供控制台/网页读)
+Documentation=file:/home/ubuntu/zmax/docs/design/global_data_space_mapping_20260929.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+Environment=PYTHONUNBUFFERED=1
+Environment=ZMAX_REPO=/home/ubuntu/zmax
+Environment=ZMAX_DATASPACE_LOOP=/home/ubuntu/zmax_data/dataspace/loop.json
+# 不需要 cyclonedds(读文件/端点) ⇒ 用主 venv
+ExecStart=/home/ubuntu/lerobot-venv/bin/python /home/ubuntu/zmax/src/lerobot/dataspace/loop_state.py --watch --interval 15
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

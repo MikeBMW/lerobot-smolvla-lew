@@ -1,0 +1,1216 @@
+{
+  "format": "zmax-simulink",
+  "version": "1.0",
+  "name": "untitled",
+  "sim": {
+    "dt": 0.01,
+    "t_end": 10.0,
+    "solver": "fixed-step"
+  },
+  "nodes": [
+    {
+      "id": "n1786285354649yhr",
+      "type": "scene",
+      "name": "🔌 SCN-01 光模块高密插拔场景",
+      "x": 80,
+      "y": 60,
+      "w": 150,
+      "icon": "🤖",
+      "color": "#ff9f43",
+      "params": {
+        "scene_id": "SCN-01",
+        "desc": "QSFP-DD 光模块自动插拔与解锁 —— 光模块工厂核心工艺：机器人将光模块从料盘抓取，插入笼子（cage），完成锁扣，再按工单拔出回盘。"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17862853546508i1",
+      "type": "skill",
+      "name": "🧩 A001 精密对准",
+      "x": 320,
+      "y": 110,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#00d4aa",
+      "params": {
+        "skill_id": "A001",
+        "scene": "SCN-01",
+        "step": 2,
+        "action": "operate",
+        "gate": 0.5,
+        "desc": "SCN-01 第2步: 精密对准"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17862853546501lu",
+      "type": "skill",
+      "name": "🧩 A005 抓取/释放",
+      "x": 320,
+      "y": 200,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#00d4aa",
+      "params": {
+        "skill_id": "A005",
+        "scene": "SCN-01",
+        "step": 3,
+        "action": "operate",
+        "gate": 0.5,
+        "desc": "SCN-01 第3步: 抓取/释放"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354650lie",
+      "type": "skill",
+      "name": "🧩 A002 插入/拔出",
+      "x": 320,
+      "y": 290,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#00d4aa",
+      "params": {
+        "skill_id": "A002",
+        "scene": "SCN-01",
+        "step": 4,
+        "action": "operate",
+        "gate": 0.5,
+        "desc": "SCN-01 第4步: 插入/拔出"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354650zdu",
+      "type": "skill",
+      "name": "🧩 A010 锁扣/解锁",
+      "x": 320,
+      "y": 380,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#00d4aa",
+      "params": {
+        "skill_id": "A010",
+        "scene": "SCN-01",
+        "step": 5,
+        "action": "operate",
+        "gate": 0.5,
+        "desc": "SCN-01 第5步: 锁扣/解锁"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354651oke",
+      "type": "coord_overlay",
+      "name": "🧩 结构条件 · SCN-01",
+      "x": 580,
+      "y": 260,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#58a6ff",
+      "params": {
+        "cond_ref": "SCN-01",
+        "skill": "光模块高密插拔场景",
+        "scene": "SCN-01",
+        "gate": 0.5,
+        "desc": "🏭 光模块高密插拔场景 条件编码 (成功率≥99.5%, 节拍≤3.5s/颗 (插或拔单次))"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354651l9n",
+      "type": "scene",
+      "name": "🤖 SCN-02 光模块柔性搬运场景",
+      "x": 100,
+      "y": 628,
+      "w": 150,
+      "icon": "🤖",
+      "color": "#ff9f43",
+      "params": {
+        "scene_id": "SCN-02",
+        "desc": "光模块/料盘/托盘智能搬运 —— 从来料区到各工位转运：料盘叉取、光模块移载、空盘回收，AGV+机械臂协同，节拍紧凑，防静电防碰撞。"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354652hi9",
+      "type": "skill",
+      "name": "🧩 XPO002 料盘穴位映射",
+      "x": 320,
+      "y": 556,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#00d4aa",
+      "params": {
+        "skill_id": "XPO002",
+        "scene": "SCN-02",
+        "step": 2,
+        "action": "operate",
+        "gate": 0.5,
+        "desc": "SCN-02 第2步: 料盘穴位映射"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354652esx",
+      "type": "skill",
+      "name": "🧩 A004 叉取/放置",
+      "x": 318,
+      "y": 692,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#00d4aa",
+      "params": {
+        "skill_id": "A004",
+        "scene": "SCN-02",
+        "step": 3,
+        "action": "operate",
+        "gate": 0.5,
+        "desc": "SCN-02 第3步: 叉取/放置"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354653og0",
+      "type": "coord_overlay",
+      "name": "🧩 结构条件 · SCN-02",
+      "x": 570,
+      "y": 615,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#58a6ff",
+      "params": {
+        "cond_ref": "SCN-02",
+        "skill": "光模块柔性搬运场景",
+        "scene": "SCN-02",
+        "gate": 0.5,
+        "desc": "🏭 光模块柔性搬运场景 条件编码 (成功率≥99%, 节拍≤8s/颗 (取放到下一工位))"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354653g1y",
+      "type": "scene",
+      "name": "🔍 SCN-03 光模块光学检测场景",
+      "x": 106,
+      "y": 888,
+      "w": 150,
+      "icon": "🤖",
+      "color": "#ff9f43",
+      "params": {
+        "scene_id": "SCN-03",
+        "desc": "光模块全检 AOI —— 金线/焊点/耦合面/外观 4 道光学检测：高倍显微成像 + 深度学习缺陷分类, 判定 PASS/FAIL 并自动分"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354654txn",
+      "type": "skill",
+      "name": "🧩 Q003 金线/焊点显微检测",
+      "x": 312,
+      "y": 855,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#00d4aa",
+      "params": {
+        "skill_id": "Q003",
+        "scene": "SCN-03",
+        "step": 3,
+        "action": "operate",
+        "gate": 0.5,
+        "desc": "SCN-03 第3步: 金线/焊点显微检测"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354654hgh",
+      "type": "skill",
+      "name": "🧩 Q002 3D尺寸/形貌检测",
+      "x": 315,
+      "y": 953,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#00d4aa",
+      "params": {
+        "skill_id": "Q002",
+        "scene": "SCN-03",
+        "step": 4,
+        "action": "operate",
+        "gate": 0.5,
+        "desc": "SCN-03 第4步: 3D尺寸/形貌检测"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354655b1g",
+      "type": "skill",
+      "name": "🧩 Q001 2D外观检测",
+      "x": 315,
+      "y": 1051,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#00d4aa",
+      "params": {
+        "skill_id": "Q001",
+        "scene": "SCN-03",
+        "step": 5,
+        "action": "operate",
+        "gate": 0.5,
+        "desc": "SCN-03 第5步: 2D外观检测"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354655c9n",
+      "type": "skill",
+      "name": "🧩 Q004 缺陷分类",
+      "x": 315,
+      "y": 1135,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#00d4aa",
+      "params": {
+        "skill_id": "Q004",
+        "scene": "SCN-03",
+        "step": 6,
+        "action": "operate",
+        "gate": 0.5,
+        "desc": "SCN-03 第6步: 缺陷分类"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354656icw",
+      "type": "coord_overlay",
+      "name": "🧩 结构条件 · SCN-03",
+      "x": 608,
+      "y": 990,
+      "w": 150,
+      "icon": "🧩",
+      "color": "#58a6ff",
+      "params": {
+        "cond_ref": "SCN-03",
+        "skill": "光模块光学检测场景",
+        "scene": "SCN-03",
+        "gate": 0.5,
+        "desc": "🏭 光模块光学检测场景 条件编码 (成功率≥99.9%, 节拍≤12s/颗 (4道检测全流程))"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354656rt3",
+      "type": "system",
+      "name": "🧠 SYS1 动作系统",
+      "x": 950,
+      "y": 300,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "layer": "sys1",
+        "shared": true,
+        "desc": "三场景共用: 接收 SCN-01/02/03 结构条件编码, 执行动作序列"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17862853546572qa",
+      "type": "action",
+      "name": "🎯 A001 精密对准",
+      "x": 1250,
+      "y": 180,
+      "w": 150,
+      "icon": "➤",
+      "color": "#00d4aa",
+      "params": {
+        "action_out": "/dds/action/a001",
+        "scene": "SCN-01/02/03",
+        "gate": 0.5,
+        "desc": "A001 精密对准 — SYS1 动作输出"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354658ixn",
+      "type": "action",
+      "name": "🎯 A002 插入/拔出",
+      "x": 1440,
+      "y": 180,
+      "w": 150,
+      "icon": "➤",
+      "color": "#00d4aa",
+      "params": {
+        "action_out": "/dds/action/a002",
+        "scene": "SCN-01/02/03",
+        "gate": 0.5,
+        "desc": "A002 插入/拔出 — SYS1 动作输出"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354658kl2",
+      "type": "action",
+      "name": "🎯 A003 压装/扣合",
+      "x": 1630,
+      "y": 180,
+      "w": 150,
+      "icon": "➤",
+      "color": "#00d4aa",
+      "params": {
+        "action_out": "/dds/action/a003",
+        "scene": "SCN-01/02/03",
+        "gate": 0.5,
+        "desc": "A003 压装/扣合 — SYS1 动作输出"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17862853546594tz",
+      "type": "action",
+      "name": "🎯 A004 旋拧/锁付",
+      "x": 1820,
+      "y": 180,
+      "w": 150,
+      "icon": "➤",
+      "color": "#00d4aa",
+      "params": {
+        "action_out": "/dds/action/a004",
+        "scene": "SCN-01/02/03",
+        "gate": 0.5,
+        "desc": "A004 旋拧/锁付 — SYS1 动作输出"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354659hwe",
+      "type": "action",
+      "name": "🎯 A005 扭矩/角度控制",
+      "x": 2010,
+      "y": 180,
+      "w": 150,
+      "icon": "➤",
+      "color": "#00d4aa",
+      "params": {
+        "action_out": "/dds/action/a005",
+        "scene": "SCN-01/02/03",
+        "gate": 0.5,
+        "desc": "A005 扭矩/角度控制 — SYS1 动作输出"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354660cgx",
+      "type": "action",
+      "name": "🎯 A006 轨迹跟踪加工",
+      "x": 1250,
+      "y": 300,
+      "w": 150,
+      "icon": "➤",
+      "color": "#00d4aa",
+      "params": {
+        "action_out": "/dds/action/a006",
+        "scene": "SCN-01/02/03",
+        "gate": 0.5,
+        "desc": "A006 轨迹跟踪加工 — SYS1 动作输出"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354660nbs",
+      "type": "action",
+      "name": "🎯 A007 点胶/涂布/喷涂",
+      "x": 1440,
+      "y": 300,
+      "w": 150,
+      "icon": "➤",
+      "color": "#00d4aa",
+      "params": {
+        "action_out": "/dds/action/a007",
+        "scene": "SCN-01/02/03",
+        "gate": 0.5,
+        "desc": "A007 点胶/涂布/喷涂 — SYS1 动作输出"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17862853546614od",
+      "type": "action",
+      "name": "🎯 A008 贴标/贴装",
+      "x": 1630,
+      "y": 300,
+      "w": 150,
+      "icon": "➤",
+      "color": "#00d4aa",
+      "params": {
+        "action_out": "/dds/action/a008",
+        "scene": "SCN-01/02/03",
+        "gate": 0.5,
+        "desc": "A008 贴标/贴装 — SYS1 动作输出"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17862853546619rv",
+      "type": "action",
+      "name": "🎯 A009 撕膜/贴膜",
+      "x": 1820,
+      "y": 300,
+      "w": 150,
+      "icon": "➤",
+      "color": "#00d4aa",
+      "params": {
+        "action_out": "/dds/action/a009",
+        "scene": "SCN-01/02/03",
+        "gate": 0.5,
+        "desc": "A009 撕膜/贴膜 — SYS1 动作输出"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354662urp",
+      "type": "action",
+      "name": "🎯 A010 锡焊/钎焊",
+      "x": 2010,
+      "y": 300,
+      "w": 150,
+      "icon": "➤",
+      "color": "#00d4aa",
+      "params": {
+        "action_out": "/dds/action/a010",
+        "scene": "SCN-01/02/03",
+        "gate": 0.5,
+        "desc": "A010 锡焊/钎焊 — SYS1 动作输出"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786285354663zd0",
+      "type": "action",
+      "name": "📤 Action 汇总",
+      "x": 2015,
+      "y": 425,
+      "w": 150,
+      "icon": "➤",
+      "color": "#00d4aa",
+      "params": {
+        "action_out": "/dds/action/scn_all",
+        "scene": "SCN-01/02/03",
+        "gate": 0.5,
+        "desc": "A001~A010 动作汇总输出: /dds/action/scn_all (画板可加载)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    }
+  ],
+  "links": [
+    {
+      "id": "l1786285354650d4",
+      "f": "n17862853546508i1",
+      "t": "n17862853546501lu",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "next",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l178628535465037",
+      "f": "n17862853546501lu",
+      "t": "n1786285354650lie",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "next",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17862853546502h",
+      "f": "n1786285354650lie",
+      "t": "n1786285354650zdu",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "next",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786285354652ea",
+      "f": "n1786285354652hi9",
+      "t": "n1786285354652esx",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "next",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17862853546552w",
+      "f": "n1786285354654txn",
+      "t": "n1786285354654hgh",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "next",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786285354655wx",
+      "f": "n1786285354654hgh",
+      "t": "n1786285354655b1g",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "next",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786285354655o8",
+      "f": "n1786285354655b1g",
+      "t": "n1786285354655c9n",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "next",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786285354656xd",
+      "f": "n1786285354651oke",
+      "t": "n1786285354656rt3",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "action",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 3
+    },
+    {
+      "id": "l17862853546572d",
+      "f": "n1786285354653og0",
+      "t": "n1786285354656rt3",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "action",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 3
+    },
+    {
+      "id": "l1786285354657sj",
+      "f": "n1786285354656icw",
+      "t": "n1786285354656rt3",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "action",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 2,
+      "_mi": 3
+    },
+    {
+      "id": "l1786285354657q0",
+      "f": "n1786285354656rt3",
+      "t": "n17862853546572qa",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "action",
+      "_fo": 0,
+      "_no": 11,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786285354658xw",
+      "f": "n1786285354656rt3",
+      "t": "n1786285354658ixn",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "action",
+      "_fo": 1,
+      "_no": 11,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786285354658mu",
+      "f": "n1786285354656rt3",
+      "t": "n1786285354658kl2",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "action",
+      "_fo": 2,
+      "_no": 11,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786285354659zt",
+      "f": "n1786285354656rt3",
+      "t": "n17862853546594tz",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "action",
+      "_fo": 3,
+      "_no": 11,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786285354659kz",
+      "f": "n1786285354656rt3",
+      "t": "n1786285354659hwe",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "action",
+      "_fo": 4,
+      "_no": 11,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786285354660c9",
+      "f": "n1786285354656rt3",
+      "t": "n1786285354660cgx",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "action",
+      "_fo": 5,
+      "_no": 11,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786285354660wv",
+      "f": "n1786285354656rt3",
+      "t": "n1786285354660nbs",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "action",
+      "_fo": 6,
+      "_no": 11,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786285354661vd",
+      "f": "n1786285354656rt3",
+      "t": "n17862853546614od",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "action",
+      "_fo": 7,
+      "_no": 11,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786285354662us",
+      "f": "n1786285354656rt3",
+      "t": "n17862853546619rv",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "action",
+      "_fo": 8,
+      "_no": 11,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786285354662pq",
+      "f": "n1786285354656rt3",
+      "t": "n1786285354662urp",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "action",
+      "_fo": 9,
+      "_no": 11,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17862853546638e",
+      "f": "n1786285354656rt3",
+      "t": "n1786285354663zd0",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "action",
+      "_fo": 10,
+      "_no": 11,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786285918990ps",
+      "f": "n1786285354651l9n",
+      "t": "n1786285354652hi9",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l178628592778642",
+      "f": "n1786285354652esx",
+      "t": "n1786285354653og0",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786285948812ca",
+      "f": "n1786285354653g1y",
+      "t": "n1786285354654txn",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17862859573204s",
+      "f": "n1786285354655c9n",
+      "t": "n1786285354656icw",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17862859804011w",
+      "f": "n1786285354649yhr",
+      "t": "n17862853546508i1",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l178628598806197",
+      "f": "n1786285354650zdu",
+      "t": "n1786285354651oke",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    }
+  ]
+}

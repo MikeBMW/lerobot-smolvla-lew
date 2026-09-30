@@ -1,0 +1,459 @@
+{
+ "_doc": "Z-MAX 真机机器人模型参数 单一真源 — 由 tools/robot_spec_sync.py 生成。所有层 (状态空间引擎 / 3D 视图 / L2 安全闸 / 感知反投影 / 训练配置) 一律读本文件, 禁止再各自硬编码几何/限位/质量。真机只读采集, 零运动指令。",
+ "_generated_at": "2026-09-22 11:12:22",
+ "robot": {
+  "name": "XMS5-R800-W4G3B4C",
+  "dof": 6,
+  "urdf": "config/robot/xms5_r800_w4g3b4c.urdf",
+  "urdf_sha256_16": "4e0288ac88042652",
+  "mover_joints": [
+   "XMS5-R800-W4G3B4C_joint_1",
+   "XMS5-R800-W4G3B4C_joint_2",
+   "XMS5-R800-W4G3B4C_joint_3",
+   "XMS5-R800-W4G3B4C_joint_4",
+   "XMS5-R800-W4G3B4C_joint_5",
+   "XMS5-R800-W4G3B4C_joint_6"
+  ]
+ },
+ "joints": [
+  {
+   "name": "XMS5-R800-W4G3B4C_joint_1",
+   "type": "revolute",
+   "parent": "XMS5-R800-W4G3B4C_base",
+   "child": "XMS5-R800-W4G3B4C_link1",
+   "axis": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "origin_xyz": [
+    0.0,
+    0.0,
+    0.328
+   ],
+   "origin_rpy": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "limit": {
+    "lower": -6.2832,
+    "upper": 6.2832,
+    "effort": 113.0,
+    "velocity": 3.141592653589793
+   }
+  },
+  {
+   "name": "XMS5-R800-W4G3B4C_joint_2",
+   "type": "revolute",
+   "parent": "XMS5-R800-W4G3B4C_link1",
+   "child": "XMS5-R800-W4G3B4C_link2",
+   "axis": [
+    0.0,
+    1.0,
+    0.0
+   ],
+   "origin_xyz": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "origin_rpy": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "limit": {
+    "lower": -2.7925,
+    "upper": 2.618,
+    "effort": 113.0,
+    "velocity": 3.141592653589793
+   }
+  },
+  {
+   "name": "XMS5-R800-W4G3B4C_joint_3",
+   "type": "revolute",
+   "parent": "XMS5-R800-W4G3B4C_link2",
+   "child": "XMS5-R800-W4G3B4C_link3",
+   "axis": [
+    0.0,
+    -1.0,
+    0.0
+   ],
+   "origin_xyz": [
+    0.05,
+    0.0,
+    0.4
+   ],
+   "origin_rpy": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "limit": {
+    "lower": -2.9671,
+    "upper": 2.4435,
+    "effort": 70.0,
+    "velocity": 3.141592653589793
+   }
+  },
+  {
+   "name": "XMS5-R800-W4G3B4C_joint_4",
+   "type": "revolute",
+   "parent": "XMS5-R800-W4G3B4C_link3",
+   "child": "XMS5-R800-W4G3B4C_link4",
+   "axis": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "origin_xyz": [
+    -0.05,
+    0.0,
+    0.4
+   ],
+   "origin_rpy": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "limit": {
+    "lower": -6.2832,
+    "upper": 6.2832,
+    "effort": 25.0,
+    "velocity": 3.141592653589793
+   }
+  },
+  {
+   "name": "XMS5-R800-W4G3B4C_joint_5",
+   "type": "revolute",
+   "parent": "XMS5-R800-W4G3B4C_link4",
+   "child": "XMS5-R800-W4G3B4C_link5",
+   "axis": [
+    0.0,
+    -1.0,
+    0.0
+   ],
+   "origin_xyz": [
+    0.0,
+    0.136,
+    0.0
+   ],
+   "origin_rpy": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "limit": {
+    "lower": -6.2832,
+    "upper": 6.2832,
+    "effort": 25.0,
+    "velocity": 3.141592653589793
+   }
+  },
+  {
+   "name": "XMS5-R800-W4G3B4C_joint_6",
+   "type": "revolute",
+   "parent": "XMS5-R800-W4G3B4C_link5",
+   "child": "XMS5-R800-W4G3B4C_link6",
+   "axis": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "origin_xyz": [
+    0.0,
+    0.0,
+    0.1035
+   ],
+   "origin_rpy": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "limit": {
+    "lower": -6.2832,
+    "upper": 6.2832,
+    "effort": 19.0,
+    "velocity": 3.141592653589793
+   }
+  },
+  {
+   "name": "joint_tool0",
+   "type": "fixed",
+   "parent": "XMS5-R800-W4G3B4C_link6",
+   "child": "tool0",
+   "axis": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "origin_xyz": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "origin_rpy": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "limit": null
+  },
+  {
+   "name": "joint_tool1",
+   "type": "fixed",
+   "parent": "tool0",
+   "child": "tool1",
+   "axis": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "origin_xyz": [
+    -0.01588615307905028,
+    0.018348498948158043,
+    0.2586775713451509
+   ],
+   "origin_rpy": [
+    0.03702517838719945,
+    0.6751675651256659,
+    2.375248653715161
+   ],
+   "limit": null
+  }
+ ],
+ "links": [
+  {
+   "name": "XMS5-R800-W4G3B4C_base",
+   "mass": null,
+   "com": null,
+   "inertia": null
+  },
+  {
+   "name": "XMS5-R800-W4G3B4C_link1",
+   "mass": 3.167,
+   "com": [
+    1.1e-05,
+    -0.007992,
+    0.23584200000000002
+   ],
+   "inertia": {
+    "ixx": 0.03116799,
+    "ixy": -6.5e-07,
+    "ixz": -4.27e-06,
+    "iyy": 0.03071271,
+    "iyz": -0.00223656,
+    "izz": 0.0058774
+   }
+  },
+  {
+   "name": "XMS5-R800-W4G3B4C_link2",
+   "mass": 4.291,
+   "com": [
+    0.016666,
+    -0.069301,
+    0.184671
+   ],
+   "inertia": {
+    "ixx": 0.14042515,
+    "ixy": 0.00039009,
+    "ixz": 0.01494819,
+    "iyy": 0.14040198,
+    "iyz": -0.00255277,
+    "izz": 0.01264775
+   }
+  },
+  {
+   "name": "XMS5-R800-W4G3B4C_link3",
+   "mass": 2.018,
+   "com": [
+    0.0249,
+    0.009986,
+    0.08373900000000001
+   ],
+   "inertia": {
+    "ixx": 0.02103842,
+    "ixy": -0.0004839,
+    "ixz": 0.00402665,
+    "iyy": 0.02167667,
+    "iyz": -0.0017049,
+    "izz": 0.00429357
+   }
+  },
+  {
+   "name": "XMS5-R800-W4G3B4C_link4",
+   "mass": 2.005,
+   "com": [
+    6.6e-05,
+    -0.008515,
+    -0.068865
+   ],
+   "inertia": {
+    "ixx": 0.01325119,
+    "ixy": 6.1e-07,
+    "ixz": 2.78e-06,
+    "iyy": 0.01255684,
+    "iyz": -0.00115731,
+    "izz": 0.00274485
+   }
+  },
+  {
+   "name": "XMS5-R800-W4G3B4C_link5",
+   "mass": 1.507,
+   "com": [
+    3e-06,
+    0.029172999999999998,
+    0.007019
+   ],
+   "inertia": {
+    "ixx": 0.00503262,
+    "ixy": -6.08e-06,
+    "ixz": -1.29e-06,
+    "iyy": 0.00261442,
+    "iyz": -0.00033165,
+    "izz": 0.0039448
+   }
+  },
+  {
+   "name": "XMS5-R800-W4G3B4C_link6",
+   "mass": 0.634,
+   "com": [
+    7.3e-05,
+    7.9e-05,
+    -0.044853000000000004
+   ],
+   "inertia": {
+    "ixx": 0.00099702,
+    "ixy": -1.38e-06,
+    "ixz": 9e-07,
+    "iyy": 0.00100253,
+    "iyz": 1.58e-06,
+    "izz": 0.00044795
+   }
+  },
+  {
+   "name": "tool0",
+   "mass": null,
+   "com": null,
+   "inertia": null
+  },
+  {
+   "name": "tool1",
+   "mass": null,
+   "com": null,
+   "inertia": null
+  }
+ ],
+ "tool": {
+  "frame": "tool1",
+  "xyz": [
+   -0.01588615307905028,
+   0.018348498948158043,
+   0.2586775713451509
+  ],
+  "rpy": [
+   0.03702517838719945,
+   0.6751675651256659,
+   2.375248653715161
+  ]
+ },
+ "control_tcp": {
+  "ok": true,
+  "n_frames": 400,
+  "frame": "XMS5-R800-W4G3B4C_link6",
+  "offset_xyz_m": [
+   -0.015875,
+   0.015293,
+   0.260422
+  ],
+  "offset_std_mm": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "rot_dev_deg_max": 0.0,
+  "verdict": "刚体一致 (std ≤2mm 且姿态偏差 ≤1°) — 可作产线 TCP 口径入库",
+  "_src": "真机只读采集落盘多帧反解 (FK(jpos) 对 tcp_pose)"
+ },
+ "payload": {
+  "mass_kg": 1.51,
+  "cog_m": [
+   0.01617,
+   0.01289,
+   0.031170000000000003
+  ],
+  "_src": "state_repair_0922_002520.json",
+  "_reason": null
+ },
+ "totals": {
+  "link_mass_sum_kg": 13.622,
+  "n_links_with_inertia": 6,
+  "n_links_missing_inertial": [
+   "XMS5-R800-W4G3B4C_base",
+   "tool0",
+   "tool1"
+  ]
+ },
+ "live_check": {
+  "state_file": "/home/ubuntu/zmax_data/real_tap_20260922/state_20260922.jsonl",
+  "age_s": 0.09076094627380371,
+  "tcp": [
+   0.6639057777275594,
+   -0.029252691090582206,
+   0.2935475970985788
+  ],
+  "jpos": [
+   0.160238,
+   -0.062673,
+   -2.543302,
+   1.446863,
+   0.435109,
+   -0.697636
+  ],
+  "jvel": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "ft": [
+   11.7027,
+   -1.9529,
+   9.3787,
+   0.3712,
+   0.9482,
+   0.2193
+  ],
+  "fk": {
+   "ok": true,
+   "tcp_fk": [
+    0.664577,
+    -0.026329,
+    0.295386
+   ],
+   "tcp_real": [
+    0.663906,
+    -0.029253,
+    0.293548
+   ],
+   "err_mm": 3.518,
+   "verdict": "一致 (≤5mm)",
+   "jpos_used": [
+    0.160238,
+    -0.062673,
+    -2.543302,
+    1.446863,
+    0.435109,
+    -0.697636
+   ]
+  }
+ },
+ "_provenance": {
+  "kinematics/mass/inertia": "现场 URDF xms5_r800_w4g3b4c.urdf (厂家导出)",
+  "payload": "控制器 setToolset 只读回读 (state_repair_0922_002520.json)",
+  "live_truth": "真机只读采集落盘 (ROS2 远程只读订阅, 零下行)"
+ }
+}

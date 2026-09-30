@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""l5_canvas_status_patch.py.draft — 【冻结期待并入的 GUI 改动】画布可见性第二半, 暂不落盘
+
+背景 (老倪 2026-09-28 现场): 「选择 L5 后, 点击运行没反应」—— 功能其实在跑 (07:20:52 那次点击
+真起了闭环 pid 2126060), 但**结果没落在用户正看的界面上** ⇒ 在他眼里就是没反应。
+验收判据: **他自己点一次运行, 不打开任何日志就能在画布上看到阶段在动。**
+
+已在文件里(已落盘, 已验证): 
+  · `tools/gui/simulink_module.py` 能力档位节点(sscap) paint 里画 `params["l5_lines"]` 两行
+    (黄=运行中/绿=已完成/红=失败), 位置 y=58/74 —— 他点的就是这个节点。
+  · L5 闭环节点(🧿 L5 · …) paint 里画三行 (`elif params.get("l5_loop")` 分支)。
+  · `on_l5_annotate_train` 启动 QTimer(2000ms) → `_l5_poll` 读 state.json → `_l5_badge` 写节点 + update()。
+
+本 draft = 还没落盘的 3 处 (等主会话放行后再并入; 都在 `tools/gui/simulink_module.py`):
+
+──────────────────────── ① `_l5_pid` 判活修宽 (现场实锤的必要项) ────────────────────────
+OLD:
+    def _l5_pid(self):
+        \"\"\"L5 编排进程 pid (存活才返回) —— 按 pid 判活, 不用 ps|grep 模式匹配 (防自杀)\"\"\"
+        st = self._l5_state()
+        if st.get("status") != "running":
+            return None
+        pid = (st.get("stage_detail") or {}).get("pid")
+NEW:
+    def _l5_pid(self):
+        \"\"\"L5 编排进程 pid (存活才返回)。
+        ⚠️ 2026-09-28 现场坑: 原实现只看 stage_detail.pid = **当前阶段的子进程** pid —— 阶段切换
+        间隙 (子进程刚退、下一个还没起) 会误判"没在跑" → 画布徽章停更 / 再点运行会重复启动。
+        口径: 优先 state.pid (编排自身 pid, 由 save_state 写入) → 再 stage_detail.pid →
+        最后 status==running 且 state.json mtime < 180s (兜底: 看不到 pid 也算在跑)。\"\"\"
+        st = self._l5_state()
+        if st.get("status") != "running":
+            return None
+        for _cand in (st.get("pid"), (st.get("stage_detail") or {}).get("pid")):
+            try:
+                _p = int(_cand)
+                os.kill(_p, 0)
+                return _p
+            except Exception:
+                pass
+        try:
+            if time.time() - os.path.getmtime(self.L5_STATE) < 180:
+                return int(st.get("pid") or 0) or -1     # -1 = "在跑但 pid 不可得"(仍算运行中)
+        except Exception:
+            pass
+        return None
+
+──────────────────────── ② 轮询随画布打开就起 (不依赖"从 GUI 点的运行") ────────────────────────
+在 `open_state_space()` 末尾 (`self._relayout_row_gaps()` 之后) 加:
+    # 🧿 2026-09-28: 画布一打开就挂 L5 状态轮询 —— 无论闭环是从画布点的还是别处起的,
+    #   画布都能看到阶段在动 (老倪判据: 不打开日志就能看见阶段)
+    try:
+        self._l5_start_poll()
+    except Exception:
+        pass
+并把 `on_l5_annotate_train` 里的 timer 创建段抽成新方法:
+    def _l5_start_poll(self, interval_ms: int = 1000):
+        t = getattr(self, "_l5_timer", None)
+        if t is None:
+            t = QTimer(self)
+            t.timeout.connect(self._l5_poll)
+            self._l5_timer = t
+        t.setInterval(interval_ms)
+        if not t.isActive():
+            t.start()
+        self._l5_poll(force=True)
+(`_l5_poll` 里 `if not pid and not force:` 的停表逻辑保持: 阶段全部跑完且无进程 → 停表。)
+
+──────────────────────── ③ 双击 L5 节点 → 弹"闭环状态面板"(可选, 便于现场看产物) ────────────────────────
+`on_l5_loop_node` 已打印阶段表 + 产物路径到日志 (够用)。若要更进一步, 可加一个非模态小窗
+列出 7 阶段 ok/reason/日志路径 + 产物路径 (state.json 直读)。**优先级低于 ①②**, 未实现。
+
+──────────────────────── 验证方式 (并入后必须跑) ────────────────────────
+1) ast + 真 import:
+   cd tools/gui && python -c "import ast;ast.parse(open('simulink_module.py').read())"
+   QT_QPA_PLATFORM=offscreen ../../gui-venv311/bin/python -c "import simulink_module"
+2) 离屏渲染 (连线不许掉):
+   ./gui-venv311/bin/python tools/verify_canvas_render.py     # 期望 87 节点项 / ≥172 连线项
+3) 真点一次 (现场那条命令通道, 不用重启):
+   echo l5_status > /tmp/zmax_nav_cmd     # 让正在跑的控制台把画布状态落盘 + 刷节点
+   cat /tmp/zmax_l5_interaction/canvas_state.json   # 看 canvas_node.l5_lines 是否有阶段文字
+4) 目视: 画布上「🧭 能力档位」节点与「🧿 L5 · …」节点应显示
+   `L5 运行中 · 阶段 annotate · 完 N/9 · pid xxxxx` + `监督: 框 N 映射 / M 跳过 · 图 K`
+"""
+
+PATCH_STATUS = {
+    "applied_already": [
+        "simulink_module.py: 能力档位节点(sscap) paint 画 l5_lines 两行",
+        "simulink_module.py: L5 节点 paint 画 l5_lines 三行 (elif params.get('l5_loop'))",
+        "simulink_module.py: on_l5_annotate_train 启动 QTimer → _l5_poll → _l5_badge",
+        "simulink_module.py: _toggle_cap/_cap_level_now/on_l5_loop_node/档位四档 L2..L5",
+        "studio.py: /tmp/zmax_nav_cmd 加 l5_interact / l5_status / l5_diag 命令 + 启动自动加载钩子",
+        "simulink_module.py ①: _l5_pid 改宽 (state.pid → stage_detail.pid → mtime<180s 兜底) — 已落盘",
+        "simulink_module.py ②: open_state_space 末尾 _l5_start_poll(1000) 常驻轮询 — 已落盘 (2026-09-28 07:36)",
+        "simulink_module.py 新增: 点击瞬间反馈(画布大横幅 + 按钮文字) · 标题把横幅放最前 "
+        "(防 GNOME 省略号) · 跑完不再停表 · 修 _show_bubble 拿 scenePos 当全局坐标 (气泡飘走看不见)",
+    ],
+    "pending_frozen": [
+        "③ 双击 L5 节点的状态面板 (可选, 仍未实现)",
+    ],
+    "why_pending": "③ 非阻塞项, 优先级低于已落盘的三处",
+    "do_not_reapply": "①② 已于 2026-09-28 落盘 —— 再按本文档顶部的 OLD/NEW 重贴会覆盖"
+                      "现有的『横幅放标题最前』与『点击瞬间大横幅』逻辑 (regression)。",
+}

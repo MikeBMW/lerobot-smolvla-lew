@@ -1,0 +1,104 @@
+{
+ "ts": "2026-09-22 08:41:49",
+ "skill": "L2.grasp_vision",
+ "apply": false,
+ "judge": {
+  "ok": true,
+  "slot": "slot2",
+  "reason": "双路一致(YOLO框+像素棱边峰)",
+  "evidence": {
+   "tcp": [
+    0.491495,
+    0.417166,
+    0.254241
+   ],
+   "tcp_src": "live",
+   "frame_age_s": 0.09,
+   "frame": "/home/ubuntu/zmax_ss_remote/cam_rs.png",
+   "proj": {
+    "slot1": [
+     404.4,
+     171.0,
+     0.4245
+    ],
+    "slot2": [
+     358.0,
+     173.6,
+     0.425
+    ]
+   },
+   "n_det": 1,
+   "routeA_box": {
+    "slot1": [
+     {
+      "conf": 0.801,
+      "dx": 43.12468796778046,
+      "dy": 15.502494296960577,
+      "hit": false
+     }
+    ],
+    "slot2": [
+     {
+      "conf": 0.801,
+      "dx": 3.2779244249525163,
+      "dy": 12.891234008388949,
+      "hit": true
+     }
+    ],
+    "_box_slot": "slot2"
+   },
+   "routeB_pixel": {
+    "band_y": [
+     30,
+     181
+    ],
+    "peaks": [
+     358,
+     465,
+     44
+    ],
+    "per_slot": {
+     "slot1": {
+      "nearest_peak": 358,
+      "peak_dist_px": 46.37468796778046,
+      "edge_energy": 2.176589250564575,
+      "roi": [
+       382,
+       30,
+       426,
+       180
+      ]
+     },
+     "slot2": {
+      "nearest_peak": 358,
+      "peak_dist_px": 0.027924424952516347,
+      "edge_energy": 9.158294677734375,
+      "roi": [
+       335,
+       33,
+       379,
+       183
+      ]
+     }
+    },
+    "slot": "slot2",
+    "ambiguous": false
+   }
+  }
+ },
+ "preflight": {
+  "ok": true,
+  "checks": {
+   "power_on": "PASS",
+   "opstate_idle": "PASS",
+   "gripper_open": "PASS(1000.0)",
+   "frame_fresh": "PASS(0.09s)",
+   "vision": "PASS(slot2)"
+  },
+  "power_raw": "POWER PowerState.on\nMODE OperateMode.automatic\nOPST OperationState.idle\n"
+ },
+ "spec": {
+  "skill": "L2.grasp_vision",
+  "point": "slot2"
+ }
+}

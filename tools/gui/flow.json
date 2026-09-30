@@ -1,0 +1,153 @@
+{
+  "format": "zmax-simulink",
+  "version": "1.0",
+  "name": "untitled",
+  "sim": {
+    "dt": 0.01,
+    "t_end": 10.0,
+    "solver": "fixed-step"
+  },
+  "nodes": [
+    {
+      "id": "n1785637300865a3p",
+      "type": "hardware",
+      "name": "Orin Nano",
+      "x": 120,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "ip": "192.168.23.10",
+        "fps": 30
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17856373015687cm",
+      "type": "model",
+      "name": "ACT",
+      "x": 380,
+      "y": 80,
+      "w": 150,
+      "icon": "◈",
+      "color": "#58a6ff",
+      "params": {
+        "chunk_size": 7,
+        "dim_model": 256
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n178563730174251v",
+      "type": "action",
+      "name": "A01 取料·100G",
+      "x": 640,
+      "y": 80,
+      "w": 150,
+      "icon": "➤",
+      "color": "#00d4aa",
+      "params": {
+        "pos": [
+          0.1,
+          0.2,
+          0.3
+        ]
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n17856373018877co",
+      "type": "condition",
+      "name": "C03 力控达标",
+      "x": 900,
+      "y": 80,
+      "w": 150,
+      "icon": "❖",
+      "color": "#a371f7",
+      "params": {
+        "max_force": 5.0
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    }
+  ],
+  "links": [
+    {
+      "id": "l1785637302049ke",
+      "f": "n1785637300865a3p",
+      "t": "n17856373015687cm",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l1785637302213gk",
+      "f": "n17856373015687cm",
+      "t": "n178563730174251v",
+      "f_port": "out1",
+      "t_port": "in1"
+    },
+    {
+      "id": "l1785637302362k5",
+      "f": "n178563730174251v",
+      "t": "n17856373018877co",
+      "f_port": "out1",
+      "t_port": "in1"
+    }
+  ]
+}

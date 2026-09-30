@@ -1,0 +1,34 @@
+batch_size: 1
+dataset:
+  repo_id: lerobot/pusht
+  root: data/metaworld_peg_long
+eval_freq: 150
+job_name: smolvla_ft_20260807_161841
+log_freq: 5
+num_workers: 0
+optimizer:
+  lr: 1e-4
+  type: adam
+  weight_decay: 0.0
+output_dir: outputs/train/smolvla_peg_long2
+persistent_workers: false
+policy:
+  action_hidden_size: 256
+  action_model_type: DiT-B
+  action_num_layers: 1
+  chunk_size: 7
+  freeze_smolvlm: true
+  n_action_steps: 7
+  n_obs_steps: 1
+  num_inference_timesteps: 2
+  num_vision_tokens: 64
+  push_to_hub: false
+  siglip_image_size: 64
+  smolvlm_name: HuggingFaceTB/SmolVLM2-500M-Video-Instruct
+  type: smolvla_lew
+save_checkpoint: true
+save_freq: 150
+seed: 1337
+steps: 4000
+wandb:
+  enable: false

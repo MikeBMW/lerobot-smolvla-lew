@@ -1,0 +1,42 @@
+{
+  "updated": "2026-09-30",
+  "avatars": {
+    "小芳": {
+      "environment": "Mac M1 macOS 26.5, 8GB",
+      "open_id": "ou_d82fe4c9f90c4e9337235d04b2241070",
+      "total_skills": 83,
+      "categories": 19,
+      "project_critical_skills": [
+        "zmax-avatar-sync",
+        "zmax-controller-hardware",
+        "zmax-studio",
+        "hermes-feishu-troubleshooting",
+        "hermes-gateway-robot",
+        "smolvla-inference",
+        "smolvla-training",
+        "smolvla-workflow",
+        "smolvla-development",
+        "vla-realtime-inference",
+        "robotics-model-training"
+      ],
+      "last_sync": "2026-07-11"
+    },
+    "xspace": {
+      "environment": "Linux, RTX 4060, GUI工程",
+      "open_id": "ou_9998dca01cc8cc6b3b54a5d818ba1e32",
+      "total_skills": 31,
+      "categories": "待确认",
+      "project_critical_skills": [
+        "待确认"
+      ],
+      "last_sync": "2026-09-30"
+    }
+  },
+  "shared_skills": [
+    "zmax-avatar-sync",
+    "zmax-controller-hardware",
+    "hermes-feishu-troubleshooting"
+  ],
+  "last_sync": "2026-09-30",
+  "last_sync_time": "2026-08-28 08:39:31"
+}

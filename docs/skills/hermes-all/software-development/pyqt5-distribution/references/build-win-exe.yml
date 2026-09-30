@@ -1,0 +1,39 @@
+name: Build Windows .exe (PyInstaller)
+
+"on":
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller PyQt5 numpy pillow
+
+      - name: Convert logo and build .exe
+        run: |
+          cd app\src
+          python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
+          pyinstaller --onefile --windowed --icon logo.ico `
+            --name "AppName" --add-data "logo.png;." main.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AppName
+          path: app\src\dist\AppName.exe
+          compression-level: 0
+
+      - uses: svenstaro/upload-release-action@v2
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: app\src\dist\AppName.exe
+          asset_name: AppName.exe
+          tag: ${{ github.ref_name }}

@@ -1,0 +1,23 @@
+pipeline:
+- type: PoseTranslateLocalOffset
+  run_args: { input: { pose: end_pose }, translate_local: [0.0, 0.0, -0.12], output: { new_pose: pull_retreat_pose1 } }
+- type: GetTaughtPose
+  param: { pose_key: manual_pose_24 }
+  run_args: { output: { pose: mid_pose24, joint_position: mid_joint24 } }
+- type: GetTaughtPose
+  param: { pose_key: manual_pose_14 }
+  run_args: { output: { pose: mid_pose14, joint_position: mid_joint14 } }
+- type: BuildMoveSequence
+  run_args:
+    input:
+      waypoints:
+      - { type: line, target_pose: pull_retreat_pose1, speed: 4000, zone: 20 }
+      - { type: joint, joint_position: mid_joint24, speed: 4000, zone: 50 }
+      - { type: joint, joint_position: mid_joint14, speed: 4000, zone: 0 }
+    output: { moves: place_moves }
+- type: MoveSequence
+  param: { srv_name: move_sequence, timeout: 100 }
+  run_args: { input: { moves: place_moves }, output: { moves: executed_place_moves } }
+- type: CallHttpService
+  param: { http_host: "192.168.23.26", http_port: 10082, endpoint: "capture_detect", method: POST, timeout: 30, expected_json_field: code, expected_json_value: 200 }
+  run_args: { output: { response: aoi_response, success: aoi_success, error: aoi_error } }

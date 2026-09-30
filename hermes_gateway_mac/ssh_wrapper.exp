@@ -1,0 +1,8 @@
+#!/usr/bin/env expect
+# SSH wrapper for Hermes Gateway — handles password auth
+set timeout 10
+set host [lindex $argv 0]
+set cmd [lindex $argv 1]
+spawn ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no nvidia@$host "source /opt/ros/humble/setup.bash && ROS_DOMAIN_ID=23 $cmd"
+expect "password:" { send "nvidia\r" }
+expect eof

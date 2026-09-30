@@ -1,0 +1,683 @@
+{
+ "format": "hermes-flow",
+ "version": 1,
+ "name": "🔬 转移速度自适应实验 (抓起6-8 插入4-6)",
+ "sim": "transfer_adaptive",
+ "commit": "a0f0f9cf",
+ "nodes": [
+  {
+   "id": "taa0",
+   "type": "data",
+   "name": "🔬 转移速度自适应实验",
+   "x": 140,
+   "y": 80,
+   "w": 150,
+   "icon": "📊",
+   "color": "#58a6ff",
+   "params": {
+    "commit": "a0f0f9cf",
+    "repeat": "3次重复对比",
+    "desc": "转移阶段速度参数: 固定0.6 vs 自适应 (降波动系列实验三)"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "taa1",
+   "type": "system",
+   "name": "◉ 纯增强 (固定0.6)",
+   "x": 380,
+   "y": 80,
+   "w": 150,
+   "icon": "◉",
+   "color": "#d4a800",
+   "params": {
+    "grab": "6-8 (均值7.0)",
+    "insert": "4-6 (均值5.0)",
+    "desc": "对照组: 固定转移速度 0.6"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "taa2",
+   "type": "system",
+   "name": "◉ 速度自适应",
+   "x": 620,
+   "y": 80,
+   "w": 150,
+   "icon": "◉",
+   "color": "#d4a800",
+   "params": {
+    "grab": "6-7 (均值6.7)",
+    "insert": "4-6 (均值5.0)",
+    "desc": "实验组: 转移速度自适应"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "taa3",
+   "type": "condition",
+   "name": "❖ 实验结论",
+   "x": 860,
+   "y": 80,
+   "w": 150,
+   "icon": "❖",
+   "color": "#a371f7",
+   "params": {
+    "grab": "方差略优 (6,7,7 更集中, 无8无5极端)",
+    "insert": "未改善 (仍4-6)",
+    "desc": "抓起方差略优 ✓ / 插入持平 ✗"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "tab0",
+   "type": "system",
+   "name": "🧪 数据增强 (120eps)",
+   "x": 140,
+   "y": 310,
+   "w": 150,
+   "icon": "◉",
+   "color": "#d4a800",
+   "params": {
+    "effect": "✅ 抓起下限 5→6",
+    "rank": "唯一有效",
+    "desc": "实验一: 数据增强 120 条轨迹"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "tab1",
+   "type": "system",
+   "name": "🧪 z 保持",
+   "x": 380,
+   "y": 310,
+   "w": 150,
+   "icon": "◉",
+   "color": "#d4a800",
+   "params": {
+    "effect": "❌ 更差 (2-4)",
+    "rank": "已回滚",
+    "desc": "实验二: 抬起后 z 高度保持"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "tab2",
+   "type": "system",
+   "name": "🧪 转移速度自适应",
+   "x": 620,
+   "y": 310,
+   "w": 150,
+   "icon": "◉",
+   "color": "#d4a800",
+   "params": {
+    "effect": "≈ 抓起方差略优, 插入持平",
+    "rank": "部分",
+    "desc": "实验三: 转移速度自适应"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "tab3",
+   "type": "condition",
+   "name": "❖ 系列总结",
+   "x": 860,
+   "y": 310,
+   "w": 150,
+   "icon": "❖",
+   "color": "#a371f7",
+   "params": {
+    "best": "数据增强 (唯一有效)",
+    "desc": "降波动系列: 数据增强✅ > 速度自适应≈ > z保持❌"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "tac0",
+   "type": "condition",
+   "name": "⚠️ 根因: 仿真物理碰撞",
+   "x": 140,
+   "y": 540,
+   "w": 150,
+   "icon": "❖",
+   "color": "#a371f7",
+   "params": {
+    "cause": "peg 与孔边缘/台面 几何干涉",
+    "why": "无接触反馈 → 控制参数调不动转移卡顿",
+    "desc": "转移卡顿本质是仿真碰撞物理, 不是控制参数问题"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "tac1",
+   "type": "action",
+   "name": "🎯 真机力控夹爪",
+   "x": 380,
+   "y": 540,
+   "w": 150,
+   "icon": "➤",
+   "color": "#00d4aa",
+   "params": {
+    "desc": "实时接触力反馈, 遇阻力自动调整 (Orin)"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "tac2",
+   "type": "action",
+   "name": "🎯 视觉对齐",
+   "x": 620,
+   "y": 540,
+   "w": 150,
+   "icon": "➤",
+   "color": "#00d4aa",
+   "params": {
+    "desc": "插入前 YOLO 检测孔位精调"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "tac3",
+   "type": "system",
+   "name": "📊 当前成绩 (left_right)",
+   "x": 860,
+   "y": 540,
+   "w": 150,
+   "icon": "◉",
+   "color": "#d4a800",
+   "params": {
+    "grab": "6-8/8",
+    "insert": "4-6/8",
+    "vs": "优于视觉BC全0/8, 接近专家7/8",
+    "desc": "标准 lerobot 工程完整可用 (a0f0f9cf)"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "tad0",
+   "type": "action",
+   "name": "▶ 生成对比视频",
+   "x": 140,
+   "y": 770,
+   "w": 150,
+   "icon": "➤",
+   "color": "#00d4aa",
+   "params": {
+    "desc": "双击运行: 三实验对比 rollout → mp4 旋转180° → 发飞书"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "tad1",
+   "type": "pdf_report",
+   "name": "📄 PDF 实验报告",
+   "x": 380,
+   "y": 770,
+   "w": 150,
+   "icon": "📄",
+   "color": "#1f6feb",
+   "params": {
+    "desc": "双击运行: 三实验对比表+结论 → PDF → 发飞书"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": []
+  },
+  {
+   "id": "tabg0",
+   "type": "row_bg",
+   "name": "🎨 对比",
+   "x": -20,
+   "y": 60,
+   "w": 1070,
+   "icon": "▤",
+   "color": "#3a3f4b",
+   "params": {
+    "bg": "#3a4a5a",
+    "model": "对比",
+    "desc": "背景行: 固定 vs 自适应"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": [],
+   "h": 214
+  },
+  {
+   "id": "tabg1",
+   "type": "row_bg",
+   "name": "🎨 三实验",
+   "x": -20,
+   "y": 290,
+   "w": 1070,
+   "icon": "▤",
+   "color": "#3a3f4b",
+   "params": {
+    "bg": "#3a5a3a",
+    "model": "三实验",
+    "desc": "背景行: 降波动系列"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": [],
+   "h": 214
+  },
+  {
+   "id": "tabg2",
+   "type": "row_bg",
+   "name": "🎨 根因",
+   "x": -20,
+   "y": 520,
+   "w": 1070,
+   "icon": "▤",
+   "color": "#3a3f4b",
+   "params": {
+    "bg": "#5a4a3a",
+    "model": "根因",
+    "desc": "背景行: 物理碰撞 + 真机方向"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": [],
+   "h": 214
+  },
+  {
+   "id": "tabg3",
+   "type": "row_bg",
+   "name": "🎨 交付",
+   "x": -20,
+   "y": 750,
+   "w": 590,
+   "icon": "▤",
+   "color": "#3a3f4b",
+   "params": {
+    "bg": "#2d4a5a",
+    "model": "交付",
+    "desc": "背景行: 视频+报告"
+   },
+   "inputs": [
+    {
+     "id": "in1",
+     "label": "in",
+     "dtype": "any"
+    }
+   ],
+   "outputs": [
+    {
+     "id": "out1",
+     "label": "out",
+     "dtype": "any"
+    }
+   ],
+   "actions": [],
+   "h": 214
+  }
+ ],
+ "links": [
+  {
+   "id": "l57362414356450",
+   "f": "taa0",
+   "t": "taa1",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "对照组"
+  },
+  {
+   "id": "l13298223773746",
+   "f": "taa0",
+   "t": "taa2",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "实验组"
+  },
+  {
+   "id": "l90079495848755",
+   "f": "taa1",
+   "t": "taa2",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "3次重复"
+  },
+  {
+   "id": "l72751791566915",
+   "f": "taa2",
+   "t": "taa3",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "对比结果"
+  },
+  {
+   "id": "l56202357915560",
+   "f": "tab0",
+   "t": "tab1",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "实验一→二"
+  },
+  {
+   "id": "l97436394508834",
+   "f": "tab1",
+   "t": "tab2",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "实验二→三"
+  },
+  {
+   "id": "l3914484447171",
+   "f": "tab2",
+   "t": "tab3",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "系列总结"
+  },
+  {
+   "id": "l83082648551082",
+   "f": "taa3",
+   "t": "tab3",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "并入系列"
+  },
+  {
+   "id": "l68086821070311",
+   "f": "tab3",
+   "t": "tac0",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "未见改善→查根因"
+  },
+  {
+   "id": "l43075780405262",
+   "f": "tac0",
+   "t": "tac1",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "方向1: 真机力控"
+  },
+  {
+   "id": "l26087809051544",
+   "f": "tac0",
+   "t": "tac2",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "方向2: 视觉对齐"
+  },
+  {
+   "id": "l68100608507672",
+   "f": "tac1",
+   "t": "tac2",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "并行"
+  },
+  {
+   "id": "l96538264059420",
+   "f": "tac3",
+   "t": "tac1",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "成绩基线"
+  },
+  {
+   "id": "l53044638629299",
+   "f": "tac3",
+   "t": "tac2",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "成绩基线"
+  },
+  {
+   "id": "l68051856570872",
+   "f": "tab3",
+   "t": "tac3",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "当前成绩"
+  },
+  {
+   "id": "l67683014974415",
+   "f": "tac3",
+   "t": "tad0",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "交付"
+  },
+  {
+   "id": "l6493481509437",
+   "f": "tad0",
+   "t": "tad1",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "交付链"
+  }
+ ]
+}

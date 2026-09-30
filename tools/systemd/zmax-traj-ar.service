@@ -1,0 +1,23 @@
+[Unit]
+Description=Z-MAX TCP 轨迹 AR/VR 台 (8797, /overlay 页面「轨迹」按钮的唯一真源)
+Documentation=file:/home/ubuntu/zmax/tools/tcp_ar_server.py
+After=network-online.target zmax-hil-bridge.service
+Wants=network-online.target
+# ⚠️ 这个服务原先没有任何单元托管, 是人工起一次就完了 —— 一旦机器重启/进程被收掉,
+#    /overlay 页上的「显示/隐藏/清除/全部历史」四个按钮全部静默失效
+#    (页面只会在角落显示 "轨迹台 :8797 连不上"), 现场表现就是"删除轨迹点了没反应"。
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+Environment=ZMAX_REPO=/home/ubuntu/zmax
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/tcp_ar_server.py
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/zmax-traj-ar.log
+StandardError=append:/var/log/zmax-traj-ar.log
+
+[Install]
+WantedBy=multi-user.target

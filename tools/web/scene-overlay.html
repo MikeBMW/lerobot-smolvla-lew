@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Z-MAX · 场景叠加（臂上相机）</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;
+       background:#06080d;color:#e6edf3;line-height:1.55;padding-bottom:22px}
+  header{padding:12px 16px 8px;background:#0b111a;border-bottom:1px solid #1b2836;position:sticky;top:0;z-index:20}
+  h1{font-size:20px;font-weight:800;color:#fff;letter-spacing:.4px}
+  h1 em{color:#00d4aa;font-style:normal}
+  .sub{font-size:13px;color:#8b98a5;margin-top:3px}
+  .chip{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12.5px;font-weight:700;
+        border:1px solid #24404f;color:#67c9e0;margin-left:6px;vertical-align:2px}
+  .chip.ok{border-color:#1f7a4d;color:#4ade80}
+  .chip.bad{border-color:#7a2b2b;color:#f87171}
+  .bar{display:flex;gap:8px;padding:8px 12px;background:#0a0f16;border-bottom:1px solid #1b2836;
+       position:sticky;top:55px;z-index:19;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  button{font-family:inherit;font-size:14.5px;font-weight:700;padding:10px 13px;border-radius:10px;
+         border:1px solid #2b3946;background:#141d27;color:#e6edf3;white-space:nowrap;cursor:pointer}
+  button:active{transform:scale(.97)}
+  button.on{background:#0e4f45;border-color:#00d4aa;color:#9ff5e4}
+  button.go{background:#0f5c37;border-color:#22c55e;color:#d6ffe6}
+  button:disabled{opacity:.5}
+  button.sm{font-size:13.5px;padding:8px 10px}
+  .wrap{padding:10px}
+  .card{background:#0d141c;border:1px solid #1b2836;border-radius:12px;overflow:hidden;margin-bottom:10px}
+  .card h2{font-size:15px;font-weight:700;padding:9px 13px;background:#0a1017;border-bottom:1px solid #1b2836;
+           display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .card h2 span{font-size:12.5px;color:#8b98a5;font-weight:500}
+  .stage{display:grid;grid-template-columns:1fr;gap:8px;padding:8px;background:#000}
+  @media (min-width:900px){ body.m_side .stage{grid-template-columns:1fr 1fr} }
+  .cellwrap{position:relative;background:#000;min-height:190px}
+  .cellwrap .tag{position:absolute;left:7px;top:6px;background:#000000aa;border:1px solid #24404f;border-radius:7px;
+                 padding:1px 8px;font-size:12px;color:#9ff5e4;font-weight:700;pointer-events:none}
+  .stage img{display:block;width:100%;height:100%;background:#000;min-height:190px;max-height:74vh;object-fit:contain}
+  .truth{font-size:12.5px;color:#cfe8f5;padding:8px 12px;background:#080d13;border-top:1px solid #1b2836;line-height:1.7}
+  .truth b{color:#7ee787}
+  .truth .k{color:#8b98a5;margin-right:3px}
+  .pane{padding:12px 14px;font-size:14.5px}
+  .kv{display:flex;gap:9px;flex-wrap:wrap;margin:5px 0;align-items:baseline}
+  .kv b{color:#7ee787;font-weight:800}
+  .kv .k{color:#8b98a5;font-size:13px;min-width:70px}
+  .lg{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .note{font-size:13px;color:#8b98a5;margin-top:8px;line-height:1.65}
+  code{background:#111a24;padding:2px 6px;border-radius:5px;color:#7ee787;font-size:12.5px;word-break:break-all}
+  .warn{background:#2a1c0a;border:1px solid #6b4a12;color:#f0c674;border-radius:9px;padding:10px 12px;
+        font-size:13.5px;margin:9px 0;line-height:1.65}
+  .ok{background:#0c2318;border:1px solid #1f7a4d;color:#9ff5e4;border-radius:9px;padding:10px 12px;
+      font-size:13.5px;margin:9px 0;line-height:1.65}
+  .steps{font-size:13.5px;color:#cfe8f5;line-height:1.9}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+  a.dl{display:block;text-align:center;text-decoration:none;background:#0f5c37;border:1px solid #22c55e;
+       color:#d6ffe6;font-weight:800;font-size:16px;padding:14px;border-radius:11px}
+  a.jump{color:#67c9e0;text-decoration:none;border-bottom:1px dashed #2b6b7a}
+  .toast{position:fixed;left:12px;right:12px;bottom:16px;background:#12202c;border:1px solid #24404f;
+         border-radius:11px;padding:11px 13px;font-size:14px;color:#cfe8f5;display:none;z-index:50}
+  /* 🖱 3D 框交互层: SVG 精确覆盖在图像渲染区上, 坐标=图像像素 ⇒ 点框命中就是所见即所选 */
+  .cellwrap svg.bx{position:absolute;left:0;top:0;pointer-events:auto;touch-action:manipulation}
+  .cellwrap svg.bx text{pointer-events:none;font-family:inherit}
+  /* 选中后在画面上直接给出的操作条 —— 老倪: 「不要再向下找屏幕上的按钮了, 太麻烦」 */
+  .cellwrap .bxbar{position:absolute;left:8px;top:30px;display:none;align-items:center;gap:7px;z-index:9;
+                   background:rgba(8,16,22,.88);border:1px solid #ffd400;border-radius:10px;padding:6px 8px;
+                   font-size:12.5px;color:#ffd400;box-shadow:0 4px 14px rgba(0,0,0,.45)}
+  .cellwrap .bxbar.on{display:flex}
+  .cellwrap .bxbar kbd{background:#25313c;border:1px solid #3c4b58;border-radius:5px;padding:0 4px;
+                       font-size:10.5px;color:#cfe3f0;font-family:inherit;margin-left:3px}
+  .cellwrap .bxbar button{padding:4px 8px;font-size:12.5px}
+  .bxlist{margin-top:7px;display:flex;flex-wrap:wrap;gap:6px;max-height:126px;overflow-y:auto}
+  .bxlist .it{font-size:12.5px;padding:5px 8px;border:1px solid #2b3946;border-radius:8px;background:#111a24;cursor:pointer}
+  .bxlist .it.sel{border-color:#ffd400;color:#ffd400;background:#2a2405}
+  .bxlist .it small{color:#8b98a5}
+  input.hint{width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;padding:9px 11px;border-radius:9px;
+             border:1px solid #2b3946;background:#0b1219;color:#e6edf3;margin-top:5px}
+  input.hint:focus{outline:none;border-color:#00d4aa}
+  /* 全屏: 只留画面(叠加图满屏), 点画面/ESC 退出 */
+  body.m_full{overflow:hidden}
+  body.m_full header,body.m_full .bar{display:none}
+  body.m_full .card:not(#cardStage){display:none}
+  body.m_full .wrap{padding:0}
+  body.m_full #cardStage{position:fixed;inset:0;z-index:40;margin:0;border:0;border-radius:0;background:#000;
+                         display:flex;flex-direction:column}
+  body.m_full #cardStage h2{display:none}
+  body.m_full #cardStage .stage{flex:1;min-height:0;padding:0;gap:0;grid-auto-rows:1fr}
+  body.m_full #cardStage .cellwrap{min-height:0;height:100%}
+  body.m_full #cardStage .stage img{height:100%;min-height:0}
+  body.m_full .truth{background:#000000cc;border-top:0;position:absolute;left:0;right:0;bottom:0}
+</style>
+</head>
+<body class="m_ov">
+<header>
+  <h1>🧩 场景叠加 <em>Z-MAX</em><span class="chip" id="link">检测中…</span></h1>
+  <div class="sub">只保留 <b>臂上 D405</b> 一路 —— 它是唯一有手眼标定的相机(3D 坐标↔像素可算)。
+    其它通道在 <a class="jump" id="jumpStation" href="#">🛰 工位总览</a>。</div>
+</header>
+
+<div class="bar">
+  <button id="mOv"  class="on" onclick="setView('ov')">🧩 叠加图</button>
+  <button id="mRaw" onclick="setView('raw')">📷 原始图</button>
+  <button id="mSide" onclick="setView('side')">▣ 并排</button>
+  <button id="mFull" onclick="toggleFull()">⛶ 全屏</button>
+  <button onclick="refresh(1)">↻ 刷新</button>
+  <button onclick="apkToggle()">📲 装 APP</button>
+  <span style="width:1px;height:22px;background:#30363d;margin:0 6px"></span>
+  <button id="tjShow" onclick="trajShow(true)">▶ 显示轨迹</button>
+  <button id="tjHide" onclick="trajShow(false)">⏸ 隐藏轨迹</button>
+  <button id="tjClear" onclick="trajClear()">🧹 清除轨迹</button>
+  <button id="tjAll" onclick="trajAll()">📜 全部历史</button>
+  <span class="chip" id="tjState">轨迹: —</span>
+  <a class="jump" id="jumpAr" href="#" target="_blank" rel="noopener">🛰 AR/VR 轨迹台</a>
+</div>
+
+<div class="wrap" id="apkCard" style="display:none">
+  <div class="card">
+    <h2>📲 手机 APP（安卓） <span id="apkSize">24.8KB</span></h2>
+    <div class="pane">
+      <a class="dl" href="dl/ZMAX-Live.apk">⬇ 下载 ZMAX-Live.apk</a>
+      <div class="note">装完桌面出现「Z-MAX 实况」图标，打开即本页（顶层直连工位机 http，不越混合内容红线）。</div>
+      <div class="kv" style="margin-top:10px"><span class="k">sha256</span>
+        <code id="apkSha">b2c377eb5f28b199388dbd92fd4eb38532d3f50c05a25d71808df4e937300e4e</code></div>
+      <div class="row"><button class="sm" onclick="copyText($('apkSha').textContent,'sha256 已复制')">📋 复制校验串</button></div>
+      <div class="warn">
+        装不上看报错原文：<br>
+        <b>应用未安装</b> = 同包名残留 → 先卸载旧版再装<br>
+        <b>解析包错误</b> = 没下完 → 重下，用上面 sha256 核对<br>
+        <b>已阻止安装</b> = 纯净模式没关 → 设置→安全→关闭纯净模式
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="card" id="cardStage">
+    <h2>🦾 臂上 D405 <span id="camName">—</span></h2>
+    <div class="stage" id="stage" onclick="stageClick()">
+      <div class="cellwrap" id="wrapOv">
+        <div class="tag">叠加图（3D 线框 · 点框选中 → 按 Delete 删除）</div>
+        <img id="imgOv" alt="叠加图">
+        <svg class="bx" id="svgOv" viewBox="0 0 640 480" preserveAspectRatio="none"></svg>
+        <div class="bxbar" id="bxBar" hidden>
+          <span id="bxBarN">已选 0</span>
+          <button class="sm" onclick="bxAct('delete')">🗑 删除 <kbd>Del</kbd></button>
+          <button class="sm" onclick="bxAct('restore')">↩ 恢复</button>
+          <button class="sm" onclick="bxClear()">✖ <kbd>Esc</kbd></button>
+        </div>
+      </div>
+      <div class="cellwrap" id="wrapRaw" style="display:none">
+        <div class="tag">原始图（相机裸画面）</div>
+        <img id="imgRaw" alt="原始图">
+      </div>
+    </div>
+    <div class="truth" id="truth">
+      <span class="k">帧龄</span><b id="tAge">—</b>
+      <span class="k" style="margin-left:12px">拍照时间</span><b id="tShot">—</b>
+      <span class="k" style="margin-left:12px">速率</span><b id="tFps">—</b>
+      <span class="k" style="margin-left:12px">单帧</span><b id="tKb">—</b>
+      <div id="tWarn"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🧩 叠加来源 <span id="ovWho">—</span></h2>
+    <div class="pane">
+      <div class="kv"><span class="k">规格</span><b id="mode">—</b></div>
+      <div class="kv"><span class="k">框统计</span>
+        <span><span class="lg" style="background:#22c55e"></span>仿真 <b id="nSim">0</b></span>
+        <span><span class="lg" style="background:#00b0ff"></span>大模型 <b id="nVlm">0</b></span>
+        <span><span class="lg" style="background:#eb3c3c"></span>检测 <b id="nDet">0</b></span>
+        <span><span class="lg" style="background:#888"></span>跳过 <b id="nSkip">0</b></span>
+      </div>
+      <div class="kv"><span class="k">规格帧龄</span><b id="age">—</b></div>
+      <div class="kv"><span class="k">手眼</span><b id="he">—</b></div>
+      <div class="kv"><span class="k">跳过原因</span><span id="skip" style="color:#8b98a5;font-size:13px">—</span></div>
+      <div class="kv"><span class="k">生成任务</span><span id="genS" style="color:#8b98a5;font-size:13px">空闲</span></div>
+      <div class="row">
+        <button class="go sm" id="gSim"  onclick="gen('sim')">🎯 仿真投影</button>
+        <button class="go sm" id="gVlm"  onclick="gen('vlm')">🧠 大模型理解</button>
+        <button class="sm" id="gScene" onclick="gen('scene')">📋 场景契约</button>
+        <button class="sm" id="gDet"  onclick="gen('det')">🔍 真机检测</button>
+      </div>
+      <div class="kv" style="margin-top:8px"><span class="k">结果</span><span id="genMsg" style="color:#8b98a5;font-size:13px">—</span></div>
+      <div class="note">
+        绿框 = 仿真场景投影（物体 3D → 手眼 T_base_cam → 实时 TCP 真值 → 像素，已验 8 位姿 5.2px≈3.1mm）<br>
+        蓝框 = L5 大模型看图理解　红框 = 真机 YOLO 检测　三源颜色区分、互不覆盖<br>
+        ⚠️ 仿真/场景契约<b>只对臂上相机有效</b>（只有它有手眼标定）—— 本页只显示这一路，就是为这个。
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🖱 3D 框交互 <span>点框选中 · 删错的 · 提示词重标</span></h2>
+    <div class="pane">
+      <div class="kv"><span class="k">画面框</span>
+        <span><span class="lg" style="background:#22c55e"></span>3D 线框 <b id="n3d">0</b></span>
+        <span><span class="lg" style="background:#888"></span>2D 框 <b id="n2d">0</b></span>
+        <span>已选 <b id="nSel">0</b></span>
+        <span>已删 <b id="nDel">0</b></span>
+      </div>
+      <div class="bxlist" id="bxList"><span style="color:#8b98a5;font-size:13px">等待框数据…</span></div>
+      <div class="row">
+        <button class="sm" id="bxDel" onclick="bxAct('delete')">🗑 删除选中</button>
+        <button class="sm" onclick="bxAct('restore')">↩ 恢复选中</button>
+        <button class="sm" onclick="bxAct('restore_all')">♻ 恢复全部删除</button>
+        <button class="sm" onclick="bxClear()">✖ 取消选择</button>
+      </div>
+      <div class="kv" style="margin-top:10px"><span class="k">提示词</span>
+        <span style="color:#8b98a5;font-size:13px">给大模型方向（只标什么/不标什么/怎么判）</span></div>
+      <input class="hint" id="hintTxt" placeholder="例：只标光模块和插槽，不要标托盘整体；绿色端头朝下的算光模块">
+      <div class="row">
+        <button class="go sm" id="bxVlm" onclick="bxRehint()">🧠 按提示重新标注(L5)</button>
+        <button class="go sm" id="bxSeg" onclick="bxSegRun()">🧩 开放词汇分割(SAM3)</button>
+        <button class="sm" onclick="gen('sim'); setTimeout(loadBoxes, 4000);">🎯 重建仿真元素</button>
+        <button class="sm" onclick="gen('det'); setTimeout(loadBoxes, 3000);">🔍 重跑 YOLO</button>
+      </div>
+      <div class="note" style="margin:6px 0 0">
+        🧩 <b>开放词汇分割</b>用上面「提示词」框里的词当<b>概念</b>（逗号分隔，<b>必须英文</b>，例：<code>green connector,socket,robot gripper</code>；留空 = 这三个默认概念。实测中文提示词返回 0 实例），
+        跑 SAM3 把该概念的<b>每一个实例</b>圈成像素级掩膜（品红轮廓 + 半透明填充，掩膜外轮廓上没有矩形框）。
+        它与 YOLO/大模型框并存，可一样点选删除。首次调用要加载权重（约 10~30s），之后每次约百毫秒级。
+      </div>
+      <div class="kv"><span class="k">结果</span><span id="bxMsg" style="color:#8b98a5;font-size:13px">—</span></div>
+      <div class="kv"><span class="k">上轮指示</span><span id="vlmHint" style="color:#8b98a5;font-size:13px">—</span></div>
+      <div class="note">
+        · 点画面上任意框（或下面列表里的编号）= 选中，再点一次取消；选中的框变黄虚线，画面左上角随即出现操作条<br>
+        · <b>选中后直接按 Delete 键就删掉</b>（不用往下找按钮）；Esc 取消选择 · Ctrl+Z 撤销最近一次删除 ·
+          点画面空白处也会先取消选择（不会一下跳全屏）<br>
+        · 删除只作用于叠加层(真机物体没动)；被删的 label 会在重新标注时作为“不要再给”的指示传给大模型<br>
+        · 3D 线框 = 物体 base 系 3D 盒的 8 角点按手眼+实时 TCP 投到像素（近粗远细，所以能看出进深）；<br>
+        &nbsp;&nbsp;2D 框 = 大模型/YOLO 只给了像素框（没有 3D，不假装有线框）
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>📤 导出 <span>可复制可导出</span></h2>
+    <div class="pane">
+      <div class="row">
+        <button class="sm" onclick="copyJson()">📋 复制状态 JSON</button>
+        <button class="sm" onclick="exportCsv()">⬇ 导出 CSV</button>
+        <button class="sm" onclick="copyUrls()">🔗 复制本路地址</button>
+      </div>
+      <div class="note">JSON/CSV 含<b>帧龄</b>与<b>拍照时间</b>，导出即当次快照（可存档做取证）。</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="pane">
+      <div class="kv"><span class="k">视频源</span><b id="srcHost">—</b></div>
+      <div class="kv"><span class="k">工位总览</span><a class="jump" id="jumpStation2" href="#">6 路同屏 + 手动控制</a></div>
+      <div class="note">本页由工位机 <code id="hostCode">—</code> 自己用 http 提供（与视频流同源）；站点是 https，页面里嵌 http MJPEG 会被内核按混合内容拦死。</div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ★ 顶层兜底: 任何未捕获异常写到页面上 —— 否则脚本中途抛错会静默死, 表现为"面板永远停检测中"而画面正常
+window.addEventListener('error', function(e){
+  var el = document.getElementById('tWarn');
+  if (el) el.innerHTML = '<div class="warn">⚠ 脚本异常: ' + (e.message || e.type)
+    + '（第 ' + (e.lineno || '?') + ' 行）—— 数据可能不刷新</div>';
+});
+
+// ── 视频源自动判定: 本页由工位机自己服务 ⇒ 用 location.host (零硬编码) ──
+//    file:// 打开或换设备时才需要 ?host=<IP>&port=<端口> 覆盖
+//    🛰 2026-09-28: 被 **子路径反代**(ECS 端口转发, 如 https://datadrive.world/ov/overlay) 时,
+//       接口路径必须跟着页面所在目录走 —— 否则 /stats、/wall.mjpg 全打到站点根(404)。
+//       所以 API = 源 + 页面所在目录(站点根时就是 '/', 行为与原来完全一致)。
+var Q = new URLSearchParams(location.search);
+var PDIR = location.pathname.replace(/[^/]*$/, '');          // '/' 或 '/ov/'
+var API = (location.protocol === 'http:' || location.protocol === 'https:')
+  ? (location.protocol + '//' + location.host + PDIR)
+  : ('http://' + (Q.get('host') || '192.168.23.50') + ':' + (Q.get('port') || '8791'));
+
+var $ = function(id){ return document.getElementById(id); };
+// 本页只服务一路: 臂上相机 (arm)。其它通道一律去工位总览看。
+var CAM = 'arm';
+var VIEW = 'ov';                 // ov=叠加图 · raw=原始图 · side=并排
+var STATS = {}, STATS_TS = 0, SPEC = {}, FULL = false;
+var BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+var STATION_PORT = 8793;         // 工位总览自己的端口(与主端口各占 6 条连接名额)
+
+function hhmmss(ms){ var d = new Date(ms); return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+':'+('0'+d.getSeconds()).slice(-2); }
+function fmtAge(s){
+  if (s == null || isNaN(s)) return '—';
+  if (s < 90) return s.toFixed(1) + 's 前更新';
+  if (s < 5400) return Math.round(s / 60) + 'min 前更新';
+  return (s / 3600).toFixed(1) + 'h 前更新';
+}
+function toast(msg, ms){
+  var t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.display = 'none'; }, ms || 3800);
+}
+function copyText(s, ok){
+  try { if (navigator.clipboard) { navigator.clipboard.writeText(s); toast(ok, 2600); return; } } catch (e) {}
+  var a = document.createElement('textarea'); a.value = s; document.body.appendChild(a);
+  a.select(); try { document.execCommand('copy'); toast(ok, 2600); } catch (e2) { toast('复制失败，请长按选择'); }
+  document.body.removeChild(a);
+}
+function online(s){ return !!s && Number(s.fps) > 0.1; }
+// 帧龄: 源侧上报 + 本页已过的秒数 (口径写清楚, 不拿"图片加载时刻"冒充)
+function ageNow(){
+  var s = STATS[CAM];
+  if (!s || s.age_s == null) return null;
+  return Number(s.age_s) + (Date.now() - STATS_TS) / 1000;
+}
+function stationUrl(){
+  var h = (location.host || '').split(':')[0] || '127.0.0.1';
+  return 'http://' + h + ':' + STATION_PORT + '/station';
+}
+
+function deviceLabel(){ var s = STATS[CAM] || {}; return s.label || CAM; }
+// ── 视图切换: 只留必需的那条 MJPEG 连接(隐藏的那路 src 置空 ⇒ 立刻释放连接名额) ──
+function setView(v, keepFull){
+  VIEW = v;
+  body.classList.remove('m_ov','m_raw','m_side');
+  body.classList.add('m_' + v);
+  $('mOv').className  = (v === 'ov')   ? 'on' : '';
+  $('mRaw').className = (v === 'raw')  ? 'on' : '';
+  $('mSide').className= (v === 'side') ? 'on' : '';
+  $('wrapRaw').style.display = (v === 'raw' || v === 'side') ? '' : 'none';
+  $('imgOv').src  = (v === 'ov' || v === 'side') ? (API + '/overlay/' + CAM + '.mjpg?t=' + Date.now()) : BLANK;
+  $('imgRaw').src = (v === 'raw' || v === 'side') ? (API + '/' + CAM + '.mjpg?t=' + Date.now()) : BLANK;
+  $('camName').textContent = deviceLabel();
+}
+var body = document.body;
+function toggleFull(){
+  FULL = !FULL;
+  body.classList.toggle('m_full', FULL);
+  $('mFull').className = FULL ? 'on' : '';
+  if (FULL) $('mFull').textContent = '⛶ 退出全屏'; else $('mFull').textContent = '⛶ 全屏';
+}
+function apkToggle(){
+  var c = $('apkCard');
+  c.style.display = (c.style.display === 'none' || !c.style.display) ? 'block' : 'none';
+  if (c.style.display === 'block') c.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+// 手机上打开本页直接看到装包入口(桌面浏览器不弹)
+(function () {
+  try {
+    var ua = navigator.userAgent || '';
+    var mobile = /Android|iPhone|iPad|Mobile/i.test(ua);
+    var inApp = /\bwv\b|ZMAX|Version\/[\d.]+ Chrome/i.test(ua) && /Android/i.test(ua);
+    if (mobile && !inApp && sessionStorage.getItem('apkAuto') !== '1') {
+      sessionStorage.setItem('apkAuto', '1');
+      setTimeout(apkToggle, 400);
+    }
+  } catch (e) {}
+})();
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && FULL) toggleFull(); });
+
+// ── 叠加规格信息 (与画布共用同一份 overlay_spec.json) ──
+function paintSpec(){
+  var inf = (SPEC._overlay_info || {})[CAM] || {};
+  var o = inf.origins || {};
+  $('ovWho').textContent = deviceLabel();
+  $('camName').textContent = deviceLabel();
+  $('mode').textContent = SPEC.mode || '空';
+  $('nSim').textContent = o.sim || 0;
+  $('nVlm').textContent = o.vlm || 0;
+  $('nDet').textContent = o.det || 0;
+  $('nSkip').textContent = (inf.skipped || []).length;
+  $('age').textContent = (inf.spec_age_s != null) ? fmtAge(inf.spec_age_s) : (SPEC.updated_at || '—');
+  $('he').textContent = inf.tcp_ok ? '已标定 · 实时' : '—';
+  $('skip').textContent = (inf.skipped || []).map(function(x){ return x[0] + '(' + x[1] + ')'; }).join(' · ') || '—';
+  $('genS').textContent = (SPEC._gen && SPEC._gen.busy) ? ('跑: ' + SPEC._gen.busy) : ((SPEC._gen && SPEC._gen.last) || '空闲');
+  var sm = (SPEC.sources || {}).vlm || {};
+  var el = $('vlmHint');
+  if (el){
+    el.textContent = (sm.at ? ('@' + sm.at + ' ') : '') + (sm.hint ? ('「' + sm.hint + '」') : '无指示')
+      + ' · 排除: ' + ((sm.negatives || []).join('、') || '无')
+      + (sm.model ? (' · ' + sm.model) : '');
+  }
+  if (SPEC.scene) { $('bxMsg').title = SPEC.scene; }
+}
+
+// ── 真值带: 帧龄/拍照时间/速率/单帧 + 不上线就如实说(un不冒充"实时") ──
+function paintTruth(){
+  var s = STATS[CAM] || {}, so = STATS['ov_' + CAM] || {};
+  var a = ageNow();
+  $('tAge').textContent = (a == null ? '—' : a.toFixed(1) + 's');
+  $('tShot').textContent = (a == null ? '—' : hhmmss(Date.now() - a * 1000));
+  $('tFps').textContent = '原始 ' + (s.fps ? Number(s.fps).toFixed(1) : '0.0')
+    + 'fps · 叠加 ' + (so.fps ? Number(so.fps).toFixed(1) : '0.0') + 'fps';
+  $('tKb').textContent = (s.kb_per_frame ? s.kb_per_frame + 'KB' : '—');
+  $('tWarn').innerHTML = online(s) ? '' :
+    '<div class="warn">⚠ 臂上相机当前 <b>未上线</b>（源侧 fps=0，帧龄 '
+      + (a == null ? '—' : a.toFixed(0) + 's') + '）—— 画面上是最后一帧/未连通，<b>不是实时</b>。'
+      + '先在控制台/推流侧确认臂上 D405（Orin 8792）在线。</div>';
+}
+
+async function poll(){
+  try {
+    var r = await fetch(API + '/stats?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    STATS = await r.json(); STATS_TS = Date.now();
+    $('link').className = 'chip ok'; $('link').textContent = '已连通';
+    $('srcHost').textContent = API.replace(/^https?:\/\//, '');
+    $('hostCode').textContent = API.replace(/^https?:\/\//, '');
+    paintTruth(); paintSpec();
+  } catch (e) {
+    $('link').className = 'chip bad'; $('link').textContent = '未连通';
+    $('tWarn').innerHTML = '<div class="warn">连不上视频源 <code>' + API + '</code>'
+      + '（手机需与学生机/工位机在同一局域网）</div>';
+  }
+}
+async function pollSpec(){
+  try {
+    var r = await fetch(API + '/scene.json?t=' + Date.now(), { cache: 'no-store' });
+    if (r.ok) { SPEC = await r.json(); paintSpec(); }
+  } catch (e) {}
+}
+function refresh(manual){
+  poll(); pollSpec();
+  if (manual){ setView(VIEW); toast('已刷新'); }
+}
+
+// ── 工具按钮: 点了必出结果 (端点返回什么就显示什么, 不猜) ──
+async function gen(kind){
+  var bid = { sim: 'gSim', vlm: 'gVlm', scene: 'gScene', det: 'gDet' }[kind];
+  var txt = { sim: '🎯 仿真投影', vlm: '🧠 大模型理解', scene: '📋 场景契约', det: '🔍 真机检测' }[kind];
+  var b = $(bid); b.disabled = true; b.textContent = '⏳ 生成中…';
+  $('genMsg').textContent = '已请求 ' + txt + '（cam=' + CAM + '）…';
+  try {
+    var r = await fetch(API + '/gen?kind=' + kind + '&cam=' + encodeURIComponent(CAM));
+    var j = await r.json();
+    $('genMsg').textContent = 'HTTP ' + r.status + ' · ' + (j.msg || '（端点无 msg）');
+    toast(j.msg || '端点已回应', 5000);
+  } catch (e) {
+    $('genMsg').textContent = '❌ 触发失败: ' + e.message;
+    toast('❌ 触发失败: ' + e.message, 6000);
+  }
+  setTimeout(function(){
+    b.disabled = false; b.textContent = txt;
+    poll(); pollSpec();
+  }, (kind === 'vlm') ? 9000 : 2500);
+}
+
+// ── 导出: 可复制可导出 (含帧龄/拍照时间) —— 只导本页这一路 + 叠加流 ──
+function snapRows(){
+  var out = [];
+  ['ov_' + CAM, CAM].forEach(function(k){
+    var s = STATS[k] || {}, a = (k === 'ov_' + CAM) ? (s.age_s == null ? null : Number(s.age_s)) : ageNow();
+    out.push({ key: k, label: s.label || k, fps: s.fps,
+      age_s: (a == null ? null : Number(a.toFixed(2))),
+      shot: (a == null ? null : new Date(Date.now() - a * 1000).toISOString()),
+      kb_per_frame: s.kb_per_frame, on: online(s) });
+  });
+  return out;
+}
+function copyJson(){
+  var j = { ts: new Date().toISOString(), api: API, page: 'scene-overlay', cam: CAM,
+            scene: { mode: SPEC.mode || null, updated_at: SPEC.updated_at || null,
+                     overlay_info: SPEC._overlay_info || {} },
+            streams: snapRows() };
+  copyText(JSON.stringify(j, null, 1), '状态 JSON 已复制（含帧龄/拍照时间）');
+}
+function exportCsv(){
+  var rows = [['key', '名称', '在线', 'fps', '帧龄s', '拍照时间(ISO)', 'KB/帧']];
+  snapRows().forEach(function(r){
+    rows.push([r.key, r.label, r.on ? '1' : '0', r.fps, r.age_s, r.shot, r.kb_per_frame]);
+  });
+  var csv = rows.map(function(a){ return a.map(function(x){
+    return '"' + String(x == null ? '' : x).replace(/"/g, '""') + '"'; }).join(','); }).join('\n');
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'zmax_arm_' + hhmmss(Date.now()).replace(/:/g, '') + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  toast('CSV 已导出（本页仅臂上相机 2 条）');
+}
+function copyUrls(){
+  var o = [
+    API + '/overlay    （本页 · 只显示臂上相机）',
+    API + '/overlay/' + CAM + '.mjpg    叠加·臂上 D405',
+    API + '/' + CAM + '.mjpg    原始·臂上 D405',
+    API + '/snapshot/overlay_' + CAM + '.jpg',
+    API + '/snapshot/' + CAM + '.jpg',
+    stationUrl() + '    （其它通道看这里: 笔记本/MAXHUB/深度/金手指/表面）'
+  ];
+  copyText(o.join('\n'), '本路地址已复制（其它通道在工位总览）');
+}
+
+// ══════════ 🖱 3D 框交互: 选中 / 删除 / 提示词重新标注 ══════════
+// 口径: 叠加线程每帧把"这帧实际画出来的框 + 像素几何 + 稳定 id"写进 /boxes;
+//       本层用 SVG **精确覆盖在渲染出的图像区**上(坐标=图像像素) ⇒ 点框命中即所见即所选。
+//       3D 框点击区用 8 角点的凸包(形状跟画在 JPEG 里的线框一致), 2D 框用矩形。
+var BX = [], BXINFO = {}, SEL = {}, LASTDEL = [];   // LASTDEL = 本次会话删除顺序(供 Ctrl+Z)
+
+// id/标签会被塞进 HTML 属性 ⇒ 先过一道白名单, 别让模型给的怪字符把页面搞坏
+function safeId(s){ return String(s == null ? '' : s).replace(/[^\w\u4e00-\u9fa5#·\-|. ]/g, ''); }
+function escHtml(s){
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function syncSvg(){
+  var s = $('svgOv'), im = $('imgOv');
+  if (!s || !im) return;
+  var nw = im.naturalWidth || 640, nh = im.naturalHeight || 480;
+  var bw = im.clientWidth, bh = im.clientHeight;
+  if (!bw || !bh) return;
+  var sc = Math.min(bw / nw, bh / nh);            // object-fit:contain 的实际渲染尺寸
+  s.style.left = ((bw - nw * sc) / 2) + 'px';
+  s.style.top  = ((bh - nh * sc) / 2) + 'px';
+  s.style.width  = (nw * sc) + 'px';
+  s.style.height = (nh * sc) + 'px';
+  s.setAttribute('viewBox', '0 0 ' + nw + ' ' + nh);
+}
+function hull(pts){                                // 凸包(点数少, 直算)
+  pts = pts.slice().sort(function(a, b){ return a[0] - b[0] || a[1] - b[1]; });
+  function cr(o, a, b){ return (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]); }
+  var lo = [], up = [], i;
+  for (i = 0; i < pts.length; i++){ while (lo.length >= 2 && cr(lo[lo.length-2], lo[lo.length-1], pts[i]) <= 0) lo.pop(); lo.push(pts[i]); }
+  for (i = pts.length - 1; i >= 0; i--){ while (up.length >= 2 && cr(up[up.length-2], up[up.length-1], pts[i]) <= 0) up.pop(); up.push(pts[i]); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
+function bColor(b){ var c = b.color || [200,200,200]; return 'rgb(' + c[2] + ',' + c[1] + ',' + c[0] + ')'; }
+function bShape(b){
+  // 🧩 掩膜(origin=seg): 用**真实轮廓**画多边形+命中(不是外接矩形) —— 页面看到的形状与叠加帧一致
+  if (b.kind === 'mask' && b.contour && b.contour.length >= 3) return { poly: b.contour };
+  var pts = (b.corners || []).filter(Boolean);
+  if (b.kind === '3d' && pts.length >= 4) return { poly: hull(pts) };
+  return { box: b.xyxy };
+}
+function ptsStr(p){ return p.map(function(q){ return q[0].toFixed(1) + ',' + q[1].toFixed(1); }).join(' '); }
+function renderSvg(){
+  var s = $('svgOv'); if (!s) return;
+  syncSvg();
+  var out = [];
+  BX.forEach(function(b, i){
+    var sh = bShape(b), sel = !!SEL[b.id], col = bColor(b);
+    var d = sel ? 'stroke="#ffd400" stroke-width="3" stroke-dasharray="7 4" fill="rgba(255,212,0,.13)"'
+                : 'stroke="' + col + '" stroke-width="1.6" stroke-dasharray="4 3" fill="rgba(0,0,0,0)"';
+    var hit = 'fill="rgba(0,0,0,0.001)" stroke="rgba(255,255,255,0.001)" stroke-width="16" '
+            + 'style="cursor:pointer" onclick="pick(&quot;' + safeId(b.id) + '&quot;,event)"';
+    if (sh.poly){
+      out.push('<polygon points="' + ptsStr(sh.poly) + '" ' + d + '/>');
+      out.push('<polygon points="' + ptsStr(sh.poly) + '" ' + hit + '/>');
+    } else {
+      var x = sh.box, w = Math.max(6, x[2] - x[0]), h = Math.max(6, x[3] - x[1]);
+      out.push('<rect x="' + x[0] + '" y="' + x[1] + '" width="' + w + '" height="' + h + '" ' + d + '/>');
+      out.push('<rect x="' + x[0] + '" y="' + x[1] + '" width="' + w + '" height="' + h + '" ' + hit + '/>');
+    }
+    var ax = Math.max(10, sh.box ? sh.box[0] : sh.poly[0][0]);
+    var ay = Math.max(14, (sh.box ? sh.box[1] : Math.min.apply(null, sh.poly.map(function(q){ return q[1]; }))) - 6);
+    out.push('<circle cx="' + (ax + 8) + '" cy="' + (ay - 6) + '" r="9" fill="' + (sel ? '#ffd400' : '#000000cc')
+      + '" stroke="' + (sel ? '#000' : '#ffffff88') + '"/>');
+    out.push('<text x="' + (ax + 8) + '" y="' + (ay - 2) + '" font-size="11" font-weight="700" text-anchor="middle" fill="'
+      + (sel ? '#000' : '#ffffff') + '">' + (i + 1) + '</text>');
+  });
+  s.innerHTML = out.join('');
+}
+function selIds(){ return Object.keys(SEL).filter(function(k){ return SEL[k]; }); }
+function paintPick(){
+  var ids = selIds();
+  $('nSel').textContent = ids.length;
+  var del = (BXINFO.deleted || []);
+  $('nDel').textContent = del.length;
+  var html = [];
+  BX.forEach(function(b, i){
+    var z = (b.z_mm == null ? '' : ' <small>z=' + b.z_mm + 'mm</small>');
+    html.push('<span class="it ' + (SEL[b.id] ? 'sel' : '') + '" onclick="pick(&quot;' + safeId(b.id) + '&quot;)">'
+      + (i + 1) + ' ' + escHtml(b.label) + ' <small>' + escHtml(b.kind) + '</small>' + z + '</span>');
+  });
+  if (!BX.length) html.push('<span style="color:#8b98a5;font-size:13px">这帧没有画出来的框（看下面的跳过原因）</span>');
+  if (del.length){
+    html.push('<span style="color:#8b98a5;font-size:13px;width:100%">已删(点一下恢复)：</span>');
+    del.forEach(function(id){
+      html.push('<span class="it" style="border-color:#5a2b2b;color:#c98a8a" onclick="bxAct(&quot;restore&quot;,[&quot;'
+        + safeId(id) + '&quot;])">' + escHtml(String(id).split('|')[1]) + '</span>');
+    });
+  }
+  $('bxList').innerHTML = html.join('');
+  $('bxDel').disabled = !ids.length;
+  var n = byId('bxDel2'); if (n) n.disabled = !ids.length;
+  var bar = $('bxBar');
+  if (bar){ bar.className = 'bxbar' + (ids.length ? ' on' : ''); }
+  var bn = $('bxBarN'); if (bn) bn.textContent = '已选 ' + ids.length + ' 个';
+  var dn = $('bxDelN'); if (dn) dn.textContent = del.length;
+}
+function byId(x){ return document.getElementById(x); }
+async function loadBoxes(){
+  try {
+    var r = await fetch(API + '/boxes?cam=' + encodeURIComponent(CAM) + '&t=' + Date.now(), { cache: 'no-store' });
+    var j = await r.json();
+    BX = (j.boxes || []); BXINFO = j;
+    $('n3d').textContent = (j.n_3d == null ? 0 : j.n_3d);
+    $('n2d').textContent = (j.n_2d == null ? 0 : j.n_2d);
+    renderSvg(); paintPick();
+  } catch (e) { /* 取不到就保持上一帧, 不闪 */ }
+}
+function pick(id, ev){
+  if (ev) { ev.stopPropagation(); }
+  if (SEL[id]) delete SEL[id]; else SEL[id] = true;
+  renderSvg(); paintPick();
+  toast(SEL[id] ? ('已选中 ' + id.split('|')[1] + '（点 🗑 删除选中）') : ('已取消 ' + id.split('|')[1]), 2200);
+}
+function bxClear(){ SEL = {}; renderSvg(); paintPick(); }
+async function bxAct(kind, ids){
+  ids = ids || selIds();
+  if (kind !== 'restore_all' && !ids.length){ toast('先点画面上的框选中 —— 选中后直接按 Delete 就能删(或 Ctrl+Z 撤销)', 4200); return; }
+  $('bxMsg').textContent = '下发中…';
+  try {
+    var r = await fetch(API + '/boxes/' + kind, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cam: CAM, ids: ids })
+    });
+    var j = await r.json();
+    $('bxMsg').textContent = (j.msg || ('HTTP ' + r.status)) + (j.note ? (' · ' + j.note) : '');
+    toast(j.msg || ('HTTP ' + r.status), 5000);
+    // 会话内撤销栈: 记住"我这次删了哪些", 供 Ctrl+Z 按**实际删除顺序**回退。
+    // (规格里的 deleted 清单是排序去重的, 拿"最后一个"当"最近一次"会撤错东西 —— 实测踩过)
+    if ((j.ok !== false) && /^🗑/.test(j.msg || '')){
+      LASTDEL = LASTDEL.concat(ids);
+    } else if ((j.ok !== false) && /^↩/.test(j.msg || '')){
+      LASTDEL = LASTDEL.filter(function(x){ return ids.indexOf(x) < 0; });
+    }
+    SEL = {};
+    setTimeout(loadBoxes, 700);                    // 叠加线程下一帧就按新清单画
+  } catch (e) {
+    $('bxMsg').textContent = '❌ 请求失败: ' + e.message;
+    toast('❌ 请求失败: ' + e.message, 6000);
+  }
+}
+async function bxSegRun(){
+  // 🧩 开放词汇分割 (SAM3): 用「提示词」框里的词当**概念**(逗号分隔), 圈出该概念的每一个实例的像素掩膜
+  //    结果按 origin='seg' 进规格 ⇒ 与 sim/vlm/det 并存, 可点选/删除(和别的框同规矩)
+  var h = ($('hintTxt').value || '').trim();
+  var b = $('bxSeg'); b.disabled = true; var old = b.textContent; b.textContent = '⏳ SAM3 分割中…';
+  var t0 = Date.now();
+  $('bxMsg').textContent = '已请求开放词汇分割（cam=' + CAM + '）' +
+    (h ? ('，概念「' + h.slice(0, 40) + '」') : '，用默认概念(green connector,socket,robot gripper)') +
+    ' · 首次要加载权重，约 10~30s…';
+  try {
+    var r = await fetch(API + '/seg?cam=' + encodeURIComponent(CAM) +
+                        '&texts=' + encodeURIComponent(h) + '&three_d=1',
+                        { signal: AbortSignal.timeout(240000) });
+    var j = await r.json();
+    var secs = ((Date.now() - t0) / 1000).toFixed(1);
+    if (j.ok){
+      var det = (j.instances || []).slice(0, 6).map(function(it){
+        return (it.label || '?') + ' ' + (it.score != null ? it.score.toFixed(2) : '--') +
+               ' ' + (it.area_px != null ? (it.area_px + 'px') : '') +
+               (it.c3d ? (' → z=' + it.c3d.z_mm.toFixed(0) + 'mm') : '');
+      }).join(' · ');
+      $('bxMsg').textContent = '✅ 分割完成 ' + secs + 's：' + (j.msg || ('实例 ' + j.count)) +
+        (det ? (' · ' + det) : '') + ' · 3D 成功 ' + (j.n_3d != null ? j.n_3d : '?') + '/' + j.count;
+      toast('🧩 分割完成：' + j.count + ' 个实例掩膜（' + secs + 's）', 6000);
+    } else {
+      $('bxMsg').textContent = '❌ ' + (j.msg || '分割失败') + '（' + secs + 's）';
+      toast('❌ ' + (j.msg || '分割失败'), 8000);
+    }
+  } catch (e) {
+    $('bxMsg').textContent = '❌ 请求失败: ' + e.message +
+      '（服务没起？python tools/sam3_seg.py --serve --port 8796）';
+  }
+  b.disabled = false; b.textContent = old;
+  loadBoxes(); pollSpec();
+}
+async function bxRehint(){
+  var h = ($('hintTxt').value || '').trim();
+  var b = $('bxVlm'); b.disabled = true; var old = b.textContent; b.textContent = '⏳ 大模型重标中…';
+  $('bxMsg').textContent = '已请求 L5 重新标注（cam=' + CAM + '）' + (h ? ('，带指示「' + h.slice(0, 40) + '」') : '，无指示用默认口径');
+  try {
+    var r = await fetch(API + '/gen?kind=vlm&cam=' + encodeURIComponent(CAM) + '&hint=' + encodeURIComponent(h));
+    var j = await r.json();
+    $('bxMsg').textContent = 'HTTP ' + r.status + ' · ' + (j.msg || '（端点无 msg）');
+    toast(j.msg || '端点已回应', 6000);
+  } catch (e) {
+    $('bxMsg').textContent = '❌ 触发失败: ' + e.message;
+  }
+  setTimeout(function(){ b.disabled = false; b.textContent = old; loadBoxes(); pollSpec(); }, 12000);
+}
+
+// ⌨️ 键盘直操 —— 老倪 2026-09-28: 「选择边界框后, 点击 delete 按键即可删除,
+//    不要再向下找屏幕上的按钮了, 太麻烦」
+//      Delete/Backspace = 删掉选中的框 · Esc = 取消选择 · Ctrl+Z = 撤销最近一次删除
+function stageClick(){
+  // 有选中时, 点空白先取消选择(不跳全屏) —— 避免"选好了想点别处却进了全屏"
+  if (selIds().length){ bxClear(); return; }
+  toggleFull();
+}
+document.addEventListener('keydown', function(ev){
+  var t = ev.target || {}, tag = (t.tagName || '').toUpperCase();
+  var typing = (tag === 'INPUT' || tag === 'TEXTAREA' || t.isContentEditable);
+  if (typing){                                    // 正在写提示词 ⇒ 键盘归输入框, 不误删框
+    if (ev.key === 'Escape'){ t.blur(); ev.preventDefault(); }
+    return;
+  }
+  if ((ev.key === 'Delete' || ev.key === 'Backspace') && selIds().length){
+    ev.preventDefault();
+    bxAct('delete');
+  } else if (ev.key === 'Escape'){
+    if (selIds().length){ ev.preventDefault(); bxClear(); }
+  } else if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'z' || ev.key === 'Z')){
+    ev.preventDefault();
+    var last = LASTDEL.length ? LASTDEL[LASTDEL.length - 1] : null;
+    if (last) bxAct('restore', [last]);            // 撤销**本次会话最近一次**删除
+    else {
+      var del = (BXINFO.deleted || []);
+      if (del.length) bxAct('restore', [del[del.length - 1]]);   // 本会话没删过 → 退而撤清单里最后一个
+      else toast('没有可撤销的删除', 2600);
+    }
+  }
+});
+
+$('jumpStation').href = stationUrl();
+$('jumpStation2').href = stationUrl();
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  轨迹显示开关 / 清除  —— 单一真源是 AR 轨迹台服务(:8797), 本页只当遥控器
+//  为什么跨端口调: 轨迹的"隐藏/清除"要同时作用在 臂上D405叠加画面 和 笔记本相机AR 上,
+//  只能由一处统一决策(tools/traj_display.py + live_trace_publisher 执行), 各页各写一套必然对不上。
+//  ⚠️ 跨端口 = 跨源 → AR 服务已放开 CORS, 否则浏览器直接把请求拦掉(表现为"点了没反应")。
+// ══════════════════════════════════════════════════════════════════════════════
+var AR_PORT = 8797;
+function arBase(){ return 'http://' + ((location.host || '').split(':')[0] || '127.0.0.1') + ':' + AR_PORT; }
+$('jumpAr').href = arBase() + '/';
+function tjPaint(st){
+  var chip = $('tjState');
+  var on = st.state && st.state.show;
+  chip.textContent = '轨迹: ' + (on ? '开(人工开启)' : '关(默认)')
+    + (st.recorded_pts != null ? ' · 已录 ' + st.recorded_pts + ' 点' : '');
+  // 轨迹链的心跳: 发布器每 1.5s 重写 reports/moveit/live_trace.json ⇒ 它老了就是整条链停了。
+  // 现场教训: 链停了 8 小时, 页面只显示"已录 26479 点", 老倪以为数据是新的, 点删除当然没反应。
+  if (st.trace_age_s != null && st.trace_age_s > 60) {
+    chip.textContent += ' · ⚠️ 轨迹链已停 ' + Math.round(st.trace_age_s / 60) + ' 分钟';
+    chip.style.color = '#D29922';
+  } else { chip.style.color = ''; }
+  chip.className = 'chip ' + (on ? 'ok' : '');
+  $('tjShow').className = on ? 'on' : '';
+}
+function tjAvail(ok){
+  ['tjShow','tjHide','tjClear','tjAll'].forEach(function(id){
+    var b = $(id); if (!b) return;
+    b.disabled = !ok; b.style.opacity = ok ? '' : '.45';
+    b.title = ok ? '' : ('轨迹台(:' + AR_PORT + ') 没在跑 —— 先 sudo systemctl start zmax-traj-ar');
+  });
+}
+async function tjState(){
+  try {
+    tjPaint(await (await fetch(arBase() + '/api/traj/state?t=' + Date.now(), {cache:'no-store'})).json());
+    tjAvail(true);
+  } catch (e) {
+    var c = $('tjState');
+    c.textContent = '⚠️ 轨迹台(:' + AR_PORT + ') 未运行 —— 轨迹按钮点了没反应';
+    c.style.color = '#ff7b72';
+    tjAvail(false);
+  }
+}
+async function trajShow(show){
+  try {
+    var r = await (await fetch(arBase() + '/api/traj/show', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({show: !!show})})).json();
+    toast(show ? '轨迹显示已开启(走起来就画通道)' : '轨迹已隐藏', 2200);
+    await tjState(); refresh(1);
+    loadBoxes();
+  } catch (e) { toast('开关失败: ' + e, 3000); }
+}
+async function trajClear(){
+  try {
+    var r = await (await fetch(arBase() + '/api/traj/clear', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: '{}'})).json();
+    toast(r.msg || '轨迹已清除', 2600);
+    await tjState(); refresh(1); loadBoxes();
+  } catch (e) { toast('清除失败: ' + e, 3000); }
+}
+async function trajAll(){
+  try {
+    var r = await (await fetch(arBase() + '/api/traj/baseline', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({n:0})})).json();
+    toast(r.msg || '已恢复全部历史轨迹', 2600);
+    await tjState(); refresh(1); loadBoxes();
+  } catch (e) { toast('操作失败: ' + e, 3000); }
+}
+tjState(); setInterval(tjState, 4000);
+
+setView('ov');
+poll(); pollSpec(); loadBoxes();
+setInterval(poll, 2000);
+setInterval(pollSpec, 5000);
+setInterval(loadBoxes, 1500);                       // 框几何每 1.5s 对齐一次(与画面同源口径)
+window.addEventListener('resize', function(){ syncSvg(); });
+window.addEventListener('orientationchange', function(){ setTimeout(syncSvg, 300); });
+if (window.ResizeObserver && $('imgOv')) { try { new ResizeObserver(syncSvg).observe($('imgOv')); } catch (e) {} }
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape' && !FULL) { bxClear(); }
+});
+</script>
+</body>
+</html>

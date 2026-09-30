@@ -1,0 +1,74 @@
+探针场景=L4dec 步数=30 CUDA_VISIBLE_DEVICES='' (空 = 不动 GPU)
+🧠 INTACT 意图-动作: 动作维对齐 4 → 8 (来自模型实测)
+🧠 INTACT 意图-动作: 数据源=未设置 · 策略=direct(零搜索) · action_dim=8 · horizon=8 · trained=True
+INTACT runtime: trained=True · reason=None
+🎯 INTACT 已挂载: horizon=8 · 适配层 enabled=None (None) · 影子=False · 生效阶段=['接近', '对位', '下降', '抓取', '抬起', '转移']
+
+==============================================================================
+场景 L4dec · 步数 30 · 用时 3.8s
+==============================================================================
+① 函数级调用计数 (0 = 该函数在本次运行里一次都没进):
+        1  IntactIntentDecoder.__init__
+        4  IntactIntentDecoder.decode
+        1  IntactNode.set_goal (目标帧注入)
+        4  IntactNode.step (INTACT 真推理)
+        1  IntactRuntime.__init__ (跨venv桥)
+        4  build_skill_ctx (L2 上下文) ← 父进程断点
+
+② 行级计数 (关键行):
+        0  action_head.py:351  👈 老倪断点: return (loss*valid_mask)... (行号自动定位)
+        0  action_head.py:322  def forward( (SmolVLALewActionHead, 锚定类内非全文件首个)
+        0  action_head.py:354  def predict_action( (推理入口)
+        0  modeling_smolvla_lew.py:234  def forward( (训练 loss 分支)
+        0  modeling_smolvla_lew.py:319  action_loss = self.action_model(...) (唯一调用 loss 的地方)
+        0  modeling_smolvla_lew.py:512  def select_action( (推理)
+        0  intact/decoder.py:126  IntactIntentDecoder.decode 主体
+
+   已执行到的 action_head.py 行 (全量):
+      (无)
+
+   区间命中: loss 行(351)=0 · predict_action 主体(355-389)=0 · forward 主体(323-350)=0
+
+③ 引擎侧计数: {'steps': 30, 'dt': 3.758556604385376, '_intact_stats': {'intact_calls': 0, 'refused_map': 0, 'frames': 0, 'chunk_reuse': 0, 'err': None, 'shift': [], 'u_ff_src': 'analytic'}, '_l4_stats': {'calls': 4, 'reuse': 26, 'refused': 0, 'blend': 0, 'w_zero': 30, 'cond_ready': 0, 'frame_std': 55.9265, 'shift': 0.6612, 'err': None, 'src': 'intact(chunk×K_ACT=0.5)', 'w': 0.3, 'cond_src': '拒绝(未标定)', 'goal_src': 'set_goal(显式)', 'skill_ctx_dim': 24, 'skill_ctx_nonzero': 9, 'l2_ready': True, 'l2_err': None, 'l2_veto': 30, 'l2_veto_dir': 9, 'l2_veto_mag': 21}, 'dit_state': None, 'l3_calls': 0, 'quality_summary': {'enabled': True, 'src': 'lie_quality_gate.json', 'margin': 0.05, 'allowed_stages': ['下降', '对位', '抬起', '接近'], 'blocked_stages': ['转移'], 'blocked_frames': 0, 'allowed_frames': 0}, 'lie_summary': {'enabled': False, 'frames': 0, 'ran': 0, 'refused': 0, 'no_latent': 0, 'applied': 0, 'xi_norm_last': None, 'om_norm_last': None, 'cond_dim': 0, 'cos_mean': None, 'ready': False, 'meta': {}, 'src': '', 'err': None}, 'gain_summary': {'enabled': False, 'steps': 0, 'applied': 0, 'zero_frames': 0, 'k_nav_mean': 0.0, 'k_flow_mean': 0.0, 'k_mm_mean': 0.0, 'events': {}, 'err': None, 'refused': 0, 'cos_mean': None, 'ratio_mean': None, 'k_nav_tail': [], 'k_flow_tail': [], 'p_last': None, 'p_zero_gate': None, 'reason_last': ''}, 'fiber_summary': {'enabled': False, 'frames': 0, 'ran': 0, 'no_latent': 0, 'ready': False, 'map_src': '', 'err': None, 'src_last': '', 'h_norm_mean': 0.0, 'kappa_tor_mean': 0.0, 'kappa_curv_mean': 0.0, 'cos_geo_mean': 0.0, 'phi_last': [], 'omega_last': [], 'contact_true_last': [], 'sample_n': 0, 'w_perf': 0.0, 'perf_note': '插拔任务次要: 只记录不注入 (老倪口径)'}, 'align_summary': {'enabled': False, 'applied': 0, 'ready': False, 'map_src': '', 'err': None, 'cos_before_mean': 0.0, 'cos_after_mean': 0.0, 'ratio_after_mean': 0.0, 'sample_n': 0, 'gate': {'pass': 0, 'veto': 30, 'veto_dir': 9, 'veto_mag': 21, 'blend': 0}}, 'trace_hash': '5c41a76e3545f9841333e4210138556e', 'trace_cols': {'u_ff_vec': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 4, 'last_norm': 0.11193139649579051}, 'u_exec_vec': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 4, 'last_norm': 0.12}, 'u_fuse_vec': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 4, 'last_norm': 0.12}, 'l4_u_ff_vec': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 4, 'last_norm': 1.3047866105468964}, 'l4_cond_vec': {'n': 30, 'n_nonnull': 0, 'n_nonzero': 0, 'dim': 0, 'last_norm': 0.0}, 'mani_pred': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 6, 'last_norm': 0.2864514476044448}, 'mani_progress': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 0.0932761637464921}, 'mani_risk': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 0, 'dim': 1, 'last_norm': 0.0}, 'mani_V': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 0.004350221361631204}, 'mani_eta': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 0, 'dim': 1, 'last_norm': 0.0}, 'mani_dperp': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 0.12084409179839058}, 'z7_vec': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 7, 'last_norm': 0.18207691263592132}, 'latent_vec': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 4, 'last_norm': 0.6504074538712913}, 'fiber_h_norm': {'n': 30, 'n_nonnull': 0, 'n_nonzero': 0, 'dim': 0, 'last_norm': 0.0}, 'fiber_kappa_tor': {'n': 30, 'n_nonnull': 0, 'n_nonzero': 0, 'dim': 0, 'last_norm': 0.0}, 'fiber_kappa_curv': {'n': 30, 'n_nonnull': 0, 'n_nonzero': 0, 'dim': 0, 'last_norm': 0.0}, 'fiber_cos_geo': {'n': 30, 'n_nonnull': 0, 'n_nonzero': 0, 'dim': 0, 'last_norm': 0.0}, 'fiber_contact_true': {'n': 30, 'n_nonnull': 0, 'n_nonzero': 0, 'dim': 0, 'last_norm': 0.0}, 'fiber_perf_true': {'n': 30, 'n_nonnull': 0, 'n_nonzero': 0, 'dim': 0, 'last_norm': 0.0}, 'fiber_z7_hat': {'n': 30, 'n_nonnull': 0, 'n_nonzero': 0, 'dim': 0, 'last_norm': 0.0}, 'fiber_cond_norm': {'n': 30, 'n_nonnull': 0, 'n_nonzero': 0, 'dim': 0, 'last_norm': 0.0}, 'l4_cos': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 0.3566213536595984}, 'l4_mag_ratio': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 7.487923194307925}, 'l4_gate': {'n': 30, 'n_nonnull': 30, 'n_nonzero': 30, 'dim': 1, 'last_norm': 1.0}, 'l4_cos_pre_align': {'n': 30, 'n_nonnull': 0, 'n_nonzero': 0, 'dim': 0, 'last_norm': 0.0}}, 'final': {'steps': 30, 'done_any': False, 'done_last': False, 'dist_min': 0.0830280998764505, 'dist_last': 0.0830280998764505, 'V_first': 0.015173502167854491, 'V_last': 0.004350221361631204, 'V_min': 0.004350221361631204, 'V_max': 0.015461797446734116, 'V_n': 30, 'stage_counts': {'阶段 接近': 30}}, 'summaries': {'intact_attach': {'intact_calls': 0, 'refused_map': 0, 'frames': 0, 'chunk_reuse': 0, 'err': None, 'shift': [], 'u_ff_src': 'analytic'}, 'l4': {'calls': 4, 'reuse': 26, 'refused': 0, 'blend': 0, 'w_zero': 30, 'cond_ready': 0, 'frame_std': [55.949729919433594, 55.91999053955078, 55.91859436035156, 55.91777801513672], 'shift': [0.2741838428739449, 0.520745356745743, 0.5194456068814901, 0.49840374590838377, 0.4859409362646992, 0.4822154000522131, 0.4865612032505112, 0.49925192464309204, 0.5410280628315203, 0.6048025568658563, 0.6915366019780483, 0.7194505999125532, 0.716934963907282, 0.7131910012826804, 0.7080391095892545, 0.7020431766287545, 0.6975287207871512, 0.6953092673416241, 0.6956388750539316, 0.6992149200894968, 0.7065787102744683, 0.7181535106065423, 0.7344036577177192, 0.7559992361860262, 0.7741133137443931, 0.7942466360643976, 0.8159070904845397, 0.8382967771611842, 0.8610884271913883, 0.8842559096922571], 'err': None, 'src': 'intact(chunk×K_ACT=0.5)', 'w': 0.3, 'cond_src': '拒绝(未标定)', 'goal_src': 'set_goal(显式)', 'skill_ctx_dim': 24, 'skill_ctx_nonzero': 9, 'l2_ready': True, 'l2_err': None, 'l2_veto': 30, 'l2_veto_dir': 9, 'l2_veto_mag': 21}, 'il': {'enabled': False, 'by_stage': {}, 'stages_env': ['接近', '对位', '下降', '抓取', '抬起', '转移'], 'frames': 4, 'ran': 0, 'applied': 0, 'w_zero': 0, 'refused': 0, 'ready': False, 'ready_src': '未检查', 'src_last': '', 'w_last': 0.0, 'z_src': 'engine(z7 几何)', 'err': None, 'intent_gain_mean': 0.0, 'manifold_last': [], 'clip_max': 0.0, 'stack': {'commit': None, 'vetoed': None, 'clipped': None, 'clip_max_mean': None, 'w_last': None, 'layers': None}}, 'fiber': {'enabled': False, 'frames': 0, 'ran': 0, 'no_latent': 0, 'ready': False, 'map_src': '', 'err': None, 'src_last': '', 'h_norm_mean': 0.0, 'kappa_tor_mean': 0.0, 'kappa_curv_mean': 0.0, 'cos_geo_mean': 0.0, 'phi_last': [], 'omega_last': [], 'contact_true_last': [], 'sample_n': 0, 'w_perf': 0.0, 'perf_note': '插拔任务次要: 只记录不注入 (老倪口径)'}, 'l4_dit': {'calls': 0, 'ok': 0, 'refused': 0, 'err': None, 'cond_dim': 0, 'cond_norm': 0.0, 'act_norm': [], 'delta': [], 'beta': 0.0, 'src': 'off'}}}
+
+③b 🧬 直连线取证 (INTACT 意图解码器 → 流形专家预测器):
+     enabled: False
+     frames: 4
+     ran: 0
+     applied: 0
+     w_zero: 0
+     refused: 0
+     ready: False
+     ready_src: 未检查
+     src_last: 
+     w_last: 0.0
+     err: None
+     intent_gain_mean: 0.0
+     manifold_last: []
+     clip_max: 0.0
+     stack: {'commit': None, 'vetoed': None, 'clipped': None, 'clip_max_mean': None, 'w_last': None, 'layers': None}
+     by_stage: {}
+
+③c 🧬 纤维丛联络层 (潜空间丛 Z → 接触丛 C 主力 / 性能丛 P 次要):
+     enabled: False
+     frames: 0
+     ran: 0
+     no_latent: 0
+     ready: False
+     map_src: 
+     err: None
+     src_last: 
+     h_norm_mean: 0.0
+     kappa_tor_mean: 0.0
+     kappa_curv_mean: 0.0
+     cos_geo_mean: 0.0
+     phi_last: []
+     omega_last: []
+     contact_true_last: []
+     sample_n: 0
+     w_perf: 0.0
+     perf_note: 插拔任务次要: 只记录不注入 (老倪口径)
+
+④ 引擎日志告警回放 (累计 6 行, 关键 0 行):
+    (无告警行 — 若期望 L3/INTACT 有动作却 0 次, 说明是门控没放行, 不是静默异常)
+=== L4dec done ===

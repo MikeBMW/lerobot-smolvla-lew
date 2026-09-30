@@ -1,0 +1,15 @@
+# Orin真机主流程
+flow:
+  start: 抓取位姿识别
+  nodes:
+    抓取位姿识别:
+      type: sub_state_machine
+      path: state_machines/抓取位姿识别/state_machine.yaml
+      next: 抓取放置
+    抓取放置:
+      type: sub_state_machine
+      path: state_machines/抓取放置/state_machine.yaml
+      next: done
+    done:
+      type: end
+      result: success

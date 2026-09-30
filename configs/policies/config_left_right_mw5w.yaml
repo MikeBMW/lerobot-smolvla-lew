@@ -1,0 +1,42 @@
+# Z-MAX left_right 多布局真实化重训 config (2026-09-06 静静)
+# 数据: 解析教师 × 真实 metaworld 多 seed 布局 (data/ss_mw_lerobot, 39D/4D)
+# 目标: 学生左脑 MLP 覆盖多布局域 → 解除 R0 真实化强制解析 (见 state_space_sim_real.py)
+# 用法: cd repo && ~/lerobot-venv/bin/python -m lerobot.scripts.lerobot_train \
+#         --config_path configs/policies/config_left_right_mw.yaml
+output_dir: outputs/train/state_space_mw5w
+job_name: state_space_mw5w
+
+policy:
+  type: left_right
+  device: cuda
+  push_to_hub: false
+  repo_id: MikeBMW/zmax-left-right
+  n_obs_steps: 1
+  n_action_steps: 1
+  chunk_size: 1
+  left_hidden: 512
+  right_hidden: 256
+
+dataset:
+  repo_id: lerobot/pusht   # 占位
+  root: data/ss_mw_lerobot_v4w
+  use_imagenet_stats: false
+
+batch_size: 8
+steps: 30000
+num_workers: 0
+persistent_workers: false
+log_freq: 5
+eval_freq: 0
+save_freq: 5000
+save_checkpoint: true
+seed: 42
+use_policy_training_preset: true
+
+optimizer:
+  type: adam
+  lr: 0.0001
+  weight_decay: 0.0
+
+wandb:
+  enable: false

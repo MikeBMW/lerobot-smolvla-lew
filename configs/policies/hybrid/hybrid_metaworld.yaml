@@ -1,0 +1,22 @@
+# ZmaxHybrid MetaWorld MT50 训练
+output_dir: outputs/zmax_hybrid_mt50
+job_name: zmax_hybrid_mt50
+
+policy:
+  type: zmax_hybrid
+  repo_id: xspace/zmax_hybrid_mt50
+  freeze_smolvlm: true
+  chunk_size: 7
+  n_action_steps: 7
+  gradient_checkpointing: true
+  torch_dtype: float16
+  device: cuda
+  state_dim: 4
+  action_dim: 4
+
+dataset:
+  repo_id: lerobot/metaworld_mt50_push_v2_image
+
+batch_size: 64
+steps: 50000
+num_workers: 4

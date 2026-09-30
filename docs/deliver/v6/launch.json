@@ -1,0 +1,53 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "① 10082 金手指 (v12)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/cam_finger_10082_work_v12.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "env": {
+                "PYTHONUNBUFFERED": "1",
+                "PYTHONIOENCODING": "utf-8"
+            },
+            "args": [],
+            "subProcess": true,
+            "redirectOutput": false
+        },
+        {
+            "name": "② 10083 表面 (v12)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/cam_surface_10083_work_v12.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "env": {
+                "PYTHONUNBUFFERED": "1",
+                "PYTHONIOENCODING": "utf-8"
+            },
+            "args": [],
+            "subProcess": true,
+            "redirectOutput": false
+        },
+        {
+            "name": "③ 离线跑模型 ab_check_defect_v2 (不占端口)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ab_check_defect_v2.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "env": {
+                "PYTHONUNBUFFERED": "1",
+                "PYTHONIOENCODING": "utf-8"
+            },
+            "args": [],
+            "subProcess": true,
+            "redirectOutput": false
+        }
+    ]
+}

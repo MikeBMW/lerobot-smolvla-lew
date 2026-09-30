@@ -1,0 +1,45 @@
+{
+    "_note": "拷到 Windows 产线机的 .vscode\\launch.json。program 必须写该机器上真实存在的部署名(在役名可能是现场约定名, 版本看文件头 VERSION)。改前备份 .vscode\\launch.json。",
+    "version": "0.1.0",
+    "configurations": [
+        {
+            "name": "① 主程序 (在役名)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/<在役主程序>.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "env": {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+            "args": [],
+            "subProcess": true,
+            "redirectOutput": false
+        },
+        {
+            "name": "② 第二路程序",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/<第二路主程序>.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "env": {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+            "args": [],
+            "subProcess": true,
+            "redirectOutput": false
+        },
+        {
+            "name": "③ 离线探针 (不占端口)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/machine_image_probe.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "env": {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+            "args": [],
+            "subProcess": true,
+            "redirectOutput": false
+        }
+    ]
+}

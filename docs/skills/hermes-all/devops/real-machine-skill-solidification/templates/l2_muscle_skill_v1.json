@@ -1,0 +1,37 @@
+{
+  "id": "L2.MUSCLE.<技能名>.v1",
+  "name": "<中文名: 光模块抓放循环>",
+  "layer": "L2",
+  "kind": "muscle_memory",
+  "source": "人机在环示教 + 真机实测验证 (<日期>; 操作员亲手摆到正好能抓那一刻的实测位姿)",
+  "points": {
+    "slot": {
+      "pos": [0.0, 0.0, 0.0],
+      "quat": [0.0, 0.0, 0.0, 1.0],
+      "desc": "工位点(=抓取点=放回点), 操作员示教值, 不许手填"
+    },
+    "safe": {
+      "pos": [0.0, 0.0, 0.0],
+      "quat": [0.0, 0.0, 0.0, 1.0],
+      "desc": "工位点正上方 100mm(由 slot 纯 +Z 抬升得到, 最安全的暂存/退让位)"
+    }
+  },
+  "params": {
+    "speed": 30,
+    "grasp_pos": 0,
+    "grasp_force": 40,
+    "open_pos": 1000
+  },
+  "steps": [
+    {"op": "gripper", "args": {"target_pos": 1000}, "note": "张爪(放料/释放)"},
+    {"op": "move", "to": "safe", "note": "抬起退让(先抬起再平移, 禁止在工位直接下降)"},
+    {"op": "move", "to": "slot", "note": "下降回工位(碰撞检测常关闭: 分 2~3 级下, 每级停一下)"},
+    {"op": "gripper", "args": {"target_pos": 0, "target_force": 40}, "note": "夹紧(force=40 → 开度应停 ~185, 空载 21)"},
+    {"op": "move", "to": "safe", "note": "抬起(验收: 抬升前后开度不变=夹牢; 若 ≈5 = 空爪, 点位错)"}
+  ],
+  "verify": {
+    "grasp_open_min": 60,
+    "grasp_open_max": 320,
+    "note": "夹持成功: 开度落在区间内且抬升前后不变; 空载会掉到 ~21"
+  }
+}

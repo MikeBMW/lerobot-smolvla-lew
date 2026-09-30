@@ -1,0 +1,20 @@
+[Unit]
+Description=Z-MAX 开放词汇分割服务 SAM3 (L2 感知原语, 127.0.0.1:8796)
+Documentation=file:/home/ubuntu/zmax/docs/design/sam3_open_vocab_seg_L2_20260929.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+# 与 ss-local-infer 同规矩: 一律指 main 工作树 (/home/ubuntu/zmax), 不指分支检出
+WorkingDirectory=/home/ubuntu/zmax
+Environment=PYTHONUNBUFFERED=1
+Environment=ZMAX_SAM3_DIR=/home/ubuntu/zmax_data/models/sam3_hf
+# --lazy: 起来不预载模型(显存 0), 第一次 /seg 调用时才加载(1.3s) ⇒ 服务常驻不占卡
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/sam3_seg.py --serve --port 8796 --lazy
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

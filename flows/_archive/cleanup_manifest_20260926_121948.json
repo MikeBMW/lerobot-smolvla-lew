@@ -1,0 +1,25 @@
+{
+ "ts": "20260926_121948",
+ "backup": "flows/_archive/state_space_obs_before_cleanup_20260926_121948.json",
+ "deleted": {
+  "sstest": "🧪 Test 用例执行",
+  "ssa": "🅰️ 通用算子 A · 参数写入",
+  "ssb": "🅱️ 通用算子 B · 参数微调",
+  "ssc": "🅾️ 通用算子 C · 参数校验"
+ },
+ "reason": {
+  "sstest": "测试脚手架 (终端节点, 出度 0); 自检改由 tools/verify_*.py 承担",
+  "ssa": "参数寻优线**已关闭** (20X: 10/10 同 seed 配对无差异)",
+  "ssb": "参数寻优线**已关闭**",
+  "ssc": "参数寻优线**已关闭**"
+ },
+ "restore": "cp flows/_archive/state_space_obs_before_cleanup_20260926_121948.json flows/state_space_obs.json",
+ "before": {
+  "nodes": 88,
+  "links": 167
+ },
+ "after": {
+  "nodes": 84,
+  "links": 159
+ }
+}

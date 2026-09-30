@@ -1,0 +1,442 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""l2_skill_dialog.py — L2 原子技能清单 (工程记忆·技能与经验库双击打开)
+
+选技能 -> 填参数 -> 点开始 -> 写 FIFO 给常驻执行器 -> 立即动作 (延迟 <1s)
+"""
+import glob
+import json
+import os
+import time
+import urllib.request
+
+from PyQt5.QtWidgets import (QDialog, QDoubleSpinBox, QHBoxLayout, QLabel, QListWidget,
+                             QListWidgetItem, QPlainTextEdit, QPushButton, QVBoxLayout)
+from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtGui import QPixmap
+from PyQt5.QtWidgets import QCheckBox, QGroupBox
+from PyQt5.QtWidgets import QComboBox
+
+
+# 深色主题: 技能清单亮字 (2026-09-19 老倪: 黑字黑底看不清 -> 改亮色)
+DARK_QSS = """
+QDialog, QWidget { background: #1b1e24; color: #e8e8e8; }
+QLabel { color: #e8e8e8; font-size: 16px; font-weight: bold; }
+QListWidget { background: #12141a; color: #eaeaea; border: 1px solid #3a3f4b;
+              font-size: 17px; outline: none; }
+QListWidget::item { padding: 10px 12px; color: #eaeaea; }
+QListWidget::item:selected { background: #2d4f6b; color: #ffffff; }
+QListWidget::item:hover { background: #232833; }
+QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit { background: #12141a; color: #ffffff;
+              border: 1px solid #3a3f4b; padding: 7px; font-size: 17px; }
+QPushButton { background: #2a2f3a; color: #f0f0f0; border: 1px solid #46506a;
+              padding: 9px 18px; border-radius: 4px; font-size: 16px; }
+QPushButton:hover { background: #354054; }
+QPushButton#startBtn { background: #2f6b3f; color: #ffffff; font-weight: bold; }
+QPushButton#startBtn:hover { background: #3a8250; }
+QPlainTextEdit, QTextEdit { background: #0f1115; color: #d6e0d6; border: 1px solid #3a3f4b;
+              font-size: 14px; }
+QGroupBox { color: #e8e8e8; border: 1px solid #3a3f4b; margin-top: 8px; padding-top: 6px; }
+QGroupBox::title { color: #e8e8e8; }
+QHeaderView::section { background: #232833; color: #eaeaea; border: 1px solid #3a3f4b; }
+"""
+
+
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+REG = os.path.join(REPO, "data/skills/l2_atomic/registry.json")
+FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
+DAEMON_NAME = "l2_" + "dae" + "mon.py"
+LOG = os.path.expanduser("~/zmax_data/l2_" + "dae" + "mon.log")
+
+
+def alive():
+    """常驻执行器是否在跑 (探活, 避免无读端写 FIFO 卡死界面)
+
+    2026-09-20 收紧: 旧版在 /proc/*/cmdline 里搜子串 "l2_daemon.py", 会被 grep / 编辑器 /
+    hermes 包装 shell 的命令行字符串误命中 -> 执行器真死了却显示"在线"(静默假信号)。
+    改为精确 argv 匹配: argv[0] 是 python 且某个 argv 参数以 tools/l2_daemon.py 结尾。
+    """
+    for p in glob.glob("/proc/[0-9]*/cmdline"):
+        try:
+            argv = [a for a in open(p, "rb").read().decode("utf-8", "ignore").split("\0") if a]
+        except Exception:
+            continue
+        if not argv or "python" not in argv[0]:
+            continue
+        if any(a.endswith("tools/" + DAEMON_NAME) for a in argv[1:]):
+            return True
+    return False
+
+
+def _read_new(n0):
+    """读执行器日志 n0 字节之后的新行"""
+    try:
+        with open(LOG, encoding="utf-8", errors="ignore") as f:
+            f.seek(n0)
+            return [x.strip() for x in f.read().splitlines() if x.strip()]
+    except Exception:                                                       # noqa: BLE001
+        return []
+
+
+def log_size():
+    try:
+        return os.path.getsize(LOG)
+    except Exception:                                                       # noqa: BLE001
+        return 0
+
+
+def send_nowait(spec):
+    """写 FIFO 给常驻执行器, **立即返回**, 不等回执 —— 返回 (ok, msg, n0)。
+
+    🐛 2026-09-28 老倪: 「都不知道发出了没有, 用户对技能的使用没感觉」。
+    旧版在这里**死等 8s** 回读日志; 而执行器下发前要过 VL 安全闸(动辄十几~上百秒) ⇒
+    8s 内什么都没有 → 界面只写一行"(未回读, 看 l2_daemon.log)" ⇒ 点完等于没反馈。
+    现在: 立刻回"已下发", 回执/被拦原因由 _watch_reply 后台补打(不卡界面)。
+    """
+    n0 = log_size()
+    if not alive():
+        return False, "✗ 执行器未跑 — 先启动 tools/" + DAEMON_NAME, n0
+    if not os.path.exists(FIFO):
+        return False, "✗ FIFO 缺失: " + FIFO, n0
+    try:
+        with open(FIFO, "w", encoding="utf-8") as f:
+            f.write(json.dumps(spec, ensure_ascii=False) + "\n")
+    except Exception as e:                                                  # noqa: BLE001
+        return False, "✗ 写 FIFO 失败: %s" % e, n0
+    return True, "✓ 已下发到执行器 (等回执…)", n0
+
+
+def send(spec):
+    """兼容旧调用: 写 FIFO + 死等 8s 回读 (界面已改用 send_nowait + 后台轮询)"""
+    ok, msg, n0 = send_nowait(spec)
+    if not ok:
+        return msg
+    t0 = time.time()
+    while time.time() - t0 < 8:
+        time.sleep(0.4)
+        for x in reversed(_read_new(n0)):
+            if "受理:" in x:
+                return msg + "\n← 执行器: " + x
+    return msg + "\n← 执行器: (8s 内未回执, 看 " + os.path.basename(LOG) + ")"
+
+
+class L2SkillDialog(QDialog):
+    """L2 原子技能清单: 单独调用任一原子技能 (抬升/下降/平移/合爪/张爪/到点)"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet(DARK_QSS)   # 亮字深底 (老倪反馈)
+        self.setWindowTitle("💪 L2 原子技能清单 — 工程记忆 · 技能与经验库")
+        self.resize(820, 620)
+        try:
+            self.reg = json.load(open(REG, encoding="utf-8"))
+        except Exception as e:
+            self.reg = {"skills": []}
+            print("registry load fail:", e)
+        lay = QHBoxLayout(self)
+        left = QVBoxLayout()
+        left.addWidget(QLabel("L2 原子技能 (选中后填参数 → 开始)"))
+        self.lst = QListWidget()
+        for s in self.reg.get("skills", []):
+            it = QListWidgetItem("%s %s" % (s.get("icon", "•"), s.get("name", s.get("id", ""))))
+            it.setData(32, s)
+            self.lst.addItem(it)
+        self.lst.currentRowChanged.connect(self._sel)
+        self.lst.itemDoubleClicked.connect(lambda _it: self._go(True))   # 双击 = 只看图
+        left.addWidget(self.lst)
+        lay.addLayout(left)
+        right = QVBoxLayout()
+        self.lbl = QLabel("—")
+        right.addWidget(self.lbl)
+        self.spin = QDoubleSpinBox()
+        self.combo = QComboBox()
+        self.combo.setVisible(False)
+        self.spin.setRange(-1000.0, 1000.0)
+        self.spin.setDecimals(1)
+        right.addWidget(self.spin)
+        self.btn = QPushButton("▶ 开始 (立即动作)")
+        self.btn.clicked.connect(self._go)
+        right.addWidget(self.btn)
+        self.out = QPlainTextEdit()
+        self.out.setReadOnly(True)
+        self.out.appendPlainText("执行器状态: %s" % ("在线 ✓" if alive() else "离线 ✗"))
+        right.addWidget(self.out)
+        # 图片预览: 金手指AOI图片 -> http://192.168.23.23:10082/picture (老倪: UI 接收并显示图片)
+        gimg = QGroupBox("金手指AOI图片  (10082) · 来源可选")
+        vimg = QVBoxLayout(gimg)
+        self.img = QLabel("点「开始」或「刷新图片」取图")
+        self.img.setMinimumHeight(260)
+        self.img.setAlignment(Qt.AlignCenter)
+        self.img.setStyleSheet("QLabel{background:#0f1115;color:#8a929e;border:1px solid #3a4152;font-size:14px;}")
+        vimg.addWidget(self.img)
+        hb0 = QHBoxLayout()
+        hb0.addWidget(QLabel("来源:"))
+        self.cmb_src = QComboBox()
+        for _lab, _p in self.IMG_SOURCES:
+            self.cmb_src.addItem(_lab)
+        self.cmb_src.currentIndexChanged.connect(lambda _i: self._refresh_image())
+        hb0.addWidget(self.cmb_src, 1)
+        vimg.addLayout(hb0)
+        hb2 = QHBoxLayout()
+        self.btn_img = QPushButton("刷新图片")
+        self.btn_img.clicked.connect(self._refresh_image)
+        self.chk_auto = QCheckBox("自动刷新(2s)")
+        self.chk_auto.toggled.connect(self._toggle_auto)
+        self.lbl_img = QLabel("")
+        hb2.addWidget(self.btn_img); hb2.addWidget(self.chk_auto); hb2.addWidget(self.lbl_img); hb2.addStretch(1)
+        vimg.addLayout(hb2)
+        right.addWidget(gimg, 2)
+        self.tmr = QTimer(self); self.tmr.setInterval(2000); self.tmr.timeout.connect(self._refresh_image)
+        lay.addLayout(right)
+        if self.lst.count():
+            self.lst.setCurrentRow(0)
+            self._sel(0)
+
+    def _sel(self, row):
+        it = self.lst.item(row)
+        if not it:
+            return
+        s = it.data(32) or {}
+        p = s.get("param") or {}
+        if p:
+            k, meta = list(p.items())[0]
+            try:
+                num = float(meta.get("default"))
+                is_num = True
+            except (TypeError, ValueError):
+                num, is_num = 0.0, False
+            self.spin.setVisible(is_num)
+            self.spin.setEnabled(is_num)
+            self.combo.setVisible(not is_num)
+            if is_num:
+                self.spin.setValue(num)
+                self.spin.setSuffix(" " + str(meta.get("unit", "")))
+            else:
+                if self.combo.count() == 0:
+                    # 🐛 2026-09-20 事故修复: 默认值不在候选列表里时, 旧代码 findText 返回 -1 →
+                    #   **静默停在 index 0 = "home"** → 点的技能实际下发 home(向下~375mm), 老倪按了急停。
+                    #   现在: 默认值优先且必须在列表里; 并合并传授点库(taught_points.json)的点名。
+                    vals = list(meta.get("values") or ["home", "grasp", "place", "up1",
+                                                       "wp_a", "wp_b", "wp_c", "wp_d", "wp_e", "wp_f"])
+                    try:
+                        import json as _j
+                        _tp = os.path.join(REPO, "data/skills/l2_atomic/taught_points.json")
+                        for _n in (_j.load(open(_tp, encoding="utf-8")).get("points") or {}):
+                            if _n not in vals:
+                                vals.append(_n)
+                    except Exception:
+                        pass
+                    _d = str(meta.get("default"))
+                    if _d and _d not in vals:
+                        vals.insert(0, _d)
+                    for v in vals:
+                        self.combo.addItem(str(v))
+                idx = self.combo.findText(str(meta.get("default")))
+                self.combo.setCurrentIndex(idx if idx >= 0 else 0)
+            self.lbl.setText("%s\n参数: %s (默认 %s)" % (s.get("name", ""), meta.get("label", k), meta.get("default")))
+        else:
+            self.spin.setVisible(False)
+            self.spin.setEnabled(False)
+            self.combo.setVisible(False)
+            self.lbl.setText("技能: %s (%s)  — 无参数, 直接开始" % (s.get("name", ""), s.get("id", "")))
+
+    IMG_BASE = "http://192.168.23.23:10082"
+    # 图片来源可选 (老倪: 技能清单里要能看到"拉长后的金手指")
+    #   /picture            = 原始图 2448x2048
+    #   /picture?kind=crop  = 金手指拉长版 960x960 (喂 YOLO 的规范化图, 默认)
+    #   /picture?kind=natural = 金手指原比例 (不拉伸, 目检用)
+    IMG_SOURCES = [("金手指拉长 960x960 (喂YOLO)", "/picture?kind=crop"),
+                   ("原图 2448x2048", "/picture"),
+                   ("金手指原比例 (不拉伸)", "/picture?kind=natural")]
+    IMG_URL = IMG_BASE + IMG_SOURCES[0][1]
+
+    def _toggle_auto(self, on):
+        self.tmr.start() if on else self.tmr.stop()
+
+    def _refresh_image(self, url=None, label=None):
+        """接收并显示 AOI 当前照片。
+
+        · url 省略 → 按「来源」下拉从工控机 **10082** 拉 (金手指默认路径, 老行为不变)
+        · url 给出 → 用**该技能自己的 url/query** 拉 (如表面通道 10083 的 /picture?kind=crop)
+          🛠 2026-09-23 老倪: "先把当前的表面检测做成技能, 而且也要看到图片" → 预览不再是硬编码 10082
+        """
+        if url is None:
+            try:
+                _lab = self.cmb_src.currentText()
+            except Exception:
+                _lab = self.IMG_SOURCES[0][0]
+            _path = dict(self.IMG_SOURCES).get(_lab, "/picture")
+            url = self.IMG_BASE + _path
+            label = label or _lab
+        url = url + ("&" if "?" in url else "?") + "t=%d" % int(time.time())
+        try:
+            r = urllib.request.urlopen(url, timeout=8)
+            data = r.read()
+            ct = r.headers.get("Content-Type", "")
+        except Exception as e:
+            self.img.setPixmap(QPixmap())
+            self.img.setText("取图失败: %s\n(源: %s)" % (e, url.rsplit("?", 1)[0]))
+            self.lbl_img.setText("")
+            return
+        pm = QPixmap()
+        if not pm.loadFromData(data):
+            self.img.setText("返回非图片 (%s): %s" % (ct, data[:180]))
+            return
+        self.img.setPixmap(pm.scaled(self.img.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        _tag = (label or "AOI").split()[0]
+        self.lbl_img.setText("%s · %dx%d · %d KB · %s" % (_tag, pm.width(), pm.height(),
+                                                          len(data) // 1024, time.strftime("%H:%M:%S")))
+        self.out.appendPlainText("[%s] 取到照片 %dx%d %d KB (源 %s)"
+                                 % (time.strftime("%H:%M:%S"), pm.width(), pm.height(),
+                                    len(data) // 1024, url.rsplit("?", 1)[0]))
+
+    def _go(self, preview_only=False):
+        it = self.lst.currentItem()
+        if not it:
+            return
+        s = it.data(32) or {}
+        _is_aoi = isinstance(s, dict) and str(s.get("id", "")).startswith("L2.aoi")
+        if _is_aoi and preview_only:
+            # 双击 L2.aoi* = 只看图 (2026-09-20 老倪: 双击任意 L2.aoi* 刷新预览)
+            self._refresh_image()
+            self.chk_auto.setChecked(True)
+            return
+        # 🛠 2026-09-23 修复 (老倪: "检测金手指技能为什么没有反馈"): 原实现把**所有** L2.aoi*
+        #   在 _go 开头就 return 掉 → 「金手指AOI检测」永远不下发, 点了等于只取图 = 没反馈。
+        #   现在: 双击=预览 / 「开始」按钮=**真下发到常驻执行器** (http 技能 → POST /capture_detect),
+        #   并把执行器回显 + 检测吃的那张图一起显示出来。
+        spec = {"skill": s.get("id")}
+        if s.get("ros") != "http":   # 金手指/表面 AOI 等 HTTP 技能不需要 speed
+            spec["speed"] = 60
+        p = s.get("param") or {}
+        if p:
+            k0 = list(p.keys())[0]
+            if self.combo.isVisible() and self.combo.count():
+                spec[k0] = self.combo.currentText()
+            else:
+                spec[k0] = float(self.spin.value())
+        self._echo("→ 已收到点击: %s · %s" % (s.get("id"), json.dumps(spec, ensure_ascii=False)))
+        self._echo("   " + self._safety_line())      # 下发前先把安全闸现状摆出来(能不能动的依据)
+        try:
+            ok, msg, _n0 = send_nowait(spec)
+        except Exception as e:                                                  # noqa: BLE001
+            ok, msg, _n0 = False, "✗ %s" % e, log_size()
+        self._echo(msg)
+        if ok:
+            self._watch_reply(_n0, str(s.get("id")))
+        if _is_aoi:
+            # 🛠 2026-09-23: 只有**触发检测类**才提示"判决不回传" (看图类不提示, 免得刷屏分不清)
+            if str(s.get("id")) in ("L2.aoi_gold", "L2.aoi_surface"):
+                self.out.appendPlainText("[%s] ⚠️ 触发类只回「已受理」; 判决看「📝 …判决(OK/NG)」技能 "
+                                         "或工控机终端" % time.strftime("%H:%M:%S"))
+            _u, _lab = self._skill_image_url(s)
+            self._refresh_image(url=_u, label=_lab)   # 图像类=自己的URL; 触发/判决类=同通道 /picture?kind=crop
+
+    # ── 下面的终端: 点完必须有反馈 (2026-09-28 老倪: 「都不知道发出了没有, 用户对技能的使用没感觉」) ──
+    def _echo(self, line):
+        """打到底部终端, 并同步到 studio 的底部日志栏 (两处都留痕, 他不用猜)"""
+        try:
+            self.out.appendPlainText("[%s] %s" % (time.strftime("%H:%M:%S"), line))
+        except Exception:                                                   # noqa: BLE001
+            pass
+        try:
+            _f = getattr(self.parent(), "_log", None)
+            if callable(_f):
+                _f("💪 " + str(line))
+        except Exception:                                                   # noqa: BLE001
+            pass
+
+    def _safety_line(self):
+        """安全闸现状一行 (快层=本地反射 5Hz · 慢层=DeepSeek VL 常驻)。
+        这一行就是"为什么技能不动"的直接依据 (老倪: 有问题要在下面的终端反馈)。"""
+        def _rd(rel):
+            try:
+                return json.loads(open(os.path.expanduser(rel), encoding="utf-8").read())
+            except Exception:                                               # noqa: BLE001
+                return {}
+
+        def _one(d, lab):
+            if not d:
+                return "%s: 无裁决(fail-closed)" % lab
+            age = max(0, int(time.time() - float(d.get("ts") or 0)))
+            if d.get("safe"):
+                return "%s ✓放行(%ds前)" % (lab, age)
+            _ex = str(d.get("unsafe_cams") or "")
+            return "%s ✗拒发(%ds前): %s%s" % (lab, age, str(d.get("why") or "")[:48],
+                                              (" ·" + _ex) if _ex else "")
+
+        return "安全闸 " + _one(_rd("~/zmax_data/vl_safety_fast.json"), "快层") + " · " \
+            + _one(_rd("~/zmax_data/vl_safety.json"), "慢层")
+
+    def _wait_reason(self):
+        """等回执期间说清"在等什么" —— 老倪 2026-09-28: 点了要能看懂卡在哪, 不能静默等两分钟。
+
+        关键口径: 慢层(VL)为**本次动作**重跑的裁决没到之前, 执行器**故意不下发**
+        (绝不拿旧裁决放行新动作) —— 单轮实测 45~190s, 这段等待是设计, 不是卡死。
+        """
+        try:
+            _rd = lambda p: json.loads(open(os.path.expanduser(p), encoding="utf-8").read())  # noqa: E731
+            it = _rd("~/zmax_data/vl_intent.json")
+            vd = _rd("~/zmax_data/vl_safety.json")
+            seq_i = int(it.get("seq") or 0)
+            seq_v = int(vd.get("intent_seq") or 0)
+            age = max(0, int(time.time() - float(vd.get("ts") or 0)))
+            if seq_i and seq_v == seq_i:
+                return "本动作的 VL 裁决已到 (safe=%s) — 正在下发/等 ROS 回执" % ("是" if vd.get("safe") else "否")
+            return ("VL 慢层正在为**本次动作**重跑一轮 (本动作 seq=%s / 最近裁决 seq=%s · 上轮 %ds 前 · 单轮实测 45~190s) "
+                    "⇒ 裁决到之前故意不下发" % (seq_i, seq_v, age))
+        except Exception:                                                       # noqa: BLE001
+            return "等执行器回执"
+
+    def _watch_reply(self, n0, sid):
+        """后台轮询执行器日志, 把回执/被拦原因补打到下面的终端 (不卡界面)。"""
+        self._w = {"n0": n0, "t0": time.time(), "sid": sid, "done": False, "seen": [], "tick": 0.0}
+        if not hasattr(self, "_wtmr"):
+            self._wtmr = QTimer(self)
+            self._wtmr.setInterval(800)
+            self._wtmr.timeout.connect(self._poll_reply)
+        self._wtmr.start()
+
+    def _poll_reply(self):
+        w = getattr(self, "_w", None)
+        if not w or w.get("done"):
+            return
+        _tmr = getattr(self, "_wtmr", None)       # 防御: 无计时器时也不能炸 (测试/异常重入)
+        _stop = (lambda: _tmr.stop()) if _tmr is not None else (lambda: None)
+        for x in _read_new(w["n0"]):
+            if x in w["seen"]:
+                continue
+            w["seen"].append(x)
+            # 闸门/通道/目标行 = "为什么"; 受理行 = 最终结果 —— 都打出来
+            self._echo("← " + x[:180])
+        if any("受理:" in x for x in w["seen"]):
+            w["done"] = True
+            _stop()
+            if any("被拦" in x or "拒发" in x or "拒绝" in x for x in w["seen"]):
+                self._echo("   ↑ 这一条就是「技能没动」的原因 · 现状: " + self._safety_line())
+            return
+        _el = time.time() - w["t0"]
+        if _el - float(w.get("tick") or 0) >= 15:      # 每 15s 报一次进度: 在等什么、等了多久
+            w["tick"] = _el
+            self._echo("⏳ 已等 %.0fs · %s" % (_el, self._wait_reason()))
+        if _el > 320:                                  # 上限对齐执行器等 VL 裁决的 300s
+            w["done"] = True
+            _stop()
+            self._echo("… 320s 没等到回执 (执行器可能仍在等安全裁决或排队) · 现状: " + self._safety_line())
+
+    def _skill_image_url(self, s):
+        """按技能推断该显示哪张图 (老倪: 表面检测也要能看到图)。
+        · 图像类技能(kind=image) → 用它自己的 url+query (如 10083 /picture?kind=crop)
+        · 触发/判决/指标类(JSON 端点) → 取**同通道**的 /picture?kind=crop 图像
+        返回 (url 或 None, 标签)"""
+        u = str(s.get("url") or "")
+        q = str(s.get("query") or "")
+        if str(s.get("kind") or "") == "image" and u:
+            return u + q, str(s.get("name") or "AOI")
+        base = u
+        for suf in ("/capture_detect", "/last_result", "/crop_info", "/region"):
+            if suf in base:
+                base = base.split(suf)[0]
+        if base.startswith("http"):
+            return base + "/picture?kind=crop", str(s.get("name") or "AOI") + " · 图"
+        return None, None

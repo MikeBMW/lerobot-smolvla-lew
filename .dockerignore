@@ -1,0 +1,17 @@
+# Z-MAX 模型引擎 Docker 构建排除 (容器化 — 大文件不进镜像)
+data/
+outputs/
+reports/
+*.mp4
+*.pdf
+*.pt
+.git/
+*.log
+__pycache__/
+
+.venv/*
+!.venv/lib/
+.venv/lib/*
+!.venv/lib/python3.12/
+.venv/lib/python3.12/*
+!.venv/lib/python3.12/site-packages/

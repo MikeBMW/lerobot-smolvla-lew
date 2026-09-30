@@ -1,0 +1,9 @@
+{
+  "last_report_path": "/home/ubuntu/.hermes/logs/curator/20260930-005626",
+  "last_run_at": "2026-09-30T00:56:26.227630+00:00",
+  "last_run_duration_seconds": 6.059307,
+  "last_run_summary": "auto: 14 marked stale, 12 archived; llm: skipped (consolidation off)",
+  "last_run_summary_shown_at": "2026-09-23T00:56:26.184985+00:00",
+  "paused": false,
+  "run_count": 9
+}

@@ -1,0 +1,86 @@
+{
+  "timestamp": "2026-07-18T23:31:51.607Z",
+  "filename": "2026-07-19_SysXX_Z700.json",
+  "system": "SysXX",
+  "machine": "Z700",
+  "canvas": {"px": 0, "py": 0, "zoom": 1},
+
+  "ui_hints": {
+    "title": "数据采集闭环 · 持续自动化",
+    "subtitle": "Orin → MAC → 4090 → W&B",
+    "theme": "dark",
+    "grid_size": 20,
+    "status_bar": true,
+    "auto_save_interval_s": 10
+  },
+
+  "nodes": [
+    {
+      "id": "n1784371153971a55",
+      "type": "hardware",
+      "name": "Orin Nano",
+      "x": 70, "y": 103,
+      "icon": "📡",
+      "color": "#00d4aa",
+      "status_key": "orin.online",
+      "actions": [
+        {"label": "开始采集", "cmd": "record", "duration": "30s", "icon": "▶️"},
+        {"label": "停止", "cmd": "stop", "icon": "⏹"}
+      ],
+      "data_sources": [
+        {"name": "Realsense RGB", "topic": "/realsense/color/image_raw", "fps": 1.3, "shape": "480×640×3"},
+        {"name": "关节状态", "topic": "/real_joint_states", "fps": 60, "dof": 6},
+        {"name": "六维力", "topic": "/robot/force_torque", "fps": 36, "dof": 6}
+      ]
+    },
+    {
+      "id": "n17843711561110hw",
+      "type": "hardware",
+      "name": "MAC",
+      "x": 298, "y": 157,
+      "icon": "🍎",
+      "color": "#58a6ff",
+      "status_key": "mac.online",
+      "actions": [
+        {"label": "转换NPZ", "cmd": "convert", "icon": "🔄"},
+        {"label": "推4090", "cmd": "push", "icon": "📤"}
+      ],
+      "data_sources": [
+        {"name": "MCAP缓存", "path": "~/zmax_loop/", "format": ".db3"},
+        {"name": "NPZ输出", "path": "~/zmax_loop/", "format": ".npz"}
+      ]
+    },
+    {
+      "id": "n17843711589528z4",
+      "type": "hardware",
+      "name": "4090 训练",
+      "x": 548, "y": 150,
+      "icon": "🧠",
+      "color": "#a371f7",
+      "status_key": "4090.online",
+      "actions": [
+        {"label": "开始训练", "cmd": "train", "icon": "🚀"},
+        {"label": "W&B查看", "cmd": "wandb", "url": "https://wandb.ai/zmax/cycle", "icon": "📊"}
+      ],
+      "data_sources": [
+        {"name": "训练集", "path": "/root/datasets/", "cycles": 0, "total_frames": 0},
+        {"name": "模型输出", "path": "/root/outputs/", "latest": null}
+      ]
+    }
+  ],
+  "links": [
+    {"f": "n1784371153971a55", "t": "n17843711561110hw", "label": "MCAP 30s", "color": "#00d4aa"},
+    {"f": "n17843711561110hw", "t": "n17843711589528z4", "label": "NPZ 上传", "color": "#a371f7"}
+  ],
+
+  "pipeline": {
+    "current_cycle": 0,
+    "auto_repeat": true,
+    "interval_s": 60,
+    "phases": [
+      {"name": "采集", "node": "n1784371153971a55", "duration_s": 30, "status": "idle"},
+      {"name": "转换", "node": "n17843711561110hw", "duration_s": 5, "status": "idle"},
+      {"name": "训练", "node": "n17843711589528z4", "duration_s": 300, "status": "idle"}
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-07-12 12:30:56",
+  "checks": [
+    {
+      "layer": "L1",
+      "name": "Mac→Orin",
+      "ok": true,
+      "detail": "PING 192.168.23.10 (192.168.23.10): 56 data bytes\n64 bytes from 192.168.23.10: icmp_seq=0 ttl=64 tim"
+    },
+    {
+      "layer": "L1",
+      "name": "控制器",
+      "ok": true,
+      "detail": "PING 192.168.23.160 (192.168.23.160) 56(84) bytes of data.\n64 bytes from 192.168"
+    },
+    {
+      "layer": "L2",
+      "name": "ROS2节点",
+      "ok": false,
+      "detail": "0 nodes"
+    },
+    {
+      "layer": "L3",
+      "name": "相机",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "layer": "L4",
+      "name": "关节",
+      "ok": false,
+      "detail": "axes=0"
+    },
+    {
+      "layer": "L5",
+      "name": "急停",
+      "ok": true,
+      "detail": "WARNING: topic [/emergency_sto",
+      "warning": false
+    }
+  ],
+  "status": "DEGRADED",
+  "all_ok": false
+}

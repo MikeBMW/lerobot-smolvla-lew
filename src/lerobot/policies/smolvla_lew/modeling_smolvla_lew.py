@@ -1,0 +1,568 @@
+# Copyright 2026 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from __future__ import annotations
+
+import logging
+import os
+from collections import deque
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import numpy as np
+import torch
+import torch.nn.functional as F  # noqa: N812
+from PIL import Image
+from torch import Tensor, nn
+
+# 初始化logger
+logger = logging.getLogger(__name__)
+
+# 🗣 C1 指令增广池 (2026-09-10) — 同一语义的多种表述 (中英混合)。
+#   理论: "同一批轨迹 × 多种说法" → 语言在训练里变成随机变量而非常量,
+#   模型才无法把它当噪声忽略, 并借助 VLM 文本编码器的语义平滑性泛化到未见表述
+#   (L4 将来下的自然语言指令)。第一项必须是数据集原串 = 分布锚点, 保底不回退。
+#   训练开: SS_INSTR_AUG=1 (默认关, 推理不受影响)。
+_INSTR_POOL = [
+    "metaworld 光模块插拔",                                 # 数据集 tasks.parquet 实际原串 (锚点! 实测值)
+    "insert the peg into the side hole",
+    "put the peg into the hole on the side",
+    "pick up the optical module and insert it into the hole",
+    "align the peg with the hole and insert it",
+    "把光模块插入孔位",
+    "将光模块插入侧孔",
+    "光模块插装作业",
+    "对准孔位并插入光模块",
+]
+
+from lerobot.policies.pretrained import PreTrainedPolicy, T
+from lerobot.policies.utils import populate_queues
+from lerobot.utils.constants import ACTION, OBS_STATE
+from lerobot.utils.import_utils import _transformers_available, require_package
+
+# 移除原V-JEPA、Qwen无用导入
+if TYPE_CHECKING or _transformers_available:
+    from transformers import AutoModel
+else:
+    AutoModel = None
+
+# ====== 改动点1：导入替换，使用专家版SmolVLM ======
+from .action_head import SmolVLALewActionHead
+from .configuration_smolvla_lew import SmolVLALewConfig
+from lerobot.policies.smolvla.smolvlm_with_expert import SmolVLMWithExpertModel
+
+# ====== 新增：导入LeWorldModel世界模型 ======
+from .world_model_le import LeWorldModel
+
+# ============================================================================
+# Native SmolVLALew Model - SmolVLM(SigLIP Expert) + DiT Action Head
+# ============================================================================
+
+
+class SmolVLALewModel(nn.Module):
+    """
+    SmolVLA Expert 模型
+    Components:
+      - SmolVLMWithExpertModel(SigLIP): 轻量视觉语言主干
+      - DiT-B: flow-matching action head 预测动作
+    """
+
+    def __init__(self, config: SmolVLALewConfig) -> None:
+        super().__init__()
+        require_package("transformers", extra="smolvla_lew")
+        self.config = config
+
+        # 初始化专家版SmolVLM
+        self.smolvlm = SmolVLMWithExpertModel(
+            model_id=config.smolvlm_name,
+            load_vlm_weights=True,
+            train_expert_only=config.freeze_smolvlm,
+            freeze_vision_encoder=config.freeze_smolvlm,
+            attention_mode="self_attn",
+            num_expert_layers=getattr(config, "num_expert_layers", -1),
+            num_vlm_layers=getattr(config, "num_vlm_layers", -1),
+            self_attn_every_n_layers=getattr(config, "self_attn_every_n_layers", -1),
+            expert_width_multiplier=getattr(config, "expert_width_multiplier", 0.5),
+            device="auto"
+        )
+        self.action_tokens = None
+        self.action_token_ids = None
+        self.embodied_action_token_id = None
+
+        # 初始化DiT动作头
+        self.action_model = SmolVLALewActionHead(
+            config, cross_attention_dim=self.smolvlm.vlm.config.text_config.hidden_size
+        )
+
+        # 关闭WorldModel
+        self.le_world_model = None
+        
+        # ====== 新增：条件性初始化LeWorldModel世界模型 ======
+        if config.enable_lew_world_model:
+            # 获取SigLIP视觉编码器
+            vision_encoder = self.smolvlm.vlm.model.vision_model
+            # 获取视觉编码器输出维度 (2026-08-05 修复: SmolVLMVisionConfig 无嵌套 vision_config,
+            #   直接取 config.hidden_size — 之前 freeze=true 强制关 LEW 从未走到此路径, 共存后暴露)
+            vc = getattr(vision_encoder.config, "vision_config", None)
+            vision_hidden_size = getattr(vc, "hidden_size", None) or getattr(vision_encoder.config, "hidden_size", 1152)
+            
+            # 初始化LeWorldModel
+            self.le_world_model = LeWorldModel(
+                vision_encoder=vision_encoder,
+                action_dim=config.action_dim,
+                obs_embed_dim=config.lew_hidden_dim,
+                hidden_dim=config.lew_hidden_dim,
+                num_layers=config.lew_num_layers,
+                num_heads=8,
+                dim_head=64,
+                mlp_dim=config.lew_hidden_dim * 4,
+                num_frames=config.num_video_frames,
+                dropout=0.1,
+                attn_mode=getattr(config, "lew_attn_mode", "adaln"),
+            )
+            print(f"✓ LeWorldModel initialized: hidden_dim={config.lew_hidden_dim}, layers={config.lew_num_layers}, attn_mode={getattr(config, 'lew_attn_mode', 'adaln')}")
+
+        # 冻结VLM主干
+        if config.freeze_smolvlm:
+            self.smolvlm.requires_grad_(False)
+
+        self.replace_prompt = ""
+        self.embodied_replace_prompt = ""
+
+    def tensor_to_pil(self, img_tensor: torch.Tensor) -> Image.Image:
+        """[C, H, W] tensor 转 PIL Image"""
+        if img_tensor.dtype == torch.float32:
+            img_tensor = (img_tensor * 255).clamp(0, 255).to(torch.uint8)
+        arr = img_tensor.permute(1, 2, 0).detach().cpu().numpy()
+        return Image.fromarray(arr)
+
+    def _get_multimodal_embeds(self, images: list[list[Image.Image]], instructions: list[str]) -> torch.Tensor:
+        processor = self.smolvlm.processor
+        batch_size = len(images)
+        
+        all_pixel_values = []
+        all_input_ids = []
+        
+        for sample_idx in range(batch_size):
+            sample_imgs = images[sample_idx]
+            text = instructions[sample_idx] if sample_idx < len(instructions) and instructions[sample_idx] else "push red block to target"
+            
+            if not sample_imgs:
+                raise ValueError(f"Sample {sample_idx} has no images!")
+            
+            num_images = len(sample_imgs)
+            image_tokens = "<image>" * num_images
+            full_text = f"{image_tokens}{text}"
+            
+            # 🖼 图像 token 数控制 (2026-09-10 老倪问"什么参数那么多"的答案):
+            #   max_image_size 的 longest_edge 语义 = **patch 边长** (值越小 → patch 越多 → token 越多)。
+            #   默认 512 → 17 patch → 1141 token/样本: 64×64 源图被"先缩到64再放大到512"再切块, 纯浪费。
+            #   实测: 1024→5 patch/347 token; 2048→1 patch/81 token。
+            #   SS_IMG_MAXEDGE 统一控制训练/推理 (必须一致, 否则 VLM 输入分布错 → 模型失效)。
+            _mkw = {}
+            _me = os.environ.get("SS_IMG_MAXEDGE")
+            if _me:
+                _mkw["max_image_size"] = {"longest_edge": int(_me)}
+            proc_out = processor(
+                images=sample_imgs,
+                text=full_text,
+                return_tensors="pt",
+                **_mkw
+            )
+            
+            all_pixel_values.append(proc_out["pixel_values"])
+            all_input_ids.append(proc_out["input_ids"])
+        
+        device = next(self.smolvlm.parameters()).device
+        pixel_values = torch.cat(all_pixel_values, dim=0).to(device)
+        # 🐛 2026-09-10 变长指令批处理 (A: batch>1 的前提): 逐样本 processor 输出的 input_ids
+        #   长度随指令文本变化 → 直接 cat 会 "Sizes of tensors must match" 崩
+        #   (这就是原实现只能 batch=1 的原因)。修: 右 pad 到批内最大长度 + attention_mask;
+        #   causal 注意力下 pad 在序列末尾, 不会污染有效 token 的表示。batch=1 零开销、行为不变。
+        _lens = {int(t.shape[1]) for t in all_input_ids}
+        if len(_lens) > 1:
+            _tok = getattr(processor, "tokenizer", None)
+            _pid = getattr(_tok, "pad_token_id", None)
+            if _pid is None:
+                _pid = getattr(_tok, "eos_token_id", None) or 0
+            _max = max(_lens)
+            _ids, _msk = [], []
+            for _t in all_input_ids:
+                _n = _max - int(_t.shape[1])
+                _ids.append(_t if _n == 0 else torch.cat(
+                    [_t, torch.full((_t.shape[0], _n), int(_pid), dtype=_t.dtype)], dim=1))
+                _msk.append(torch.cat(
+                    [torch.ones_like(_t), torch.zeros((_t.shape[0], _n), dtype=_t.dtype)], dim=1))
+            input_ids = torch.cat(_ids, dim=0).to(device)
+            attention_mask = torch.cat(_msk, dim=0).to(device)
+        else:
+            input_ids = torch.cat(all_input_ids, dim=0).to(device)
+            attention_mask = None
+
+        # 直接调用 vlm 模型
+        vlm_out = self.smolvlm.vlm(
+            pixel_values=pixel_values,
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            output_hidden_states=True,
+            return_dict=True
+        )
+        
+        # SmolVLM 输出的是 CausalLMOutputWithPast
+        # hidden_states 是 tuple，取最后一层
+        if hasattr(vlm_out, 'hidden_states') and vlm_out.hidden_states is not None:
+            # hidden_states 是 tuple of [batch, seq_len, hidden_dim]
+            multimodal_embeds = vlm_out.hidden_states[-1]
+        else:
+            # 备选方案：使用模型的内部表示
+            # 对于 SmolVLM，可以通过 model 的 forward 获取
+            raise ValueError("No hidden_states in vlm output")
+        
+        return multimodal_embeds
+
+    def forward(self, examples: list[dict]) -> dict[str, Tensor]:
+        # breakpoint()
+        batch_size = len(examples)
+        # ★ 2026-09-26 老倪: 逐步打印 → CPU 开销 → GPU 掉载; 需时设 ZMAX_VERBOSE_STEP=1
+        if os.environ.get("ZMAX_VERBOSE_STEP"):
+            logger.info(
+                f"[SmolVLALew] Forward pass: batch_size={batch_size}, "
+                f"has_action={'action' in examples[0] and examples[0]['action'] is not None}, "
+                f"le_world_model={'enabled' if self.le_world_model is not None else 'disabled'}, "
+                f"enable_lew_world_model={self.config.enable_lew_world_model if hasattr(self, 'config') else 'N/A'}"
+        )
+        
+        batch_images = [ex["image"] for ex in examples]
+        batch_videos = [ex["video"] for ex in examples]
+        instructions = [ex["lang"] for ex in examples]
+        has_action = "action" in examples[0] and examples[0]["action"] is not None
+        actions = [ex["action"] for ex in examples] if has_action else None
+        has_state = "state" in examples[0] and examples[0]["state"] is not None
+        state = [ex["state"] for ex in examples] if has_state else None
+        action_is_pad = (
+            [ex["action_is_pad"] for ex in examples]
+            if has_action and "action_is_pad" in examples[0] and examples[0]["action_is_pad"] is not None
+            else None
+        )
+
+        batch_videos = np.stack(batch_videos)
+        # 2026-08-05 修复: 删除错误的 transpose(0,1,2,5,3,4) — videos 构造时已是 CHW
+        # [B,V,T,C,H,W] (351-363行 t.permute(0,3,1,2)), 再 transpose 会打乱成 [B,V,T,W,C,H]
+        # → encode_frame 喂 SigLIP 布局错 (报 96 channels, SmolVLA+LEW 训练必失败)
+        lew_loss = torch.tensor(0.0, device=next(self.parameters()).device)
+        
+        # ====== 新增：LeWorldModel世界模型损失计算 ======
+        if self.le_world_model is not None and has_action:
+            # 将视频数据转换为tensor (float32; autocast 内自动转 bf16, 兼容 LEW 内部
+            # vision_encoder bf16 + predictor float32 混合权重 — 2026-08-05 修复)
+            videos_tensor = torch.from_numpy(batch_videos).float().to(next(self.parameters()).device)
+            
+            # 准备动作数据 [B, T, action_dim]
+            actions_np = np.array(actions)  # [B, T_chunk, action_dim]
+            actions_tensor_wm = torch.from_numpy(actions_np).float().to(videos_tensor.device)
+            
+            # 计算LeWorldModel损失 (2026-08-05 修复: autocast bf16 包裹, 消除
+            # mat1/mat2 dtype 不匹配 — LEW 内部权重 dtype 混合)
+            with torch.autocast(device_type=videos_tensor.device.type, dtype=torch.bfloat16):
+                lew_loss = self.le_world_model(videos_tensor, actions_tensor_wm)
+            lew_loss = lew_loss * self.config.lew_loss_weight
+
+        device_type = next(self.parameters()).device.type
+        with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
+            multimodal_embeds = self._get_multimodal_embeds(batch_images, instructions)
+            b, seq_len, hidden_dim = multimodal_embeds.shape
+
+        if not has_action:
+            return {"action_loss": torch.tensor(0.0, device=multimodal_embeds.device), "lew_loss": lew_loss}
+
+        with torch.autocast(device_type=device_type, dtype=torch.float32):
+            actions_tensor = torch.tensor(
+                np.array(actions), device=multimodal_embeds.device, dtype=torch.float32
+            )
+            action_horizon = self.config.chunk_size
+            actions_target = actions_tensor[:, -action_horizon:, :]
+
+            state_tensor = None
+            if state is not None:
+                state_tensor = torch.tensor(
+                    np.array(state), device=multimodal_embeds.device, dtype=multimodal_embeds.dtype
+                )
+
+            repeated_diffusion_steps = self.config.repeated_diffusion_steps
+            actions_target = actions_target.repeat(repeated_diffusion_steps, 1, 1)
+            multimodal_embeds_rep = multimodal_embeds.repeat(repeated_diffusion_steps, 1, 1)
+            if state_tensor is not None:
+                state_tensor = state_tensor.repeat(repeated_diffusion_steps, 1, 1)
+
+            action_is_pad_rep = None
+            if action_is_pad is not None:
+                pad_tensor = torch.stack(
+                    [
+                        p.to(actions_target.device)
+                        if isinstance(p, Tensor)
+                        else torch.tensor(p, device=actions_target.device)
+                        for p in action_is_pad
+                    ]
+                )
+                pad_tensor = pad_tensor[:, -action_horizon:]
+                action_is_pad_rep = pad_tensor.repeat(repeated_diffusion_steps, 1)
+
+            action_loss = self.action_model(
+                conditioning_tokens=multimodal_embeds_rep,
+                actions=actions_target,
+                state=state_tensor,
+                action_is_pad=action_is_pad_rep
+            )
+
+        return {"action_loss": action_loss, "lew_loss": lew_loss}
+
+    @torch.no_grad()
+    def predict_action(
+        self,
+        batch_images: list[list[Image.Image]],
+        instructions: list[str],
+        state: np.ndarray | None = None,
+        l4_cond=None,                                  # 🎯 L4→L3 条件 (None = 与改造前逐位相同)
+    ) -> np.ndarray:
+        if self.config.resize_images_to is not None:
+            height, width = self.config.resize_images_to
+            resampling = getattr(Image, "Resampling", Image).BOX
+            batch_images = [
+                [image.resize((width, height), resample=resampling) for image in sample_images]
+                for sample_images in batch_images
+            ]
+
+        device_type = next(self.parameters()).device.type
+        with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
+            multimodal_embeds = self._get_multimodal_embeds(batch_images, instructions)
+
+        state_tensor = None
+        if state is not None:
+            state_tensor = torch.from_numpy(np.array(state)).to(
+                device=multimodal_embeds.device, dtype=multimodal_embeds.dtype
+            )
+
+        pred_actions = self.action_model.predict_action(
+            conditioning_tokens=multimodal_embeds.float(),
+            state=state_tensor.float() if state_tensor is not None else None,
+            l4_cond=l4_cond,                           # 🎯 L4→L3 条件通道 (画布 ssintact_dec→ssdec 真接)
+        )
+        return pred_actions.detach().cpu().numpy()
+
+
+# ============================================================================
+# LeRobot Policy 顶层封装
+# ============================================================================
+class SmolVLALewPolicy(PreTrainedPolicy):
+    config_class = SmolVLALewConfig
+    name = "smolvla_lew"
+
+    def __init__(self, config: SmolVLALewConfig, **kwargs) -> None:
+        super().__init__(config)
+        config.validate_features()
+        if dataset_meta := kwargs.get("dataset_meta"):
+            ds_features = dataset_meta.features
+            if OBS_STATE in ds_features:
+                config.state_dim = ds_features[OBS_STATE]["shape"][0]
+            if ACTION in ds_features:
+                config.action_dim = ds_features[ACTION]["shape"][0]
+
+        self.model = SmolVLALewModel(config)
+        self.reset()
+
+    def reset(self) -> None:
+        self._queues = {ACTION: deque(maxlen=self.config.n_action_steps)}
+
+    def _prepare_model_inputs(self, batch: dict[str, Tensor]) -> list[dict]:
+        image_keys = list(self.config.image_features.keys())
+        if not image_keys:
+            raise ValueError("SmolVLALew requires at least one visual input feature.")
+        first_key = image_keys[0]
+        first_tensor = batch[first_key]
+        batch_size = first_tensor.shape[0]
+
+        images_per_sample: list[list[Image.Image]] = [[] for _ in range(batch_size)]
+        for key in image_keys:
+            tensor = batch[key]
+            if tensor.ndim == 5:
+                tensor = tensor[:, 0]
+            for b in range(batch_size):
+                images_per_sample[b].append(self.model.tensor_to_pil(tensor[b]))
+
+        video_source = None
+        for k in image_keys:
+            if k in batch:
+                video_source = batch[k]
+                break
+        if video_source is None:
+            raise ValueError("No image data found for video construction.")
+
+        videos_per_sample = []
+        for b in range(batch_size):
+            sample_views = []
+            for k in image_keys:
+                t = batch[k][b]
+                if t.ndim == 3:
+                    t = t.unsqueeze(0)
+                # 2026-08-05 修复: t 已是 [T,C,H,W] (lerobot tensor CHW), 原 permute(0,3,1,2)
+                # 打乱成 [T,W,C,H] → SigLIP 报 '96 channels' (SmolVLA+LEW 训练必失败)
+                t_np = t.detach().cpu().float().numpy()
+                if t_np.max() <= 1.0:
+                    t_np = t_np * 255.0
+                t_np = np.rint(t_np.clip(0, 255)).astype(np.uint8)
+                sample_views.append(t_np)
+            videos_per_sample.append(np.stack(sample_views, axis=0))
+
+        # 兜底清洗空指令
+        tasks = batch.get("task")
+        if tasks is None:
+            instructions = ["push red block to target"] * batch_size
+        elif isinstance(tasks, str):
+            instructions = [tasks] * batch_size
+        else:
+            instructions = list(tasks)
+        for idx in range(len(instructions)):
+            if not instructions[idx] or len(instructions[idx].strip()) == 0:
+                instructions[idx] = "push red block to target"
+
+        # 🗣 C1 指令增广 (训练开关 SS_INSTR_AUG=1, 默认关 → 推理/既有行为零影响)
+        #   每步随机换一种说法 → 语言成为随机变量, 模型必须把它编码进条件而非忽略。
+        if os.environ.get("SS_INSTR_AUG", "0") == "1":
+            import random as _rnd
+            instructions = [_INSTR_POOL[_rnd.randrange(len(_INSTR_POOL))] for _ in instructions]
+
+        actions_list = None
+        action_is_pad_list = None
+        actions_tensor = batch.get(ACTION)
+        if actions_tensor is not None:
+            if actions_tensor.ndim == 2:
+                actions_tensor = actions_tensor.unsqueeze(1)
+            actions_list = [actions_tensor[b].detach().cpu().float().numpy() for b in range(batch_size)]
+            action_is_pad_tensor = batch.get("action_is_pad")
+            if action_is_pad_tensor is not None:
+                action_is_pad_list = [action_is_pad_tensor[b].detach().cpu() for b in range(batch_size)]
+
+        state_list = None
+        state_tensor = batch.get(OBS_STATE)
+        if state_tensor is not None:
+            if state_tensor.ndim > 2:
+                state_tensor = state_tensor[:, -1, :]
+            if state_tensor.ndim == 2:
+                state_tensor = state_tensor.unsqueeze(1)
+            state_list = [state_tensor[b].detach().cpu().float().numpy() for b in range(batch_size)]
+
+        examples = []
+        for b in range(batch_size):
+            example = {
+                "image": images_per_sample[b],
+                "video": videos_per_sample[b],
+                "lang": instructions[b],
+            }
+            if actions_list is not None:
+                example["action"] = actions_list[b]
+            if action_is_pad_list is not None:
+                example["action_is_pad"] = action_is_pad_list[b]
+            if state_list is not None:
+                example["state"] = state_list[b]
+            examples.append(example)
+        return examples
+
+    def forward(self, batch: dict[str, Tensor]) -> tuple[Tensor, dict]:
+        examples = self._prepare_model_inputs(batch)
+        native_output = self.model.forward(examples)
+
+        ref = next(iter(native_output.values()))
+        zero = torch.zeros((), device=ref.device, dtype=ref.dtype)
+        total_loss = native_output.get("action_loss", zero) + native_output.get("lew_loss", zero)
+        logs = {k: v.detach().item() for k, v in native_output.items()}
+        logs["loss"] = total_loss.detach().item()
+        return total_loss, logs
+
+    def get_optim_params(self) -> dict:
+        return self.model.parameters()
+
+    @torch.no_grad()
+    def predict_action_chunk(self, batch: dict[str, Tensor], noise: Tensor | None = None,
+                             l4_cond=None) -> Tensor:
+        self.eval()
+        self._queues = populate_queues(self._queues, batch, exclude_keys=[ACTION])
+
+        examples = self._prepare_model_inputs(batch)
+        batch_images = [ex["image"] for ex in examples]
+        instructions = [ex["lang"] for ex in examples]
+
+        state_np = None
+        if "state" in examples[0] and examples[0]["state"] is not None:
+            state_np = np.stack([ex["state"] for ex in examples])
+
+        # 🎯 2026-09-14 L4→L3 条件 (老倪: 连线必须真接): l4_cond=None → 与改造前逐位相同
+        actions_np = self.model.predict_action(batch_images, instructions, state_np, l4_cond=l4_cond)
+        return torch.from_numpy(actions_np).to(device=self.config.device, dtype=torch.float32)
+
+    @torch.no_grad()
+    def select_action(self, batch: dict[str, Tensor], noise: Tensor | None = None,
+                      l4_cond=None) -> Tensor:
+        self.eval()
+        self._queues = populate_queues(self._queues, batch, exclude_keys=[ACTION])
+        if len(self._queues[ACTION]) == 0:
+            actions = self.predict_action_chunk(batch, l4_cond=l4_cond)
+            self._queues[ACTION].extend(actions.transpose(0, 1)[: self.config.n_action_steps])
+        return self._queues[ACTION].popleft()
+
+    @classmethod
+    def from_pretrained(
+        cls: type[T],
+        pretrained_name_or_path: str | Path,
+        **kwargs,
+    ):
+        return super().from_pretrained(pretrained_name_or_path, **kwargs)
+
+    @classmethod
+    def _load_as_safetensor(cls, model: T, model_file: str, map_location: str, strict: bool) -> T:
+        # 2026-08-05 实测: SmolVLALewConfig 无 reinit_modules 字段 (config.json 不含), 直接读会 AttributeError
+        reinit_prefixes = getattr(model.config, "reinit_modules", None) or []
+        if not reinit_prefixes:
+            return super()._load_as_safetensor(model, model_file, map_location, strict)
+
+        from safetensors.torch import load_file
+
+        state_dict = load_file(model_file, device=map_location)
+        current = model.state_dict()
+
+        reinitialized: list[str] = []
+        filtered: dict = {}
+        for key, value in state_dict.items():
+            if key in current and value.shape != current[key].shape:
+                if not any(key.startswith(p) for p in reinit_prefixes):
+                    raise ValueError(
+                        f"Shape mismatch for '{key}' (checkpoint {tuple(value.shape)} vs model "
+                        f"{tuple(current[key].shape)}) and its prefix is not in `reinit_modules`."
+                    )
+                reinitialized.append(
+                    f"{key}: checkpoint {tuple(value.shape)} → model {tuple(current[key].shape)}"
+                )
+            else:
+                filtered[key] = value
+
+        if reinitialized:
+            logging.warning(
+                f"reinit_modules: skipping {len(reinitialized)} tensor(s) with mismatched shapes "
+                f"(randomly re-initialised):\n  " + "\n  ".join(reinitialized)
+            )
+
+        from lerobot.policies.utils import log_model_loading_keys
+
+        missing_keys, unexpected_keys = model.load_state_dict(filtered, strict=False)
+        log_model_loading_keys(missing_keys, unexpected_keys)
+        return model

@@ -1,0 +1,18 @@
+[Unit]
+Description=Z-MAX 反向通道命令台 (4060 -> 工控机 192.168.23.23, 8794)
+Documentation=/home/ubuntu/zmax/docs/STATION_6PANEL_20260927.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/zmax
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/agent_hub.py --port 8794 --dir /home/ubuntu/aoi_v4/deliver --token zmax-7ce74c7f,ZMAX_AOI_KeepAlive
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/zmax-agent-hub.log
+StandardError=append:/var/log/zmax-agent-hub.log
+
+[Install]
+WantedBy=multi-user.target

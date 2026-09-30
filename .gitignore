@@ -1,0 +1,295 @@
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+### Environments & Dependencies ###
+.env
+.venv
+env/
+venv/
+env.bak/
+venv.bak/
+.python-version
+__pypackages__/
+node_modules/
+
+# Lock files
+poetry.lock
+Pipfile.lock
+
+### Build & Distribution ###
+build/
+dist/
+sdist/
+wheels/
+downloads/
+eggs/
+.eggs/
+parts/
+var/
+pip-wheel-metadata/
+share/python-wheels/
+develop-eggs/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+lib/
+lib64/
+
+# PyInstaller
+*.manifest
+*.spec
+
+### Compiled & Cached Files ###
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.sage.py
+.cache/
+.ruff_cache/
+.mypy_cache/
+.pyre/
+.pytype/
+cython_debug/
+
+### Testing & Coverage ###
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.pytest_cache/
+.hypothesis/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+!tests/artifacts
+
+### Logs & Temporary Files ###
+logs/
+tmp/
+*.log
+pip-log.txt
+pip-delete-this-directory.txt
+celerybeat-schedule
+celerybeat.pid
+
+### IDE & Editor Config ###
+# VS Code — hide cache/artifacts but keep settings.json
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.devcontainer/
+
+# JetBrains / PyCharm
+.idea/
+
+# Spyder
+.spyderproject
+.spyproject
+
+# Rope
+.ropeproject
+
+# Vim
+*.swp
+
+# Other
+*~
+
+### OS Specific ###
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+### Framework & Tool Specific ###
+
+.Python
+
+# Django
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask
+instance/
+.webassets-cache
+
+# Scrapy
+.scrapy
+
+# Jupyter
+.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+
+# Sphinx
+docs/_build/
+
+# MkDocs
+/site
+
+# PyBuilder
+.pybuilder/
+target/
+
+# mypy
+.dmypy.json
+dmypy.json
+
+### HPC & Slurm ###
+nautilus/*.yaml
+*.key
+sbatch*.sh
+
+### Miscellaneous ###
+# W&B
+wandb/
+
+# Dev scripts
+.dev/
+
+# Data folders
+data/
+outputs/
+
+# Translations
+*.mo
+*.pot
+
+# Dev folders
+.cache/*
+*.stl
+*.urdf
+*.xml
+*.part
+*.bak.*
+*.bak
+
+### ROS2 Workspace Build Artifacts ###
+ros_pc_ws/build/
+ros_pc_ws/install/
+ros_pc_ws/log/
+ros_orin_ws/build/
+ros_orin_ws/install/
+ros_orin_ws/log/
+
+# ROS2 package manifests must NOT be ignored
+!ros_pc_ws/src/*/package.xml
+!ros_orin_ws/src/*/package.xml
+Zone.Identifier
+# Windows NTFS ADS — files with :Zone.Identifier suffix cause checkout failure on Windows
+*:Zone.Identifier
+chat-watcher.py
+models/
+
+# 训练运行时临时配置 (on_train 动态生成, 每次训练后删除/重建)
+config_*_runtime.yaml
+
+# 推理视频帧/视频产物 — 大文件不进代码库 (2026-08-06 老倪铁律: 视频/权重不提交)
+reports/rollout_*/
+reports/*rollout_*.mp4
+reports/insert_success_demo.mp4
+# 状态空间同源 episode 产物 (视频+trace, 每次跑都重生成, 不进库)
+reports/ss_episode_*.mp4
+reports/ss_episode_*.npz
+reports/_*.png
+reports/_*.json
+reports/五模型对比技术选型报告_*.pdf
+reports/_mlp_cache_*/
+reports/_mlp_frames*/
+reports/_ss_frames*/
+
+# 状态空间仿真视频(生成产物, 不进代码库)
+reports/state_space_sim.mp4
+
+# YOLO 训练环境/数据/产物 (2026-08-23 打通真实检测链路)
+yolo-venv/
+runs/
+yolov8n.pt
+
+# 🧹 2026-09-15 v5.6.0 Git 精简: 交付件/大文件不进库 (老倪纪律)
+reports/*.mp4
+reports/*.png
+reports/*.pdf
+reports/*.xlsx
+reports/*.npz
+reports/ab_l4_gate_2026*.json
+reports/ab_live_goal_2026*.json
+reports/ab_intent_line_closedloop_2026*.json
+reports/intact_last_input.npz
+checkpoints/
+
+# 手工备份文件不进库 (2026-09-15)
+*.bak-*
+
+# 2026-09-16: 证据视频一律不入库 (大文件), 只留 manifest
+reports/**/*.mp4
+reports/**/*.avi
+reports/**/*.zip
+reports/**/*.tar.gz
+# ROS2 接口包构建产物 (可由 tools/ros2_interfaces/build_x86.sh 重建, 不进库)
+tools/ros2_interfaces/build/
+tools/ros2_interfaces/install/
+tools/ros2_interfaces/log/
+
+# 2026-09-24 权重/可视化批次不入库 (磁盘保留)
+reports/**/lora_*_init.pt
+reports/yolo_live_vis_*/
+
+# 画布/流程本地备份 (归档在 ~/zmax_data, 不进版本库)
+flows/*.bak_*
+flows/*.json.bak
+flows/*.bak*
+flows/*.bak-*
+
+# 📦 手机 APP 装包(交付件, 25KB, 可由 state3d_app/build_room_apk.sh 重新打出 ⇒ 不进代码库)
+tools/web/dl/
+
+# 工作树软链(实体在共享检出 /home/ubuntu/zmax)
+gui-venv311
+outputs
+
+# 审计日志(持续增长, 不进库)
+reports/web_agent_bridge_audit.jsonl
+
+# 现场实时链路的运行态产物(每秒刷新, 不进库; pause_points 作为本次会话证据单独留痕在报告里)
+reports/moveit/live_head.json
+reports/moveit/live_trace.json
+reports/l2_dispatch.jsonl
+data/scene/overlay_spec.json.bak_planseg_*
+
+# HIL↔L5 互动环运行态(游标/互动台账)
+reports/l5_hil_agent_state.json
+reports/l5_hil_interact.jsonl
+
+data/scene/overlay_spec.json.bak_l5corr_*
+reports/l5_overlay_corrections.jsonl
+reports/session_archive/
+
+# 2026-09-29 L5 闭环: 每次训练动态生成的 LoRA 运行配置 (内容快照在 ~/zmax_data/l5_loop/artifacts_*)
+config_smolvla_lew_lora_*.yaml
+
+# 2026-09-29 视觉复核/调试产生的临时物(不是交付件)
+reports/crops/
+reports/qa_crops/
+reports/dbg_label_audit*.py
+reports/live_local_frame.jpg
+reports/model_autoload_*.json

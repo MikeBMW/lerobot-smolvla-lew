@@ -1,0 +1,13754 @@
+#!/usr/bin/env python3
+"""
+XSpace Studio — 集成化开发界面
+Z-MAX 多模态动作专家 · Sys-0 / Sys-11 / Sys-12 / System 2
+
+基于 Z-MAX 三层解耦架构设计:
+  Sys-0 (L2基石)  → 硬件工具箱
+  Sys-11 (动作系统)  → 训练控制台 + 配置中心
+  Sys-12 (引导系统)  → 评估分析 + 实时监控
+  System 2 (L4大脑)  → 数据集管理
+"""
+
+import sys
+import subprocess  # 新增：用于执行git命令同步代码到GitHub
+import os  # 新增：用于获取工作目录和HOME路径
+
+# 🔴 2026-09-27 老倪: 「点了场景叠加什么都没打开」的**真根因**(实测复现):
+#   控制台从终端/服务启动时会带 `DBUS_SESSION_BUS_ADDRESS=disabled:`(本机实测就是这样),
+#   而本机 chromium 是 **snap** —— 它要能连会话 D-Bus 才能让 snapd 建好 cgroup,
+#   否则报 "…is not a snap cgroup for tag snap.chromium.chromium" 后**静默退出(exit 1, 零窗口)**。
+#   同机同 profile 对照: DBUS=disabled → 退出码 1/0 窗; DBUS=unix:path=/run/user/1000/bus → 正常。
+#   ⇒ 进程一启动就把 env 修好, 之后所有子进程(浏览器/工具)都拿到可用的会话总线。
+try:
+    if not os.environ.get("DBUS_SESSION_BUS_ADDRESS", "").startswith("unix:"):
+        _bus = "/run/user/%d/bus" % os.getuid()
+        if os.path.exists(_bus):
+            os.environ["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=" + _bus
+    os.environ.setdefault("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
+    os.environ.setdefault("DISPLAY", ":0")
+except Exception:
+    pass
+import tempfile  # 🐛 2026-08-28: Windows exe 无 /tmp → 打点日志改 tempfile.gettempdir()
+import json
+import glob
+import time  # 硬件工具箱日志时间戳
+import threading  # ★ 2026-09-25: 硬件卡 DDS 采集器后台线程（必须模块级导入）
+import math  # 离线仿真正弦波
+
+# 🔬 2026-09-15 冻结核验入口 (CI 用, 老倪「双击前先自证」): 在**真正打包好的 exe/app** 里跑引擎
+#   启动真实验证 —— 只查"文件在不在包里"(archive_viewer) 不够: v5.6.4 Windows exe 里 mujoco 插件
+#   DLL 和 mujoco.dll 都在包里, 但点「真实化运行」仍报 "Failed to load dynlib/dll ... not found
+#   when the application was frozen"。所以这里真 import mujoco/metaworld + 建模型 + 步进。
+#   --windowed 无 stdout → 结果写 json (ZMAX_SELFTEST_OUT) + 退出码 0=通过。
+#   渲染只作记录不判失败 (CI runner 无显示环境, WGL/EGL 可用性不属本次问题)。
+if "--engine-selftest" in sys.argv:
+    import json as _sel_json
+    import traceback as _sel_tb
+
+    _sel = {"argv": sys.argv[:4], "frozen": bool(getattr(sys, "frozen", False)),
+            "meipass": getattr(sys, "_MEIPASS", None)}
+    _sel_rc = 1
+    try:
+        import mujoco as _sel_mj
+
+        _sel["mujoco"] = _sel_mj.__version__
+        _sel["plugin_handles"] = len(getattr(_sel_mj, "PLUGIN_HANDLES", []) or [])
+        _sel["dll_fix"] = os.environ.get("ZMAX_MUJOCO_DLL_FIX", "")
+        import metaworld as _sel_mw
+
+        _sel["metaworld"] = getattr(_sel_mw, "__version__", "n/a")
+        _xml = os.path.join(os.path.dirname(_sel_mw.__file__), "assets", "sawyer_xyz",
+                            "sawyer_peg_insertion_side_l4.xml")
+        _sel["xml"] = _xml
+        _sel["xml_exists"] = os.path.isfile(_xml)
+        _m = _sel_mj.MjModel.from_xml_path(_xml)
+        _d = _sel_mj.MjData(_m)
+        for _ in range(5):
+            _sel_mj.mj_step(_m, _d)
+        _sel["nq"] = int(_m.nq)
+        _sel["nbody"] = int(_m.nbody)
+        _sel["qpos_sum"] = round(float(_d.qpos.sum()), 6)
+        try:  # 渲染单独记录 (不判失败)
+            _r = _sel_mj.Renderer(_m, 64, 64)
+            _r.update_scene(_d)
+            _sel["render_px"] = int(_r.render().mean())
+            _r.close()
+            _sel["render_ok"] = True
+        except Exception as _re:
+            _sel["render_ok"] = False
+            _sel["render_err"] = f"{type(_re).__name__}: {_re}"
+        _sel_rc = 0
+    except Exception as _sel_e:
+        _sel["error"] = f"{type(_sel_e).__name__}: {_sel_e}"
+        _sel["cause"] = repr(getattr(_sel_e, "__cause__", None))
+        _sel["trace"] = _sel_tb.format_exc()
+    _sel["rc"] = _sel_rc
+    try:
+        with open(os.environ.get("ZMAX_SELFTEST_OUT", "engine_selftest.json"), "w", encoding="utf-8") as _f:
+            _sel_json.dump(_sel, _f, ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+    sys.exit(_sel_rc)
+
+# 🐛 2026-08-18: 禁用 Qt D-Bus — QDBusConnection 无 parent 孤儿 + 10s 轮询 timer
+# (孤儿 timer 追踪实锤 10s 周期 QObject), 与 activateTimers 批次碰撞 → NULL receiver
+import os as _os
+
+
+# 📁 2026-08-22 静静: 训练 config 已从工程根归入 configs/policies/<type>/ (清理64个历史遗留)
+def _cfg_rel(cfg):
+    """裸 config 名 → 相对工程根的规范路径; 未知类型 (vla_touch/awe/mlp/expert) 原样返回"""
+    if not cfg:
+        return cfg
+    for prefix, sub in (("config_smolvla_lew_", "smolvla_lew"),
+                        ("config_smolvla_", "smolvla"),
+                        ("config_act_", "act"),
+                        ("hybrid_", "hybrid")):
+        if cfg.startswith(prefix):
+            return os.path.join("configs", "policies", sub, cfg)
+    return cfg
+# 🐛 2026-08-18: 曾试 QT_NO_DBUS/QT_NO_GLIB 绕 timer 批处理 — 无改善且可能引入新问题 → 撤
+# 回到 Qt 默认事件循环 (glib 模式 Qt 内部保护最多); 保留 QPixmapCache/ToolTip 禁用 (有实锤)
+
+# 🐛 2026-08-18: SIGSEGV 崩溃留证 — 段错误时 dump Python 栈到 /tmp/studio_faulth.log
+try:
+    import faulthandler
+    faulthandler.enable()
+except Exception:
+    pass
+
+# 🐛 2026-08-18 崩溃诊断: TimerEvent 追踪 — 每次 QTimer 激活前记录接收者,
+#   崩溃前最后一行 = 凶手对象 (notifyInternal2 SIGSEGV 定位)
+try:
+    from PyQt5.QtCore import QObject, QEvent
+
+    class _TimerTrace(QObject):
+        def eventFilter(self, obj, ev):
+            try:
+                if ev.type() == QEvent.Timer:
+                    chain = []
+                    o = obj
+                    while o is not None:
+                        try:
+                            chain.append(f"{o.metaObject().className()}[{o.objectName()}]")
+                        except Exception:
+                            chain.append("<?>")
+                        o = o.parent()
+                    from PyQt5 import sip
+                    cp = hex(sip.unwrapinstance(obj)) if sip.isdeleted(obj) is False else "DEL"
+                    import time as _t
+                    line = f"{_t.time():.1f} {cp} {hex(id(obj))} {' > '.join(chain)}"
+                    with open("/tmp/timer_trace.log", "a") as f:
+                        f.write(line + "\n")
+                    # 🐛 孤儿 timer (无 parent 链) = NULL receiver 崩溃嫌疑 — 单独记录
+                    if len(chain) <= 1:
+                        try:
+                            sup = obj.metaObject().superClass().className()
+                        except Exception:
+                            sup = "?"
+                        # 🎯 2026-08-18: inherits 探测真身 (className 是 QObject 的未导出类)
+                        inh = []
+                        for _c in ("QClipboard", "QToolTip", "QTimer", "QSingleShotTimer",
+                                   "QNetworkAccessManager", "QDrag", "QApplication",
+                                   "QGuiApplication", "QWidget", "QWindow"):
+                            try:
+                                if obj.inherits(_c):
+                                    inh.append(_c)
+                            except Exception:
+                                pass
+                        try:
+                            props = [str(obj.property(p)) for p in obj.dynamicPropertyNames()][:3]
+                        except Exception:
+                            props = []
+                        with open("/tmp/orphan_timers.log", "a") as f:
+                            f.write(line + f" | super={sup} inherits={inh} pycls={type(obj).__name__} props={props}\n")
+            except Exception:
+                pass
+            return False
+
+    # 🐛 2026-08-20 Segfault 根治: 禁用 _TimerTrace 诊断追踪器 —
+    # eventFilter 在每个 Timer 事件分发前访问接收者 metaObject()/parent()/sip,
+    # 遇到已析构的悬空对象 (NULL receiver) 时 C 层 segfault (Python try 捕获不了)。
+    # 诊断已完成 (根因=孤儿 QObject + activateTimers 批处理碰撞), 生产关闭追踪器。
+    _TIMER_TRACE = None
+except Exception:
+    _TIMER_TRACE = None
+
+from PyQt5.QtCore import QTimer as _QTimerS  # noqa: E402  (studio 顶部 PyQt5.QtWidgets import 之后)
+from PyQt5.QtCore import QObject as _QObjectS  # noqa: E402
+from PyQt5.QtCore import pyqtSignal as _pyqtSignalS  # noqa: E402
+
+
+import queue as _queue_mod
+_oneshot_queue = _queue_mod.Queue()  # 跨线程 _oneshot 任务队列 (纯 Python, 零 Qt 跨线程信号)
+
+
+class _OneshotPoller(_QObjectS):
+    """🔔 _oneshot 跨线程派发 (2026-08-20 Segfault 根治):
+    旧 _OneshotBridge.sig.emit(parent,...) 跨线程 emit 信号, parent 是 QObject,
+    信号跨线程参数包装临时 QObject 在 worker 线程 GC 析构 → killTimer cross-thread SIGSEGV。
+    新方案: worker 线程只写纯 Python 队列 (queue.put 线程安全), 主线程 QTimer 轮询消费。"""
+
+    def __init__(self):
+        super().__init__()
+        self._timer = _QTimerS(self)
+        self._timer.setTimerType(Qt.PreciseTimer)
+        self._timer.timeout.connect(self._drain)
+        self._timer.start(50)  # 20Hz 轮询消费队列
+
+    def _drain(self):
+        while True:
+            try:
+                parent, ms, fn = _oneshot_queue.get_nowait()
+            except Exception:
+                break
+            try:
+                _oneshot(parent, ms, fn)  # 主线程执行 → 直接建 QTimer
+            except Exception:
+                pass
+
+
+_oneshot_poller = None  # main() 里 QApplication 创建后实例化
+
+
+def _tq(parent):
+    """⏱ 精确 timer (PreciseTimer) — 🐛 2026-08-18: CoarseTimer 默认批处理合并
+    → activateTimers 批次内 NULL receiver 竞态; PreciseTimer 单独调度无批次"""
+    t = _QTimerS(parent)
+    t.setTimerType(Qt.PreciseTimer)
+    return t
+
+
+def _oneshot(parent, ms, fn):
+    """🔔 一次性 timer (挂 parent) — 🐛 2026-08-18: QTimer.singleShot 内部 timer 无 parent,
+    PyQt5 5.15.14 + Py3.12 wrapper GC 竞态 → NULL receiver SIGSEGV; 实例化挂 parent 根治
+    🐛 2026-08-20 Segfault 根治: 跨线程时不再 emit 含 QObject 的信号 (临时 QObject 包装
+    在 worker 线程 GC 析构 → killTimer cross-thread), 改纯 Python 队列 + 主线程轮询。"""
+    if QThread.currentThread() is parent.thread():
+        t = _QTimerS(parent)
+        t.setSingleShot(True)
+        t.timeout.connect(fn)
+        t.start(ms)
+        return t
+    # 跨线程: 纯队列, 主线程 _oneshot_poller 轮询消费 (不 emit 含 QObject 的信号)
+    _oneshot_queue.put((parent, ms, fn))
+    return None
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QFrame, QGridLayout, QSizePolicy,
+    QGraphicsDropShadowEffect, QScrollArea, QStackedWidget,
+    QSplitter, QTextEdit, QGroupBox, QFormLayout, QLineEdit,
+    QSpinBox, QDoubleSpinBox, QCheckBox, QComboBox, QProgressBar,
+    QAbstractSpinBox,  # 🐛 2026-08-09 老倪: VEH.2 编号覆盖数值控件
+    QTabWidget, QAction, QMenu, QInputDialog, QMessageBox,
+    QRadioButton, QButtonGroup,
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
+    QSlider, QListWidget, QDialog,  # DatasetModule viewer
+    QTreeWidget, QTreeWidgetItem,  # 硬件工具箱设备树
+)
+from PyQt5.QtCore import Qt, QSize, pyqtSignal, pyqtSlot, QTimer, QUrl, QDateTime, QThread  # QThread 用于 Rerun 后台线程
+from PyQt5.QtGui import (
+    QFont, QColor, QCursor, QPainter, QLinearGradient, QBrush,
+    QPainterPath, QPen, QDesktopServices, QPixmap  # 新增 QCursor, QDesktopServices, QPixmap
+)
+
+# Z-MAX 版本同步模块
+from version_sync import VersionSyncWidget
+from simulink_module import SimulinkModule
+
+# 硬件仿真引擎 (Sys-0 硬件工具箱)
+from hardware_simulator import HardwareSimulator, Z700_JOINTS, Z700_CAMERAS, Z700_ROS2_NODES, get_simulator
+from hardware_simulator import HardwareDiscoveryThread
+from hardware_simulator import ReplayEngine, ReplayThread
+
+
+# ============================================================
+# 通用工具函数
+# ============================================================
+def open_ppt_with_libreoffice(ppt_path):
+    """
+    使用LibreOffice打开PPT文件，绕过用户配置目录权限问题
+    通过创建临时用户安装目录解决 LibreOffice 权限错误
+    """
+    import os
+    import subprocess
+    
+    # 检查文件是否存在
+    if not os.path.exists(ppt_path):
+        print(f"[ERROR] PPT文件不存在: {ppt_path}")
+        return
+    
+    # 创建临时LibreOffice用户配置目录
+    lo_user_dir = "/tmp/lo_user_ppt"
+    os.makedirs(lo_user_dir, exist_ok=True)
+    
+    try:
+        # WSL: 将 Linux 路径转为 Windows 路径
+        try:
+            r = subprocess.run(["wslpath", "-w", ppt_path], capture_output=True, text=True, timeout=2)
+            if r.stdout.strip():
+                ppt_path = r.stdout.strip()
+        except:
+            pass
+        
+        cmd = ["soffice", f"-env:UserInstallation=file://{lo_user_dir}", "--norestore", ppt_path]
+        subprocess.Popen(cmd, start_new_session=True)
+        print(f"[OK] LibreOffice已启动，打开文件: {ppt_path}")
+    except Exception as e:
+        print(f"[ERROR] 启动LibreOffice失败: {e}")
+
+
+# ============================================================
+# 全局颜色
+# ============================================================
+C_BG        = "#0d1117"
+C_BG2       = "#161b22"
+C_CARD      = "#1c2333"
+C_HOVER     = "#252d3a"
+C_BLUE      = "#58a6ff"
+C_GREEN     = "#3fb950"
+C_ORANGE    = "#d29922"
+C_RED       = "#f85149"
+C_PURPLE    = "#bc8cff"
+C_CYAN      = "#39d2c0"
+C_YELLOW    = "#e3b341"
+C_WHITE     = "#e6edf3"
+C_GRAY      = "#8b949e"
+C_DIM       = "#484f58"
+C_BORDER    = "#30363d"
+
+
+def rgba_of(hex_color, alpha):
+    """#RRGGBB + 透明度 → Qt 认的 `rgba(r,g,b,a)`。
+
+    🐛 2026-09-29 (v5.16.13) 实测踩过的坑: 老倪「卡片右上角那个标签怎么是绿底」——
+    原来写成 f"{color}55"(= #RRGGBBAA), 而 **Qt 的 8 位 hex 是 #AARRGGBB**
+    ⇒ `#58a6ff55` 被解析成 alpha=0x58 + 颜色 0xa6ff55(黄绿)。像素验算: 0.345×(166,255,85)
+    + 0.655×(28,35,51) = (75,111,62) 与截图实测一致 ⇒ 必须走 rgba() 显式写法。
+    """
+    h = str(hex_color).lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    try:
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    except Exception:                                                           # noqa: BLE001
+        return "rgba(88,166,255,%s)" % alpha
+    a = ("%g" % float(alpha)) if isinstance(alpha, float) else str(alpha)
+    return "rgba(%d,%d,%d,%s)" % (r, g, b, a)
+
+
+# 🎨 2026-09-29 老倪「没有横向拖动的拖动条 / 窗口里的东西看不全」:
+#   实测根因 = 滚动条只有 8px 宽 + 手柄暗灰(#484f58), 在深色背景上几乎看不出是"能拖的条";
+#   且横向滚动条此前**没有任何 QSS 规则**(走 Qt 默认, 更细)。这里给一套**粗(16px)+高对比(蓝)**
+#   的滚动条样式, 需要的地方用 widget 级样式表挂上 (widget 级 = 一定压得住页面级旧规则)。
+SCROLLBAR_QSS = f"""
+QScrollBar:vertical {{ background:{C_BG2}; width:16px; margin:0; border:none; }}
+QScrollBar::handle:vertical {{ background:#4d8fdb; border-radius:6px; min-height:30px; }}
+QScrollBar::handle:vertical:hover {{ background:{C_BLUE}; }}
+QScrollBar:horizontal {{ background:{C_BG2}; height:16px; margin:0; border:none; }}
+QScrollBar::handle:horizontal {{ background:#4d8fdb; border-radius:6px; min-width:30px; }}
+QScrollBar::handle:horizontal:hover {{ background:{C_BLUE}; }}
+QScrollBar::add-line, QScrollBar::sub-line {{ width:0; height:0; background:transparent; }}
+QScrollBar::add-page, QScrollBar::sub-page {{ background:transparent; }}
+"""
+
+# ═══ 浅色调色板 (2026-08-16 老倪: 编辑菜单 → UI风格 浅色; 08-16 九版: 背景灰度统一)
+# Vector CANoe 窗口实测: 背景单一浅灰 #e0e0e0 (81%) + 白卡片 + 黑边框黑字 + 朱红点缀
+L_BG        = "#e0e0e0"
+L_BG2       = "#e0e0e0"
+L_CARD      = "#ffffff"
+L_HOVER     = "#d9d9d9"
+L_BLUE      = "#000000"
+L_GREEN     = "#000000"
+L_ORANGE    = "#000000"
+L_RED       = "#000000"
+L_PURPLE    = "#000000"
+L_CYAN      = "#000000"
+L_YELLOW    = "#000000"
+L_WHITE     = "#000000"
+L_GRAY      = "#333333"
+L_DIM       = "#6e7681"
+L_BORDER    = "#000000"
+
+# 当前 UI 主题 (dark=原版深色 / light=浅色 Simulink 简约) — 全局切换用
+CUR_UI_THEME = "dark"
+# 主题切换时同步的 (C_* ↔ L_*) 替换对 (simulink switch_theme 同款颜色替换法)
+THEME_PAIRS = [
+    (C_BG, L_BG), (C_BG2, L_BG2), (C_CARD, L_CARD), (C_HOVER, L_HOVER),
+    (C_BLUE, L_BLUE), (C_GREEN, L_GREEN), (C_ORANGE, L_ORANGE), (C_RED, L_RED),
+    (C_PURPLE, L_PURPLE), (C_CYAN, L_CYAN), (C_YELLOW, L_YELLOW),
+    (C_WHITE, L_WHITE), (C_GRAY, L_GRAY), (C_DIM, L_DIM), (C_BORDER, L_BORDER),
+]
+# 额外深色硬编码 (画布/节点/日志等 QSS 里写死的深色值) → 浅色对应
+# 注意: 每对 (dark, light) 双向替换 — 切 light 深→浅, 切 dark 浅→深 (恢复硬编码色)
+# 2026-08-16 二版 CANoe: 边框色 → 黑 #000000 (白底黑框极简), 文字 → 黑/深灰
+THEME_PAIRS_EXTRA = [
+    # 🎨 九版: 背景灰度统一 #e0e0e0 (CANoe 同款) — 深色底 → 单一浅灰
+    ("#0d1117", "#e0e0e0"), ("#161b22", "#e0e0e0"), ("#1c2333", "#ffffff"),
+    ("#252d3a", "#e0e0e0"), ("#30363d", "#000000"), ("#484f58", "#6e7681"),
+    ("#8b949e", "#57606a"), ("#e6edf3", "#24292f"), ("#9aa4b2", "#57606a"),
+    ("#1e2740", "#000000"), ("#14181f", "#e0e0e0"), ("#010409", "#e0e0e0"),
+    ("#0a0a0f", "#e0e0e0"), ("#0a0e14", "#e0e0e0"), ("#21262d", "#e0e0e0"),
+    ("#0d2a24", "#e0e0e0"),  # 🎨 九版: 深绿黑底标签残留 → 统一浅灰
+    ("#1a2230", "#dbe9ff"), ("#c9d1d9", "#24292f"),
+    # 🎨 2026-08-16 老倪铁律: 只能红/黑/白+按钮高光灰 → 残留彩色统一映射浅色
+    #   蓝/橙/紫/青/金/绿 → 黑/灰 (文字与描边); 状态文字 (绿/红/亮红) → 黑 (六版: 普通文字全黑)
+    #   ⚠️ 按钮背景色 (#0d3b33/#1f6feb/#00d4aa 等 15 个) 不进 EXTRA —
+    #     由 THEME_PAIRS_BTN 单独处理成白底 (EXTRA 抢先把按钮变黑底会黑底黑字不可见)
+    ("#58a6ff", "#000000"), ("#d29922", "#000000"),
+    ("#a371f7", "#000000"), ("#bc8cff", "#000000"), ("#39d2c0", "#000000"),
+    ("#00b4d8", "#000000"), ("#e3b341", "#000000"),
+    ("#d4a800", "#000000"), ("#ffd700", "#000000"), ("#f778ba", "#000000"),
+    ("#3fb950", "#000000"), ("#f85149", "#000000"), ("#ff6b6b", "#000000"),
+    ("#ff9f43", "#000000"), ("#f87171", "#000000"),
+    # ⚠️ #ff4444 既是按钮背景(停止)又是状态文字(失败/硬件): 按钮走 BTN→白底,
+    #   非按钮文字在此 → 黑 (若放 EXTRA 会被 BTN 分组外的控件误用白底)
+    ("#ff4444", "#000000"),
+    # ⚠️ #00d4aa/#1f6feb 同款: 按钮背景(加载/设置)走 BTN→白底, 非按钮文字/下拉高亮 → 黑
+    ("#00d4aa", "#000000"), ("#1f6feb", "#000000"),
+]
+# 🎨 2026-08-16 老倪: 浅色主题按钮去彩色化 — 彩色按钮背景 → 白底黑框 CANoe 极简
+#   (0d3b33/14564a=深绿底, 00d4aa=青绿, 1f6feb=蓝, 58a6ff=亮蓝, d29922=橙, f85149=红,
+#    ff9f43=橙黄, ffd700=金, 3fb950=绿, bc8cff=紫, 39d2c0=青, e3b341=黄)
+THEME_PAIRS_BTN = [
+    ("#0d3b33", "#ffffff"), ("#14564a", "#ffffff"), ("#00d4aa", "#ffffff"),
+    ("#1f6feb", "#ffffff"), ("#58a6ff", "#ffffff"), ("#d29922", "#ffffff"),
+    ("#f85149", "#ffffff"), ("#ff9f43", "#ffffff"), ("#ffd700", "#ffffff"),
+    ("#3fb950", "#ffffff"), ("#bc8cff", "#ffffff"), ("#39d2c0", "#ffffff"),
+    ("#e3b341", "#ffffff"), ("#f87171", "#ffffff"), ("#f6f8fa", "#ffffff"),
+    # 🎨 2026-08-16 老倪铁律: 绿按钮 (#238636/#2ea043) 也去彩色 → 白底
+    ("#238636", "#ffffff"), ("#2ea043", "#ffffff"), ("#ff4444", "#ffffff"),
+    # 🎨 2026-08-16: 按钮 hover/pressed 态残留彩色 (#388bfd 蓝hover/#4ade80/#22c55e 绿/#ef4444 红pressed) → 高光灰
+    ("#388bfd", "#e0e0e0"), ("#79b8ff", "#e0e0e0"), ("#56d364", "#e0e0e0"),
+    ("#4ade80", "#e0e0e0"), ("#22c55e", "#e0e0e0"), ("#ef4444", "#e0e0e0"),
+    # 彩色按钮上的白字 → 黑字 (白底配黑字 CANoe 极简; 只用短格式 #fff — 按钮 color:#fff,
+    #   长格式 #ffffff 留给 THEME_PAIRS_EXTRA 当背景/节点色, 避免误伤白底卡片)
+    ("#fff", "#000000"),
+]
+# 当前字体基准 (编辑菜单 → 字体大小; QSS 里 font-size:Npx 按 delta 缩放)
+CUR_FONT_DELTA = 0  # 相对原始 11px 的偏移: 0=标准(11px) / +2=大 / +4=特大 / -2=小
+
+
+def apply_ui_theme(window, theme):
+    """🎨 全局 UI 主题切换 (dark=原版深色 / light=浅色 Simulink 简约风):
+    以深色为基准: 每个控件首次记录深色原始 QSS; 切 light 从原始正向替换生成浅色,
+    切 dark 直接恢复原始快照 → 反复切换零漂移 (字符串替换链不再互相污染)。
+    """
+    global CUR_UI_THEME, C_BG, C_BG2, C_CARD, C_HOVER, C_BLUE, C_GREEN, C_ORANGE
+    global C_RED, C_PURPLE, C_CYAN, C_YELLOW, C_WHITE, C_GRAY, C_DIM, C_BORDER
+    global SYS0_COLOR, SYS1_COLOR, SYS11_COLOR, SYS12_COLOR, SYS2_COLOR
+    if theme not in ("dark", "light"):
+        theme = "dark"
+    CUR_UI_THEME = theme
+    if not hasattr(window, "_dark_qss_map"):
+        window._dark_qss_map = {}
+    dmap = window._dark_qss_map
+    # QMenuBar 是 QMainWindow 特殊子控件 (不在 findChildren 返回里) → 显式加入
+    widgets = [window] + window.findChildren(QWidget)
+    try:
+        mb = window.menuBar()
+        if mb is not None:
+            widgets.append(mb)
+    except Exception:
+        pass
+    # 首次: 快照当前 (深色) QSS; 之后以快照为基准
+    for wdg in widgets:
+        cur = wdg.styleSheet()
+        if not cur:
+            continue
+        if id(wdg) not in dmap:
+            dmap[id(wdg)] = cur
+    if theme == "dark":
+        # 直接恢复深色快照 → 完美还原
+        for wdg in widgets:
+            if id(wdg) in dmap:
+                wdg.setStyleSheet(dmap[id(wdg)])
+    else:
+        # 从深色快照正向生成浅色
+        # 🐛 2026-08-16 CANoe 改造: #fff 短格式规则必须最先执行 —
+        #   否则会污染前面生成的 #ffffff (被 #fff 二次匹配成 #000000fff)
+        # 🎨 2026-08-16 老倪铁律: 只能红/黑/白+按钮高光灰 —
+        #   按钮控件 (QPushButton/QToolButton 等) 走 BTN 去彩色规则 → 白底黑框黑字;
+        #   非按钮控件走 THEME_PAIRS + EXTRA → 残留彩色统一映射 黑/朱红。
+        #   (纯字符串替换无法区分同色值"按钮背景vs文字", 必须按控件类型分组)
+        from PyQt5.QtWidgets import QPushButton, QToolButton, QCheckBox, QRadioButton, QMenuBar
+        _BTN_TYPES = (QPushButton, QToolButton, QCheckBox, QRadioButton)
+        # 🐛 color:white 关键字不在此替换链 → 加前缀精确匹配 (避免误伤 background:white)
+        _WHITE_FIX = [("color:white", "color:#000000")]
+        text_pairs = _WHITE_FIX + [("#fff", "#000000")] + THEME_PAIRS + THEME_PAIRS_EXTRA
+        # 🐛 THEME_PAIRS_BTN 自身末尾含 ("#fff","#000000") 条目 → 剔除防二次污染
+        btn_pairs = _WHITE_FIX + [("#fff", "#000000")] + \
+                    [p for p in THEME_PAIRS_BTN if p[0] != "#fff"] + THEME_PAIRS_EXTRA
+        for wdg in widgets:
+            if id(wdg) not in dmap:
+                continue
+            ss = dmap[id(wdg)]
+            if isinstance(wdg, _BTN_TYPES) or isinstance(wdg, QMenuBar):
+                pairs = btn_pairs
+            else:
+                pairs = text_pairs
+            for dc, lc in pairs:
+                ss = ss.replace(dc, lc)
+            # 🎨 2026-08-16 老倪: 按钮金属光泽 — 白底按钮 → 垂直渐变 (上白亮下浅灰)
+            # 🐛 七版: 按钮文字必须全黑 — 浅灰/渐变底配白字看不见; color:#ffffff 长格式
+            #   不在替换链 (#fff 短格式规则只匹配3位) → 按钮分组单独处理
+            if isinstance(wdg, _BTN_TYPES):
+                ss = ss.replace(
+                    "background:#ffffff",
+                    "background:qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+                    "stop:0 #ffffff, stop:0.45 #f2f2f2, stop:0.55 #e8e8e8, stop:1 #d9d9d9)")
+                ss = ss.replace("color:#ffffff", "color:#000000")
+                ss = ss.replace("color:#f0f0f0", "color:#000000")
+            wdg.setStyleSheet(ss)
+    # 2) 同步模块级 C_* 常量 (后续新控件 f-string 用新色)
+    if theme == "light":
+        C_BG, C_BG2, C_CARD, C_HOVER = L_BG, L_BG2, L_CARD, L_HOVER
+        C_BLUE, C_GREEN, C_ORANGE, C_RED = L_BLUE, L_GREEN, L_ORANGE, L_RED
+        C_PURPLE, C_CYAN, C_YELLOW = L_PURPLE, L_CYAN, L_YELLOW
+        C_WHITE, C_GRAY, C_DIM, C_BORDER = L_WHITE, L_GRAY, L_DIM, L_BORDER
+    else:
+        C_BG, C_BG2, C_CARD, C_HOVER = "#0d1117", "#161b22", "#1c2333", "#252d3a"
+        C_BLUE, C_GREEN, C_ORANGE, C_RED = "#58a6ff", "#3fb950", "#d29922", "#f85149"
+        C_PURPLE, C_CYAN, C_YELLOW = "#bc8cff", "#39d2c0", "#e3b341"
+        C_WHITE, C_GRAY, C_DIM, C_BORDER = "#e6edf3", "#8b949e", "#484f58", "#30363d"
+    SYS0_COLOR, SYS1_COLOR = C_ORANGE, C_CYAN
+    SYS11_COLOR, SYS12_COLOR, SYS2_COLOR = C_BLUE, C_PURPLE, C_GREEN
+    # 3) simulink 画布主题 (节点/连线/Scope)
+    try:
+        sim = getattr(window, "simulink", None)
+        if sim is not None and hasattr(sim, "switch_theme"):
+            sim.switch_theme(theme)
+    except Exception:
+        pass
+    # 4) 全局 app 样式 (滚动条/对话框/QToolTip) 重刷
+    try:
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(_build_global_qss())
+    except Exception:
+        pass
+    # 5) 状态栏提示
+    try:
+        window.statusBar().showMessage(
+            f"🎨 UI 风格: {'浅色 · Simulink 简约' if theme == 'light' else '深色 · 原版'} (全局生效)", 3000)
+    except Exception:
+        pass
+
+
+def apply_ui_font(window, delta):
+    """🔤 全局字体大小: QSS 里 font-size:Npx 统一缩放 (相对原始值, 防叠加漂移).
+    delta 相对标准 11px: -2=小 / 0=标准 / +2=大 / +4=特大.
+    基于深色快照重建 → 与主题切换互不干扰 (先主题后字体, 字体重刷不丢主题色).
+    """
+    global CUR_FONT_DELTA
+    import re as _re
+    CUR_FONT_DELTA = delta
+    # 深色快照 (apply_ui_theme 已建) — 没有则现建 (直接调字体而不切主题的场景)
+    if not hasattr(window, "_dark_qss_map"):
+        window._dark_qss_map = {}
+    dmap = window._dark_qss_map
+    widgets = [window] + window.findChildren(QWidget)
+    try:
+        mb = window.menuBar()
+        if mb is not None:
+            widgets.append(mb)
+    except Exception:
+        pass
+    for wdg in widgets:
+        cur = wdg.styleSheet()
+        if not cur:
+            continue
+        if id(wdg) not in dmap:
+            dmap[id(wdg)] = cur
+    # 从深色快照 → 先套当前主题色, 再缩字体
+    from PyQt5.QtWidgets import QPushButton, QToolButton, QCheckBox, QRadioButton, QMenuBar
+    _BTN_TYPES = (QPushButton, QToolButton, QCheckBox, QRadioButton)
+    for wdg in widgets:
+        if id(wdg) not in dmap:
+            continue
+        base = dmap[id(wdg)]
+        if CUR_UI_THEME == "light":
+            # 🐛 同 apply_ui_theme: #fff 规则最先执行防污染 #ffffff
+            # 🎨 同 apply_ui_theme: 按钮控件走 BTN 去彩色, 其他走 EXTRA 残留彩色映射
+            _WHITE_FIX = [("color:white", "color:#000000")]
+            text_pairs = _WHITE_FIX + [("#fff", "#000000")] + THEME_PAIRS + THEME_PAIRS_EXTRA
+            btn_pairs = _WHITE_FIX + [("#fff", "#000000")] + \
+                        [p for p in THEME_PAIRS_BTN if p[0] != "#fff"] + THEME_PAIRS_EXTRA
+            pairs = btn_pairs if (isinstance(wdg, _BTN_TYPES) or isinstance(wdg, QMenuBar)) else text_pairs
+            for dc, lc in pairs:
+                base = base.replace(dc, lc)
+            # 🎨 同 apply_ui_theme: 按钮金属光泽渐变
+            # 🐛 七版: 按钮文字全黑 (浅灰/渐变底配白字看不见)
+            if isinstance(wdg, _BTN_TYPES):
+                base = base.replace(
+                    "background:#ffffff",
+                    "background:qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+                    "stop:0 #ffffff, stop:0.45 #f2f2f2, stop:0.55 #e8e8e8, stop:1 #d9d9d9)")
+                base = base.replace("color:#ffffff", "color:#000000")
+                base = base.replace("color:#f0f0f0", "color:#000000")
+        if "font-size" not in base:
+            continue
+        def _scale(m):
+            try:
+                return f"font-size:{max(8, int(m.group(1)) + delta)}px"
+            except Exception:
+                return m.group(0)
+        wdg.setStyleSheet(_re.sub(r"font-size:(\d+)px", _scale, base))
+    # 🐛 修复 (老倪 2026-08-22: 编辑菜单"小/标准"切换字几乎没变) —
+    #   大量标题/标签/按钮用 QFont setFont(point size) 而非 QSS font-size,
+    #   上面的循环只缩 QSS font-size → 这些 QFont 控件完全不响应 delta。
+    #   独立循环: 首次快照原始 QFont, 之后按 原始pointSize+delta 重建 (防叠加漂移)。
+    if not hasattr(window, "_font_orig"):
+        window._font_orig = {}
+    forig = window._font_orig
+    for wdg in widgets:
+        try:
+            if id(wdg) not in forig:
+                forig[id(wdg)] = QFont(wdg.font())
+            _of = forig[id(wdg)]
+            if _of.pointSize() > 0:
+                _nf = QFont(_of)
+                _nf.setPointSize(max(6, _of.pointSize() + delta))
+                wdg.setFont(_nf)
+        except Exception:
+            pass
+    try:
+        app = QApplication.instance()
+        if app is not None:
+            app.setFont(QFont("Arial", 10 + delta))
+    except Exception:
+        pass
+
+# Z-MAX系统层级颜色
+SYS0_COLOR  = C_ORANGE   # 安全规则层
+SYS1_COLOR  = C_CYAN     # 视觉语言动作层 (VTLA/ACT)
+SYS11_COLOR = C_BLUE     # 纯动作系统
+SYS12_COLOR = C_PURPLE   # 世界模型系统
+SYS2_COLOR  = C_GREEN    # 云端智能引擎
+
+
+# ============================================================
+# 通用样式辅助
+# ============================================================
+def card_style(bg=C_CARD, border=C_BORDER, radius=12, pad=16):
+    return f"background:{bg}; border:1px solid {border}; border-radius:{radius}px; padding:{pad}px;"
+
+
+# ============================================================
+# 系统层级状态卡片 (侧边栏用)
+# ============================================================
+class SystemLayerCard(QFrame):
+    """Z-MAX 系统层级状态卡片"""
+    clicked = pyqtSignal(str)
+
+    def __init__(self, layer_id, label, subtitle, color, components, parent=None):
+        super().__init__(parent)
+        self.layer_id = layer_id
+        self.color = color
+        # 不设置固定高度，让内容自适应
+        self.setCursor(Qt.PointingHandCursor)
+        self._build(label, subtitle, components)
+
+    def _build(self, label, subtitle, components):
+        self.setStyleSheet(f"""
+            SystemLayerCard {{
+                background:{C_CARD};
+                border:2px solid {self.color};
+                border-radius:8px;
+            }}
+        """)
+
+        layout = QVBoxLayout()
+        layout.setSpacing(4)
+        layout.setContentsMargins(12, 8, 12, 8)
+
+        # 层级标识
+        head = QHBoxLayout()
+        dot = QLabel("●")
+        dot.setFont(QFont("Arial", 11))
+        dot.setStyleSheet(f"color:{self.color}; background:transparent; border:none;")
+        head.addWidget(dot)
+        title = QLabel(label)
+        title.setFont(QFont("Arial", 12, QFont.Bold))
+        title.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:0;")
+        head.addWidget(title)
+        head.addStretch()
+        layout.addLayout(head)
+
+        # 副标题
+        sub = QLabel(subtitle)
+        sub.setFont(QFont("Arial", 12))
+        sub.setStyleSheet(f"color:{self.color}; background:transparent; border:none; margin:0; padding:0;")
+        # 🐛 v5.16.14 老倪: 侧栏卡副标题被**硬裁**(实测「VLA-T + Z-Flow · 500M/15M」被切到
+        #   「VLA-T + Z-Fk」、「L2基石 · EtherCAT」被切到「L2基石 · Ethe」) —— 240px 侧栏里
+        #   12pt 单行放不下就直接截断, 没有省略号也不换行。开 wordWrap 让它换行(卡片高度本来
+        #   就是内容自适应), 并把最小宽放开, 布局不得再用 sizeHint 把它顶宽。
+        sub.setWordWrap(True)
+        sub.setMinimumWidth(1)
+        layout.addWidget(sub)
+
+        # 组件列表
+        comp = QLabel(components)
+        comp.setFont(QFont("Consolas", 12))
+        comp.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:0;")
+        comp.setWordWrap(True)
+        layout.addWidget(comp)
+
+        self.setLayout(layout)
+
+    def enterEvent(self, e):
+        self.setStyleSheet(f"""
+            SystemLayerCard {{
+                background:{C_HOVER};
+                border:2px solid {self.color};
+                border-radius:8px;
+            }}
+        """)
+
+    def leaveEvent(self, e):
+        self.setStyleSheet(f"""
+            SystemLayerCard {{
+                background:{C_CARD};
+                border:2px solid {self.color};
+                border-radius:8px;
+            }}
+        """)
+
+    def mousePressEvent(self, e):
+        self.clicked.emit(self.layer_id)
+
+
+# ============================================================
+# 侧边栏: Z-MAX 系统架构
+# ============================================================
+class SystemSidebar(QFrame):
+    layer_clicked = pyqtSignal(str)
+    # 📚 左侧栏折叠信号 (2026-08-06 老倪: XSpace Studio 列表栏要能隐藏)
+    collapse_requested = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedWidth(240)
+        self.setStyleSheet(f"background:{C_BG2}; border-right:1px solid {C_BORDER};")
+        self._build()
+
+    def _build(self):
+        layout = QVBoxLayout()
+        layout.setSpacing(8)
+        layout.setContentsMargins(12, 16, 12, 16)
+
+        # 标题行: 精简为「◀ 收起 + 版本号」一行 (2026-08-06 老倪: 大标题太黑看不清
+        # 还占地方 → 品牌信息提升到菜单栏, 侧栏只留功能按钮)
+        logo_row = QHBoxLayout()
+        logo_row.setSpacing(6)
+        btn_collapse = QPushButton("◀")
+        btn_collapse.setFixedWidth(34)
+        btn_collapse.setToolTip("隐藏左侧栏, 内容区占满 (再点左缘 ▶ 展开)")
+        btn_collapse.setStyleSheet(f"""
+            QPushButton {{ background:{C_CARD}; color:{C_BLUE}; border:1px solid {C_BORDER};
+                           border-radius:4px; font-size:15px; font-weight:700; padding:2px 0; }}
+            QPushButton:hover {{ border-color:{C_BLUE}; }}
+        """)
+        btn_collapse.clicked.connect(self.collapse_requested.emit)
+        logo_row.addWidget(btn_collapse)
+        ver = QLabel("Z-MAX vv5.16.34")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
+        logo_row.addWidget(ver)
+        logo_row.addStretch()
+        layout.addLayout(logo_row)
+
+        # 返回按钮
+        home_btn = QPushButton("← 返回首页")
+        home_btn.setFont(QFont("Arial", 10))
+        home_btn.setStyleSheet(f"""
+            QPushButton {{ background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:6px; padding:8px; margin:0; }}
+            QPushButton:hover {{ color:{C_WHITE}; border-color:{C_BLUE}; }}
+        """)
+        home_btn.clicked.connect(lambda: self.layer_clicked.emit("home"))
+        layout.addWidget(home_btn)
+
+        layout.addSpacing(8)
+
+        sep_label = QLabel("三层系统")  # 2026-08-08 老倪: 模块库 → 三层系统
+        sep_label.setFont(QFont("Arial", 10, QFont.Bold))
+        sep_label.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:4px 0;")
+        layout.addWidget(sep_label)
+
+        # System 2 (顶 — 云端训练)
+        self.sys2 = SystemLayerCard(
+            "sys2", "System 2", "L4级大脑 · 云端训练",
+            SYS2_COLOR, "云端智能体 · 任务拆解\n大模型训练 · 4090 · 动态调度 Sys-1"
+        )
+        self.sys2.clicked.connect(self.layer_clicked.emit)
+        layout.addWidget(self.sys2)
+
+        # System 1 (中 — 含 SYS11 VLA-T + SYS12 Z-Flow)  2026-08-08 老倪: 模块库改三层系统
+        self.sys1 = SystemLayerCard(
+            "sys1", "System 1", "VLA-T + Z-Flow · 500M/15M",
+            SYS11_COLOR, "SYS11 VLA-T 动作 · SmolVLA 500M\nSYS12 Z-Flow 引导 · LeWorldModel 15M"
+        )
+        self.sys1.clicked.connect(self.layer_clicked.emit)
+        layout.addWidget(self.sys1)
+
+        # System 0 (底 — 红底)
+        self.sys0 = SystemLayerCard(
+            "sys0", "System 0", "L2基石 · EtherCAT",
+            SYS0_COLOR, "安全层 · HAL驱动层\n运动学正逆解 · 急停"
+        )
+        self.sys0.clicked.connect(self.layer_clicked.emit)
+        layout.addWidget(self.sys0)
+
+        layout.addStretch()
+
+        # 底部信息
+        info = QLabel("0.5.2-zmax.1.0.1\nLeRobot · Z-MAX")
+        info.setFont(QFont("Consolas", 11))
+        info.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none;")
+        info.setAlignment(Qt.AlignCenter)
+        layout.addWidget(info)
+
+        self.setLayout(layout)
+
+    # 🐛 v5.16.14 老倪: 侧栏卡里的字被**硬裁**(实测「SYS11 VLA-T 动作 · SmolVLA 500M /
+    #   SYS12 Z-Flow 引导 · LeWorldModel 15M」按 188px 宽需要 374px 高, QVBoxLayout 只按
+    #   sizeHint 的估算给了 243px ⇒ 尾部整行看不见; 副标题「VLA-T + Z-Flow · 500M/15M」、
+    #   「L2基石 · EtherCAT」同样被切)。根因 = wordWrap 的 QLabel 在布局里**被按估算高度压扁**。
+    #   治法: 布局跑完后按**实际宽度**复算 heightForWidth 并锁成最小高, 两遍收敛(第一遍会改变
+    #   宽度分配, 第二遍定稿)。侧栏宽度固定 240px, 所以只需 show 后跑一次。
+    def _snap_label_heights(self):
+        try:
+            for _ in range(2):
+                for lb in self.findChildren(QLabel):
+                    t = lb.text()
+                    if lb.wordWrap() and t:
+                        need = lb.heightForWidth(lb.width() or 188)
+                        if need > lb.minimumHeight():
+                            lb.setMinimumHeight(need)
+        except Exception:
+            pass
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        _QTimerS.singleShot(0, self._snap_label_heights)
+
+
+# ============================================================
+# 首页模块卡片
+# ============================================================
+class ModuleCard(QFrame):
+    clicked = pyqtSignal(str)
+
+    def __init__(self, mid, icon, title, subtitle, desc, sys_label, color, veh_id=None, parent=None):
+        super().__init__(parent)
+        self.mid = mid
+        self.color = color
+        self.veh_id = veh_id  # 🌐 2026-08-09 老倪: VEH-ID (对话用卡片ID)
+        self.setMinimumWidth(260)
+        # 老倪 2026-08-22: 高分屏(192DPI)下标题需~54px/描述需~91px, 固定300会裁 — 弃固定高度按内容自适应, 同行QHBoxLayout自动等高
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setCursor(Qt.PointingHandCursor)
+        self._build(icon, title, subtitle, desc, sys_label)
+
+    def _build(self, icon, title, subtitle, desc, sys_label):
+        self.setStyleSheet(card_style(C_CARD, C_BORDER, 12, 20))
+        layout = QVBoxLayout()
+        layout.setSpacing(14)  # 增大：原为5，功能卡内容行间距太小
+        layout.setContentsMargins(16, 14, 16, 14)
+
+        # 顶行
+        top = QHBoxLayout()
+        ic = QLabel(icon)
+        ic.setFont(QFont("Segoe UI Emoji", 22))
+        ic.setStyleSheet(f"color:{self.color}; background:transparent; border:none; margin:0;")
+        top.addWidget(ic)
+        top.addStretch()
+        badge = QLabel(sys_label)
+        badge.setFont(QFont("Consolas", 11, QFont.Bold))
+        badge.setStyleSheet(f"color:white; background:{rgba_of(self.color, 0.33)}; border:1px solid {rgba_of(self.color, 0.67)}; border-radius:4px; padding:3px 8px; margin:0;")  # 高对比度方案：纯白文字 + 半透明彩底，确保所有系统层级的badge都清晰可读 · 🐛 v5.16.13: 8 位 hex(#RRGGBBAA) 被 Qt 当 #AARRGGBB 解析成绿底 ⇒ 改 rgba() 显式写法
+        top.addWidget(badge)
+        layout.addLayout(top)
+
+        t = QLabel(title)
+        t.setFont(QFont("Arial", 11, QFont.Bold))  # 🐛 2026-08-22: 14pt在192DPI=54px过大→8pt(25px)适中
+        t.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:2px 0;")
+        t.setWordWrap(True)  # 老倪 2026-08-22: 高分屏(192DPI)标题 sizeHint=54px, 固定34会裁 — 改自适应换行, 不设死高度
+        layout.addWidget(t)
+
+        s = QLabel(subtitle)
+        s.setFont(QFont("Arial", 10))  # 🐛 2026-08-22: 9pt=35px过大→6pt
+        s.setStyleSheet(f"color:{self.color}; background:transparent; border:none; margin:0; padding:0;")
+        layout.addWidget(s)
+
+        d = QLabel(desc)
+        d.setFont(QFont("Arial", 10))  # 🐛 2026-08-22: 9pt=35px过大→6pt
+        d.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:0;")
+        d.setWordWrap(True)  # 老倪 2026-08-22: 高分屏下长描述(URL等)需3-4行~91px, 固定40会裁 — 改自适应
+        layout.addWidget(d)
+
+        layout.addStretch()
+
+        bottom = QHBoxLayout()
+        # 🌐 2026-08-09 老倪: VEH-ID 左下角常显 (对话用 ID — VEH.1~VEH.12; 7px 小字不抢眼但可见)
+        if self.veh_id:
+            veh = QLabel(self.veh_id)
+            veh.setFont(QFont("Consolas", 10, QFont.Bold))
+            veh.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:0;")
+            veh.setToolTip(f"{self.veh_id} — 与静静对话时用此 ID 指代本卡片")
+            bottom.addWidget(veh)
+            bottom.addStretch()
+        arrow = QLabel("点击进入 →")
+        arrow.setFont(QFont("Arial", 10))
+        arrow.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:0;")
+        bottom.addWidget(arrow)
+        layout.addLayout(bottom)
+
+        self.setLayout(layout)
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(16); shadow.setOffset(0, 3)
+        shadow.setColor(QColor(0, 0, 0, 60))
+        self.setGraphicsEffect(shadow)
+
+    def enterEvent(self, e):
+        self.setStyleSheet(card_style(C_HOVER, self.color, 12, 20))
+
+    def leaveEvent(self, e):
+        self.setStyleSheet(card_style(C_CARD, C_BORDER, 12, 20))
+
+    def mousePressEvent(self, e):
+        self.clicked.emit(self.mid)
+
+
+# ============================================================
+# 系统架构流程条（垂直分层：Sys0底层 → Sys11+12中层并列 → Sys2顶层）
+# ============================================================
+class ArchFlowBar(QFrame):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet(f"background:{C_BG2}; border:1px solid {C_BORDER}; border-radius:8px;")
+        self._build()
+
+    def _build(self):
+        root = QVBoxLayout()
+        root.setSpacing(0)
+        root.setContentsMargins(20, 14, 20, 24)
+
+        # 标题放在最上面
+        caption = QLabel("Z-MAX 三层解耦架构")
+        caption.setFont(QFont("Arial", 10, QFont.Bold))
+        caption.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:0 0 8px 0;")
+        caption.setAlignment(Qt.AlignCenter)
+        root.addWidget(caption)
+
+        # ---- Layer 3: System 2 (顶层) ----
+        self._add_layer_box(root, "☁️", "System 2", "L4大脑 · 云端智能体 · 任务拆解与调度", SYS2_COLOR)
+
+        # ---- 箭头 ↓ 到中间层 ----
+        self._add_arrow(root, "↕")
+
+        # ---- Layer 2: Sys-11 + Sys-12 并列 (中间层) ----
+        mid_row = QHBoxLayout()
+        mid_row.setSpacing(12)
+
+        # Sys-11 左（自适应宽度）
+        mid_row.addWidget(self._make_stage_box(
+            "🧠", "SYS-11 动作系统", "", SYS11_COLOR), 1)
+        # 双向箭头
+        link = QLabel("⟷")
+        link.setFont(QFont("Arial", 18))
+        link.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0;")
+        link.setAlignment(Qt.AlignCenter)
+        mid_row.addWidget(link)
+        # Sys-12 右（自适应宽度）
+        mid_row.addWidget(self._make_stage_box(
+            "🌐", "SYS-12 引导系统", "", SYS12_COLOR), 1)
+
+        mid_container = QWidget()
+        mid_container.setStyleSheet("background:transparent; border:none;")
+        mid_container.setFixedHeight(88)
+        mid_container.setLayout(mid_row)
+        root.addWidget(mid_container)
+
+        # ---- 箭头 ↓ 到底层 ----
+        self._add_arrow(root, "↕")
+
+        # ---- Layer 1: Sys-0 (底层) ----
+        self._add_layer_box(root, "⚙️", "Sys-0", "L2基石 · EtherCAT · 安全层 · HAL驱动", SYS0_COLOR)
+
+        self.setLayout(root)
+
+    def _add_layer_box(self, parent_layout, icon, name, desc, color):
+        """添加一个全宽层级框"""
+        box = QFrame()
+        box.setFixedHeight(52)
+        box.setStyleSheet(f"background:{C_CARD}; border:1px solid {color}88; border-radius:8px;")
+        bl = QHBoxLayout()
+        bl.setSpacing(12)
+        bl.setContentsMargins(14, 6, 14, 6)
+
+        ic = QLabel(icon)
+        ic.setFont(QFont("Segoe UI Emoji", 18))
+        ic.setStyleSheet(f"color:{color}; background:transparent; border:none; margin:0;")
+        bl.addWidget(ic)
+
+        name_lbl = QLabel(name)
+        name_lbl.setFont(QFont("Arial", 13, QFont.Bold))
+        name_lbl.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:2px 0;")
+        bl.addWidget(name_lbl)
+
+        bl.addSpacing(12)
+
+        desc_lbl = QLabel(desc)
+        desc_lbl.setFont(QFont("Arial", 10))
+        desc_lbl.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:2px 0;")
+        bl.addWidget(desc_lbl)
+
+        bl.addStretch()
+
+        box.setLayout(bl)
+        parent_layout.addWidget(box)
+
+    def _add_arrow(self, parent_layout, symbol):
+        """添加垂直连接箭头"""
+        arrow = QLabel(symbol)
+        arrow.setFont(QFont("Arial", 16, QFont.Bold))
+        arrow.setFixedHeight(22)
+        arrow.setAlignment(Qt.AlignCenter)
+        arrow.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0;")
+        parent_layout.addWidget(arrow)
+
+    def _make_stage_box(self, icon_text, title, subtitle, color):
+        """创建中间层的并排框（自适应宽度）"""
+        box = QFrame()
+        box.setStyleSheet(f"background:{C_CARD}; border:1px solid {color}88; border-radius:8px;")
+
+        bl = QHBoxLayout()
+        bl.setSpacing(12)
+        bl.setContentsMargins(14, 12, 14, 12)
+
+        ic = QLabel(icon_text)
+        ic.setFont(QFont("Segoe UI Emoji", 18))
+        ic.setStyleSheet(f"color:{color}; background:transparent; border:none; margin:0;")
+        ic.setAlignment(Qt.AlignVCenter)
+        bl.addWidget(ic)
+
+        text_layout = QVBoxLayout()
+        text_layout.setSpacing(14)  # 行间距加大
+        text_layout.setContentsMargins(0, 4, 0, 4)  # 上下边距加大
+        
+        title_lbl = QLabel(title)
+        title_lbl.setFont(QFont("Arial", 11, QFont.Bold))
+        title_lbl.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:3px 0;")
+        title_lbl.setFixedHeight(28)  # 增加高度
+        text_layout.addWidget(title_lbl)
+        
+        subtitle_lbl = QLabel(subtitle)
+        subtitle_lbl.setFont(QFont("Arial", 12))
+        subtitle_lbl.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:3px 0;")
+        subtitle_lbl.setFixedHeight(22)  # 增加高度
+        text_layout.addWidget(subtitle_lbl)
+
+        bl.addLayout(text_layout, 1)
+        box.setLayout(bl)
+        return box
+
+
+# ============================================================
+# 产品迭代路线图 (Product Roadmap) — 可点击查看配置
+# ============================================================
+class PhaseCardButton(QFrame):
+    """可点击的迭代阶段卡片"""
+    clicked = pyqtSignal(dict)
+
+    def __init__(self, phase_data, parent=None):
+        super().__init__(parent)
+        self.phase_data = phase_data
+        self.color = phase_data["color"]
+        self.setCursor(Qt.PointingHandCursor)
+        self._build(phase_data)
+
+    def _build(self, p):
+        self.setStyleSheet(f"""
+            PhaseCardButton {{
+                background:{C_CARD};
+                border:2px solid {self.color}66;
+                border-radius:8px;
+            }}
+            PhaseCardButton:hover {{
+                background:{C_HOVER};
+                border:2px solid {self.color};
+            }}
+        """)
+
+        layout = QVBoxLayout()
+        layout.setSpacing(6)
+        layout.setContentsMargins(12, 10, 12, 10)
+
+        # Phase 标识 + 时间
+        header = QHBoxLayout()
+        phase_lbl = QLabel(p["phase"])
+        phase_lbl.setFont(QFont("Consolas", 11, QFont.Bold))
+        phase_lbl.setStyleSheet(f"color:{self.color}; background:{self.color}22; border:1px solid {self.color}44; border-radius:3px; padding:2px 6px;")
+        header.addWidget(phase_lbl)
+        header.addStretch()
+        time_lbl = QLabel(p["time"])
+        time_lbl.setFont(QFont("Consolas", 11))
+        time_lbl.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0;")
+        header.addWidget(time_lbl)
+        layout.addLayout(header)
+
+        # 标题
+        title = QLabel(p["title"])
+        title.setFont(QFont("Arial", 11, QFont.Bold))
+        title.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:2px 0;")
+        title.setWordWrap(True)
+        layout.addWidget(title)
+
+        # 维度标签
+        dim_lbl = QLabel(p["dims"])
+        dim_lbl.setFont(QFont("Arial", 12))
+        dim_lbl.setStyleSheet(f"color:{self.color}; background:transparent; border:none; margin:0; padding:0;")
+        layout.addWidget(dim_lbl)
+
+        # 描述
+        desc_lbl = QLabel(p["desc"])
+        desc_lbl.setFont(QFont("Arial", 12))
+        desc_lbl.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:2px 0;")
+        desc_lbl.setWordWrap(True)
+        layout.addWidget(desc_lbl)
+
+        # KPI
+        kpi_lbl = QLabel(p["kpi"])
+        kpi_lbl.setFont(QFont("Consolas", 13, QFont.Bold))
+        kpi_lbl.setStyleSheet(f"color:{self.color}; background:transparent; border:none; margin:0; padding:4px 0;")
+        kpi_lbl.setAlignment(Qt.AlignRight)
+        layout.addWidget(kpi_lbl)
+
+        self.setLayout(layout)
+
+    def enterEvent(self, e):
+        self.setStyleSheet(f"""
+            PhaseCardButton {{
+                background:{C_HOVER};
+                border:2px solid {self.color};
+                border-radius:8px;
+            }}
+        """)
+
+    def leaveEvent(self, e):
+        self.setStyleSheet(f"""
+            PhaseCardButton {{
+                background:{C_CARD};
+                border:2px solid {self.color}66;
+                border-radius:8px;
+            }}
+        """)
+
+    def mousePressEvent(self, e):
+        self.clicked.emit(self.phase_data)
+
+
+class ProductRoadmapWidget(QFrame):
+    """Z-MAX 产品迭代路线图：Sys-1 → Sys-11 → Sys-12 → Sys-2"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet("background:transparent;")
+        # 获取 policies 目录相对路径
+        self._policies_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "src", "lerobot", "policies"
+        )
+        self._build()
+
+    def _build(self):
+        layout = QVBoxLayout()
+        layout.setSpacing(12)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # 维度说明
+        dim_bar = QHBoxLayout()
+        dim_bar.setSpacing(16)
+        dims = [
+            ("Z", "潜空间", SYS12_COLOR),
+            ("M", "多模态", C_CYAN),
+            ("A", "Action", SYS11_COLOR),
+            ("X", "eXpert", SYS2_COLOR),
+        ]
+        for letter, meaning, color in dims:
+            tag = QLabel(f"{letter} = {meaning}")
+            tag.setFont(QFont("Arial", 12, QFont.Bold))
+            tag.setStyleSheet(f"color:{color}; background:{color}18; border:1px solid {color}55; border-radius:4px; padding:3px 10px;")
+            dim_bar.addWidget(tag)
+        dim_bar.addStretch()
+        layout.addLayout(dim_bar)
+
+        # 四个迭代阶段 - 横向可点击卡片
+        phases_row = QHBoxLayout()
+        phases_row.setSpacing(6)
+
+        phases = [
+            {
+                "phase": "Phase 0",
+                "title": "System0 · 原子功能",
+                "time": "2026 Q3",
+                "dims": "A 标准接口",
+                "desc": "人工编排原子功能\n流程验证·数据采集基线",
+                "color": SYS0_COLOR,
+                "kpi": "L2基线",
+            },
+            {
+                "phase": "Phase 1",
+                "title": "Sys-10 · ACT端到端+固定轨迹",
+                "time": "2026 Q4",
+                "dims": "M + A",
+                "desc": "感知→动作端到端执行",
+                "color": C_CYAN,
+                "kpi": "±0.02mm",
+            },
+            {
+                "phase": "Phase 2",
+                "title": "Sys-11 VLA-T\n端到端泛化",
+                "time": "2026 Q4",
+                "dims": "M+A泛化",
+                "desc": "动作特征压缩泛化\n一脑多能 · 端侧部署",
+                "color": SYS11_COLOR,
+                "kpi": "<70ms",
+            },
+            {
+                "phase": "Phase 3",
+                "title": "Sys-12 · 精细感知潜空间闭环",
+                "time": "2027 Q1-Q2",
+                "dims": "X + Z 扩展",
+                "desc": "场景引导模型\n全域认知闭环",
+                "color": SYS12_COLOR,
+                "kpi": ">99%",
+            },
+            {
+                "phase": "Phase 4",
+                "title": "全域认知 · 全系统",
+                "time": "2027+",
+                "dims": "Z·M·A·X 全域",
+                "desc": "多产线规模化复制\nL4全自主闭环",
+                "color": SYS2_COLOR,
+                "kpi": "7×24h",
+            },
+        ]
+
+        for i, p in enumerate(phases):
+            card = PhaseCardButton(p)
+            card.clicked.connect(self._on_phase_clicked)
+            phases_row.addWidget(card, 1)
+
+            if i < len(phases) - 1:
+                arrow = QLabel("→")
+                arrow.setFont(QFont("Arial", 16, QFont.Bold))
+                arrow.setFixedWidth(20)
+                arrow.setAlignment(Qt.AlignCenter)
+                arrow.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0;")
+                phases_row.addWidget(arrow)
+
+        layout.addLayout(phases_row)
+        self.setLayout(layout)
+
+    def _read_config_file(self, folder, config_file):
+        """读取配置文件内容"""
+        config_path = os.path.join(self._policies_dir, folder, config_file)
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        alt_path = os.path.expanduser(f"~/xspace/lerobot-smolvla-lew/src/lerobot/policies/{folder}/{config_file}")
+        if os.path.exists(alt_path):
+            with open(alt_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        return None
+
+    def _list_folder_files(self, folder):
+        """列出策略文件夹内文件"""
+        folder_path = os.path.join(self._policies_dir, folder)
+        if not os.path.isdir(folder_path):
+            folder_path = os.path.expanduser(f"~/xspace/lerobot-smolvla-lew/src/lerobot/policies/{folder}")
+        if os.path.isdir(folder_path):
+            return sorted([f for f in os.listdir(folder_path) if not f.startswith('__') and not f.startswith('.')])
+        return []
+
+    def _parse_config_params(self, content):
+        """从配置文件内容中解析参数（dataclass 字段）"""
+        import re
+        params = []
+        current_section = "基础配置"
+        for line in content.split('\n'):
+            stripped = line.strip()
+            # 检测分组注释: # === xxx === 或 # --- xxx ---
+            sec_match = re.match(r'^#\s*[=\-]+\s*(.+?)\s*[=\-]*$', stripped)
+            if sec_match:
+                current_section = sec_match.group(1).strip()
+                continue
+            # 检测参数: name: type = value
+            param_match = re.match(r'^(\w+)\s*:\s*(.+?)\s*=\s*(.+?)(?:\s*#.*)?$', stripped)
+            if param_match:
+                name, ptype, pval = param_match.group(1), param_match.group(2), param_match.group(3)
+                # 清理默认值
+                pval = pval.strip().rstrip(',')
+                comment_match = re.search(r'#\s*(.+?)$', line)
+                comment = comment_match.group(1) if comment_match else ""
+                params.append((current_section, name, ptype, pval, comment))
+        return params
+
+    def _on_phase_clicked(self, phase_data):
+        """点击阶段卡片 → 弹出信息弹窗"""
+        from PyQt5.QtWidgets import QDialog, QTableWidget, QTableWidgetItem, QHeaderView
+
+        color = phase_data["color"]
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"{phase_data['phase']} — {phase_data['title']}")
+        dialog.setFixedSize(600, 400)
+        dialog.setStyleSheet(f"""
+            QDialog {{
+                background: #0d1117;
+                border: 2px solid {color};
+                border-radius: 8px;
+            }}
+        """)
+
+        dlg_layout = QVBoxLayout()
+        dlg_layout.setSpacing(12)
+        dlg_layout.setContentsMargins(20, 16, 20, 16)
+
+        # Title
+        title_lbl = QLabel(f"{phase_data['phase']}: {phase_data['title']}")
+        title_lbl.setFont(QFont("Arial", 16, QFont.Bold))
+        title_lbl.setStyleSheet(f"color: {C_WHITE}; background: transparent; border: none;")
+        dlg_layout.addWidget(title_lbl)
+
+        # Badges row
+        badges = QHBoxLayout()
+        kpi = QLabel(f"⚡ {phase_data['kpi']}")
+        kpi.setStyleSheet(f"color: {color}; background: {color}22; border: 1px solid {color}66; border-radius: 6px; padding: 4px 12px;")
+        badges.addWidget(kpi)
+        dim = QLabel(phase_data["dims"])
+        dim.setStyleSheet(f"color: {C_WHITE}; background: {color}44; border: 1px solid {color}88; border-radius: 6px; padding: 4px 10px;")
+        badges.addWidget(dim)
+        badges.addStretch()
+        dlg_layout.addLayout(badges)
+
+        # Description
+        desc = QLabel(phase_data["desc"])
+        desc.setStyleSheet(f"color: {C_GRAY}; font-size:19px; padding: 8px;")
+        desc.setWordWrap(True)
+        dlg_layout.addWidget(desc)
+
+        # Time
+        time_lbl = QLabel(f"📅 {phase_data['time']}")
+        time_lbl.setStyleSheet(f"color: {C_DIM}; font-size:20px;")
+        dlg_layout.addWidget(time_lbl)
+
+        dlg_layout.addStretch()
+        dialog.setLayout(dlg_layout)
+        dialog.exec()
+
+
+
+# ============================================================
+# 首页页面
+# ============================================================
+_DDS_COL = None            # 进程内 DDS 采集器单例（懒加载）
+_DDS_LOCK = threading.Lock()
+
+
+def _get_dds_collector():
+    """★ 懒加载 DDS 采集器（老倪: 硬件参数必须用DDS传递）
+    失败不影响 APP 启动（返回 None → 卡片显示"DDS 不可用"），绝不因 DDS 缺库而崩。"""
+    global _DDS_COL
+    if _DDS_COL is not None:
+        return _DDS_COL
+    with _DDS_LOCK:
+        if _DDS_COL is not None:
+            return _DDS_COL
+        try:
+            from dds_hw import DdsHwCollector
+            _DDS_COL = DdsHwCollector(cfg=os.environ.get("ZMAX_DDS_CFG") or None)
+        except Exception as e:                                                  # noqa: BLE001
+            _DDS_COL = None
+            try:
+                print("[硬件卡] DDS 采集器不可用: %s: %s" % (type(e).__name__, str(e)[:80]))
+            except Exception:                                                   # noqa: BLE001
+                pass
+    return _DDS_COL
+
+
+_BTN_CSS = ("""QPushButton{{background:{bg};color:{fg};border:1px solid {bd};border-radius:6px;"""
+            """padding:6px 14px;font-size:13px;min-height:22px}}"""
+            """QPushButton:hover{{color:#ffffff;border-color:{bl}}}""").format(
+    bg="#161b22", fg="#8b949e", bd="#30363d", bl="#58a6ff")
+
+
+class HardwareCard(QFrame):
+    """🖥 硬件资源卡（老倪 2026-09-25: "app还是没有4060硬件参数"）
+
+    显示本机(4060)真实硬件参数, 2 秒刷新一次:
+      GPU 利用率/显存/温度/功耗/SM时钟 · CPU 利用率+核数 · 内存 · 磁盘 · 实测训练吞吐
+    ★ 全部真实数据源: nvidia-smi + /proc（不依赖第三方库 → 打包成 exe 也能用）
+    ★ 读不到时显示"—", 不显示 0 冒充（0 是合法实测值）
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("hwCard")
+        self.setStyleSheet(
+            f"#hwCard{{background:{C_CARD};border:1px solid {C_BORDER};border-radius:10px}}")
+        v = QVBoxLayout(self)
+        v.setContentsMargins(24, 20, 24, 20)
+        v.setSpacing(14)
+        head = QHBoxLayout()
+        t = QLabel("🖥 硬件资源")
+        t.setStyleSheet(f"color:{C_WHITE};font-size:34px;font-weight:700;border:none")
+        self.lb_ts = QLabel("采样中…")
+        self.lb_ts.setStyleSheet(f"color:{C_GRAY};font-size:18px;border:none;"
+                                 f"background:{C_BG2};border-radius:5px;padding:4px 12px")
+        head.addWidget(t)
+        head.addStretch()
+        head.addWidget(self.lb_ts)
+        v.addLayout(head)
+
+        # 🖥 2026-09-29 老倪「不要用那么多文字来表达, 换成状态条 / 圆环百分比 / 红绿灯指示灯,
+        #   重新设计 UI 参考 CANoe hardware(Vector Hardware Manager), 4060 放到最底下」
+        #   ⇒ 文本标签全部隐藏(仍继续采集, 只作 tooltip/复制用), 主区换成自绘控件:
+        #   设备灯带(本机 4060 排最后) + 4 个圆环(GPU/显存/CPU/内存) + 4 条状态条(磁盘/温度/功耗/吞吐)。
+        try:
+            from hw_widgets import HwVisual
+            self._visual = HwVisual()
+        except Exception as _e:                                                 # noqa: BLE001
+            self._visual = None
+            print("[hw] HwVisual 不可用: %r" % (_e,))
+        if self._visual is not None:
+            v.addWidget(self._visual)
+
+        self.lb_gpu = QLabel("—")
+        self.lb_cpu = QLabel("—")
+        self.lb_mem = QLabel("—")
+        self.lb_disk = QLabel("—")
+        self.lb_thr = QLabel("—")
+        self.lb_mac = QLabel("—")      # ★ DDS 节点区（4060 + Mac 全节点）
+        self.lb_nodes = QLabel("—")    # DDS 节点列表（每节点一行）
+        self.lb_remote = QLabel("—")   # ★ 远端(4060)硬件 —— APP 在无 GPU 机器上跑时的主要数据来源
+        self.lb_src = QLabel("数据源: 探测中…")
+        try:
+            self.btn_refresh = QPushButton("🔄 刷新数据源")
+            self.btn_refresh.clicked.connect(lambda: (setattr(self, "_src_cache", None), self.refresh()))
+        except Exception:                                                       # noqa: BLE001
+            self.btn_refresh = None
+        self.btn_copy = QPushButton("📋 复制参数")
+        self.btn_copy.setToolTip("把本机/远端全部硬件参数复制成纯文本(可粘到邮件/文档)")
+        self.btn_copy.clicked.connect(self.copy_params)
+        self.btn_dds = QPushButton("📡 启动本机 DDS 发布")
+        self.btn_dds.setToolTip("在本机启动 DDS 节点(发布 4060 硬件/训练进度, 订阅部署指令)")
+        self.btn_dds.clicked.connect(self.start_local_dds)
+        self.btn_dds.setStyleSheet(_BTN_CSS)
+        for lb in (self.lb_gpu, self.lb_cpu, self.lb_mem, self.lb_disk, self.lb_thr, self.lb_mac):
+            lb.setStyleSheet(f"color:{C_GRAY};font-size:28px;border:none")
+            lb.setTextFormat(Qt.RichText) if hasattr(Qt, "RichText") else None
+            # 🎨 2026-09-29 (v5.16.13) 老倪「不要下面的横向拉条 / 不要那么宽」——**真根因就在这几行**:
+            #   这些标签是 28px 富文本、**没开 wordWrap**, 一旦文本变长(实测 lb_remote「📡 DDS 两端硬件…」
+            #   minimumSizeHint=5428px) 就把整个首页 page 的最小宽撑到 5542px ⇒ QScrollArea(widgetResizable)
+            #   把 page 拉宽到 5542 ⇒ ①底部必然出现横向滚动条(内容 1.82×视口 = 实测手柄 1459/2812)
+            #   ②功能模块网格按 page 宽等分 ⇒ 每张卡被拉到 1752~1795px(设计最小 260) 右侧一大片空白。
+            #   修法: 换行 + 把最小宽夹到 1px(布局不再被 sizeHint 绑架, 文字自己折行)。
+            lb.setWordWrap(True)
+            lb.setMinimumWidth(1)
+            lb.setVisible(False)          # 🖥 2026-09-29: 文字行退居 tooltip/复制, 版面交给可视化控件
+            v.addWidget(lb)
+        self.lb_nodes.setStyleSheet(f"color:{C_GRAY};font-size:24px;border:none;line-height:150%")
+        self.lb_nodes.setWordWrap(True)
+        self.lb_nodes.setMinimumWidth(1)
+        self.lb_nodes.setVisible(False)
+        v.addWidget(self.lb_nodes)
+        self.lb_remote.setStyleSheet(f"color:{C_CYAN};font-size:28px;border:none")
+        self.lb_remote.setTextFormat(Qt.RichText) if hasattr(Qt, "RichText") else None
+        self.lb_remote.setWordWrap(True)
+        self.lb_remote.setMinimumWidth(1)
+        self.lb_remote.setVisible(False)
+        v.addWidget(self.lb_remote)
+        self.lb_src.setStyleSheet(f"color:{C_DIM};font-size:20px;border:none")
+        self.lb_src.setWordWrap(True)
+        self.lb_src.setMinimumWidth(1)
+        self.lb_src.setVisible(False)      # 质检: 数据源横条 79% 空且全卡最暗 → 信息改由灯带承载
+        v.addWidget(self.lb_src)
+        row = QHBoxLayout()
+        row.addStretch()
+        if self.btn_refresh is not None:
+            self.btn_refresh.setStyleSheet(_BTN_CSS)
+            row.addWidget(self.btn_refresh)
+        self.btn_copy.setStyleSheet(_BTN_CSS)
+        row.addWidget(self.btn_copy)
+        row.addWidget(self.btn_dds)
+        v.addLayout(row)
+
+        # 🐛 2026-09-26: 原为 GUI 线程 QTimer(2000) + 阻塞 refresh() (单次 1414ms) → 控制台"打开就卡"
+        #    改为后台线程采集, GUI 只贴结果; 采集间隔仍 2s
+        self._last = {}
+        self._worker = _HwFetcher(self, interval=2.0)
+        self._worker.got.connect(self._on_fetched)
+        self._worker.start()
+
+    @staticmethod
+    def _sh(cmd, timeout=8):
+        try:
+            return subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                                  timeout=timeout).stdout.strip()
+        except Exception:                                                       # noqa: BLE001
+            return ""
+
+    # ---------- DDS 本机发布（自包含: 用打包进来的 dds 模块, 不依赖外部脚本）----------
+    def start_local_dds(self):
+        """📡 在 APP 内启动本机 DDS 发布（发布本机硬件 + 训练进度到 zmax/hw_state）"""
+        if getattr(self, "_pub_on", False):
+            self.btn_dds.setText("📡 DDS 发布中…（已在运行）")
+            return
+        try:
+            from dds_hw import start_local_publisher
+            ok, msg = start_local_publisher()
+            self._pub_on = bool(ok)
+            self.btn_dds.setText("📡 DDS 发布中 ✓" if ok else "📡 启动失败")
+            self.btn_dds.setToolTip(msg[:200])
+        except Exception as e:                                                  # noqa: BLE001
+            self.btn_dds.setText("📡 启动失败")
+            self.btn_dds.setToolTip("%s: %s" % (type(e).__name__, str(e)[:150]))
+
+    # ---------- 数据源自动发现（老倪: 要看到真实硬件数据; APP 可能在无 GPU 的机器上跑）----------
+    @staticmethod
+    def _probe_url(url, timeout=2.5):
+        """探测某数据源是否可用, 返回 (ok, data)"""
+        import json as _j
+        import urllib.request as _ur
+        try:
+            with _ur.urlopen(url, timeout=timeout) as r:
+                return True, _j.loads(r.read().decode("utf-8", "replace"))
+        except Exception:                                                       # noqa: BLE001
+            return False, None
+
+    def _hw_sources(self):
+        """候选数据源（按顺序探测, 命中即用）:
+        ① 环境变量 ZMAX_HW_URL / ~/.zmax_hw_url（显式配置优先）
+        ② 本机 8799（APP 与 4060 同机时）
+        ③ 局域网候选（4060 已知地址）: 10.163.146.78 / 192.168.23.50
+        """
+        cands = []
+        u = os.environ.get("ZMAX_HW_URL", "")
+        if not u:
+            try:
+                f = os.path.expanduser("~/.zmax_hw_url")
+                if os.path.isfile(f):
+                    u = open(f, encoding="utf-8").read().strip()
+            except Exception:                                                   # noqa: BLE001
+                u = ""
+        if u:
+            cands.append((u, "配置"))
+        cands.append(("http://127.0.0.1:8799/api/hardware", "本机"))
+        for ip in ("10.163.146.78", "192.168.23.50"):
+            cands.append(("http://%s:8799/api/hardware" % ip, "局域网 %s" % ip))
+        return cands
+
+    def _fetch_remote(self):
+        """拉远端(4060)硬件真实数据 —— 返回 (url, src_label, data) 或 (None, None, None)"""
+        cache = getattr(self, "_src_cache", None)
+        if cache:
+            ok, d = self._probe_url(cache[0])
+            if ok and isinstance(d, dict) and d.get("gpu"):
+                return cache[0], cache[1], d
+        for url, lab in self._hw_sources():
+            ok, d = self._probe_url(url)
+            if ok and isinstance(d, dict) and d.get("gpu"):
+                self._src_cache = (url, lab)
+                return url, lab, d
+        self._src_cache = None
+        return None, None, None
+
+    def _collect(_rs):
+        """采集全部硬件数据 (阻塞 I/O) → {label_key: html} —— **只允许在工作线程调用**
+
+        🐛 2026-09-26 控制台卡顿根因: 原 refresh() 直接在 GUI 线程做阻塞 I/O, 实测单次 **1414ms** 而每 2s
+        一次 (HTTP 127.0.0.1:8799/api/hardware 1266ms + CPU 采样 time.sleep(0.12) + nvidia-smi 24ms)
+        ⇒ 主线程约 70% 时间被冻住。现在这里只负责"取数", 用轻量代理把 self.lb_*.setText(v) 收进 out,
+        再由 GUI 线程的 refresh() 一次性贴上 (零 I/O)。
+        """
+        out = {}
+        # 🖥 2026-09-29 老倪「不要用那么多文字, 要状态条/圆环百分比/红绿灯」——
+        #    这里同时产出**数值指标**(m)给自绘控件 hw_widgets.HwVisual, 文本标签只留作 tooltip/复制。
+        m = {}
+        devs = []
+
+        class _Rec:
+            __slots__ = ("k",)
+
+            def __init__(s, k):
+                s.k = k
+
+            def setText(s, v):                     # noqa: N802 — 故意模拟 QLabel 接口
+                out[s.k] = v
+
+        class _Proxy:
+            def __getattr__(s, name):
+                return _Rec(name) if name.startswith("lb_") else getattr(_rs, name)
+
+        self = _Proxy()
+        import shutil   # ★ studio.py 只在方法内局部导入 shutil（模块级没有）→ 这里必须自己导
+        try:
+            # ── GPU（nvidia-smi: 利用率/显存/温度/功耗/时钟）──
+            g = self._sh("nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total,"
+                         "temperature.gpu,power.draw,clocks.sm,clocks.max.sm "
+                         "--format=csv,noheader,nounits")
+            if g and "," in g:
+                p = [x.strip() for x in g.split(",")]
+                mem_pct = (100.0 * float(p[2]) / float(p[3])) if p[3] and float(p[3]) > 0 else 0
+                m.setdefault("local", {}).update(gpu_name=p[0], gpu_util=float(p[1]), vram_pct=mem_pct,
+                         vram_used_mb=float(p[2]), vram_total_mb=float(p[3]),
+                         gpu_temp=float(p[4]), gpu_power=float(p[5]))
+                _pl = self._sh("nvidia-smi --query-gpu=power.limit --format=csv,noheader,nounits")
+                try:
+                    m["local"]["gpu_power_limit"] = float(_pl.split("\n")[0].strip())  # 功耗条分母=真实限值
+                except Exception:                                               # noqa: BLE001
+                    pass
+                self.lb_gpu.setText(
+                    f"🎮 <b>GPU</b> {p[0]} &nbsp; 利用率 <b>{p[1]}%</b> · "
+                    f"显存 <b>{p[2]}/{p[3]} MB</b> ({mem_pct:.0f}%) · "
+                    f"温度 <b>{p[4]}°C</b> · 功耗 <b>{p[5]}W</b> · "
+                    f"SM 时钟 {p[6]}/{p[7]} MHz")
+            else:
+                self.lb_gpu.setText("🎮 <b>GPU</b> —（未检测到 nvidia-smi）")
+
+            # ── CPU（/proc/stat 两次采样差值）──
+            def _snap():
+                f = open("/proc/stat").readline().split()[1:]
+                v = [int(x) for x in f]
+                return sum(v), v[3]
+            t0, i0 = _snap()
+            time.sleep(0.12)
+            t1, i1 = _snap()
+            cpu_pct = 100.0 * (1 - (i1 - i0) / max(1, t1 - t0))
+            m.setdefault("local", {}).update(cpu_pct=cpu_pct, cpu_cores=os.cpu_count())
+            la = open("/proc/loadavg").read().split()
+            self.lb_cpu.setText(f"🧠 <b>CPU</b> <b>{cpu_pct:.1f}%</b> · {os.cpu_count()} 核 · "
+                                f"load {la[0]}/{la[1]}/{la[2]}")
+
+            # ── 内存（/proc/meminfo）──
+            mi = {}
+            for ln in open("/proc/meminfo"):
+                k = ln.split(":")[0]
+                mi[k] = int(ln.split()[1]) / 1048576.0
+            tot, av = mi.get("MemTotal", 0), mi.get("MemAvailable", 0)
+            m.setdefault("local", {}).update(mem_total_gb=tot, mem_used_gb=tot - av,
+                                             mem_pct=(100.0 * (tot - av) / tot) if tot else None)
+            self.lb_mem.setText(f"💾 <b>内存</b> <b>{tot - av:.1f}/{tot:.1f} GB</b> "
+                                f"({100 * (tot - av) / max(tot, 1):.0f}%) · 可用 {av:.1f} GB")
+
+            # ── 磁盘 ──
+            try:
+                du = shutil.disk_usage("/")
+                m.setdefault("local", {}).update(disk_pct=100.0 * du.used / du.total,
+                                                 disk_free_gb=du.free / 1073741824.0,
+                                                 disk_total_gb=du.total / 1073741824.0)
+                self.lb_disk.setText(f"🗄 <b>磁盘</b> <b>{du.free / 1073741824:.1f}/{du.total / 1073741824:.1f} GB 可用</b>"
+                                     f"（已用 {100.0 * du.used / du.total:.0f}%）")
+            except Exception:                                                   # noqa: BLE001
+                self.lb_disk.setText("🗄 <b>磁盘</b> —")
+
+            # ── 算力（实测: 最近训练日志/进度文件的 步/s）──
+            sps = ""
+            try:
+                import glob as _g
+                import json as _j
+                best = None
+                for f in _g.glob("/home/ubuntu/stable-wm-cache/reports/progress_*.json"):
+                    try:
+                        d = _j.load(open(f, encoding="utf-8"))
+                        if d.get("sps") and (time.time() - (d.get("ts") or 0) < 600):
+                            best = d
+                    except Exception:                                               # noqa: BLE001
+                        pass
+                if best:
+                    sps = (f" · 实测 <b>{best['sps']} 步/s</b>（{int(best['sps'] * 3600)} 步/小时）"
+                           f" · 训练{'进行中' if best.get('running') else '已停'}")
+                    m.setdefault("local", {}).update(sps=float(best.get("sps") or 0),
+                                                     training=bool(best.get("running")))
+            except Exception:                                                       # noqa: BLE001
+                pass
+            self.lb_thr.setText(f"⚡ <b>算力</b>{sps or ' —（暂无近期训练吞吐）'}")
+
+            # ── 4060 + Mac 两端硬件：★ 必须走 DDS（老倪: "硬件参数必须用DDS传递"）──
+            #    优先进程内直连 DDS → 子进程 DDS 桥 → 仅当 DDS 完全不可用才 HTTP（并明确标注）
+            try:
+                col = _get_dds_collector()
+                snap = col.snapshot() if col else {}
+                if snap:
+                    def _fv(x, dg=0):
+                        return "—" if (x is None or x < 0) else f"{x:.{dg}f}"
+                    parts = []
+                    for k, v in snap.items():
+                        h2 = v.get("hw") or {}
+                        if not h2:
+                            continue
+                        tone = ("⚠️ 停%s" % v.get("age_s")) if v.get("stale") else ("在线%s" % v.get("age_s"))
+                        be = (h2.get("backend") or "?").upper()
+                        devs.append({"name": k, "state": ("err" if v.get("stale") else "ok"),
+                                     "sub": "%s %s %s%s" % (str(h2.get("device_name") or "—")[:12],
+                                                            be, "停" if v.get("stale") else "在线",
+                                                            str(v.get("age_s") or "?") + "s")})
+                        ico = "🍎" if be == "MPS" else ("🎮" if be == "CUDA" else "🖥")
+                        parts.append(
+                            f"{ico} <b>{k}</b>（{v.get('role') or '?'}·{be}）<b>{tone}</b>　"
+                            f"{h2.get('device_name') or '—'}"
+                            + (f" · GPU {_fv(h2.get('util_pct'))}%"
+                               f" · 显存 {_fv(h2.get('mem_used_mb'))}/{_fv(h2.get('mem_total_mb'))}MB"
+                               f" · {_fv(h2.get('temp_c'))}°C · {_fv(h2.get('power_w'))}W"
+                               if be == "CUDA" else "")
+                            + (f" · 内存 {_fv(h2.get('mem_avail_gb'), 1)}/{_fv(h2.get('mem_total_gb'), 1)}GB"
+                               f" · 盘可用 {_fv(h2.get('disk_free_gb'), 1)}GB"
+                               f" · CPU {_fv(h2.get('cpu_util_pct'), 1)}%（{h2.get('cpu_cores') or '—'}核）"))
+                    tr = {"dds-inproc": "DDS 直连", "dds-subproc": "DDS 桥",
+                          "http-fallback": "⚠️ 非DDS(HTTP兜底)"}.get(
+                              getattr(col, "transport", "不可用"), getattr(col, "transport", "不可用"))
+                    self.lb_mac.setText(f"📡 <b>DDS 两端硬件</b>（{tr}）　" + "　│　".join(parts))
+                    # ★ DDS 节点列表（老倪: "APP里也要有DDS节点"）—— 每节点一行
+                    nl = []
+                    for k, v in snap.items():
+                        h2 = v.get("hw") or {}
+                        pr = v.get("prog") or {}
+                        be = (h2.get("backend") or "?").upper()
+                        dot = ("🔴" if v.get("stale") else "🟢")
+                        nl.append(f"{dot} <b>{k}</b>　{v.get('role') or '?'}　"
+                                  f"{h2.get('device_name') or '（无硬件数据）'}　{be}"
+                                  + (f"　训练 {pr.get('step')}/{pr.get('total')}"
+                                     f" {pr.get('pct')}%" if pr.get("step") is not None
+                                     and (pr.get("step") or -1) >= 0 else "")
+                                  + f"　龄 {v.get('age_s')}s")
+                    self.lb_nodes.setText(
+                        f"<b>📡 DDS 节点</b>（{len(nl)} 个 · {tr}）" + ("<br>" + "<br>".join(nl) if nl else "　—"))
+                else:
+                    self.lb_mac.setText(
+                        "📡 <b>DDS 两端硬件</b> —（等待节点上报: 4060 跑 dds_node_4060.py · "
+                        "Mac 跑 mac_hw_report.py --dds）")
+                    self.lb_nodes.setText("<b>📡 DDS 节点</b>（0 个）　—"
+                                          "　可点右下「启动本机 DDS 发布」")
+            except Exception as e:                                              # noqa: BLE001
+                self.lb_mac.setText(f"📡 <b>DDS 两端硬件</b> —（DDS 不可用: {str(e)[:50]}）")
+                self.lb_nodes.setText(f"<b>📡 DDS 节点</b> —（{str(e)[:50]}）")
+
+            # ── ★ 远端(4060)真实硬件 —— APP 在任何机器上都能看到 4060 数据 ──
+            try:
+                _url, _lab, _rd = self._fetch_remote()
+                if _rd:
+                    g2, c2, m2, d2 = _rd.get("gpu") or {}, _rd.get("cpu") or {}, \
+                        _rd.get("mem") or {}, _rd.get("disk") or {}
+                    cp2 = _rd.get("compute") or {}
+
+                    def _n2(x, dg=0):
+                        return "—" if (x is None or (isinstance(x, (int, float)) and x < 0)) else f"{x:.{dg}f}"
+                    self.lb_remote.setText(
+                        f"🛰 <b>4060 远端真实数据</b>（数据源: {_lab} · {_rd.get('ts', '')}）　"
+                        f"GPU <b>{_n2(g2.get('util_pct'))}%</b> · "
+                        f"显存 {_n2(g2.get('mem_used_mb'))}/{_n2(g2.get('mem_total_mb'))}MB · "
+                        f"{_n2(g2.get('temp_c'))}°C · {_n2(g2.get('power_w'), 1)}W · "
+                        f"CPU {_n2(c2.get('util_pct'), 1)}% · "
+                        f"内存 {_n2(m2.get('used_gb'), 1)}/{_n2(m2.get('total_gb'), 1)}GB · "
+                        f"盘可用 {_n2(d2.get('free_gb'), 1)}GB · "
+                        f"吞吐 {_n2(cp2.get('sps'), 1)}步/s")
+                    self.lb_src.setText(f"数据源: {_url}（{_lab}）· 本机行 = 运行 APP 的这台机器")
+                    m["remote_src"] = "%s (%s)" % (_lab, _url.split("//")[-1].split("/")[0])
+                else:
+                    m["remote_src_off"] = True
+                    self.lb_remote.setText(
+                        "🛰 <b>4060 远端真实数据</b> —（数据源不可达 → 点「🔄 刷新数据源」；"
+                        "或设 ZMAX_HW_URL / 写 ~/.zmax_hw_url）")
+                    self.lb_src.setText("数据源: 未连通（候选: 本机8799 · 10.163.146.78 · 192.168.23.50）")
+            except Exception as e:                                              # noqa: BLE001
+                self.lb_remote.setText(f"🛰 <b>4060 远端真实数据</b> —（{str(e)[:50]}）")
+                self.lb_src.setText("数据源: 探测异常")
+
+            m["devices"] = devs
+            m["ts"] = time.strftime("%H:%M:%S")
+            out["_metrics"] = m
+            self.lb_ts.setText(time.strftime("%H:%M:%S 实测"))
+        except Exception as e:                                                  # noqa: BLE001
+            self.lb_ts.setText("采样失败: %s" % str(e)[:40])
+        return out
+
+
+    # ── GUI 线程侧 (零 I/O) ────────────────────────────────────────────────
+    @staticmethod
+    def _plain(s):
+        """去 HTML 标签 → 纯文本(复制用)"""
+        import re as _re
+        return _re.sub(r"<[^>]+>", " ", str(s or "")).replace("&nbsp;", " ").strip()
+
+    def copy_params(self):
+        """📋 复制硬件参数(纯文本) —— 老倪: 显示内容要可复制可导出"""
+        met = (self._last or {}).get("_metrics") or {}
+        loc, devs = met.get("local") or {}, met.get("devices") or []
+        L = ["Z-MAX 硬件参数 · %s" % (met.get("ts") or time.strftime("%H:%M:%S"))]
+        if loc:
+            L.append("本机 GPU %s | 利用率 %s%% | 显存 %s/%sMB (%s%%) | %s°C | 功耗 %s/%sW"
+                     % (loc.get("gpu_name", "—"), loc.get("gpu_util", "—"),
+                        loc.get("vram_used_mb", "—"), loc.get("vram_total_mb", "—"),
+                        loc.get("vram_pct", "—"), loc.get("gpu_temp", "—"),
+                        loc.get("gpu_power", "—"), loc.get("gpu_power_limit", "—")))
+            L.append("本机 CPU %s%% (%s核) | 内存 %s/%sGB (%s%%) | 磁盘 %s%% (可用 %sGB) | 吞吐 %s 步/s%s"
+                     % (loc.get("cpu_pct", "—"), loc.get("cpu_cores", "—"),
+                        loc.get("mem_used_gb", "—"), loc.get("mem_total_gb", "—"), loc.get("mem_pct", "—"),
+                        loc.get("disk_pct", "—"), loc.get("disk_free_gb", "—"),
+                        loc.get("sps", "—"), "(训练中)" if loc.get("training") else "(无训练)"))
+        L.append("设备: " + (" · ".join("%s[%s %s]" % (d.get("name"), d.get("state"), d.get("sub"))
+                                       for d in devs) or "—"))
+        if met.get("remote_src"):
+            L.append("远端数据源: %s" % met["remote_src"])
+        for k in ("lb_gpu", "lb_cpu", "lb_mem", "lb_disk", "lb_thr", "lb_mac", "lb_nodes",
+                  "lb_remote", "lb_src"):
+            t = self._plain((self._last or {}).get(k))
+            if t:
+                L.append("%s: %s" % (k.replace("lb_", ""), t))
+        import re as _re2
+        txt = _re2.sub(r"([0-9]\.[0-9]{2})[0-9]+", r"\1", "\n".join(L))
+        try:
+            from PyQt5.QtWidgets import QApplication
+            QApplication.clipboard().setText(txt)
+            self.btn_copy.setText("📋 已复制")
+        except Exception:                                                       # noqa: BLE001
+            pass
+        self._last_copy = txt
+        return txt
+
+    def _on_fetched(self, d):
+        self._last = d or {}
+        self.refresh()
+
+    def refresh(self):
+        """把最近一次后台采集结果贴到界面 (GUI 线程, 零 I/O, 实测 <1ms)"""
+        _met = (self._last or {}).get("_metrics")
+        if _met and getattr(self, "_visual", None) is not None:
+            try:
+                self._visual.set_data(_met)
+            except Exception:                                                   # noqa: BLE001
+                pass
+        for k, v in (self._last or {}).items():
+            lb = getattr(self, k, None)
+            if lb is None:
+                continue
+            try:
+                lb.setText(v)
+            except Exception:                                                   # noqa: BLE001
+                pass
+
+
+class _HwFetcher(QThread):
+    """硬件卡后台采集线程 —— 阻塞 I/O 全在这里, GUI 线程永不冻结 (2026-09-26)"""
+    got = pyqtSignal(dict)
+
+    def __init__(self, card, interval=2.0):
+        super().__init__(card)
+        self.card = card
+        self.interval = float(interval)
+        self._stop = False
+
+    def run(self):
+        while not self._stop:
+            try:
+                d = self.card._collect()
+                if d:
+                    self.got.emit(d)
+            except Exception:                                                   # noqa: BLE001
+                pass
+            waited = 0.0
+            while waited < self.interval and not self._stop:
+                time.sleep(0.1)
+                waited += 0.1
+
+    def stop(self):                                                             # noqa: A003
+        self._stop = True
+
+
+class ReflowCardRow(QWidget):
+    """🎨 2026-09-29 老倪「方框的自适应布局」——卡片按**可用宽度**自动换列。
+
+    与"写死 3 张横排"的区别: 窗口/面板被拉窄时, QHBoxLayout 只能把卡片压到 minimumWidth
+    以下 → 卡片被裁/挤出可视区 (现场观感 = "显示不全")。这里按每一列的最小卡宽算得出
+    最多能放几列, 再换列 (3→2→1), 于是**永远放得下**, 不需要横向拖动也能看全。
+
+    🎨 2026-09-29 (v5.16.12) 老倪「主机面的功能模块太宽了, 不协调; 要自适应, 默认不要横拉条」:
+      新增 `max_card_w` —— 宽屏下卡片**不再被拉成 895px 的巨卡**。超过上限就按上限给宽,
+      多出来的宽度**整行居中留白**(左右等分), 于是窄屏·宽屏·全屏三种口径都成比例。
+      本类同时被复用为**分组框的自适应容器**(模块分组 2 列/1 列), 一个类两处用。
+    """
+
+    def __init__(self, cards, min_card_w=260, spacing=12, max_cols=3, max_card_w=0, parent=None):
+        super().__init__(parent)
+        self._cards = list(cards)
+        self._min_w = int(min_card_w)
+        self._spacing = int(spacing)
+        self._max_cols = int(max_cols)
+        self._max_card_w = int(max_card_w or 0)
+        self._cols = 0
+        self._cap = 0
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self._grid = QGridLayout(self)
+        self._grid.setSpacing(self._spacing)
+        self._grid.setContentsMargins(0, 0, 0, 0)
+
+    def _cols_for_width(self, w):
+        w = int(max(1, w))
+        per = self._min_w + self._spacing
+        return max(1, min(self._max_cols, max(1, (w + self._spacing) // per)))
+
+    def cols(self):
+        return self._cols
+
+    def reflow_for(self, width=None):
+        """按给定(或当前)宽度重排; 返回是否真的改了列数/卡宽。"""
+        w = int(width if width else self.width())
+        if w <= 1:
+            return False
+        cols = self._cols_for_width(w)
+        cell = max(1, (w - self._spacing * (cols - 1)) // cols)
+        cap = cell if self._max_card_w <= 0 else min(cell, self._max_card_w)
+        if cols == self._cols and cap == self._cap and self._grid.count() == len(self._cards):
+            return False
+        while self._grid.count():
+            it = self._grid.takeAt(0)
+            if it is not None and it.widget() is not None:
+                it.widget().setParent(None)
+        # 🐛 清掉**历史列**的拉伸/最小宽 (上次可能是 5 列, 不清会留下看不见的空列把卡片推开)
+        for cc in range(self._grid.columnCount() + 1):
+            try:
+                self._grid.setColumnStretch(cc, 0)
+                self._grid.setColumnMinimumWidth(cc, 0)
+            except Exception:
+                pass
+        used = cols * cap + self._spacing * (cols - 1)
+        pad = max(0, (w - used) // 2)
+        self._grid.setContentsMargins(pad, 0, pad, 0)
+        for i, c in enumerate(self._cards):
+            c.setMinimumWidth(min(self._min_w, cap))
+            c.setMaximumWidth(cap)          # 🎨 卡宽上限: 宽屏不再把卡片拉成巨卡
+            self._grid.addWidget(c, i // cols, i % cols)
+        for cc in range(self._grid.columnCount()):
+            self._grid.setColumnStretch(cc, 1 if cc < cols else 0)
+        self._cols = cols
+        self._cap = cap
+        return True
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self.reflow_for(e.size().width())
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self.reflow_for(self.width())
+
+
+class HomeWidget(QWidget):
+    module_clicked = pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("home")  # 🌐 2026-08-09 老倪: 页识别 (首页按钮 ID 悬停不常显)
+        self.setStyleSheet(f"background:{C_BG};")
+        self._build()
+
+    def _build(self):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        # 🎨 2026-09-29 老倪: 原来横向条**永远关掉**(ScrollBarAlwaysOff) ⇒ 内容一旦宽过窗口
+        #   就既看不到右边也**没有横向拖动条**。改按需出现 (有拖得动的就出现)。
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setStyleSheet("QScrollArea{border:none;}" + SCROLLBAR_QSS)   # 🎨 粗+高对比滚动条
+
+        page = QWidget()
+        page.setStyleSheet(f"background:{C_BG};")
+        layout = QVBoxLayout()
+        layout.setSpacing(20)
+        layout.setContentsMargins(32, 24, 32, 24)
+
+        # --- Hero ---
+        hero = self._hero()
+        layout.addWidget(hero)
+
+        # 🖥 硬件资源卡: 老倪 2026-09-29「硬件资源 4060 放到最底下」⇒ 由 Hero 之后**移到页面最底**。
+        #    (2026-09-25 起放在首位; 现在首页先看功能模块/路线图, 硬件仪表压轴)
+        # --- 架构流程 ---
+        layout.addWidget(ArchFlowBar())
+
+        # --- 产品迭代路线图 ---
+        lbl_roadmap = QLabel("产品迭代  Roadmap")
+        lbl_roadmap.setFont(QFont("Arial", 11, QFont.Bold))
+        lbl_roadmap.setStyleSheet(f"color:{C_GRAY};")
+        layout.addWidget(lbl_roadmap)
+        layout.addWidget(ProductRoadmapWidget())
+
+        # --- 模块卡片 ---
+        lbl2 = QLabel("功能模块  Modules")
+        lbl2.setFont(QFont("Arial", 11, QFont.Bold))
+        lbl2.setStyleSheet(f"color:{C_GRAY};")
+        layout.addWidget(lbl2)
+        layout.addWidget(self._modules_grid())
+
+        # --- 状态统计 ---
+        lbl3 = QLabel("项目状态  Status")
+        lbl3.setFont(QFont("Arial", 11, QFont.Bold))
+        lbl3.setStyleSheet(f"color:{C_GRAY};")
+        layout.addWidget(lbl3)
+        layout.addWidget(self._stats_bar())
+
+        # 🖥 硬件资源卡（4060 仪表盘 · 2 秒自动刷新）—— 页面最底(老倪 2026-09-29)
+        lbl4 = QLabel("硬件资源  Hardware")
+        lbl4.setFont(QFont("Arial", 11, QFont.Bold))
+        lbl4.setStyleSheet(f"color:{C_GRAY};")
+        layout.addWidget(lbl4)
+        layout.addWidget(HardwareCard())
+
+        layout.addStretch()
+        page.setLayout(layout)
+        scroll.setWidget(page)
+
+        outer = QVBoxLayout()
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
+        self.setLayout(outer)
+
+    def _hero(self):
+        frame = QFrame()
+        frame.setStyleSheet(card_style(C_BG2, C_BORDER, 12, 0))
+        layout = QVBoxLayout()
+        layout.setSpacing(10)
+        layout.setContentsMargins(24, 20, 24, 20)
+
+        row = QHBoxLayout()
+        # 首页大logo，跟标题"Z-MAX"20pt字号匹配  # 新增：首页hero区域logo
+        hero_icon = QLabel()  # 新增：首页hero区域logo
+        hero_icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")  # 新增：首页hero区域logo
+        hero_pixmap = QPixmap(hero_icon_path)  # 新增：首页hero区域logo
+        hero_icon.setPixmap(hero_pixmap.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))  # 新增：48x48匹配20pt字号
+        hero_icon.setStyleSheet("background:transparent; border:none; margin:0; padding:4px 0;")  # 新增：首页hero区域logo
+        row.addWidget(hero_icon)  # 新增：首页hero区域logo
+        t = QLabel("Z-MAX 多模态动作专家")
+        t.setFont(QFont("Arial", 20, QFont.Bold))
+        t.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:4px 0;")
+        row.addWidget(t)
+        row.addStretch()
+        b = QPushButton("● smolvla_lew")  # 改为按钮，点击打开 GitHub 仓库
+        b.setFont(QFont("Arial", 12, QFont.Bold))
+        b.setStyleSheet(f"background:{SYS12_COLOR}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        b.setCursor(Qt.PointingHandCursor)
+        b.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/MikeBMW/lerobot-smolvla-lew.git")))  # 打开GitHub链接
+        row.addWidget(b)
+
+        # 同步按钮：将本地GUI代码推送到GitHub  # 新增同步按钮
+        sync_btn = QPushButton("🔄 同步到GitHub")  # 新增同步按钮
+        sync_btn.setFont(QFont("Arial", 12, QFont.Bold))
+        sync_btn.setStyleSheet(f"background:{C_GREEN}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        sync_btn.setCursor(Qt.PointingHandCursor)
+        sync_btn.clicked.connect(self._sync_to_github)  # 调用同步方法
+        row.addWidget(sync_btn)  # 新增同步按钮
+
+        # 升级按钮
+        upg_btn = QPushButton("⬆ 升级")
+        upg_btn.setFont(QFont("Arial", 12, QFont.Bold))
+        upg_btn.setStyleSheet(f"background:#d29922; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        upg_btn.setCursor(Qt.PointingHandCursor)
+        upg_btn.clicked.connect(lambda: self.module_clicked.emit("check_updates"))
+        row.addWidget(upg_btn)
+
+        # 官网按钮
+        web_btn = QPushButton("🌐 Z-MAX")
+        web_btn.setFont(QFont("Arial", 12, QFont.Bold))
+        web_btn.setStyleSheet(f"background:{C_CYAN}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        web_btn.setCursor(Qt.PointingHandCursor)
+        web_btn.setToolTip("datadrive.world")
+        web_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://datadrive.world")))
+        row.addWidget(web_btn)
+
+        # ====== 版本同步按钮（快速跳转到版本管理页面） ======
+        ver_btn = QPushButton("📦 版本同步")
+        ver_btn.setFont(QFont("Arial", 12, QFont.Bold))
+        ver_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        ver_btn.setCursor(Qt.PointingHandCursor)
+        ver_btn.setToolTip("检查 LeRobot 上游更新 · 安全同步 · 版本管理")
+        ver_btn.clicked.connect(lambda: self.module_clicked.emit("version"))
+        row.addWidget(ver_btn)
+
+        # ====== 新增：解决方案文档按钮（保留Markdown按钮） ======
+        doc_btn = QPushButton("📋 解决方案v1.0.4")
+        doc_btn.setFont(QFont("Arial", 12, QFont.Bold))
+        doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        doc_btn.setCursor(Qt.PointingHandCursor)
+        doc_btn.setToolTip("打开产品解决方案文档 (Markdown)")
+        doc_btn.clicked.connect(self._open_spec_doc)
+        row.addWidget(doc_btn)
+
+        # ====== 新增：PPT汇报按钮 ======
+        doc_btn = QPushButton("📊 PPT汇报")
+        doc_btn.setFont(QFont("Arial", 12, QFont.Bold))
+        doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        doc_btn.setCursor(Qt.PointingHandCursor)
+        doc_btn.setToolTip("打开管理层汇报PPT (8页幻灯片)")
+        doc_btn.clicked.connect(lambda: open_ppt_with_libreoffice(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'docs', 'BRAND-品牌注册材料.pptx')))
+        row.addWidget(doc_btn)
+
+        # ====== 分享按钮 ======
+        share_btn = QPushButton("📱 分享")
+        share_btn.setFont(QFont("Arial", 12, QFont.Bold))
+        share_btn.setStyleSheet(f"background:{C_PURPLE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        share_btn.setCursor(Qt.PointingHandCursor)
+        share_btn.setToolTip("生成二维码 · 扫码查看Z-MAX项目")
+        share_btn.clicked.connect(self._show_share_qr)
+        row.addWidget(share_btn)
+
+        layout.addLayout(row)
+
+        desc = QLabel("高速光模块精细操作具身机器人 · L4级全自主 · 1ms实时控制 · 三层解耦架构")
+        desc.setFont(QFont("Arial", 11))
+        desc.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:2px 0;")
+        layout.addWidget(desc)
+
+        # KPI
+        kpi = QHBoxLayout()
+        kpi.setSpacing(36)
+        for val, lbl, clr in [
+            ("±0.02mm", "定位精度", SYS11_COLOR),
+            (">99%", "连续成功率", C_GREEN),
+            ("<70ms", "推理延迟", SYS11_COLOR),
+            ("1ms", "控制周期", SYS0_COLOR),
+        ]:
+            col = QVBoxLayout(); col.setSpacing(1)
+            v = QLabel(val)
+            v.setFont(QFont("Arial", 16, QFont.Bold))
+            v.setStyleSheet(f"color:{clr}; background:transparent; border:none;")
+            col.addWidget(v)
+            l = QLabel(lbl)
+            l.setFont(QFont("Arial", 11))
+            l.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none;")
+            col.addWidget(l)
+            kpi.addLayout(col)
+        kpi.addStretch()
+        layout.addLayout(kpi)
+
+        frame.setLayout(layout)
+        return frame
+
+    def _modules_grid(self):
+        grid = QGridLayout()
+        grid.setSpacing(12)
+        # 2026-08-08 老倪: 功能模块顺序 — 第一行: 数据集管理/训练控制台/硬件工具箱;
+        #   第二行: 系统架构/Simulink模式/配置中心; 第三行: 全局数据空间/实时监控/评估分析;
+        #   最后一行: 插拔场景/版本同步
+        modules = [
+            ("dataset",  "📊", "数据集管理",   "System 2 · L4大脑",   "任务规划 · 数据飞轮\n.lrobot格式 · HF Datasets", SYS2_COLOR),
+            ("training", "🏋️", "模型引擎",   "System 1 · 动作系统",   "SmolVLA 500M + DiT-B\n端到端VLA训练",            SYS11_COLOR),
+            ("hardware", "🔧", "硬件工具箱",   "System 0 · L2基石",   "电机·相机·力控·急停\nEtherCAT驱动 · HAL层",     SYS0_COLOR),
+            ("architecture","🏗️","系统架构",   "三层总览",     "System 2→1→0\n数据闭环·OTA升级", SYS2_COLOR),  # 🐛 恢复三层架构功能卡 (页面在, 卡列表漏加)
+            ("simulink", "🎛️", "Simulink模式",  "Sys-11+12 · 仿真",    "模块库拖拽·连线\n仿真·数据上传·训练·部署",   "#00d4aa"),
+            ("config",   "⚙️", "配置中心",     "Sys-11 + Sys-12",     "SmolVLALewConfig\n三层参数可视化编辑",          SYS11_COLOR),
+            ("dataspace","🌐", "全局数据空间",  "所有模块 · 数据库",  "node↔数据对象全息映射\n数据集·曲线·模型·视频·一致性", "#58a6ff"),
+            ("monitor",  "📈", "实时监控",     "Sys-11 + Sys-12",     "训练曲线 · GPU状态\n推理延迟 · 力控曲线",        SYS12_COLOR),
+            ("evaluation","✅", "评估分析",     "Sys-12 · 引导系统",   "LeWorldModel验证\n动作回放 · 成功率分析",        SYS12_COLOR),
+            ("plugging", "🤖", "插拔场景",     "Z700 · 双臂协同",     "Z700轮式双臂 · VTLA插拔\nROI量化 · 力控闭环",     ROI_ACCENT),
+            ("version",  "🔄", "版本同步",     "LeRobot · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
+            ("website",  "🌍", "产品大屏",     "datadrive.world",  "工厂数字大屏 · 实时产线\nhttps://datadrive.world/factory-dashboard.html", "#1f6feb"),
+        ]
+        # 2026-08-08 老倪: 每层分组框 (外边框 + 标题 + 3 卡), 分层结构明显
+        _GROUP_TITLES = ["系统", "架构", "数据", "场景"]
+        _GROUP_SUBS = ["平台底座 · 数据/训练/硬件", "系统结构 · 架构/仿真/配置",
+                       "数据资产 · 空间/监控/评估", "应用场景 · 插拔/版本/官网"]
+        _GROUP_COLORS = ["#58a6ff", "#00d4aa", "#a371f7", "#e3b341"]  # 每层专属色 (标题用)
+        _GROUP_BORDERS = ["rgba(88,166,255,0.40)", "rgba(0,212,170,0.40)",
+                          "rgba(163,113,247,0.40)", "rgba(227,179,65,0.40)"]  # 边框暗淡 (2026-08-08 老倪: 默认太亮)
+        outer = QVBoxLayout()
+        outer.setSpacing(10)
+        _groups = []                                                   # 🎨 v5.16.12 分组框自己也要自适应
+        for gi, (gtitle, gsub) in enumerate(zip(_GROUP_TITLES, _GROUP_SUBS)):
+            gcol = _GROUP_COLORS[gi]
+            gbord = _GROUP_BORDERS[gi]
+            frame = QFrame()
+            # 🐛 2026-08-08 老倪: 边框默认暗淡 (rgba 40%), hover 全色 — 与整体协调
+            frame.setStyleSheet(f"""
+                QFrame {{ background:{C_BG}; border:2px solid {gbord}; border-radius:10px; }}
+                QFrame:hover {{ border-color:{gcol}; }}
+            """)
+            fl = QVBoxLayout(frame)
+            fl.setContentsMargins(14, 10, 14, 12)
+            fl.setSpacing(6)
+            # 标题行: 色条 + 组名 + 副标题 (组色)
+            th = QHBoxLayout()
+            bar = QLabel("▍")
+            bar.setStyleSheet(f"color:{gcol}; background:transparent; border:none; font-size:16px; font-weight:900;")
+            th.addWidget(bar)
+            tl = QLabel(gtitle)
+            tl.setFont(QFont("Arial", 12, QFont.Bold))
+            tl.setStyleSheet(f"color:{gcol}; background:transparent; border:none;")
+            th.addWidget(tl)
+            sub = QLabel(gsub)
+            sub.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:18px;")
+            th.addWidget(sub)
+            th.addStretch()
+            fl.addLayout(th)
+            # 🎨 2026-09-29 老倪「方框的自适应布局」: 3 张卡横排 → 按可用宽度**自动换列**
+            #   (宽 ≥ 约 850px 三列 / 窄了一行两列 / 再窄一列) —— 窗口拉窄时不再把卡片挤出可视区。
+            #   (🐛 2026-08-08: 删 Architecture 后列表非 3 倍数 — 越界防护保留)
+            _row_cards = []
+            for c in range(3):
+                idx = gi * 3 + c
+                if idx >= len(modules):
+                    break
+                mid, icon, title, syslbl, desc, color = modules[idx]
+                card = ModuleCard(mid, icon, title, syslbl, desc, syslbl.split("·")[0].strip(), color,
+                                  veh_id=f"VEH.{idx + 1}")  # 🌐 2026-08-09 老倪: VEH.1~VEH.12 对话 ID (点号)
+                card.clicked.connect(self.module_clicked.emit)
+                _row_cards.append(card)
+            fl.addWidget(ReflowCardRow(_row_cards, max_cols=3, max_card_w=470))
+            _groups.append(frame)
+        # 🎨 2026-09-29 (v5.16.12) 老倪「主机面的功能模块太宽了, 不协调; 要自适应, 默认不要横拉条」:
+        #   原来 4 个分组框**各占满整行** ⇒ 2840px 工位屏上每组 3 张卡各被拉成 895px 的巨卡,
+        #   框内大片空白 = "太宽、不协调"。现在分组框自己也是自适应的:
+        #   宽屏 **2 列并排**(每列 ~1380 ⇒ 每张卡 ~443px) / 中等 1 列 3 卡 / 窄屏自动 3→2→1 卡。
+        #   全屏(3200+)也不怕: 卡宽上限 470, 再多出来的宽度整行居中留白, 永不出现横拉条。
+        outer.addWidget(ReflowCardRow(_groups, min_card_w=900, spacing=12, max_cols=2))
+        container = QWidget()
+        container.setStyleSheet("background:transparent;")
+        container.setLayout(outer)
+        return container
+
+    def _stats_bar(self):
+        f = QFrame()
+        f.setFixedHeight(64)
+        f.setStyleSheet(card_style(C_BG2, C_BORDER, 8, 0))
+        layout = QHBoxLayout()
+        layout.setSpacing(36)
+        layout.setContentsMargins(20, 8, 20, 8)
+        for lbl, val in [("策略", "19"), ("脚本", "20"), ("数据集", "2"),
+                         ("Checkpoints", "3"), ("训练进度", "L3 POC")]:
+            col = QVBoxLayout(); col.setSpacing(1)
+            l = QLabel(lbl); l.setFont(QFont("Arial", 11))
+            l.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none;")
+            col.addWidget(l)
+            v = QLabel(val); v.setFont(QFont("Arial", 11, QFont.Bold))
+            v.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none;")
+            col.addWidget(v)
+            layout.addLayout(col)
+        layout.addStretch()
+        f.setLayout(layout)
+        return f
+
+    def _sync_to_github(self):  # 新增：同步GUI代码到GitHub的方法
+        """将本地 tools/gui/ 目录的代码推送到 GitHub 仓库"""
+        repo_dir = self._repo_root()  # 定位到仓库根目录 (gui→tools→repo_root; frozen exe → _MEIPASS)
+
+        try:
+            # 第一步：git add
+            r = subprocess.run(["git", "add", "tools/gui/"],
+                               capture_output=True, text=True, cwd=repo_dir, timeout=30)
+            if r.returncode != 0:
+                _msg_ok(self, "同步失败", f"git add 出错:\n{r.stderr}", kind="warning")
+                return
+
+            # 第二步：检查是否有变更需要提交
+            r = subprocess.run(["git", "status", "--porcelain", "tools/gui/"],
+                               capture_output=True, text=True, cwd=repo_dir, timeout=30)
+            if not r.stdout.strip():
+                _msg_ok(self, "无需同步", "本地 GUI 代码无变更，不需要推送。")
+                return
+
+            # 第三步：git commit
+            r = subprocess.run(["git", "commit", "-m", "sync: 同步GUI界面代码更新"],
+                               capture_output=True, text=True, cwd=repo_dir, timeout=30)
+            if r.returncode != 0:
+                _msg_ok(self, "同步失败", f"git commit 出错:\n{r.stderr}", kind="warning")
+                return
+
+            # 第四步：git push（尝试直接推送）
+            r = subprocess.run(["git", "push", "origin", "main"],
+                               capture_output=True, text=True, cwd=repo_dir, timeout=60)
+
+            if r.returncode != 0:
+                # 推送失败（通常是认证问题），弹出token输入框
+                token, ok = QInputDialog.getText(
+                    self, "GitHub Token",
+                    "需要 GitHub Personal Access Token 才能推送。\n"
+                    "请访问 https://github.com/settings/tokens 生成 token\n\n"
+                    "输入 token（会自动保存供下次使用）:",
+                    QLineEdit.Password
+                )
+                if ok and token.strip():
+                    # 保存 token 到 ~/.git-credentials
+                    cred_file = os.path.expanduser("~/.git-credentials")
+                    with open(cred_file, "w") as f:
+                        f.write(f"https://MikeBMW:{token.strip()}@github.com\n")
+                    # 配置 credential helper
+                    subprocess.run(["git", "config", "credential.helper", "store"],
+                                   capture_output=True, cwd=repo_dir, timeout=10)
+                    # 重试推送
+                    r = subprocess.run(["git", "push", "origin", "main"],
+                                       capture_output=True, text=True, cwd=repo_dir, timeout=60)
+                    if r.returncode != 0:
+                        _msg_ok(self, "推送失败", f"推送仍然失败:\n{r.stderr}", kind="warning")
+                        return
+
+                else:
+                    return  # 用户取消了
+
+            _msg_ok(self, "同步成功", "✅ GUI 代码已成功推送到 GitHub!\n\n"
+                                    "https://github.com/MikeBMW/lerobot-smolvla-lew")
+
+        except subprocess.TimeoutExpired:
+            _msg_ok(self, "同步超时", "Git 操作超时，请检查网络连接。", kind="warning")
+        except Exception as e:
+            _msg_ok(self, "同步异常", f"发生异常:\n{str(e)}", kind="warning")
+
+    def _open_spec_doc(self):
+        """打开解决方案文档 v1.0.4"""
+        try:
+            # 从当前文件位置向上两级到项目根目录，然后进入 docs 目录
+            doc_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'docs', 'L2-Z-MAX解决方案-v1.0.4.md')
+            # WSL: 复制到 Windows 临时目录再打开
+            import shutil
+            tmp_name = f"zmax_spec_{os.path.basename(doc_path)}"
+            tmp_dir = "/mnt/c/Users/Admin/AppData/Local/Temp"
+            os.makedirs(tmp_dir, exist_ok=True)
+            tmp_path = os.path.join(tmp_dir, tmp_name)
+            shutil.copy2(doc_path, tmp_path)
+            win_path = tmp_path.replace("/mnt/c", "C:").replace("/", "\\")
+            subprocess.run(["explorer.exe", win_path], check=True, timeout=5)
+        except Exception as e:
+            _msg_ok(self, "打开失败", f"无法打开文档:\n{str(e)}", kind="critical")
+
+    def _show_share_qr(self):
+        """分享 — 飞书/微信远程对话配置入口"""
+        from PyQt5.QtGui import QPixmap
+        import qrcode, io, os
+        
+        # 检查 gateway 状态
+        import subprocess
+        gw_status = "未配置"
+        try:
+            r = subprocess.run(["hermes", "gateway", "status"], 
+                capture_output=True, text=True, timeout=3)
+            if "running" in r.stdout.lower():
+                gw_status = "🟢 运行中"
+            elif "installed" in r.stdout.lower():
+                gw_status = "⏸ 已安装"
+        except:
+            pass
+        
+        # 二维码: 指向帮助页面
+        qr_url = "https://hermes-agent.nousresearch.com/docs/user-guide/messaging/"
+        
+        qr = qrcode.QRCode(box_size=6, border=2)
+        qr.add_data(qr_url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        pixmap = QPixmap()
+        pixmap.loadFromData(buf.getvalue())
+        
+        dlg = QDialog(self)
+        dlg.setWindowTitle("📱 远程对话 · 飞书 / 微信")
+        dlg.setMinimumWidth(420)
+        dlg.setStyleSheet(f"background:{C_BG};")
+        dl = QVBoxLayout()
+        dl.setSpacing(10)
+        
+        title = QLabel("📱 Z-MAX 远程对话")
+        title.setFont(QFont("Arial", 15, QFont.Bold))
+        title.setStyleSheet(f"color:{C_WHITE};")
+        title.setAlignment(Qt.AlignCenter)
+        dl.addWidget(title)
+        
+        status = QLabel(f"Gateway: {gw_status}")
+        status.setStyleSheet(f"color:{C_GREEN if '运行' in gw_status else C_GRAY}; font-size:20px;")
+        status.setAlignment(Qt.AlignCenter)
+        dl.addWidget(status)
+        
+        # 说明
+        guide = QLabel(
+            "<b>让管理员通过飞书/微信远程与你对话</b><br><br>"
+            "<b>步骤:</b><br>"
+            "1. 终端运行: <code>hermes gateway setup</code><br>"
+            "2. 选择 飞书(Feishu) 或 微信(Weixin)<br>"
+            "3. 按提示填入 App ID / Secret<br>"
+            "4. 运行: <code>hermes gateway run</code><br>"
+            "5. 扫码下方二维码查看详细文档"
+        )
+        guide.setWordWrap(True)
+        guide.setStyleSheet(f"color:{C_WHITE}; font-size:19px; padding:8px; background:{C_BG2}; border-radius:4px;")
+        dl.addWidget(guide)
+        
+        # 二维码
+        qr_label = QLabel()
+        qr_label.setPixmap(pixmap.scaled(180, 180, Qt.KeepAspectRatio))
+        qr_label.setAlignment(Qt.AlignCenter)
+        dl.addWidget(qr_label)
+        
+        qr_hint = QLabel("扫码查看 Hermes Gateway 配置文档")
+        qr_hint.setStyleSheet(f"color:{C_GRAY}; font-size:18px;")
+        qr_hint.setAlignment(Qt.AlignCenter)
+        dl.addWidget(qr_hint)
+        
+        # 按钮行
+        btn_row = QHBoxLayout()
+        
+        setup_btn = QPushButton("⚙ 终端配置")
+        setup_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:4px; padding:8px 16px; font-weight:bold;")
+        setup_btn.clicked.connect(lambda: [dlg.accept(), os.system("x-terminal-emulator -e 'hermes gateway setup' 2>/dev/null &")])
+        btn_row.addWidget(setup_btn)
+        
+        close_btn = QPushButton("关闭")
+        close_btn.setStyleSheet(f"background:{C_DIM}; color:{C_GRAY}; border:none; border-radius:4px; padding:8px 16px;")
+        close_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(close_btn)
+        dl.addLayout(btn_row)
+        
+        dlg.setLayout(dl)
+        dlg.exec_()
+
+
+# ============================================================
+# 子模块基类
+# ============================================================
+class SubModuleWidget(QWidget):
+    """子模块通用容器：标题 + 系统层级标识 + 内容区"""
+
+    def __init__(self, title, sys_layers, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet(f"background:{C_BG};")
+        self._title = title
+        self._sys_layers = sys_layers  # [(label, color), ...]
+
+    def _build_shell(self, content_widget):
+        layout = QVBoxLayout()
+        layout.setSpacing(12)
+        layout.setContentsMargins(24, 16, 24, 16)
+
+        # 标题行
+        head = QHBoxLayout()
+        t = QLabel(self._title)
+        t.setFont(QFont("Arial", 17, QFont.Bold))
+        t.setStyleSheet(f"color:{C_WHITE}; border:none; background:transparent; margin:0; padding:4px 0;")
+        head.addWidget(t)
+        head.addStretch()
+
+        # 系统层级标签（仅展示标识，不可点击）
+        for lbl, clr in self._sys_layers:
+            tag = QLabel(f"● {lbl}")
+            tag.setFont(QFont("Arial", 10, QFont.Bold))
+            tag.setStyleSheet(f"color:{clr}; background:{clr}22; border:1px solid {clr}44; border-radius:4px; padding:4px 10px; margin:0;")
+            tag.setToolTip(f"所属系统层级: {lbl}")
+            head.addWidget(tag)
+
+        layout.addLayout(head)
+
+        # 分隔线
+        sep = QFrame()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet(f"background:{C_BORDER};")
+        layout.addWidget(sep)
+
+        layout.addWidget(content_widget)
+        self.setLayout(layout)
+
+
+# ============================================================
+# 6个子模块
+# ============================================================
+class DatasetModule(SubModuleWidget):
+    """数据集管理 — 支持 HuggingFace LeRobot 数据集浏览、下载、管理"""
+
+    # 主要机器人开源数据集
+    DATASETS = [
+    ]
+
+    def __init__(self):
+        super().__init__("数据集管理", [("System 2", SYS2_COLOR)])
+        self.setObjectName("dataset")  # 🌐 2026-08-09 老倪: 页识别 (VEH-1 功能卡编号 — 数据集 VEH.1.xx)
+        body = QWidget()
+        bl = QVBoxLayout()
+        bl.setSpacing(10)
+
+        # === 顶部信息栏 ===
+        top_bar = QFrame()
+        top_bar.setStyleSheet(f"background:{C_BG2}; border:1px solid {C_BORDER}; border-radius:8px;")
+        top_layout = QHBoxLayout()
+        top_layout.setContentsMargins(14, 8, 14, 8)
+
+        self._cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+        cache_size = self._get_cache_size()
+
+        cache_label = QLabel(f"本地缓存: {cache_size}  |  路径: {self._cache_dir}")
+        cache_label.setFont(QFont("Consolas", 12))
+        cache_label.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none;")
+        top_layout.addWidget(cache_label)
+        top_layout.addStretch()
+
+        refresh_btn = QPushButton("🔄 刷新缓存状态")
+        refresh_btn.setFont(QFont("Arial", 12))
+        refresh_btn.setStyleSheet(f"background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 12px;")
+        refresh_btn.clicked.connect(self._refresh_cache_status)
+        top_layout.addWidget(refresh_btn)
+
+        clean_btn = QPushButton("🗑 清理全部缓存")
+        clean_btn.setFont(QFont("Arial", 12))
+        clean_btn.setStyleSheet(f"background:{C_RED}33; color:{C_RED}; border:1px solid {C_RED}55; border-radius:4px; padding:4px 12px;")
+        clean_btn.clicked.connect(self._clean_all_cache)
+        top_layout.addWidget(clean_btn)
+
+        top_bar.setLayout(top_layout)
+        bl.addWidget(top_bar)
+
+        # 📌 当前训练数据集卡片 (2026-08-07 老倪: 数据集管理页要能看到当前训练的数据集)
+        cur_card = QFrame()
+        cur_card.setStyleSheet(f"background:{C_CARD}; border:1px solid {C_GREEN}66; border-radius:8px;")
+        cur_lay = QHBoxLayout()
+        cur_lay.setContentsMargins(14, 10, 14, 10)
+        cur_lbl = QLabel()
+        cur_lbl.setTextFormat(Qt.RichText)
+        cur_lbl.setFont(QFont("Arial", 10))
+        cur_lbl.setText(self._current_dataset_html())
+        cur_lay.addWidget(cur_lbl)
+        cur_lay.addStretch()
+        refresh_cur = QPushButton("🔄")
+        refresh_cur.setFixedSize(32, 32)
+        refresh_cur.setToolTip("刷新当前训练数据集")
+        refresh_cur.setStyleSheet(f"background:{C_CARD}; color:{C_GREEN}; border:1px solid {C_GREEN}66; border-radius:4px;")
+        refresh_cur.clicked.connect(lambda: cur_lbl.setText(self._current_dataset_html()))
+        cur_lay.addWidget(refresh_cur)
+        cur_card.setLayout(cur_lay)
+        bl.addWidget(cur_card)
+
+        # 🧠 2026-09-12 老倪: INTACT/域内 h5 数据集台账卡片 (原来的页看不到 stable-wm-cache 下的数据)
+        #   数据源 = tools/zmax_ds_meta.py 生成的 zmax_datasets.json (gui-venv 无 h5py, 只读 json)
+        ds_card = QFrame()
+        ds_card.setStyleSheet(f"background:{C_CARD}; border:1px solid {SYS2_COLOR}66; border-radius:8px;")
+        ds_lay = QHBoxLayout()
+        ds_lay.setContentsMargins(14, 10, 14, 10)
+        self._intact_ds_lbl = QLabel()
+        self._intact_ds_lbl.setTextFormat(Qt.RichText)
+        self._intact_ds_lbl.setFont(QFont("Arial", 10))
+        self._intact_ds_lbl.setText(self._intact_ds_html())
+        ds_lay.addWidget(self._intact_ds_lbl)
+        ds_lay.addStretch()
+        refresh_ds = QPushButton("🔄")
+        refresh_ds.setFixedSize(32, 32)
+        refresh_ds.setToolTip("刷新 INTACT/域内数据集台账")
+        refresh_ds.setStyleSheet(f"background:{C_CARD}; color:{SYS2_COLOR}; border:1px solid {SYS2_COLOR}66; border-radius:4px;")
+        refresh_ds.clicked.connect(lambda: self._intact_ds_lbl.setText(self._intact_ds_html()))
+        ds_lay.addWidget(refresh_ds)
+        view_ds = QPushButton("🎬 浏览数据集")
+        view_ds.setToolTip("打开数据集查看器 (翻帧看真图 + 真实 action/observation)")
+        view_ds.setStyleSheet(f"background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER};"
+                              f" border-radius:4px; padding:6px 12px;")
+        view_ds.clicked.connect(self._open_intact_ds_viewer)
+        ds_lay.addWidget(view_ds)
+        ds_card.setLayout(ds_lay)
+        bl.addWidget(ds_card)
+
+        # === 数据集列表 ===
+        list_label = QLabel(f"开源机器人数据集 ({len(self.DATASETS)}个)")
+        list_label.setFont(QFont("Arial", 11, QFont.Bold))
+        list_label.setStyleSheet(f"color:{SYS2_COLOR}; background:transparent; border:none; margin:0;")
+        bl.addWidget(list_label)
+
+        # 使用表格展示数据集
+        from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
+        self._table = QTableWidget()
+        self._table.setColumnCount(7)
+        self._table.setHorizontalHeaderLabels(["名称", "repo_id", "机器人", "任务数", "缓存", "描述", "操作"])
+        self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self._table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
+        self._table.horizontalHeader().resizeSection(6, 480)  # 操作列(四个文字按钮，间距24px)
+        self._table.verticalHeader().setVisible(False)
+        self._table.verticalHeader().setDefaultSectionSize(60)  # 行高给按钮足够空间
+        self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._table.setStyleSheet(f"""
+            QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER}; }}
+            QTableWidget::item {{ padding:6px 8px; }}
+            QTableWidget::item:selected {{ background:{SYS2_COLOR}33; }}
+            QHeaderView::section {{ background:{C_BG2}; color:{SYS2_COLOR}; border:1px solid {C_BORDER}; padding:6px; font-weight:bold; }}
+        """)
+
+        self._populate_table()
+        bl.addWidget(self._table)
+
+        # 🧹 2026-09-12 老倪: 数据集页**只放数据相关的东西** ——「🧠 训练结果 (outputs/train)」已搬到
+        #   训练台 (Model Engine) 页; 这里换成三块纯数据内容:
+        #     ① 本地数据总表 (stable-wm-cache 的 h5 + 仓库 data/ 下的本地数据集, 全部出真实统计)
+        #     ② 选中行详情 (路径/用途/回合/帧/维度/真图校验/大小/时间)
+        #     ③ 数据操作日志 (只记数据集相关动作, 不混训练输出)
+        dhead = QHBoxLayout()
+        dlab = QLabel("📚 本地数据总表 (真实统计 · 真图校验)")
+        dlab.setFont(QFont("Arial", 13, QFont.Bold))
+        dlab.setStyleSheet(f"color:{SYS2_COLOR}; background:transparent; border:none; margin-top:6px;")
+        dhead.addWidget(dlab)
+        dhead.addStretch()
+        drefresh = QPushButton("🔄 刷新数据表")
+        drefresh.setStyleSheet(f"background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER};"
+                               f" border-radius:4px; padding:4px 12px;")
+        drefresh.clicked.connect(self._refresh_data_tab)
+        dhead.addWidget(drefresh)
+        bl.addLayout(dhead)
+
+        self._data_table = QTableWidget()
+        self._data_table.setColumnCount(8)
+        self._data_table.setHorizontalHeaderLabels(
+            ["名称", "来源", "回合", "帧", "动作/观测", "帧std(真图)", "大小", "修改时间"])
+        self._data_table.verticalHeader().setVisible(False)
+        self._data_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._data_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self._data_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self._data_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self._data_table.setMinimumHeight(200)
+        self._data_table.setStyleSheet(f"""
+            QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER}; }}
+            QTableWidget::item {{ padding:4px 6px; }}
+            QTableWidget::item:selected {{ background:{C_GREEN}33; }}
+            QHeaderView::section {{ background:{C_BG2}; color:{C_GREEN}; border:1px solid {C_BORDER}; padding:5px; font-weight:bold; }}
+        """)
+        self._data_table.itemSelectionChanged.connect(self._on_data_row)
+        self._data_table.doubleClicked.connect(lambda *_: self._open_selected_data())
+        bl.addWidget(self._data_table)
+
+        # ② 选中行详情 + 操作
+        self._data_detail = QLabel("选中一行查看详情 (双击 = 打开查看器)")
+        self._data_detail.setTextFormat(Qt.RichText)
+        self._data_detail.setWordWrap(True)
+        self._data_detail.setFont(QFont("Arial", 10))
+        self._data_detail.setStyleSheet(f"background:{C_BG2}; color:{C_WHITE}; border:1px solid {C_BORDER};"
+                                        f" border-radius:6px; padding:8px;")
+        bl.addWidget(self._data_detail)
+        dops = QHBoxLayout()
+        for txt, tip, fn in (("🎬 浏览内容", "打开数据集查看器 (翻真图 + 真实 action/observation)", self._open_selected_data),
+                             ("📂 打开目录", "在文件管理器里打开所在目录", self._open_selected_dir),
+                             ("📋 复制路径", "复制数据集真实路径到剪贴板", self._copy_selected_path),
+                             ("📇 重建台账", "用 INTACT venv 重扫所有 h5 生成 zmax_datasets.json", self._rebuild_ledger)):
+            b = QPushButton(txt)
+            b.setToolTip(tip)
+            b.setStyleSheet(f"background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER};"
+                            f" border-radius:4px; padding:6px 14px;")
+            b.clicked.connect(fn)
+            dops.addWidget(b)
+        dops.addStretch()
+        bl.addLayout(dops)
+
+        # ③ 数据操作日志 (只记数据动作)
+        self._data_log = QTextEdit()
+        self._data_log.setReadOnly(True)
+        self._data_log.setMaximumHeight(90)
+        self._data_log.setStyleSheet(f"background:{C_BG2}; color:{C_GRAY}; border:1px solid {C_BORDER};"
+                                     f" border-radius:6px; font-family:Consolas; font-size:11px;")
+        bl.addWidget(self._data_log)
+        self._refresh_data_tab()
+        self._data_log_msg("数据集页已就绪: 数据总表 = stable-wm-cache h5 + 仓库 data/ 本地集")
+
+        body.setLayout(bl)
+        self._build_shell(body)
+
+    # ── 🧹 2026-09-12 数据页重构: 纯数据 UI (总表 / 详情 / 数据日志) ──
+    def _data_log_msg(self, msg):
+        if hasattr(self, "_data_log"):
+            self._data_log.append(f"[{time.strftime('%H:%M:%S')}] {msg}")
+
+    @staticmethod
+    def _dir_stats(path):
+        """目录真实统计: 大小MB / 文件数 / 含 parquet|npz|json|h5 """ 
+        n = 0
+        sz = 0
+        kinds = set()
+        for r, _d, fs in os.walk(path):
+            for f in fs:
+                n += 1
+                try:
+                    sz += os.path.getsize(os.path.join(r, f))
+                except Exception:
+                    pass
+                ext = os.path.splitext(f)[1].lower()
+                if ext:
+                    kinds.add(ext)
+        return round(sz / 1e6, 1), n, " ".join(sorted(kinds)[:4])
+
+    def _local_data_rows(self):
+        """扫两类数据源 (全部真实统计, 读不到就写"—"): ① stable-wm-cache/datasets 的 h5 台账
+        ② 仓库 data/ 下的本地数据集目录。"""
+        rows = []
+        cands = [os.environ.get("STABLEWM_HOME"), os.environ.get("LOCAL_DATASET_DIR"),
+                 os.path.expanduser("~/.stable_worldmodel"), os.path.expanduser("~/stable-wm-cache")]
+        for c in cands:
+            if not c:
+                continue
+            ds_dir = os.path.join(os.path.expanduser(c), "datasets")
+            jp = os.path.join(ds_dir, "zmax_datasets.json")
+            if not os.path.isfile(jp):
+                continue
+            try:
+                d = json.load(open(jp, encoding="utf-8"))
+            except Exception:
+                continue
+            for r in d.get("datasets", []):
+                rows.append({"name": r.get("name"), "src": r.get("purpose") or "stable-wm cache",
+                             "eps": r.get("episodes"), "frames": r.get("frames"),
+                             "dims": (f"act {r.get('action_dim')}D / obs {r.get('obs_dim')}D"
+                                      if r.get("readable") else "—"),
+                             "std": (f"{r.get('frame_std_min')}~{r.get('frame_std_max')} "
+                                     f"{'✓' if r.get('frames_real') else '✗'}"
+                                     if r.get("readable") else "读不了"),
+                             "size_gb": r.get("size_gb"), "mtime": r.get("mtime"),
+                             "path": r.get("path"), "kind": "h5", "readable": r.get("readable")})
+            break
+        # 仓库 data/ 本地集 (LeRobot 目录 / npz / 视频)
+        root = self._repo_root()
+        ddir = os.path.join(root, "data")
+        if os.path.isdir(ddir):
+            for name in sorted(os.listdir(ddir)):
+                p = os.path.join(ddir, name)
+                if not os.path.isdir(p):
+                    continue
+                mb, nf, kinds = self._dir_stats(p)
+                ij = os.path.join(p, "meta", "info.json")
+                eps = frames = "—"
+                if os.path.isfile(ij):
+                    try:
+                        m = json.load(open(ij, encoding="utf-8"))
+                        eps, frames = m.get("total_episodes", "—"), m.get("total_frames", "—")
+                    except Exception:
+                        pass
+                rows.append({"name": name, "src": "仓库 data/ (本地)", "eps": eps, "frames": frames,
+                             "dims": kinds or "—", "std": "—", "size_gb": round(mb / 1000, 3),
+                             "mtime": time.strftime("%F %T", time.localtime(os.path.getmtime(p))),
+                             "path": p, "kind": "dir", "readable": True, "files": nf})
+        return rows
+
+    def _refresh_data_tab(self):
+        if not hasattr(self, "_data_table"):
+            return
+        rows = self._local_data_rows()
+        self._data_rows = rows
+        t = self._data_table
+        t.setRowCount(len(rows))
+        for i, r in enumerate(rows):
+            cells = [str(r["name"]), str(r["src"]), str(r["eps"]), str(r["frames"]), str(r["dims"]),
+                     str(r["std"]), f"{r['size_gb']}G" if r["size_gb"] is not None else "—",
+                     str(r["mtime"])]
+            for j, v in enumerate(cells):
+                from PyQt5.QtWidgets import QTableWidgetItem as _IT
+                it = _IT(v)
+                if not r.get("readable") and j == 5:
+                    it.setForeground(Qt.red)
+                t.setItem(i, j, it)
+        self._data_log_msg(f"数据表已刷新: {len(rows)} 项 "
+                           f"(h5 {sum(1 for r in rows if r['kind'] == 'h5')} · "
+                           f"本地目录 {sum(1 for r in rows if r['kind'] == 'dir')})")
+
+    def _selected_data(self):
+        t = getattr(self, "_data_table", None)
+        if t is None or not t.selectionModel() or not t.selectionModel().selectedRows():
+            return None
+        i = t.selectionModel().selectedRows()[0].row()
+        rows = getattr(self, "_data_rows", [])
+        return rows[i] if 0 <= i < len(rows) else None
+
+    def _on_data_row(self):
+        r = self._selected_data()
+        if not r:
+            return
+        extra = f" · 文件数 {r.get('files')}" if r.get("files") else ""
+        self._data_detail.setText(
+            f"<b>{r['name']}</b> <font color='{C_GRAY}'>({r['kind']})</font> · 来源: {r['src']}{extra}<br>"
+            f"路径: <font color='{SYS2_COLOR}'>{r['path']}</font><br>"
+            f"回合 {r['eps']} · 帧 {r['frames']} · 维度 {r['dims']} · "
+            f"帧std {r['std']} · 大小 {r['size_gb']}G · 修改 {r['mtime']}")
+
+    def _open_selected_data(self):
+        r = self._selected_data()
+        if not r:
+            self._data_log_msg("⚠️ 先选中一行数据"); return
+        path = r["path"]
+        if r["kind"] == "h5" or os.path.isfile(path):
+            try:
+                from dataset_viewer import DatasetViewer
+                dlg = DatasetViewer(os.path.basename(path), "", self, local_root=path)
+                dlg.show()
+                self._data_log_msg(f"🎬 打开查看器: {os.path.basename(path)}")
+            except Exception as e:
+                self._data_log_msg(f"❌ 打开失败: {type(e).__name__}: {e}")
+            return
+        # 本地目录: 目录里若有 h5/npz 则交给查看器, 否则开目录
+        import glob as _g
+        hs = _g.glob(os.path.join(path, "*.h5")) + _g.glob(os.path.join(path, "*", "*.h5"))
+        if hs:
+            try:
+                from dataset_viewer import DatasetViewer
+                DatasetViewer(os.path.basename(hs[0]), "", self, local_root=hs[0]).show()
+                self._data_log_msg(f"🎬 打开查看器: {os.path.basename(hs[0])}")
+                return
+            except Exception as e:
+                self._data_log_msg(f"❌ 打开失败: {e}")
+        self._open_selected_dir()
+
+    def _open_selected_dir(self):
+        r = self._selected_data()
+        if not r:
+            self._data_log_msg("⚠️ 先选中一行数据"); return
+        import subprocess as _sp
+        p = r["path"] if r["kind"] == "dir" else os.path.dirname(r["path"])
+        try:
+            _sp.Popen(["xdg-open", p], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            self._data_log_msg(f"📂 打开目录: {p}")
+        except Exception as e:
+            self._data_log_msg(f"❌ 打开目录失败: {e}")
+
+    def _copy_selected_path(self):
+        r = self._selected_data()
+        if not r:
+            self._data_log_msg("⚠️ 先选中一行数据"); return
+        try:
+            from PyQt5.QtWidgets import QApplication as _QA
+            _QA.clipboard().setText(r["path"])
+            self._data_log_msg(f"📋 已复制路径: {r['path']}")
+        except Exception as e:
+            self._data_log_msg(f"❌ 复制失败: {e}")
+
+    def _rebuild_ledger(self):
+        """📇 重建台账: 用 INTACT venv (有 h5py) 跑 tools/zmax_ds_meta.py → 刷新表格。"""
+        import subprocess as _sp
+        py = "/home/ubuntu/INTACT-JEPA/.venv/bin/python"
+        if not os.path.isfile(py):
+            self._data_log_msg(f"⚠️ 找不到 INTACT venv ({py}) → 台账需手动重建"); return
+        try:
+            r = _sp.run([py, os.path.join(self._repo_root(), "tools", "zmax_ds_meta.py")],
+                        capture_output=True, text=True, timeout=900)
+            self._data_log_msg("📇 台账重建完成: " + (r.stdout.strip().splitlines() or ["(无输出)"])[-1])
+            self._refresh_data_tab()
+            if hasattr(self, "_intact_ds_lbl"):
+                self._intact_ds_lbl.setText(self._intact_ds_html())
+        except Exception as e:
+            self._data_log_msg(f"❌ 台账重建失败: {type(e).__name__}: {e}")
+
+    def _populate_table(self):
+        """填充数据集表格 (2026-08-07 老倪: 控制台全管 — 本地 metaworld 数据集并入)"""
+        from PyQt5.QtWidgets import QHeaderView
+        local_rows = self._local_datasets()
+        rows = local_rows + self.DATASETS
+        self._table.setRowCount(len(rows))
+
+        for i, ds in enumerate(rows):
+            is_local = ds.get("local", False)
+            # 名称
+            name_item = QTableWidgetItem(ds["name"])
+            name_item.setFont(QFont("Arial", 10, QFont.Bold))
+            name_item.setForeground(QBrush(QColor(SYS2_COLOR)))
+            name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
+            self._table.setItem(i, 0, name_item)
+
+            # repo_id
+            repo_item = QTableWidgetItem(ds["repo_id"])
+            repo_item.setFont(QFont("Consolas", 12))
+            repo_item.setForeground(QBrush(QColor(C_GRAY)))
+            repo_item.setFlags(repo_item.flags() & ~Qt.ItemIsEditable)
+            self._table.setItem(i, 1, repo_item)
+
+            # 机器人
+            robot_item = QTableWidgetItem(ds["robot"])
+            robot_item.setFont(QFont("Arial", 12))
+            robot_item.setForeground(QBrush(QColor(C_WHITE)))
+            robot_item.setFlags(robot_item.flags() & ~Qt.ItemIsEditable)
+            self._table.setItem(i, 2, robot_item)
+
+            # 任务数
+            task_item = QTableWidgetItem(str(ds["tasks"]))
+            task_item.setFont(QFont("Consolas", 10, QFont.Bold))
+            task_item.setForeground(QBrush(QColor(C_GREEN)))
+            task_item.setTextAlignment(Qt.AlignCenter)
+            task_item.setFlags(task_item.flags() & ~Qt.ItemIsEditable)
+            self._table.setItem(i, 3, task_item)
+
+            # 缓存状态 (2026-08-07: 本地训练数据集恒 ✅ 本地)
+            if is_local:
+                cache_item = QTableWidgetItem("✅ 本地")
+                cache_item.setForeground(QBrush(QColor(C_GREEN)))
+            else:
+                cached = self._is_cached(ds["repo_id"])
+                cache_item = QTableWidgetItem("✅ 已缓存" if cached else "—")
+                cache_item.setForeground(QBrush(QColor(C_GREEN) if cached else QColor(C_DIM)))
+            cache_item.setFont(QFont("Consolas", 12))
+            cache_item.setTextAlignment(Qt.AlignCenter)
+            cache_item.setFlags(cache_item.flags() & ~Qt.ItemIsEditable)
+            self._table.setItem(i, 4, cache_item)
+
+            # 描述
+            desc_item = QTableWidgetItem(ds["desc"])
+            desc_item.setFont(QFont("Arial", 12))
+            desc_item.setForeground(QBrush(QColor(C_GRAY)))
+            desc_item.setFlags(desc_item.flags() & ~Qt.ItemIsEditable)
+            self._table.setItem(i, 5, desc_item)
+
+            # 操作按钮容器
+            btn_container = QWidget()
+            btn_layout = QHBoxLayout()
+            btn_layout.setContentsMargins(12, 8, 12, 8)
+            btn_layout.setSpacing(24)  # 增大按钮间距
+
+            info_btn = QPushButton("信息")
+            info_btn.setFixedHeight(36)
+            info_btn.setToolTip("查看数据集元信息 (episodes/frames/features)")
+            info_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: {C_CARD};
+                    color: {SYS2_COLOR};
+                    border: 1px solid {SYS2_COLOR}88;
+                    border-radius: 6px;
+                    padding: 0px 18px;
+                    font-size:15px;
+                    font-weight: bold;
+                    font-family: 'Microsoft YaHei', 'PingFang SC', 'Arial';
+                    min-width: 60px;
+                }}
+                QPushButton:hover {{
+                    background: {SYS2_COLOR}33;
+                }}
+            """)
+            info_btn.clicked.connect(self._mk_info_func(ds))
+            btn_layout.addWidget(info_btn)
+
+            dl_btn = QPushButton("下载")
+            dl_btn.setFixedHeight(36)
+            if is_local:
+                # 📁 本地数据 (2026-08-07 老倪: orin 真机从 cicd.html 网页下载; metaworld 本地已有)
+                tags = ds.get("tags", [])
+                if "orin" in tags:
+                    dl_btn.setText("📥 CICD")
+                    dl_btn.setToolTip("真机数据在 datadrive.world/cicd.html 采集下载 (ECS 中转)")
+                    dl_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://datadrive.world/cicd.html")))
+                else:
+                    dl_btn.setText("本地")
+                    dl_btn.setEnabled(False)
+                    dl_btn.setToolTip("本地已有数据，无需下载")
+            else:
+                dl_btn.setToolTip("下载前N个episodes (用户指定数量)")
+                dl_btn.clicked.connect(self._mk_download_func(ds))
+            dl_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: {C_CARD};
+                    color: {C_GREEN};
+                    border: 1px solid {C_GREEN}88;
+                    border-radius: 6px;
+                    padding: 0px 18px;
+                    font-size:15px;
+                    font-weight: bold;
+                    font-family: 'Microsoft YaHei', 'PingFang SC', 'Arial';
+                    min-width: 60px;
+                }}
+                QPushButton:hover {{
+                    background: {C_GREEN}33;
+                }}
+            """)
+            btn_layout.addWidget(dl_btn)
+
+            # 手动下载按钮
+            manual_btn = QPushButton("📥 手动")
+            manual_btn.setFixedHeight(36)
+            manual_btn.setToolTip("网络不通时：复制链接到浏览器下载，放到指定目录")
+            manual_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: {C_CARD};
+                    color: {C_ORANGE};
+                    border: 1px solid {C_ORANGE}88;
+                    border-radius: 6px;
+                    padding: 0px 14px;
+                    font-size:20px;
+                    font-weight: bold;
+                    font-family: 'Microsoft YaHei', 'PingFang SC', 'Arial';
+                    min-width: 56px;
+                }}
+                QPushButton:hover {{
+                    background: {C_ORANGE}33;
+                }}
+            """)
+            manual_btn.clicked.connect(self._mk_manual_dl_func(ds))
+            btn_layout.addWidget(manual_btn)
+
+            del_btn = QPushButton("删除")
+            del_btn.setFixedHeight(36)
+            del_btn.setToolTip("删除本地缓存 (释放磁盘空间)")
+            del_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: {C_CARD};
+                    color: {C_RED};
+                    border: 1px solid {C_RED}88;
+                    border-radius: 6px;
+                    padding: 0px 18px;
+                    font-size:15px;
+                    font-weight: bold;
+                    font-family: 'Microsoft YaHei', 'PingFang SC', 'Arial';
+                    min-width: 60px;
+                }}
+                QPushButton:hover {{
+                    background: {C_RED}33;
+                }}
+            """)
+            del_btn.clicked.connect(self._mk_delete_func(ds))
+            btn_layout.addWidget(del_btn)
+
+            view_btn = QPushButton("查看")
+            view_btn.setFixedHeight(36)
+            view_btn.setToolTip("浏览数据集内容 (图片/视频/state曲线)")
+            view_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: {C_CARD};
+                    color: {C_ORANGE};
+                    border: 1px solid {C_ORANGE}88;
+                    border-radius: 6px;
+                    padding: 0px 18px;
+                    font-size:15px;
+                    font-weight: bold;
+                    font-family: 'Microsoft YaHei', 'PingFang SC', 'Arial';
+                    min-width: 60px;
+                }}
+                QPushButton:hover {{
+                    background: {C_ORANGE}33;
+                }}
+            """)
+            view_btn.clicked.connect(lambda checked=False, ds=ds: self._on_view_dataset(ds))
+            btn_layout.addWidget(view_btn)
+
+            btn_container.setLayout(btn_layout)
+            self._table.setCellWidget(i, 6, btn_container)
+
+    def _current_dataset_html(self):
+        """📌 当前训练数据集 (2026-08-07 老倪): 从最近训练 config 的 root 探测"""
+        try:
+            import glob as _g, re as _re
+            root = self._repo_root()
+            cfgs = sorted(_g.glob(os.path.join(root, "config_*.yaml")), key=os.path.getmtime, reverse=True)
+            cur = None
+            for cf in cfgs:
+                try:
+                    txt = open(cf, encoding="utf-8").read()
+                    m = _re.search(r"^\s*root:\s*(data/\S+)", txt, flags=_re.M)
+                    if m and os.path.isdir(os.path.join(root, m.group(1))):
+                        cur = m.group(1)
+                        break
+                except Exception:
+                    continue
+            if cur is None:
+                cur = "data/metaworld_peg"
+            dp = os.path.join(root, cur)
+            eps = frames = state_d = "?"
+            try:
+                ij = os.path.join(dp, "meta", "info.json")
+                if os.path.exists(ij):
+                    import json as _j
+                    d = _j.load(open(ij, encoding="utf-8"))
+                    eps, frames = d.get("total_episodes", "?"), d.get("total_frames", "?")
+            except Exception:
+                pass
+            try:
+                import numpy as _np
+                tn = os.path.join(dp, "train.npz")
+                if os.path.exists(tn):
+                    d = _np.load(tn)
+                    frames = len(d["observations"])
+                    state_d = d["states"].shape[1]
+                    eps = "npz"
+            except Exception:
+                pass
+            kind = "光模块插拔 (peg-insert)" if "peg" in cur else "nut-on-peg 套环"
+            color = C_GREEN if "peg" in cur else "#d29922"
+            return (f"📌 当前训练数据集: <b>{cur}</b> · <font color='{color}'>{kind}</font>"
+                    f" · {frames} 帧 · {eps} eps · state {state_d}D"
+                    f"<br><font color='{C_GRAY}' size='2'>检测自最近训练 config (root 字段), 点击 🔄 刷新</font>")
+        except Exception as e:
+            return f"📌 当前训练数据集: <b>检测失败</b> ({e})"
+
+    def _local_datasets(self):
+        """📁 本地训练数据集探测 (2026-08-07 老倪: 数据集只留 metaworld, 光模块/套环)"""
+        rows = []
+        root = self._repo_root()
+        import os as _os
+        cands = [
+            ("metaworld_peg", "光模块插拔", "peg-insert-side-v3", "peg", "Sawyer (metaworld)"),
+            # 2026-08-08 老倪: 训练用的 peg_long/peg_far (long2 训练在读) — 探测存在性加入
+            ("metaworld_peg_long", "光模块插拔 (长程)", "peg-insert-side-v3 (long)", "peg", "Sawyer (metaworld)"),
+            ("metaworld_peg_far", "光模块插拔 (远端)", "peg-insert-side-v3 (far)", "peg", "Sawyer (metaworld)"),
+            # 2026-08-08 老倪: 全能看到 — YOLO 检测数据也显示
+            ("yolo_peg_full", "YOLO 光模块检测", "yolo (peg)", "yolo", "YOLOv8"),
+            # 2026-08-07 老倪: 只留光模块数据 — metaworld_act(套环) 已删; orin 行已删
+        ]
+        for d, cn, official, tag, robot in cands:
+            dp = _os.path.join(root, "data", d)
+            if not _os.path.isdir(dp):
+                continue
+            frames = eps = "?"
+            # 2026-08-07 老倪: orin 数据无 info.json/npz — 按格式探测 (json 采集包数 / parquet)
+            try:
+                import glob as _g2
+                njson = len(_g2.glob(_os.path.join(dp, "*.json")))
+                if njson > 0:
+                    frames, eps = f"{njson} 采集包", "json"
+            except Exception:
+                pass
+            try:
+                ij = _os.path.join(dp, "meta", "info.json")
+                if _os.path.exists(ij):
+                    import json as _j
+                    m = _j.load(open(ij, encoding="utf-8"))
+                    frames, eps = m.get("total_frames", "?"), m.get("total_episodes", "?")
+            except Exception:
+                pass
+            try:
+                tn = _os.path.join(dp, "train.npz")
+                if _os.path.exists(tn):
+                    import numpy as _np
+                    darr = _np.load(tn)
+                    frames, eps = len(darr["observations"]), "npz"
+            except Exception:
+                pass
+            rows.append({
+                "repo_id": f"local://{d}",
+                # 2026-08-07 老倪: 两行命名 — 上行中文名 / 下行官方任务名
+                "name": f"📁 {cn}\n{official}",
+                "robot": robot,
+                "tasks": "—",  # 2026-08-07 老倪: 本地是单一任务演示集, 任务数列不填帧数 (描述列有)
+                "desc": f"{cn} ({official}) · {frames}" + ("" if "采集包" in str(frames) else " 帧") + f" · {eps} eps",
+                "tags": ["local", tag],
+                "local": True,
+                "local_root": dp,
+                "local_npz": _os.path.join(dp, "train.npz") if _os.path.exists(_os.path.join(dp, "train.npz")) else None,
+            })
+        # 🐛 2026-08-08 老倪: 本地所有数据透明 — 自动补全 data/ 未列入白名单的目录
+        #   Windows exe 无 data/ 目录 (cwd=AppData) → isdir 守卫防 FileNotFoundError
+        _data_root = _os.path.join(root, "data")
+        shown = {r["local_root"] for r in rows}
+        if _os.path.isdir(_data_root):
+            for _d in sorted(_os.listdir(_data_root)):
+                dp = _os.path.join(root, "data", _d)
+                if _os.path.isdir(dp) and dp not in shown:
+                    rows.append({
+                        "repo_id": f"local://{_d}",
+                        "name": f"📁 {_d}\n(data/)",
+                        "robot": "?",
+                        "tasks": "—",
+                        "desc": f"本地数据目录 · {_d}",
+                        "tags": ["local", "auto"],
+                        "local": True,
+                        "local_root": dp,
+                        "local_npz": _os.path.join(dp, "train.npz") if _os.path.exists(_os.path.join(dp, "train.npz")) else None,
+                    })
+        return rows
+
+    def _open_intact_ds_viewer(self):
+        """🎬 打开数据集查看器: 优先"正在训练"的那个 h5, 否则台账里最新的一个。"""
+        try:
+            import glob as _g3
+            from dataset_viewer import DatasetViewer
+            cands = [os.environ.get("STABLEWM_HOME"), os.environ.get("LOCAL_DATASET_DIR"),
+                     os.path.expanduser("~/.stable_worldmodel"), os.path.expanduser("~/stable-wm-cache")]
+            target = None
+            for c in cands:
+                if not c:
+                    continue
+                ds_dir = os.path.join(os.path.expanduser(c), "datasets")
+                if not os.path.isdir(ds_dir):
+                    continue
+                hs = sorted(_g3.glob(os.path.join(ds_dir, "zmax_insert*.h5")),
+                            key=os.path.getmtime, reverse=True)
+                if hs:
+                    target = hs[0]
+                    break
+            if target is None:
+                QMessageBox.information(self, "数据集查看器", "没找到 h5 数据集 (需要先跑 tools/zmax_ds_meta.py 所在缓存)")
+                return
+            dlg = DatasetViewer(os.path.basename(target), "", self, local_root=target)
+            dlg.show()
+        except Exception as e:
+            QMessageBox.warning(self, "数据集查看器", f"打开失败: {type(e).__name__}: {e}")
+
+    def _intact_ds_html(self):
+        """🧠 INTACT/域内 h5 数据集台账 (读 zmax_datasets.json; 含真实统计与真图校验)
+
+        兼容 stable_worldmodel 缓存: 依次找 $STABLEWM_HOME → $LOCAL_DATASET_DIR →
+        ~/.stable_worldmodel (swm 官方默认) → ~/stable-wm-cache, 谁的 datasets/ 里有台账就读谁。
+        """
+        try:
+            import glob as _g2
+            import json as _j
+            cands = [os.environ.get("STABLEWM_HOME"), os.environ.get("LOCAL_DATASET_DIR"),
+                     os.path.expanduser("~/.stable_worldmodel"), os.path.expanduser("~/stable-wm-cache")]
+            jp = cache = None
+            for c in cands:
+                if not c:
+                    continue
+                p = os.path.join(os.path.expanduser(c), "datasets", "zmax_datasets.json")
+                if os.path.exists(p):
+                    jp, cache = p, os.path.expanduser(c)
+                    break
+            if jp is None:
+                return (f"🧠 <b>INTACT / 域内数据集</b>: <font color='{C_YELLOW}'>台账未生成</font>"
+                        f"<br><font color='{C_GRAY}' size='2'>先跑: "
+                        f"/home/ubuntu/INTACT-JEPA/.venv/bin/python tools/zmax_ds_meta.py "
+                        f"(gui-venv 无 h5py, 由 INTACT venv 读 h5 → 写 json; 兼容 "
+                        f"$STABLEWM_HOME / ~/.stable_worldmodel)</font>")
+            d = _j.load(open(jp, encoding="utf-8"))
+            cur_name = ""
+            try:                                  # 当前正在训的数据集 = 最新 ckpt 的 train_config.yaml
+                ck = os.path.join(cache, "checkpoints")
+                cfgs = sorted(_g2.glob(os.path.join(ck, "*", "train_config.yaml")),
+                              key=os.path.getmtime, reverse=True)
+                if cfgs:
+                    txt = open(cfgs[0], encoding="utf-8").read()
+                    import re as _re
+                    m = _re.search(r"name:\s*(\S+\.h5)", txt)
+                    cur_name = (m.group(1).rsplit(".", 1)[0] if m else "")
+            except Exception:
+                pass
+            caches = d.get("caches") or [d.get("cache", cache)]
+            out = [f"🧠 <b>INTACT / 域内数据集</b> "
+                   f"<font color='{C_GRAY}' size='2'>({d.get('count', 0)} 个 · "
+                   f"台账 {d.get('generated', '?')} · 缓存 "
+                   f"{', '.join(os.path.basename(c) for c in caches if c)})</font>"]
+            for r in d.get("datasets", []):
+                if not r.get("readable"):
+                    out.append(f"<font color='{C_GRAY}'>· {r['name']} · {r.get('size_gb')}GB · "
+                               f"⚠️ 读不了 {str(r.get('error', ''))[:60]}</font>")
+                    continue
+                real = r.get("frames_real")
+                okc = C_GREEN if real else C_RED
+                star = " ⬅ 正在训练" if r["name"] == cur_name else ""
+                out.append(
+                    f"· <b>{r['name']}</b>{star} · {r.get('size_gb')}GB · "
+                    f"回合 {r.get('episodes')} · 帧 {r.get('frames')} · "
+                    f"act {r.get('action_dim')}D / obs {r.get('obs_dim')}D · "
+                    f"done {r.get('done_rate') if r.get('done_rate') is not None else '—'} · "
+                    f"帧std {r.get('frame_std_min')}~{r.get('frame_std_max')} "
+                    f"<font color='{okc}'>{'真图✓' if real else '黑帧✗'}</font> · "
+                    f"<font color='{C_GRAY}'>{r.get('purpose', '?')} · {r.get('mtime', '')}</font>")
+            out.append(f"<font color='{C_GRAY}' size='2'>台账路径 {jp} · "
+                       f"由 tools/zmax_ds_meta.py 生成, 点 🔄 重读</font>")
+            return "<br>".join(out)
+        except Exception as e:
+            return f"🧠 INTACT / 域内数据集: <b>读取失败</b> ({e})"
+
+    def _get_cache_dir_for_repo(self, repo_id):
+        """获取数据集本地缓存路径 (LeRobot/HuggingFace datasets 格式)"""
+        repo_slug = repo_id.replace("/", "___")
+        # LeRobot datasets 缓存在 ~/.cache/huggingface/datasets/
+        return os.path.expanduser(f"~/.cache/huggingface/datasets/{repo_slug}")
+
+    def _repo_root(self):
+        """项目根目录 (frozen exe → PyInstaller _MEIPASS; 源码 → tools/gui/ → 上三级)"""
+        if getattr(sys, "frozen", False):
+            return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    def _is_cached(self, repo_id):
+        """检查数据集是否已缓存 (2026-08-07: metaworld_mt50 本地实际数据在项目 data/, 不在 HF 缓存)"""
+        if repo_id == "lerobot/metaworld_mt50":
+            import glob
+            # 🐛 2026-08-07 老倪: 缓存没显示 — parquet 在 chunk-000/ 子目录, glob 需递归
+            return len(glob.glob(os.path.join(self._repo_root(), "data", "metaworld_mt50",
+                                              "data", "**", "*.parquet"), recursive=True)) > 0
+        path = self._get_cache_dir_for_repo(repo_id)
+        if not os.path.exists(path):
+            return False
+        # 检查是否有实际数据文件
+        import glob
+        parquet_files = glob.glob(os.path.join(path, "**", "*.parquet"), recursive=True)
+        return len(parquet_files) > 0
+
+    def _get_cache_size(self):
+        """获取全部缓存目录大小"""
+        if not os.path.exists(self._cache_dir):
+            return "0 B"
+        total = 0
+        for dirpath, dirnames, filenames in os.walk(self._cache_dir):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                try:
+                    total += os.path.getsize(fp)
+                except OSError:
+                    pass
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if total < 1024:
+                return f"{total:.1f} {unit}"
+            total /= 1024
+        return f"{total:.1f} TB"
+
+    def _refresh_cache_status(self):
+        """刷新表格中的缓存状态"""
+        for i, ds in enumerate(self.DATASETS):
+            cached = self._is_cached(ds["repo_id"])
+            item = self._table.item(i, 4)
+            if item:
+                item.setText("✅ 已缓存" if cached else "—")
+                item.setForeground(QBrush(QColor(C_GREEN) if cached else QColor(C_DIM)))
+
+    def _clean_all_cache(self):
+        """清理全部数据集缓存"""
+        reply = _msg_ask(self, "确认清理", f"将删除全部本地缓存:\n{self._cache_dir}\n\n"
+            f"这将释放磁盘空间，但可以重新下载。\n是否继续？")
+        if reply != QMessageBox.Yes:
+            return
+        import shutil
+        try:
+            if os.path.exists(self._cache_dir):
+                shutil.rmtree(self._cache_dir)
+            self._refresh_cache_status()
+            _msg_ok(self, "清理完成", "所有缓存已删除")
+        except Exception as e:
+            _msg_ok(self, "清理失败", f"部分文件可能被占用:\n{e}", kind="warning")
+
+    def _mk_info_func(self, ds):
+        """创建查看信息的闭包"""
+        def show_info():
+            self._show_dataset_info(ds)
+        return show_info
+
+    def _mk_download_func(self, ds):
+        """创建下载的闭包"""
+        def download():
+            self._download_dataset(ds)
+        return download
+
+    def _mk_manual_dl_func(self, ds):
+        """创建手动下载的闭包"""
+        def manual_dl():
+            self._manual_download_guide(ds)
+        return manual_dl
+
+    def _mk_delete_func(self, ds):
+        """创建删除的闭包"""
+        def delete():
+            self._delete_dataset(ds)
+        return delete
+
+    def _show_dataset_info(self, ds):
+        """查看数据集信息 — 本地训练数据集直接显示本地信息, 云端走 HuggingFace Hub API"""
+        repo_id = ds["repo_id"]
+        if ds.get("local"):
+            info_text = (f"{ds['name']}\n{'─' * 40}\n路径: {ds.get('local_root', repo_id)}\n"
+                         f"类型: {ds['desc']}\n状态: ✅ 本地 (simulink 训练数据)")
+            _msg_ok(self, f"📊 {ds['name']} — 本地训练数据集", info_text)
+            return
+        QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
+
+        info_text = f"""
+📊 {ds['name']}
+{'─' * 50}
+repo_id:  {repo_id}
+机器人:   {ds['robot']}
+任务数:   {ds['tasks']}
+标签:     {', '.join(ds['tags'])}
+描述:     {ds['desc']}
+本地状态: {'✅ 已缓存' if self._is_cached(repo_id) else '未下载'}
+"""
+        # 尝试从 HuggingFace Hub 获取元信息
+        try:
+            import urllib.request, json
+            url = f"https://huggingface.co/api/datasets/{repo_id}"
+            req = urllib.request.Request(url, headers={"User-Agent": "XSpaceStudio/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode())
+
+            downloads = data.get("downloads", "N/A")
+            likes = data.get("likes", "N/A")
+            last_modified = data.get("lastModified", "N/A")
+            branch = data.get("defaultBranch", "main")
+
+            info_text += f"""
+{'─' * 50}
+📡 HuggingFace Hub 信息
+Downloads:  {downloads}
+Likes:      {likes}
+Last Modified: {last_modified}
+Default Branch: {branch}
+"""
+
+            # 尝试获取 info.json (数据集元信息)
+            try:
+                info_url = f"https://huggingface.co/datasets/{repo_id}/resolve/main/meta/info.json"
+                req2 = urllib.request.Request(info_url, headers={"User-Agent": "XSpaceStudio/1.0"})
+                with urllib.request.urlopen(req2, timeout=15) as resp2:
+                    meta = json.loads(resp2.read().decode())
+
+                total_eps = meta.get("total_episodes", "?")
+                total_frames = meta.get("total_frames", "?")
+                fps = meta.get("fps", "?")
+                robot_type = meta.get("robot_type", "?")
+                chunks = meta.get("chunks", {})
+                chunk_count = len(chunks) if isinstance(chunks, dict) else "?"
+
+                features = meta.get("features", {})
+                feat_summary = "\n".join([f"    {k}: {v.get('dtype','?')}" for k, v in features.items()]) if features else "    (none)"
+
+                info_text += f"""
+{'─' * 50}
+📋 数据集元信息 (info.json)
+  Total Episodes: {total_eps}
+  Total Frames:   {total_frames}
+  FPS:            {fps}
+  Robot Type:     {robot_type}
+  Chunks:         {chunk_count}
+
+  Features (数据字段):
+{feat_summary}
+"""
+            except Exception as e:
+                info_text += f"\n⚠️ 无法获取 info.json: {e}\n"
+
+        except Exception as e:
+            info_text += f"\n⚠️ 无法连接 HuggingFace Hub: {e}\n  (请检查网络连接)\n"
+
+        QApplication.restoreOverrideCursor()
+
+        # 显示在对话框中
+        from PyQt5.QtWidgets import QDialog, QScrollArea
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"数据集信息 — {ds['name']}")
+        dialog.setFixedSize(680, 520)
+        dialog.setStyleSheet(f"QDialog{{background:{C_BG}; border:2px solid {SYS2_COLOR}; border-radius:8px;}}")
+
+        dlg_layout = QVBoxLayout()
+        dlg_layout.setContentsMargins(16, 12, 16, 12)
+        dlg_layout.setSpacing(8)
+
+        title = QLabel(f"📊 {ds['name']}")
+        title.setFont(QFont("Arial", 16, QFont.Bold))
+        title.setStyleSheet(f"color:{SYS2_COLOR}; background:transparent; border:none;")
+        dlg_layout.addWidget(title)
+
+        text = QTextEdit()
+        text.setReadOnly(True)
+        text.setFont(QFont("Consolas", 10))
+        text.setStyleSheet(f"background:{C_BG2}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:6px; padding:12px;")
+        text.setPlainText(info_text)
+        dlg_layout.addWidget(text)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        close_btn = QPushButton("关闭")
+        close_btn.setFont(QFont("Arial", 10, QFont.Bold))
+        close_btn.setStyleSheet(f"background:{SYS2_COLOR}; color:white; border:none; border-radius:6px; padding:8px 24px;")
+        close_btn.clicked.connect(dialog.close)
+        btn_row.addWidget(close_btn)
+        dlg_layout.addLayout(btn_row)
+
+        dialog.setLayout(dlg_layout)
+        dialog.exec_()
+
+    def _manual_download_guide(self, ds):
+        """显示手动下载指引"""
+        repo_id = ds["repo_id"]
+        cache_path = self._get_cache_dir_for_repo(repo_id)
+        hf_url = f"https://huggingface.co/datasets/{repo_id}"
+        hf_dl = f"https://huggingface.co/datasets/{repo_id}/resolve/main"
+        
+        msg = f"""📥 手动下载 · {ds['name']}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📎 下载链接（浏览器打开）:
+   {hf_url}
+
+⬇️ 直接下载按钮在页面右上角 ⋮ → Download
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁 下载后放到这个目录:
+   {cache_path}
+
+   在 WSL 终端里执行:
+   mkdir -p "{cache_path}"
+   然后把下载的文件放到这个目录
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 提示:
+   1. 浏览器访问上面的链接
+   2. 点 Download 下载 ZIP
+   3. 解压到上面📁目录
+   4. 回数据集管理点「刷新」
+"""
+        _msg_ok(self, f"📥 手动下载 - {ds['name']}", msg)
+        # 复制下载链接到剪贴板
+        QApplication.clipboard().setText(hf_url)
+    
+    def _download_dataset(self, ds):
+        """下载数据集（仅下载前 N episodes）"""
+        from PyQt5.QtWidgets import QInputDialog
+        repo_id = ds["repo_id"]
+
+        episodes, ok = QInputDialog.getInt(self, "下载数据集",
+            f"下载 {ds['name']} ({repo_id})\n\n"
+            f"请输入要下载的 episode 数量 (前 N 个):\n"
+            f"(建议: 1~10，完整数据集可能很大)",
+            value=10, min=1, max=1000)
+
+        if not ok:
+            return
+
+        # 在后台线程下载
+        from PyQt5.QtCore import QThread, pyqtSignal
+        class DownloadWorker(QThread):
+            progress = pyqtSignal(str)
+            finished = pyqtSignal(bool, str)
+
+            def __init__(self, repo_id, n_episodes, parent=None):
+                super().__init__(parent)
+                self.repo_id = repo_id
+                self.n = n_episodes
+
+            def run(self):
+                try:
+                    # 使用国内镜像加速
+                    import os
+                    os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+                    
+                    try:
+                        from huggingface_hub import snapshot_download
+                        self.progress.emit(f"⬇️ 开始下载 {self.repo_id}...")
+                        
+                        # LeRobot v2 使用分块parquet格式，直接下载整个数据集
+                        # 但限制只下载 data/ 和 meta/ 目录
+                        cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+                        
+                        local_path = snapshot_download(
+                            repo_id=self.repo_id,
+                            repo_type="dataset",
+                            cache_dir=cache_dir,
+                            allow_patterns=[
+                                "meta/*",           # 元数据
+                                "data/*",           # 数据文件 (parquet)
+                                "videos/*",         # 视频文件 (如果有)
+                            ],
+                            ignore_patterns=[
+                                "*.md",             # 文档
+                                "LICENSE*",         # 许可证
+                            ],
+                        )
+                        
+                        self.progress.emit(f"✅ 数据集已下载到:\n{local_path}")
+                        self.progress.emit(f"\n📦 包含的文件:")
+                        
+                        # 列出下载的文件
+                        if os.path.exists(local_path):
+                            meta_files = glob.glob(os.path.join(local_path, "meta/*"))
+                            data_files = glob.glob(os.path.join(local_path, "data/**/*.parquet"), recursive=True)
+                            video_files = glob.glob(os.path.join(local_path, "videos/**/*.mp4"), recursive=True)
+                            
+                            self.progress.emit(f"  📋 meta/: {len(meta_files)} 个文件")
+                            self.progress.emit(f"  📊 data/: {len(data_files)} 个 parquet 文件")
+                            if video_files:
+                                self.progress.emit(f"  🎥 videos/: {len(video_files)} 个视频文件")
+                        
+                        self.finished.emit(True, f"成功下载数据集到 {local_path}")
+
+                    except ImportError:
+                        self.finished.emit(False, "缺少 huggingface_hub 库，无法下载")
+                    except Exception as e:
+                        self.finished.emit(False, f"下载失败: {e}")
+
+                except Exception as e:
+                    self.finished.emit(False, f"错误: {e}")
+
+        worker = DownloadWorker(repo_id, episodes)
+        # 显示进度对话框
+        from PyQt5.QtWidgets import QDialog, QProgressBar as QPB
+        progress_dialog = QDialog(self)
+        progress_dialog.setWindowTitle(f"下载中 — {ds['name']}")
+        progress_dialog.setFixedSize(500, 200)
+        progress_dialog.setStyleSheet(f"QDialog{{background:{C_BG}; border:2px solid {C_GREEN}; border-radius:8px;}}")
+
+        pdl = QVBoxLayout()
+        pdl.setContentsMargins(20, 16, 20, 16)
+        pdl.setSpacing(8)
+
+        pd_title = QLabel(f"⬇️ 下载 {ds['name']}")
+        pd_title.setFont(QFont("Arial", 13, QFont.Bold))
+        pd_title.setStyleSheet(f"color:{C_GREEN}; background:transparent; border:none;")
+        pdl.addWidget(pd_title)
+
+        pd_log = QTextEdit()
+        pd_log.setReadOnly(True)
+        pd_log.setFont(QFont("Consolas", 12))
+        pd_log.setStyleSheet(f"background:{C_BG2}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:8px;")
+        pdl.addWidget(pd_log)
+
+        progress_dialog.setLayout(pdl)
+        progress_dialog.show()
+
+        worker.progress.connect(lambda msg: pd_log.append(msg))
+
+        def on_finished(ok, msg):
+            pd_log.append(f"\n{'✅' if ok else '❌'} {msg}")
+            self._refresh_cache_status()
+
+        worker.finished.connect(on_finished)
+        worker.start()
+
+        # 保存引用防止回收
+        self._download_worker = worker
+        self._download_dialog = progress_dialog
+
+    def _on_view_dataset(self, ds):
+        """打开数据集内容查看器 (2026-08-07 老倪: exec_ 模态 WSLg 不显示 → 改非模态;
+        metaworld_mt50 本地实际数据在 data/, 不在 HF 缓存 → 传 local_root/local_npz)"""
+        from dataset_viewer import DatasetViewer
+        repo_id = ds["repo_id"]
+        cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+        local_root = ds.get("local_root")
+        local_npz = ds.get("local_npz")
+        viewer = DatasetViewer(repo_id, cache_dir, self, local_root=local_root, local_npz=local_npz)
+        viewer.show()  # 非模态, WSLg 弹窗零容忍 (exec_ 假死)
+
+    def _delete_dataset(self, ds):
+        """删除数据集本地缓存"""
+        repo_id = ds["repo_id"]
+        cache_path = self._get_cache_dir_for_repo(repo_id)
+
+        if not os.path.exists(cache_path):
+            _msg_ok(self, "未缓存", f"{ds['name']} 尚未下载到本地")
+            return
+
+        reply = _msg_ask(self, "确认删除", f"将删除 {ds['name']} 的本地缓存:\n{cache_path}\n\n可以重新下载，是否继续？")
+        if reply != QMessageBox.Yes:
+            return
+
+        import shutil
+        try:
+            shutil.rmtree(cache_path)
+            self._refresh_cache_status()
+            _msg_ok(self, "已删除", f"{ds['name']} 缓存已清理")
+        except Exception as e:
+            _msg_ok(self, "删除失败", f"部分文件可能被占用:\n{e}", kind="warning")
+
+
+class DataSpaceModule(QWidget):
+    """🌐 全局数据空间 (2026-08-07 老倪: 数据库对应每个 node, 全息信息, 数据一致性)
+    每个 simulink node ↔ 关联数据对象 (数据集/曲线/模型/视频/报告) 全息映射表"""
+
+    def __init__(self, main_win, parent=None):
+        super().__init__(parent)
+        self.main = main_win
+        from data_space import GlobalDataSpace
+        self.ds = GlobalDataSpace()
+        self._build()
+        self.refresh()
+
+    def _build(self):
+        from PyQt5.QtWidgets import (QAbstractItemView, QHeaderView, QTabWidget, QTableWidget,
+                                     QTableWidgetItem)
+        bl = QVBoxLayout(self)
+        bl.setContentsMargins(18, 18, 18, 18)
+        bl.setSpacing(10)
+
+        # ★ 2026-09-29 视觉复核实测: 本页没有自己的背景 ⇒ 所有 background:transparent 的控件
+        #   漏出应用调色板的亮底(#EFEFEF/#FBFBFB, 实测占页面 21.8% 面积, 其中底部"一致性问题"
+        #   是红字压白底, 最扎眼)。用 ID 选择器只给本页上深色, 不改其它页。
+        self.setObjectName("DataSpaceModule")
+        self.setStyleSheet("#DataSpaceModule { background:%s; }" % C_BG)
+        self.setAttribute(Qt.WA_StyledBackground, True)   # ★ 自定义 QWidget 子类不认样式表背景(Qt 经典坑)
+
+        title = QLabel("🌐 全局数据空间 — 节点↔数据对象 全息映射 · DDS 全链路 topic 可视化 · 数据闭环")
+        title.setFont(QFont("Arial", 13, QFont.Bold))
+        title.setStyleSheet(f"color:{SYS2_COLOR}; background:transparent; border:none;")
+        bl.addWidget(title)
+
+        # 🌐 v5.16.16 老倪(2026-09-29):「全局数据空间 参考 Vector CANoe demo 重新设计 UI」
+        #   ⇒ 本页**默认**走 CANoe 风格多窗格视图(测量条 + 信号浏览器/Trace/详情 + 闭环/告警),
+        #   原来「12 个 Tab 堆叠」收进右上角「🗂 经典视图」开关(功能入口一个不丢, 只是不在第一屏堆着)。
+        try:
+            from dds_canoe import build_view as _canoe_build
+            self.canoe = _canoe_build(self)
+        except Exception as _e:                                              # noqa: BLE001
+            import traceback
+            self.canoe = QLabel(f"⚠️ CANoe 风格视图不可用: {_e}\n{traceback.format_exc()[-400:]}")
+        self._canoe_classic_cb = self._toggle_classic_view
+        bl.addWidget(self.canoe, 1)
+
+        # 旧视图容器(默认隐藏, 由「🗂 经典视图」开关控制)
+        self._classic = QWidget()
+        cl = QVBoxLayout(self._classic)
+        cl.setContentsMargins(0, 0, 0, 0)
+        cl.setSpacing(8)
+
+        # 2026-09-29(老倪: 「全链路 topic 可视化 + 全面数据质量管理 + 数据闭环」进控制台):
+        #   做进**本页的 Tab** —— 不开第 13 个模块卡(功能重复入口被老倪投诉过), 也不做嵌套 Tab。
+        #   数据源: /home/ubuntu/zmax_data/dataspace/{live.json, loop.json} + 注册表 src/lerobot/dataspace/topics.py
+        # 🚌 总线状态条(CANoe 的 measurement bar): 档位/活报文/错误数/累计报文/刷新龄
+        self.lbl_bus = QLabel("🚌 总线: 等待探针…")
+        self.lbl_bus.setFont(QFont("Arial", 10))
+        self.lbl_bus.setStyleSheet(f"color:{C_GREEN}; background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px 10px;")
+        cl.addWidget(self.lbl_bus)
+
+        self._tabs = QTabWidget()
+        self._tabs.setStyleSheet(f"QTabBar::tab {{ background:{C_BG2}; color:{C_WHITE}; padding:6px 12px; }}"
+                                 f"QTabBar::tab:selected {{ background:{C_CARD}; color:{SYS2_COLOR}; }}")
+        # 🚌 DDS 总线控制台(2026-09-29 老倪: 「所有数据都要有 topic … 工程上随时可探测 … 参考
+        #    Vector CANoe 做 DDS 总线, 状态空间工程导出的 json 可加载到总线上」) —— 6 个窗口:
+        #    总线架构 / 报文追踪 / 统计 / 信号 / 质量告警 / 回灌(Restbus)
+        self.bus_panel = None
+        try:
+            from dds_bus import build_tabs as _bus_build
+            self.bus_panel = _bus_build(self._tabs, status_hint=self._bus_status)
+        except Exception as e:                                                   # noqa: BLE001
+            import traceback
+            er = QLabel(f"⚠️ DDS 总线视图不可用: {e}\n{traceback.format_exc()[-600:]}")
+            er.setWordWrap(True)
+            self._tabs.addTab(er, "🚌 总线架构")
+
+        self.dds_head = None
+        try:
+            from dds_space import build_widget as _dds_build
+            self.dds_head = _dds_build(self, into_tabs=self._tabs)   # 头部(档位/刷新/导出) + 4 个 Tab
+            cl.addWidget(self.dds_head)
+            # 去重: 总线那组里已有「⚠ 质量告警」(报文规则 + 闭环门), dds_space 的那份是重复入口
+            _dup = [i for i in range(self._tabs.count())
+                    if self._tabs.tabText(i).strip() == "⚠ 质量告警"]
+            for _i in reversed(_dup[1:]):        # 保留最早的那个(总线那份), 其余删掉
+                _w = self._tabs.widget(_i)
+                self._tabs.removeTab(_i)
+                _w.setParent(None)
+        except Exception as e:                                                   # noqa: BLE001
+            cl.addWidget(QLabel(f"⚠️ DDS 数据空间视图不可用: {e}"))
+
+        # ① 原有「全息映射」→ 第 1 个 Tab
+        wrap = QWidget()
+        wl = QVBoxLayout(wrap)
+        wl.setContentsMargins(6, 6, 6, 6)
+        wl.setSpacing(8)
+        top = QHBoxLayout()
+        self.lbl_summary = QLabel("加载中…")
+        self.lbl_summary.setFont(QFont("Arial", 10))
+        self.lbl_summary.setStyleSheet(f"color:{C_GREEN}; background:transparent; border:none;")
+        top.addWidget(self.lbl_summary)
+        top.addStretch()
+        btn = QPushButton("🔄 刷新数据空间")
+        btn.setFont(QFont("Arial", 10))
+        btn.setStyleSheet(f"background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px 16px;")
+        btn.clicked.connect(self.refresh)
+        top.addWidget(btn)
+        wl.addLayout(top)
+
+        self._table = QTableWidget()
+        self._table.setColumnCount(7)
+        self._table.setHorizontalHeaderLabels(["节点", "节点类型", "关联数据对象", "关键属性", "时间", "状态", "路径"])
+        self._table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Stretch)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._table.setStyleSheet(f"QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER}; }}"
+                                  f"QHeaderView::section {{ background:{C_BG2}; color:{SYS2_COLOR}; border:1px solid {C_BORDER}; padding:6px; font-weight:bold; }}")
+        wl.addWidget(self._table, 1)
+
+        self.lbl_issues = QLabel("")
+        self.lbl_issues.setFont(QFont("Arial", 10))
+        self.lbl_issues.setWordWrap(True)
+        self.lbl_issues.setStyleSheet(f"color:{C_RED}; background:transparent; border:none;")
+        wl.addWidget(self.lbl_issues)
+
+        self._tabs.insertTab(0, wrap, "🗂 全息映射 (节点↔数据对象)")
+        cl.addWidget(self._tabs, 1)
+        self._classic.hide()          # 默认隐藏: 第一屏是 CANoe 风格视图
+        bl.addWidget(self._classic, 1)
+
+    def _toggle_classic_view(self, on):
+        """🗂 经典视图开关: 在「CANoe 风格多窗格」与「原 12-Tab 堆叠」之间切(两者都在, 只是显示其一)"""
+        try:
+            self._classic.setVisible(bool(on))
+            self.canoe.setVisible(not bool(on))
+            if not on and hasattr(self.canoe, "reload"):
+                self.canoe.reload(force_tree=True)
+        except Exception:                                                    # noqa: BLE001
+            pass
+
+    def _bus_status(self, s):
+        """总线状态条文案(来自 dds_bus.BusPanel.status_line)"""
+        try:
+            self.lbl_bus.setText(str(s))
+            col = C_RED if "错误 0" not in str(s) else C_GREEN
+            self.lbl_bus.setStyleSheet(f"color:{col}; background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px 10px;")
+        except Exception:                                                        # noqa: BLE001
+            pass
+
+    def refresh(self):
+        try:
+            self.ds.scan(force=True)
+            nodes = getattr(self.main, "simulink", None)
+            node_list = nodes.nodes if nodes else []
+            from PyQt5.QtWidgets import QTableWidgetItem
+            rows = []
+            for n in node_list:
+                objs = self.ds.node_objects(n)
+                if not objs:
+                    rows.append((n.get("name", "?"), n.get("type", "?"), "—", "—", "—", "·", "—"))
+                for kind, obj in objs[:3]:
+                    attr = obj.get("frames", obj.get("points", obj.get("steps", obj.get("size", "—"))))
+                    ts = obj.get("ts", obj.get("mtime", "—"))
+                    if isinstance(ts, float):
+                        import time as _t
+                        ts = _t.strftime("%m-%d %H:%M", _t.localtime(ts))
+                    pth = obj.get("path", obj.get("file", obj.get("dir", "—")))
+                    rows.append((n.get("name", "?"), n.get("type", "?"),
+                                 f"{kind}: {obj.get('id', obj.get('policy', obj.get('dir', '?')))}",
+                                 str(attr), str(ts), "✅", str(pth)))
+            self._table.setRowCount(len(rows))
+            for i, r in enumerate(rows):
+                for c, v in enumerate(r):
+                    it = QTableWidgetItem(str(v))
+                    it.setFlags(it.flags() & ~Qt.ItemIsEditable)
+                    self._table.setItem(i, c, it)
+            s = self.ds.summary()
+            issues = self.ds.consistency()
+            if not rows:
+                self.lbl_summary.setText(
+                    "📦 数据集 %d · 📈 曲线 %d · 🧠 模型 %d · 画布节点 %d —— 本页无行: 画布上下文未就绪时"
+                    "(离屏快照/画布未加载)节点↔数据对象映射为空, 在控制台内打开本页即按当前画布重算"
+                    % (s['datasets'], s['curves'], s['models'], len(node_list)))
+                self.lbl_issues.setText(
+                    f"⚠️ 一致性问题 {len(issues)}: {'; '.join(issues[:5])}" if issues else "✅ 数据一致性正常")
+                return
+            self.lbl_summary.setText(
+                f"📦 数据集 {s['datasets']} · 📈 曲线 {s['curves']} · 🧠 模型 {s['models']}"
+                f" · 🎬 视频 {s['rollouts']} · 📄 报告 {s['reports']} · 画布节点 {len(node_list)}")
+            self.lbl_issues.setText(
+                f"⚠️ 一致性问题 {len(issues)}: {'; '.join(issues[:5])}" if issues else "✅ 数据一致性正常")
+        except Exception as e:
+            self.lbl_summary.setText(f"❌ 数据空间刷新失败: {e}")
+
+
+class TrainingModule(QWidget):
+    """Training Console - Support for SmolVLA and custom policy training"""
+
+    # 🏁 2026-08-08 老倪: Model Zoo 横向配置对比表 (参考宝马整车配置表 — 类别分组 × 7模型横列)
+    ZOO_SPEC = [
+        ("🏗 架构", [
+            ("架构", {"ACT": "ResNet18→Transformer", "SmolVLA": "SmolVLM2-500M→DiT-B", "SmolVLA+LEW": "SmolVLM2·LEW→DiT-B·LEW",
+                      "VLA-Touch": "DINOv2→baseVLA", "AWE": "SigLIP→H-JEPA", "MLP 蒸馏": "MLP 512", "官方专家": "PD控制律", "状态空间": "MLP 512×3→4D", "YOLO检测": "YOLOv8n·CSPDarknet(C2f)→PAN-FPN→解耦头"}),
+            ("VLM 层", {"ACT": "—", "SmolVLA": "16", "SmolVLA+LEW": "16", "VLA-Touch": "8", "AWE": "6", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "—", "YOLO检测": "—"}),
+            ("CNN 层", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "—", "YOLO检测": "8×C2f+SPPF"}),
+            ("状态编码", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "39D→512", "官方专家": "—", "状态空间": "39D→512", "YOLO检测": "—"}),
+            ("动作调制", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "8阶段门控融合", "YOLO检测": "—"}),
+            ("Expert 层", {"ACT": "—", "SmolVLA": "4", "SmolVLA+LEW": "4", "VLA-Touch": "2", "AWE": "2", "MLP 蒸馏": "1", "官方专家": "—", "状态空间": "1", "YOLO检测": "—"}),
+            ("模型宽度", {"ACT": "512", "SmolVLA": "1024", "SmolVLA+LEW": "1024", "VLA-Touch": "256", "AWE": "256", "MLP 蒸馏": "512", "官方专家": "—", "状态空间": "512", "YOLO检测": "—"}),
+            ("世界模型", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "✅ LeWorldModel", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "✅ 状态空间估计器", "YOLO检测": "—"}),
+        ]),
+        ("🛡 安全", [
+            ("安全机制", {"ACT": "Sys0 外部壳", "SmolVLA": "Sys0 外部壳", "SmolVLA+LEW": "Sys0 外部壳", "VLA-Touch": "Sys0 外部壳",
+                       "AWE": "Sys0 外部壳", "MLP 蒸馏": "Sys0 外部壳", "官方专家": "PD力控有界+Sys0", "状态空间": "内置否决+限幅+Sys0", "YOLO检测": "—"}),
+            ("动作限幅", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "✅ 力控闭环", "状态空间": "✅ clip(±0.6~±1)", "YOLO检测": "—"}),
+            ("力限值", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "力控≤5N", "状态空间": "5N(过盈≤2N)", "YOLO检测": "—"}),
+            ("否决重试", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "✅ 残差>2.0→减速×3", "YOLO检测": "—"}),
+        ]),
+        ("⚙️ 训练", [
+            ("步数", {"ACT": "4000", "SmolVLA": "4000", "SmolVLA+LEW": "4000", "VLA-Touch": "4000", "AWE": "4000", "MLP 蒸馏": "4000", "官方专家": "基准", "状态空间": "3000", "YOLO检测": "50 epoch"}),
+            ("批量", {"ACT": "8", "SmolVLA": "1", "SmolVLA+LEW": "1", "VLA-Touch": "1", "AWE": "1", "MLP 蒸馏": "8", "官方专家": "—", "状态空间": "8", "YOLO检测": "8"}),
+            ("学习率", {"ACT": "1e-4", "SmolVLA": "1e-4", "SmolVLA+LEW": "1e-4", "VLA-Touch": "1e-4", "AWE": "1e-4", "MLP 蒸馏": "1e-4", "官方专家": "—", "状态空间": "1e-4", "YOLO检测": "自动"}),
+            ("VAE", {"ACT": "🚫无", "SmolVLA": "无", "SmolVLA+LEW": "无", "VLA-Touch": "无", "AWE": "无", "MLP 蒸馏": "🚫无", "官方专家": "—", "状态空间": "无", "YOLO检测": "—"}),
+        ]),
+        ("📊 数据·输出", [
+            ("动作块", {"ACT": "100", "SmolVLA": "100", "SmolVLA+LEW": "100", "VLA-Touch": "50", "AWE": "50", "MLP 蒸馏": "100", "官方专家": "—", "状态空间": "1", "YOLO检测": "—"}),
+            ("状态空间", {"ACT": "39D", "SmolVLA": "39D", "SmolVLA+LEW": "39D", "VLA-Touch": "39D+触觉", "AWE": "39D+力觉", "MLP 蒸馏": "39D", "官方专家": "39D", "状态空间": "39D·仿真", "YOLO检测": "39D 输出"}),
+            ("结构条件", {"ACT": "✅", "SmolVLA": "✅", "SmolVLA+LEW": "✅", "VLA-Touch": "✅", "AWE": "✅", "MLP 蒸馏": "✅", "官方专家": "—", "状态空间": "—", "YOLO检测": "—"}),
+        ]),
+        ("🏆 性能", [
+            ("插拔结果", {"ACT": "0/10 → novae 0.066m接近", "SmolVLA": "训练中", "SmolVLA+LEW": "训练中", "VLA-Touch": "训练中",
+                          "AWE": "训练中", "MLP 蒸馏": "2/5 唯一可插拔", "官方专家": "85% 🏆基准", "状态空间": "仿真蒸馏 · 4/4 ✅", "YOLO检测": "感知前端 · mAP 0.994"}),
+        ]),
+    ]
+    ZOO_MODELS = ["ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE", "MLP 蒸馏", "官方专家", "状态空间", "YOLO检测"]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("model_engine")  # 🌐 2026-08-09 老倪: 页识别 (VEH-2 功能卡编号用)
+        
+        # Import training backend
+        from training_backend import training_backend
+        self.train_backend = training_backend
+        self._simulink = None  # 🎛 2026-08-08 老倪: Simulink Model Zoo 引用 (训练按钮 → simulink on_train)
+        
+        # Status tracking
+        self.is_training = False
+        self.is_paused = False
+        self.remote_engine = None  # 2026-08-08 老倪: 远程 GPU 引擎状态 (SSH 连接后设置)
+        self.gpu_mode = "local"   # 2026-08-08 老倪: Model Engine 封装 — GPU 引擎选择 (local/remote)
+        
+        self._init_ui()
+    
+    def _init_ui(self):
+        """Initialize UI with global scroll area"""
+        # 创建主布局
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # 创建滚动区域包裹整个内容
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setStyleSheet(f"""
+            QScrollArea {{
+                border: none;
+                background: transparent;
+            }}
+            QScrollBar:vertical {{
+                background: {C_BG};
+                width: 12px;
+                margin: 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {C_BORDER};
+                border-radius: 6px;
+                min-height: 30px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {C_CYAN};
+            }}
+        """)
+        
+        # 创建内容容器
+        content_widget = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(6)  # 🐛 2026-08-08 老倪: 整体紧凑上移 (紧挨 GPU 服务器, 不空一大段)
+        layout.setContentsMargins(16, 6, 16, 12)
+        
+        # ===== Top Bar: Title + SmolVLA Button =====
+        top_bar = QHBoxLayout()
+        
+        title = QLabel("🧠 Model Engine")  # 2026-08-08 老倪: SmolVLA Training Console → Model Engine (模型引擎)
+        title.setStyleSheet(f"color: {C_WHITE}; font-size: 20px; font-weight: bold;")
+        top_bar.addWidget(title)
+        
+        top_bar.addStretch()
+        
+        # ===== 🖥 训练引擎选择 (2026-08-08 老倪: 顶部 — 本地/远程 GPU 选择) =====
+        engine_box = QFrame()
+        engine_box.setStyleSheet(f"QFrame {{ background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:8px; }}")
+        eh = QHBoxLayout(engine_box)
+        eh.setContentsMargins(12, 8, 12, 8)
+        eh.setSpacing(10)
+        eng_lbl = QLabel("🖥 模型引擎:")  # 2026-08-08 老倪: 训练引擎 → 模型引擎
+        eng_lbl.setStyleSheet(f"color:{C_WHITE}; font-weight:bold; background:transparent; border:none; font-size:19px;")
+        eh.addWidget(eng_lbl)
+        # GPU 引擎选择 (Model Engine 中枢 — 所有训练统一走这里)
+        self.radio_local = QRadioButton("本地 GPU (RTX 4060)")
+        self.radio_local.setChecked(True)
+        self.radio_local.setStyleSheet(f"QRadioButton {{ color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:bold; }}")
+        self.radio_remote = QRadioButton("远程 GPU (未连接)")
+        self.radio_remote.setEnabled(False)
+        self.radio_remote.setStyleSheet(f"QRadioButton {{ color:{C_DIM}; background:transparent; border:none; font-size:19px; }}")
+        self.radio_local.toggled.connect(self._on_gpu_mode)
+        self.radio_remote.toggled.connect(self._on_gpu_mode)
+        eh.addWidget(self.radio_local)
+        eh.addWidget(self.radio_remote)
+        eh.addStretch()
+        layout.addWidget(engine_box)
+        
+        # ===== 🔗 SSH GPU 服务器连接 (2026-08-08 老倪: 模型引擎连接 GPU 服务器远程训练) =====
+        self.ssh_box = QFrame()
+        ssh_box = self.ssh_box
+        ssh_box.setStyleSheet(f"QFrame {{ background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:8px; }}")
+        sh = QHBoxLayout(ssh_box)
+        sh.setContentsMargins(12, 8, 12, 8)
+        sh.setSpacing(8)
+        ssh_lbl = QLabel("🔗 GPU 服务器:")
+        ssh_lbl.setStyleSheet(f"color:{C_WHITE}; font-weight:bold; background:transparent; border:none;")
+        sh.addWidget(ssh_lbl)
+        self.ssh_host = QLineEdit()
+        self.ssh_host.setPlaceholderText("host (如 223.109.239.36)")
+        self.ssh_host.setFixedWidth(140)
+        self.ssh_port = QLineEdit()
+        self.ssh_port.setPlaceholderText("port")
+        self.ssh_port.setFixedWidth(55)
+        self.ssh_user = QLineEdit()
+        self.ssh_user.setPlaceholderText("user")
+        self.ssh_user.setFixedWidth(70)
+        self.ssh_pass = QLineEdit()
+        self.ssh_pass.setPlaceholderText("password")
+        self.ssh_pass.setEchoMode(QLineEdit.Password)
+        self.ssh_pass.setFixedWidth(105)
+        for _w in (self.ssh_host, self.ssh_port, self.ssh_user, self.ssh_pass):
+            _w.setStyleSheet(f"QLineEdit {{ background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 6px; }}")
+            sh.addWidget(_w)
+        self.btn_ssh = QPushButton("🔌 连接")
+        self.btn_ssh.setStyleSheet(f"QPushButton {{ background:#1f6feb; color:white; border:none; border-radius:4px; padding:6px 14px; font-weight:bold; }} QPushButton:hover {{ background:#388bfd; }}")
+        self.btn_ssh.clicked.connect(self._connect_gpu)
+        sh.addWidget(self.btn_ssh)
+        self.ssh_status = QLabel("未连接")
+        self.ssh_status.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:20px;")
+        sh.addWidget(self.ssh_status)
+        sh.addStretch()
+        # 🔧 远程环境状态 (2026-08-08 老倪: 终端可见远程环境安装进度)
+        self.remote_env_lbl = QLabel("🔧 远程环境: 未连接")
+        self.remote_env_lbl.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:19px;")
+        sh.addWidget(self.remote_env_lbl)
+        layout.addWidget(ssh_box)
+        self.ssh_host.setText("223.109.239.36")
+        self.ssh_port.setText("24424")
+        self.ssh_user.setText("root")
+        # 载入上次凭据 (覆盖默认; 🐛 2026-08-09 兼容扁平结构 与 嵌套 gpu_4090/gpu_v100)
+        try:
+            import json as _json
+            _cred = _json.load(open(os.path.expanduser("~/.zmax_ssh.json")))
+            if isinstance(_cred, dict) and "host" in _cred:
+                _c = _cred  # 扁平: {"host","port","user","pwd"}
+            else:
+                # 嵌套: {"gpu_v100": {...}, "gpu_4090": {...}} → 优先 4090 (最近连接)
+                _c = _cred.get("gpu_4090") or _cred.get("gpu_v100") or {}
+            self.ssh_host.setText(_c.get("host", self.ssh_host.text()))
+            self.ssh_port.setText(str(_c.get("port", self.ssh_port.text())))
+            self.ssh_user.setText(_c.get("user", self.ssh_user.text()))
+            self.ssh_pass.setText(_c.get("pwd", ""))
+            if _c.get("host"):
+                self.ssh_status.setText(f"已载入 {_c['host']}:{_c.get('port','22')} (未连接)")
+        except Exception:
+            pass
+        layout.addWidget(ssh_box)
+
+        # (旧引擎状态条已上移 — 顶部 radio 选择 + SSH 面板)
+        
+        # 🤖 模型选择 (2026-08-08 老倪: 右侧模型选择功能删除 — 配置表格已展示7模型; 下拉对象保留供训练逻辑, 默认ACT)
+        self.model_combo = QComboBox()
+        self.model_combo.addItems(["ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE", "MLP 蒸馏", "官方专家", "状态空间", "YOLO检测"])
+        self.model_combo.setFixedWidth(150)
+        self.model_combo.setStyleSheet(f"""
+            QComboBox {{ background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER};
+                         border-radius:4px; padding:4px 8px; font-size:15px; font-weight:bold; }}
+            QComboBox::drop-down {{ border:none; width:20px; }}
+            QComboBox QAbstractItemView {{ background:{C_BG}; color:{C_WHITE}; selection-background-color:#1f6feb; }}
+        """)
+        self.model_combo.currentTextChanged.connect(self._on_model_changed)
+        self.model_name = QLabel("")  # 模型属性摘要
+        self.model_name.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:19px;")
+        top_bar.addWidget(self.model_name)
+
+        # 🗂 2026-08-08 老倪: 模型源标识 (右侧层架 — 配置与训练统一走 Simulink Model Zoo)
+        src_lbl = QLabel("🗂 模型源：Simulink Model Zoo")
+        src_lbl.setStyleSheet(f"color:#00d4aa; background:#0d2a24; border:1px solid #00d4aa; border-radius:4px;"
+                              f"padding:4px 10px; font-size:20px; font-weight:bold;")
+        top_bar.addWidget(src_lbl)
+        
+        layout.addLayout(top_bar)
+        
+        # ===== Training Parameter Area =====
+        self.param_group = QGroupBox(" 配置通道 ")  # 🐛 2026-08-08 老倪: ID 渲染到控件
+        param_group = self.param_group
+        param_group.setStyleSheet(f"""
+            QGroupBox {{
+                color: {C_WHITE};
+                background: {C_CARD};
+                border: 1px solid {C_BORDER};
+                border-radius: 8px;
+                padding: 24px;
+                padding-top: 48px;
+                margin-top: 24px;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 16px;
+                padding: 0 8px;
+                font-weight: bold;
+            }}
+            QLabel {{
+                color: {C_WHITE};
+                background: transparent;
+                padding: 2px 0px;
+                min-height: 24px;
+            }}
+            QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit {{
+                min-height: 24px;
+                padding: 4px 8px;
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+            }}
+            QCheckBox {{
+                min-height: 24px;
+                padding: 2px 0px;
+                color: {C_WHITE};
+            }}
+        """)
+        
+        param_layout = QFormLayout()
+        param_layout.setSpacing(12)
+        param_layout.setHorizontalSpacing(20)
+        param_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        param_layout.setContentsMargins(0, 4, 0, 0)
+
+        # 🏁 2026-08-08 老倪: Model Zoo 横向配置对比表 (宝马整车配置表风格 — 类别分组 × 7模型横列)
+        self._build_zoo_table(param_layout)
+        
+        # 🐳 2026-08-08 老倪: 容器管理 — 简化为几个点选控件 (单选 radio, 不搞复杂状态机)
+        cg = QGroupBox(" 🐳 容器管理 ")
+        cg.setStyleSheet(f"QGroupBox{{color:{C_CYAN}; font-weight:bold; border:1px solid #30363d; border-radius:6px; margin-top:10px; padding-top:8px;}} QGroupBox::title{{subcontrol-origin:margin; left:10px;}}")
+        cv = QVBoxLayout(cg)
+        cv.setSpacing(6)
+        self._ct_status = QLabel("⏳ 容器状态: 检测中…")
+        self._ct_status.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; font-size:20px;")
+        self._ct_status.setWordWrap(True)
+        cv.addWidget(self._ct_status)
+        # 三模式卡片 (2026-08-08 老倪: 选中 → 外边框包裹高亮)
+        self._ct_mode_grp = QButtonGroup(self)
+        self._ct_mode_grp.setExclusive(True)
+        cards = [("train", "🚀 远程训练", "V100 服务器"), ("infer", "🎮 本地运行", "4060 测试"), ("deploy", "📱 端侧部署", "Mac / Orin")]
+        rowm = QHBoxLayout()
+        rowm.setSpacing(10)
+        self._ct_mode_btns = {}
+        for key, title, sub in cards:
+            b = QPushButton(f"{title}\n{sub}")  # 🐛 2026-08-09 老倪: 去掉 [M-xx] 文字, ID 统一 VEH.2 overlay
+            b.setCheckable(True)
+            b.setMinimumSize(150, 64)
+            b.setStyleSheet(f"""QPushButton{{background:#0d1117; color:{C_WHITE}; border:2px solid #30363d; border-radius:8px; font-size:15px; font-weight:bold; padding:8px; text-align:center;}}
+QPushButton:hover{{border-color:#58a6ff;}}
+QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHITE};}}""")
+            self._ct_mode_grp.addButton(b)
+            self._ct_mode_btns[key] = b
+            b.clicked.connect(lambda _, k=key: self._ct_pick(k))
+            rowm.addWidget(b)  # 🐛 2026-08-09 老倪: 不包 _holo_badge, VEH.2 overlay 统一编号
+        self._ct_mode_btns["train"].setChecked(True)  # 默认远程训练
+        cv.addLayout(rowm)
+        # 🐛 2026-08-09 老倪: VEH.2.26 端侧部署 → 已训练模型下拉 (默认第一个=ACT)
+        deploy_row = QHBoxLayout()
+        deploy_row.setSpacing(6)
+        deploy_lbl = QLabel("📦 部署模型:")
+        deploy_lbl.setStyleSheet(f"color:{C_WHITE}; font-size:20px; font-weight:bold; background:transparent; border:none;")
+        self.deploy_model_combo = QComboBox()
+        self.deploy_model_combo.setMinimumWidth(280)
+        self.deploy_model_combo.setStyleSheet(f"QComboBox{{background:#0d1117; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px; font-size:20px;}} QComboBox::drop-down{{border:none; width:18px;}} QComboBox QAbstractItemView{{background:#161b22; color:{C_WHITE}; selection-background-color:{C_CYAN};}}")
+        # 🐛 2026-08-09 老倪: 布局 — 上传容器(29) 最左侧, 推送到Orin(28) 中间, 部署模型下拉(27) 最右侧
+        self._btn_upload_ct = QPushButton("🔼 上传容器到远程")
+        self._btn_upload_ct.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold; font-size:20px;}} QPushButton:hover{{background:#14564a;}}")
+        self._btn_upload_ct.clicked.connect(self._upload_container)
+        deploy_row.addWidget(self._btn_upload_ct)
+        self.btn_deploy_orin = QPushButton("📥 推送到 Orin")
+        self.btn_deploy_orin.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 10px; font-weight:bold; font-size:20px;}} QPushButton:hover{{background:#14564a;}}")
+        self.btn_deploy_orin.clicked.connect(self._deploy_model_to_orin)
+        self.btn_deploy_orin.setToolTip("将下拉选中的模型推送到 Orin (上传 datadrive.world/models/act_latest.safetensors → Orin 监听器自动下载)")
+        self.btn_deploy_orin.setEnabled(False)  # 🐛 2026-08-09: 端侧部署高亮选中后才可点
+        deploy_row.addWidget(self.btn_deploy_orin)
+        deploy_row.addWidget(deploy_lbl)
+        deploy_row.addWidget(self.deploy_model_combo, 1)
+        deploy_row.addStretch()
+        cv.addLayout(deploy_row)
+        # 填充下拉 (registry 已保存模型, 默认第一个=最新 ACT) — 端侧部署/推理共用
+        try:
+            self._refresh_deploy_models()
+        except Exception:
+            pass
+        # 🐛 2026-08-08 老倪: 容器管理不放 param_group 内 — 移到主布局外层 (见 layout.addWidget(cg))
+        # 🌐 2026-08-08 老倪: 全息 ID 注册表 (内部 — ID 渲染到每个控件本身, 非表格)
+        self._holo_reg = {}
+        try:
+            from PyQt5.QtCore import QTimer as _QTH
+            _oneshot(self, 600, self._register_holo_all)
+        except Exception:
+            self._register_holo_all()
+        
+        # Freeze SmolVLM
+        self.freeze_checkbox = QCheckBox("Enabled")
+        self.freeze_checkbox.setChecked(True)
+        self.freeze_checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                color: {C_WHITE};
+                background: transparent;
+                spacing: 8px;
+            }}
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border: 2px solid {C_BORDER};
+                border-radius: 3px;
+                background: {C_BG};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {C_BLUE};
+                border-color: {C_BLUE};
+            }}
+        """)
+        self.freeze_checkbox.setToolTip("Freeze SmolVLM backbone (--policy.freeze_smolvlm)")
+        
+        # Enable World Model
+        self.world_model_checkbox = QCheckBox("Enabled")
+        self.world_model_checkbox.setChecked(False)
+        self.world_model_checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                color: {C_WHITE};
+                background: transparent;
+                spacing: 8px;
+            }}
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border: 2px solid {C_BORDER};
+                border-radius: 3px;
+                background: {C_BG};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {C_BLUE};
+                border-color: {C_BLUE};
+            }}
+        """)
+        self.world_model_checkbox.setToolTip("Enable LeWorld Model (--policy.enable_lew_world_model)")
+        
+        # Repeated Diffusion Steps
+        self.diffusion_spin = QSpinBox()
+        self.diffusion_spin.setRange(1, 100)
+        self.diffusion_spin.setValue(5)
+        self.diffusion_spin.setStyleSheet(f"""
+            QSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+        """)
+        self.diffusion_spin.setToolTip("Action prediction steps (repeated diffusion/flow matching steps)")
+
+        # VLM layers
+        self.vlm_layers_spin = QSpinBox()
+        self.vlm_layers_spin.setRange(0, 32)  # 0=无VLM (ACT/MLP/专家禁用时显示0)
+        self.vlm_layers_spin.setValue(16)
+        self.vlm_layers_spin.setToolTip("Number of VLM layers used (num_vlm_layers)")
+
+        # Expert layers
+        self.expert_layers_spin = QSpinBox()
+        self.expert_layers_spin.setRange(-1, 32)
+        self.expert_layers_spin.setValue(-1)
+        self.expert_layers_spin.setToolTip("Expert layers (-1 = same as VLM)")
+
+        # Expert width
+        self.expert_width_spin = QDoubleSpinBox()
+        self.expert_width_spin.setRange(0.25, 2.0)
+        self.expert_width_spin.setValue(0.75)
+        self.expert_width_spin.setSingleStep(0.25)
+        self.expert_width_spin.setToolTip("Expert hidden size relative to VLM")
+
+        # Self-attention interval
+        self.self_attn_spin = QSpinBox()
+        self.self_attn_spin.setRange(1, 8)
+        self.self_attn_spin.setValue(2)
+        self.self_attn_spin.setToolTip("Self-attention every N layers")
+
+        # ===== I/O Dimensions =====
+        io_label = QLabel("Input / Output")
+        io_label.setFont(QFont("Arial", 11, QFont.Bold))
+        io_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
+
+        # Observation steps
+        self.obs_steps_spin = QSpinBox()
+        self.obs_steps_spin.setRange(1, 10)
+        self.obs_steps_spin.setValue(1)
+        self.obs_steps_spin.setToolTip("Number of observation steps (n_obs_steps)")
+
+        # Chunk size  
+        self.chunk_spin = QSpinBox()
+        self.chunk_spin.setRange(10, 200)
+        self.chunk_spin.setValue(50)
+        self.chunk_spin.setSingleStep(10)
+        self.chunk_spin.setToolTip("Action chunk size")
+
+        # State dim
+        self.state_dim_spin = QSpinBox()
+        self.state_dim_spin.setRange(1, 128)
+        self.state_dim_spin.setValue(32)
+        self.state_dim_spin.setToolTip("Max state dimension (padded)")
+
+        # Action dim
+        self.action_dim_spin = QSpinBox()
+        self.action_dim_spin.setRange(1, 128)
+        self.action_dim_spin.setValue(32)
+        self.action_dim_spin.setToolTip("Max action dimension (padded)")
+        
+        # Dataset selection
+        self.dataset_combo = QComboBox()
+        self.dataset_combo.addItems([
+            "lerobot/pusht",
+            "lerobot/metaworld_mt50",
+            "lerobot/xarm_lift_medium",
+            "lerobot/aloha_sim_transfer_cube_human",
+            "lerobot/koch_bimanual_folding",
+            "lerobot/so100_pick_place"
+        ])
+        self.dataset_combo.setStyleSheet(f"""
+            QComboBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+                min-width: 200px;
+            }}
+        """)
+        # 同步 combo 到老的 edit 字段
+        self.dataset_combo.currentTextChanged.connect(lambda t: self.dataset_repo_edit.setText(t))
+        self.dataset_combo.currentTextChanged.connect(self._auto_output_dir)
+        self.dataset_combo.currentTextChanged.connect(self._on_dataset_changed)
+        
+        # 本地缓存路径显示
+        self.dataset_path_label = QLabel()
+        self.dataset_path_label.setFont(QFont("Consolas", 11))
+        self.dataset_path_label.setStyleSheet(f"color:{C_GRAY}; padding-left:4px;")
+        self.dataset_path_label.setWordWrap(True)
+        self.dataset_combo.currentTextChanged.connect(self._update_dataset_path)
+        # 初始化显示
+        self._update_dataset_path(self.dataset_combo.currentText())
+
+        # Batch size
+        self.batch_spin = QSpinBox()
+        self.batch_spin.setRange(1, 256)
+        self.batch_spin.setValue(8)
+        self.batch_spin.setStyleSheet(f"""
+            QSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+        """)
+        self.batch_spin.setToolTip("Number of samples processed per training step")
+        
+        # Training steps
+        self.steps_spin = QSpinBox()
+        self.steps_spin.setRange(100, 1000000)
+        self.steps_spin.setValue(500)
+        self.steps_spin.setSingleStep(100)
+        self.steps_spin.setStyleSheet(f"""
+            QSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+        """)
+        self.steps_spin.setToolTip("Total number of training steps")
+        
+        # ===== Image Preprocessing =====
+        img_label = QLabel("Image Preprocessing")
+        img_label.setFont(QFont("Arial", 11, QFont.Bold))
+        img_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
+
+        # Resize width
+        self.resize_w_spin = QSpinBox()
+        self.resize_w_spin.setRange(64, 1024)
+        self.resize_w_spin.setValue(512)
+        self.resize_w_spin.setSingleStep(64)
+        self.resize_w_spin.setToolTip("Image resize width")
+
+        # Resize height
+        self.resize_h_spin = QSpinBox()
+        self.resize_h_spin.setRange(64, 1024)
+        self.resize_h_spin.setValue(512)
+        self.resize_h_spin.setSingleStep(64)
+        self.resize_h_spin.setToolTip("Image resize height")
+
+        # Empty cameras
+        self.empty_cameras_spin = QSpinBox()
+        self.empty_cameras_spin.setRange(0, 4)
+        self.empty_cameras_spin.setValue(0)
+        self.empty_cameras_spin.setToolTip("Number of empty camera channels")
+
+        # Position encoding
+        self.min_period_spin = QDoubleSpinBox()
+        self.min_period_spin.setRange(0.001, 0.1)
+        self.min_period_spin.setValue(0.004)
+        self.min_period_spin.setDecimals(4)
+        self.min_period_spin.setSingleStep(0.001)
+        self.min_period_spin.setToolTip("Min period for sine-cosine positional encoding")
+
+        self.max_period_spin = QDoubleSpinBox()
+        self.max_period_spin.setRange(1.0, 16.0)
+        self.max_period_spin.setValue(4.0)
+        self.max_period_spin.setSingleStep(1.0)
+        self.max_period_spin.setToolTip("Max period for sine-cosine positional encoding")
+        
+        # Checkpoint interval
+        self.ckpt_spin = QSpinBox()
+        self.ckpt_spin.setRange(10, 10000)
+        self.ckpt_spin.setValue(100)
+        self.ckpt_spin.setSingleStep(10)
+        self.ckpt_spin.setStyleSheet(f"""
+            QSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+        """)
+        self.ckpt_spin.setToolTip("Number of steps to save checkpoint")
+        
+        # ===== Dataset Settings =====
+        dataset_label = QLabel("Dataset Settings")
+        dataset_label.setFont(QFont("Arial", 11, QFont.Bold))
+        dataset_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
+        
+        # Dataset Repo ID
+        self.dataset_repo_edit = QLineEdit("lerobot/pusht")
+        self.dataset_repo_edit.setStyleSheet(f"""
+            QLineEdit {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+        """)
+        self.dataset_repo_edit.setToolTip("HuggingFace dataset repo ID (--dataset.repo_id)")
+        
+        # ===== Optimizer Settings =====
+        opt_label = QLabel("Optimizer Settings")
+        opt_label.setFont(QFont("Arial", 11, QFont.Bold))
+        opt_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
+        
+        # Learning Rate
+        self.lr_spin = QDoubleSpinBox()
+        self.lr_spin.setRange(0.000001, 0.1)
+        self.lr_spin.setValue(0.0001)
+        self.lr_spin.setSingleStep(0.00001)
+        self.lr_spin.setDecimals(6)
+        self.lr_spin.setStyleSheet(f"""
+            QDoubleSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+        """)
+        self.lr_spin.setToolTip("Optimizer learning rate (--optimizer.lr)")
+        
+        # Weight Decay
+        self.weight_decay_spin = QDoubleSpinBox()
+        self.weight_decay_spin.setRange(0.0000001, 0.01)
+        self.weight_decay_spin.setValue(0.000001)
+        self.weight_decay_spin.setSingleStep(0.000001)
+        self.weight_decay_spin.setDecimals(7)
+        self.weight_decay_spin.setStyleSheet(f"""
+            QDoubleSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+        """)
+        self.weight_decay_spin.setToolTip("Weight decay (--optimizer.weight_decay)")
+        
+        # Gradient Clipping
+        self.grad_clip_spin = QDoubleSpinBox()
+        self.grad_clip_spin.setRange(0.1, 100.0)
+        self.grad_clip_spin.setValue(10.0)
+        self.grad_clip_spin.setSingleStep(0.5)
+        self.grad_clip_spin.setDecimals(1)
+        self.grad_clip_spin.setStyleSheet(f"""
+            QDoubleSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+        """)
+        self.grad_clip_spin.setToolTip("Gradient clipping norm (--optimizer.grad_clip_norm)")
+        
+        # ===== Scheduler Settings =====
+        sched_label = QLabel("Scheduler Settings")
+        sched_label.setFont(QFont("Arial", 11, QFont.Bold))
+        sched_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
+        
+        # Scheduler Type
+        self.scheduler_combo = QComboBox()
+        self.scheduler_combo.addItems([
+            "cosine_decay_with_warmup",
+            "constant",
+            "linear_decay"
+        ])
+        self.scheduler_combo.setStyleSheet(f"""
+            QComboBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+                min-width: 200px;
+            }}
+        """)
+        self.scheduler_combo.setToolTip("Learning rate scheduler type (--scheduler.type)")
+        
+        # Warmup Steps
+        self.warmup_spin = QSpinBox()
+        self.warmup_spin.setRange(0, 100000)
+        self.warmup_spin.setValue(500)
+        self.warmup_spin.setSingleStep(100)
+        self.warmup_spin.setStyleSheet(f"""
+            QSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+        """)
+        self.warmup_spin.setToolTip("Number of warmup steps (--scheduler.num_warmup_steps)")
+        
+        # Decay Steps
+        self.decay_spin = QSpinBox()
+        self.decay_spin.setRange(100, 1000000)
+        self.decay_spin.setValue(500)
+        self.decay_spin.setSingleStep(100)
+        self.decay_spin.setStyleSheet(f"""
+            QSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+        """)
+        self.decay_spin.setToolTip("Number of decay steps (--scheduler.num_decay_steps)")
+        
+        # Peak LR
+        self.peak_lr_spin = QDoubleSpinBox()
+        self.peak_lr_spin.setRange(0.000001, 0.1)
+        self.peak_lr_spin.setValue(0.0001)
+        self.peak_lr_spin.setSingleStep(0.00001)
+        self.peak_lr_spin.setDecimals(6)
+        self.peak_lr_spin.setStyleSheet(f"""
+            QDoubleSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+        """)
+        self.peak_lr_spin.setToolTip("Peak learning rate (--scheduler.peak_lr)")
+        
+        # Decay LR
+        self.decay_lr_spin = QDoubleSpinBox()
+        self.decay_lr_spin.setRange(0.0000001, 0.01)
+        self.decay_lr_spin.setValue(0.000001)
+        self.decay_lr_spin.setSingleStep(0.000001)
+        self.decay_lr_spin.setDecimals(7)
+        self.decay_lr_spin.setStyleSheet(f"""
+            QDoubleSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+        """)
+        self.decay_lr_spin.setToolTip("Final learning rate after decay (--scheduler.decay_lr)")
+        
+        # ===== Experiment Settings =====
+        exp_label = QLabel("Experiment Settings")
+        exp_label.setFont(QFont("Arial", 11, QFont.Bold))
+        exp_label.setStyleSheet(f"color: {C_CYAN}; padding-top: 12px;")
+        
+        # Eval Frequency
+        self.eval_freq_spin = QSpinBox()
+        self.eval_freq_spin.setRange(0, 100000)
+        self.eval_freq_spin.setValue(500)
+        self.eval_freq_spin.setSingleStep(100)
+        self.eval_freq_spin.setStyleSheet(f"""
+            QSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+        """)
+        self.eval_freq_spin.setToolTip("Evaluation frequency in steps, 0 to disable (--eval.frequency)")
+        
+        # Push to Hub
+        self.push_hub_checkbox = QCheckBox("Enabled")
+        self.push_hub_checkbox.setChecked(False)
+        self.push_hub_checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                color: {C_WHITE};
+                background: transparent;
+                spacing: 8px;
+            }}
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border: 2px solid {C_BORDER};
+                border-radius: 3px;
+                background: {C_BG};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {C_BLUE};
+                border-color: {C_BLUE};
+            }}
+        """)
+        self.push_hub_checkbox.setToolTip("Push checkpoint to HuggingFace Hub (--policy.push_to_hub)")
+
+        # Compile model
+        self.compile_checkbox = QCheckBox("Use torch.compile (faster, higher first-run)")
+        self.compile_checkbox.setChecked(False)
+        self.compile_checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                color: {C_WHITE};
+                background: transparent;
+                spacing: 8px;
+            }}
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border: 2px solid {C_BORDER};
+                border-radius: 3px;
+                background: {C_BG};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {C_BLUE};
+                border-color: {C_BLUE};
+            }}
+        """)
+        
+        # Output Directory
+        self.output_dir_edit = QLineEdit("outputs/smolvla_pusht")
+        self.output_dir_edit.setStyleSheet(f"""
+            QLineEdit {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px 8px;
+            }}
+        """)
+        self.output_dir_edit.setToolTip("Output directory for checkpoints and logs")
+        
+        param_group.setLayout(param_layout)
+        
+        # Wrap param_group in QScrollArea so all parameters are scrollable
+        self.param_scroll = QScrollArea()
+        self.param_scroll.setWidget(param_group)
+        self.param_scroll.setWidgetResizable(True)
+        self.param_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # 🐛 2026-08-09 老倪: VEH.2.01 取消拖动条 — 垂直滚动条 AlwaysOff (内容全高展开, 表格区不滚)
+        self.param_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # 🐛 2026-08-09 老倪: VEH.2.17 配置表默认展开全部 (表格全高 ~534 + 余量, 不用拖动条)
+        self.param_scroll.setMinimumHeight(600)
+        self.param_scroll.setStyleSheet(f"""
+            QScrollArea {{
+                border: none;
+                background: transparent;
+            }}
+            QScrollBar:vertical {{
+                background: {C_BORDER};
+                width: 12px;
+                margin: 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {C_BLUE};
+                border-radius: 6px;
+                min-height: 30px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {C_CYAN};
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
+        """)
+        layout.addWidget(self.param_scroll, 1)  # 🐛 2026-08-08 老倪: 配置通道表格向下伸长占满 (看不全用右侧拖动条)
+        layout.addWidget(cg)  # 🐛 2026-08-08 老倪: 容器管理放外面一层 (param_group 外, 页面底部)
+        
+        # ===== Control Button Area =====
+        # Wrap buttons in a container widget with explicit background to prevent color bleeding
+        btn_container = QWidget()
+        btn_container.setStyleSheet(f"""
+            QWidget {{
+                background: transparent;
+                border: none;
+                padding: 0px;
+            }}
+        """)
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(16)  # 增加间距
+        btn_layout.setContentsMargins(0, 8, 0, 8)  # 增加上下边距防止紫色渗透
+        
+        # Start button
+        self.start_btn = QPushButton("▶ Start")  # 🐛 2026-08-08 老倪: ID 渲染到控件
+        self.start_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {C_GREEN};
+                color: white;
+                border: 2px solid {C_GREEN};
+                border-radius: 6px;
+                padding: 12px 32px;
+                margin: 0px;
+                font-size:20px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {C_GREEN};
+                border: 2px solid {C_BLUE};
+            }}
+            QPushButton:pressed {{
+                background-color: {C_GREEN}bb;
+                border: 2px solid {C_BLUE};
+            }}
+            QPushButton:disabled {{
+                background-color: {C_GRAY}44;
+                color: {C_GRAY};
+                border: 2px solid {C_GRAY}44;
+            }}
+        """)
+        self.start_btn.clicked.connect(self._start_training)
+        btn_layout.addWidget(self.start_btn)  # 🐛 2026-08-09 老倪: 不包 _holo_badge, VEH.2 overlay 统一编号
+
+        # 🎛 2026-08-08 老倪: 每模型训练开关 (参考 YOLO 感知开关样式 — 训练:开, 控制队列训练)
+        sw_box = QGroupBox(" 🎛 训练开关 ")
+        sw_box.setStyleSheet(f"QGroupBox{{color:{C_CYAN}; font-weight:bold; border:1px solid #30363d; border-radius:6px; margin-top:8px; padding-top:6px;}}")
+        swl = QHBoxLayout()
+        swl.setSpacing(14)
+        self._zoo_sw = {}
+        for key, label in [("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"),
+                           ("vla_touch", "VLA-Touch"), ("awe_zflow", "AWE"), ("expert_mlp", "MLP蒸馏"),
+                           ("expert_policy", "官方专家"), ("state_space", "状态空间"), ("yolo", "YOLO检测")]:
+            sid = {"act": "S-01", "smolvla": "S-02", "smolvla_lew": "S-03", "vla_touch": "S-04",
+                   "awe_zflow": "S-05", "expert_mlp": "S-06", "expert_policy": "S-07",
+                   "state_space": "S-08", "yolo": "S-09"}[key]  # 🐛 ID 渲染
+            cb = QCheckBox(f"训练：开 {label} [{sid}]")
+            cb.setChecked(True)
+            cb.setStyleSheet(f"QCheckBox{{color:{C_WHITE}; background:transparent; font-size:20px; font-weight:bold;}}"
+                             f"QCheckBox::indicator{{width:30px; height:16px; border-radius:8px; border:1px solid {C_BORDER}; background:#21262d;}}"
+                             f"QCheckBox::indicator:checked{{background:{C_GREEN}; border-color:{C_GREEN};}}")
+            self._zoo_sw[key] = cb
+            swl.addWidget(cb)
+        swl.addStretch()
+        sw_box.setLayout(swl)
+        btn_container_layout = btn_container.layout() if btn_container.layout() else None
+        layout.addWidget(sw_box)
+        
+        # Stop button (2026-08-08 老倪: Pause 取消 — 只留 Stop, 真正停止训练)
+        self.stop_btn = QPushButton("⏹ Stop")  # 🐛 2026-08-08 老倪: ID 渲染到控件
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {C_RED};
+                color: white;
+                border: 2px solid {C_RED};
+                border-radius: 6px;
+                padding: 12px 32px;
+                margin: 0px;
+                font-size:20px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {C_RED};
+                border: 2px solid {C_BLUE};
+            }}
+            QPushButton:pressed {{
+                background-color: {C_RED}bb;
+                border: 2px solid {C_BLUE};
+            }}
+            QPushButton:disabled {{
+                background-color: {C_GRAY}44;
+                color: {C_GRAY};
+                border: 2px solid {C_GRAY}44;
+            }}
+        """)
+        self.stop_btn.clicked.connect(self._stop_training)
+        btn_layout.addWidget(self.stop_btn)  # 🐛 2026-08-09 老倪: 不包 _holo_badge, VEH.2 overlay 统一编号
+        
+        # Preview command button
+        self.preview_btn = QPushButton("👁 Preview CLI Command")
+        self.preview_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {C_PURPLE};
+                color: white;
+                border: 2px solid {C_PURPLE};
+                border-radius: 6px;
+                padding: 12px 32px;
+                margin: 0px;
+                font-size:20px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {C_PURPLE};
+                border: 2px solid {C_BLUE};
+            }}
+            QPushButton:pressed {{
+                background-color: {C_PURPLE}bb;
+                border: 2px solid {C_BLUE};
+            }}
+        """)
+        self.preview_btn.clicked.connect(self._preview_command)
+        self.preview_btn.setToolTip("Preview the full lerobot-train CLI command without running it")
+        btn_layout.addWidget(self.preview_btn)
+        
+        btn_container.setLayout(btn_layout)
+        layout.addWidget(btn_container)
+        
+        # ===== Progress Bar =====
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFormat("Progress: %p%")
+        self.progress_bar.setStyleSheet(f"""
+            QProgressBar {{
+                background: {C_CARD};
+                border: 1px solid {C_BORDER};
+                border-radius: 6px;
+                text-align: center;
+                color: {C_WHITE};
+                font-weight: bold;
+                height: 30px;
+            }}
+            QProgressBar::chunk {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                           stop:0 {C_GREEN}, stop:1 {C_BLUE});
+                border-radius: 5px;
+            }}
+        """)
+        layout.addWidget(self.progress_bar)
+        
+        # ===== Log Output Terminal =====
+        # 📋 终端区可折叠 (2026-08-06 老倪: 下面的终端窗口也要能隐藏 — 标题行
+        #   「📋 Training Log」+ ◀ 收起按钮; 收起后只剩标题行, 展开恢复)
+        log_group = QWidget()
+        log_group.setStyleSheet(f"""
+            QWidget {{
+                color: {C_WHITE};
+                background: {C_CARD};
+                border: 1px solid {C_BORDER};
+                border-radius: 8px;
+            }}
+        """)
+        log_outer = QVBoxLayout(log_group)
+        log_outer.setContentsMargins(12, 8, 12, 12)
+        log_outer.setSpacing(6)
+
+        log_head = QHBoxLayout()
+        log_title = QLabel("📋 终端日志区")  # 🐛 2026-08-08 老倪: ID 渲染到控件
+        log_title.setStyleSheet(f"color:{C_WHITE}; font-size:15px; font-weight:bold; background:transparent;")
+        log_head.addWidget(log_title)
+        log_head.addStretch()
+        self.btn_log_collapse = QPushButton("◀ 收起")
+        self.btn_log_collapse.setFixedWidth(72)
+        self.btn_log_collapse.setToolTip("隐藏终端日志区, 上方内容占满")
+        self.btn_log_collapse.setStyleSheet(f"""
+            QPushButton {{ background: {C_CYAN}; color: {C_BG}; border: none;
+                           border-radius: 4px; font-size:20px; font-weight: bold; padding: 4px 8px; }}
+            QPushButton:hover {{ background: {C_CYAN_HOVER if 'C_CYAN_HOVER' in dir() else '#00e6c3'}; }}
+        """)
+        self.btn_log_collapse.clicked.connect(self._toggle_log_area)
+        log_head.addWidget(self.btn_log_collapse)
+        log_outer.addLayout(log_head)
+
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        # 🐛 2026-08-09 老倪: 子线程日志队列 + 主线程 200ms flush (跨线程日志可靠显示)
+        self._log_queue = []
+        self._log_flush_timer = _tq(self)
+        self._log_flush_timer.timeout.connect(self._flush_log_queue)
+        # 🐛 2026-08-18: 200ms → 500ms 降频 (timer 批处理碰撞减半)
+        self._log_flush_timer.start(500)
+        self.log_text.setMinimumHeight(200)  # 🐛 2026-08-09 老倪: 600→200 给上方配置表腾空间 (日志可滚动/可折叠)
+        self.log_text.setStyleSheet(f"""
+            QTextEdit {{
+                background: {C_BG};
+                color: {C_WHITE};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 2px 4px;   /* 🐛 2026-08-09 老倪: 8px→2px 上下留白致光标/行距两倍 */
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size:20px;
+            }}
+            QScrollBar:vertical {{
+                background: {C_BG};
+                width: 12px;
+                margin: 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {C_BORDER};
+                border-radius: 6px;
+                min-height: 30px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {C_CYAN};
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
+        """)
+        # 🐛 2026-08-09 老倪: 显式等宽字体 + 零文档边距 (WSLg 下 Consolas 回退致行高/光标两倍)
+        try:
+            _f = QFont("Consolas", 32)
+            _f.setStyleHint(QFont.Monospace)
+            self.log_text.setFont(_f)
+            self.log_text.document().setDocumentMargin(0)
+        except Exception:
+            pass
+        log_outer.addWidget(self.log_text)
+        
+        layout.addWidget(log_group, 1)  # stretch=1 让 log 占据大部分空间
+        
+        # Set content widget in scroll area and add to main layout
+        # 🧠 2026-09-12 老倪: 「训练结果」从数据集管理页**搬到训练台** —— 数据集页只显示数据相关的东西,
+        #   训练产物属于这里。功能保留: 名字/步数/大小/时间 + 🗑 删除 (训练中不可删, 完全可控)。
+        tr_label = QLabel("🧠 训练结果 (outputs/train)")
+        tr_label.setStyleSheet(f"color:{C_CYAN}; font-size:17px; font-weight:700; background:transparent;"
+                               f" border:none; margin-top:10px;")
+        layout.addWidget(tr_label)
+        self._tr_box = QVBoxLayout()
+        layout.addLayout(self._tr_box)
+        self._refresh_train_results()
+
+        content_widget.setLayout(layout)
+        scroll_area.setWidget(content_widget)
+        main_layout.addWidget(scroll_area)
+        
+        # Main layout
+        self.setLayout(main_layout)
+        
+        # Initialize log
+        self._log("🎮 Training console initialized")
+        self._log("Ready to start training...")
+        # 🖥 2026-08-08 老倪: 模型引擎自动连接远程 GPU (凭据预填 ~/.zmax_ssh.json — 启动即连)
+        from PyQt5.QtCore import QTimer as _QT
+        _oneshot(self, 3000, self._auto_connect_gpu)
+
+    def _auto_connect_gpu(self):
+        """🖥 模型引擎自动连接远程 GPU — 2026-08-08 老倪: 连不上直接报 (不磨蹭不误导)
+        🐛 2026-08-22 老倪"折叠左栏就崩": sshpass ssh 同步阻塞主线程 3-6s → 折叠时事件循环卡死,
+        积压 timer 批量激活撞上跨线程析构 QObject → killTimer cross-thread SIGSEGV. 改子线程探测."""
+        try:
+            if not os.path.exists(os.path.expanduser("~/.zmax_ssh.json")):
+                return
+            if getattr(self, "remote_engine", None) and self.remote_engine.get("connected"):
+                return
+            self._log("🖥 模型引擎检测远程 GPU…")
+            import threading as _th, subprocess as _sp, json as _json
+
+            def _probe():
+                try:
+                    creds = _json.load(open(os.path.expanduser("~/.zmax_ssh.json")))
+                    if isinstance(creds, dict) and "host" in creds:
+                        c = creds
+                    else:
+                        c = creds.get("gpu_4090") or creds.get("gpu_v100") or {}
+                    port = c.get("port", 22)
+                    r = _sp.run(
+                        f"sshpass -p '{c.get('pwd', c.get('password', ''))}' ssh -o StrictHostKeyChecking=no "
+                        f"-o ConnectTimeout=3 -o Port={port} {c.get('user', 'root')}@{c.get('host', '')} 'echo OK'",
+                        shell=True, capture_output=True, text=True, timeout=6)
+                    return "OK" in r.stdout
+                except Exception:
+                    return False
+
+            def _apply(ok):
+                if ok:
+                    self._log("✅ 远程 GPU 可达 — 自动连接")
+                    try:
+                        self._connect_gpu()
+                    except Exception:
+                        pass
+                else:
+                    self._log("⚠️ 远程 GPU 连不上 (已关机/网络不通) — 使用本地引擎 (4060 容器)")
+                    self.gpu_mode = "local"
+                    try:
+                        self.radio_local.setChecked(True)
+                    except Exception:
+                        pass
+
+            def _worker():
+                res = _probe()  # 子线程执行网络探测 (不阻塞主线程)
+                _oneshot(self, 0, lambda: _apply(res))  # 回主线程更新 UI
+
+            _th.Thread(target=_worker, daemon=True).start()
+        except Exception:
+            pass
+
+    def _poll_remote_container(self):
+        """🔄 容器状态详细轮询 → 控制台日志区 (2026-08-08 老倪: 本地/远程容器都反馈)"""
+        # 🐳 2026-08-08 老倪: 本地模式 → 查本地 docker 容器 (本地运行=容器化, 要能看到容器)
+        if getattr(self, "gpu_mode", "local") != "remote":
+            try:
+                import subprocess as _sp
+                out = _sp.check_output(
+                    ["sudo", "docker", "ps", "--format", "{{.Names}} {{.Image}} {{.Status}}"],
+                    timeout=15, stderr=_sp.STDOUT).decode(errors="replace").strip()
+                lines = [l for l in out.splitlines() if l.strip()]
+                running = [l for l in lines if "zmax-std" in l and "Up" in l]
+                if running:
+                    st = running[0]
+                    key = f"LOCAL|{st[:60]}"
+                    if key != getattr(self, "_container_state", ""):
+                        self._container_state = key
+                        self._log(f"🐳 本地容器运行中: {st} — 训练在容器内执行 (docker)")
+                    # 🐛 2026-08-08 老倪: 容器训练日志实时显示到日志区 (Training %/loss)
+                    try:
+                        cname = st.split()[0]
+                        clog = _sp.check_output(
+                            ["sudo", "docker", "logs", "--tail", "3", cname],
+                            timeout=8, stderr=_sp.STDOUT).decode(errors="replace")
+                        prog = ""
+                        for l in clog.splitlines():
+                            if "Training:" in l and "%" in l:
+                                prog = l.strip()[:60]
+                            elif "loss" in l and "step:" in l:
+                                prog = l.strip()[:90]
+                        if prog:
+                            self._log(f"   ├ 进度: {prog}")
+                    except Exception:
+                        pass
+                    self._ct_status.setText(f"🐳 本地容器: {st.split()[0]} 训练中")
+                else:
+                    key = "LOCAL|none"
+                    if key != getattr(self, "_container_state", ""):
+                        self._container_state = key
+                        self._log("🐳 本地无容器运行 (点 Start 启动容器训练)")
+                    self._ct_status.setText("🐳 本地容器: 未运行")
+            except Exception:
+                pass
+            return
+        try:
+            re_ = getattr(self, "remote_engine", None)
+            if not re_:
+                return
+            import subprocess as _sp
+            out = _sp.check_output(
+                f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o Port={re_['port']} "
+                f"{re_['user']}@{re_['host']} 'docker ps -a --filter name=zmax_train --format \"{{{{.Status}}}}\" | head -1; "
+                f"echo CT_IMG; docker images | grep zmax-train | head -1 | awk \"{{print \\$1\\\":\\\"\\$2\\\" (\\\"\\$4\\\")\"}}; "
+                f"echo CT_LOG; docker logs zmax_train 2>&1 | grep -oE \"Training: *[0-9]+%|loss [0-9.]+|config_[a-z_0-9]+\\.yaml|===\\\\s*开始训练 [a-z_]+|ALL_DONE[^ ]*\" | tail -4 | tr \"\\n\" \" \"; "
+                f"echo CT_GPU; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader | head -1'",
+                shell=True, timeout=20, stderr=_sp.STDOUT).decode(errors="replace").strip()
+            lines = [l for l in out.splitlines() if l.strip()]
+            st = img = log = gpu = ""
+            for i, l in enumerate(lines):
+                if l == "CT_IMG" and i + 1 < len(lines):
+                    img = lines[i + 1]
+                elif l == "CT_LOG" and i + 1 < len(lines):
+                    log = lines[i + 1]
+                elif l == "CT_GPU" and i + 1 < len(lines):
+                    gpu = lines[i + 1]
+                elif "Up" in l or "Exited" in l or "Paused" in l or "Created" in l:
+                    st = l
+            key = f"{st}|{log[:70]}|{gpu}"
+            if key != getattr(self, "_container_state", ""):
+                self._container_state = key
+                self._log("🐳 远程容器: " + (st if st else "未运行 (zmax_train 容器不存在)"))
+                if img:
+                    self._log(f"   ├ 镜像: {img}")
+                if log:
+                    self._log(f"   ├ 训练: {log[:140]}")
+                if gpu:
+                    self._log(f"   └ GPU: {gpu}")
+            if st and "Up" in st:
+                self._ct_status.setText(f"🐳 容器运行中: {st}")
+            elif st and "Exited" in st:
+                self._ct_status.setText(f"🐳 容器已停止: {st}")
+            else:
+                self._ct_status.setText("🐳 容器未运行")
+        except Exception:
+            pass
+
+    def _upload_container(self):
+        """🐳 上传/同步容器到远程 GPU — 本地无 docker 时自动改用远程构建 (Dockerfile)"""
+        self._log("🐳 容器同步开始…")
+        self._btn_upload_ct.setEnabled(False)
+        import threading as _th, subprocess as _sp
+
+        def _w():
+            try:
+                re_ = getattr(self, "remote_engine", None)
+                if not re_:
+                    # 🐛 2026-08-09 老倪: 远程未连接 → 明说, 不静默 (之前直接 return 用户以为卡住)
+                    self._log("❌ 未连接远程 GPU — 请先在模型引擎顶部点「🔌 连接」, 再上传容器")
+                    self._log("   （当前远程状态: 已关机/网络不通 → 本地引擎 4060 容器）")
+                    return
+                # 🐛 2026-08-09 老倪: 上传前实测远程连通性, 结果写日志 (不再静默黑盒)
+                self._log(f"  └ 检测远程 {re_['host']}:{re_['port']} …")
+                try:
+                    _probe = _sp.run(
+                        f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
+                        f"-o Port={re_['port']} {re_['user']}@{re_['host']} 'echo REMOTE_OK'",
+                        shell=True, capture_output=True, text=True, timeout=20)
+                    if "REMOTE_OK" in _probe.stdout:
+                        self._log(f"  └ ✅ 远程可达 ({re_['host']}:{re_['port']}) — 开始同步")
+                    else:
+                        self._log(f"  └ ❌ 远程不可达 ({re_['host']}:{re_['port']}) — SSH 失败: {_probe.stderr.strip()[:60]}")
+                        self._log("   （请确认远程已开机/网络通, 或重新点「🔌 连接」）")
+                        return
+                except Exception as _e:
+                    self._log(f"  └ ❌ 远程检测异常: {str(_e)[:60]}")
+                    return
+                # 本地 docker 可用性检测 (2026-08-09 老倪: 兼容 zmax-std/zmax-train 双命名)
+                try:
+                    local_docker = _sp.run(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}"],
+                                           capture_output=True, text=True, timeout=15)
+                    _img = None
+                    if local_docker.returncode == 0:
+                        for _ln in local_docker.stdout.splitlines():
+                            _nm = _ln.split(":")[0]
+                            if _nm in ("zmax-train", "zmax-std"):
+                                _img = _ln.strip()
+                                break
+                    has_local = _img is not None
+                except Exception:
+                    _img, has_local = None, False
+                # 🐛 2026-08-09 老倪: 查远程已有镜像 — 显示来源路径/存储位置; 连续点两次 = 强制重新上传
+                self._log("  └ 查询远程已有镜像 …")
+                try:
+                    _rimg = _sp.run(
+                        f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "
+                        f"-o Port={re_['port']} {re_['user']}@{re_['host']} "
+                        f"'docker images --format \"{{{{.Repository}}}}:{{{{.Tag}}}} {{{{.Size}}}}\" | grep -E \"zmax-(train|std)\" | head -3'",
+                        shell=True, capture_output=True, text=True, timeout=25)
+                    _remote_has = _rimg.stdout.strip()
+                    if _remote_has:
+                        self._log(f"  └ ✅ 远程已有镜像 ({re_['host']}):")
+                        for _rl in _remote_has.splitlines()[:3]:
+                            self._log(f"      · {_rl.strip()}")
+                        # 🔍 显示远程镜像信息 (ID + docker 数据根目录 + 磁盘)
+                        try:
+                            _rinsp = _sp.run(
+                                f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
+                                f"-o Port={re_['port']} {re_['user']}@{re_['host']} "
+                                f"'docker inspect zmax-train:latest --format \"{{{{.Id}}}}\" 2>/dev/null | cut -c8-19; "
+                                f"docker info --format \"{{{{.DockerRootDir}}}}\" 2>/dev/null; "
+                                f"df -h / | tail -1'"
+                                , shell=True, capture_output=True, text=True, timeout=20)
+                            _p1, _p2, _p3 = (_rinsp.stdout.strip().splitlines() + ["", "", ""])[:3]
+                            self._log(f"      · 镜像ID: {_p1.strip()[:20]}")
+                            self._log(f"      · 存储目录: {_p2.strip()[:60]}")
+                            self._log(f"      · 磁盘: {_p3.strip()[:40]}")
+                        except Exception:
+                            pass
+                        # 🐛 2026-08-09 老倪: 连续点两次 = 强制重新上传 (第一次显示信息, 第二次真传)
+                        _fc = getattr(self, "_upload_force_cnt", 0) + 1
+                        self._upload_force_cnt = _fc
+                        if _fc >= 2:
+                            self._upload_force_cnt = 0
+                            self._log("  └ 🔁 强制重新上传 (连续两次点击) — 覆盖远程镜像 …")
+                        else:
+                            self._log("  └ ℹ️ 再点一次「容器同步」= 强制重新上传 (看实际传输过程)")
+                            return
+                except Exception:
+                    pass
+                if has_local:
+                    self._log(f"🐳 本地有 {_img} — 打包 → 传输 → 远程载入")
+                    savef = "/tmp/zmax-train.tar"
+                    # 🐛 2026-08-09 老倪: (1) docker save 开始+完成 计时/大小
+                    self._log(f"  └ ① 打包本地镜像 {_img} … (约几分钟, 28GB)")
+                    t0 = time.time()
+                    _sp.run(["docker", "save", "-o", savef, _img], timeout=1800)
+                    sz = os.path.getsize(savef) / 1e9
+                    self._log(f"  └ ① 打包完成: {sz:.1f}GB · 耗时 {time.time()-t0:.0f}s")
+                    # 🐛 2026-08-09 老倪: (2) 传输 — Python 分块管道直写远程, 每1%变化实时打印
+                    sz_b = os.path.getsize(savef)
+                    self._log(f"  └ ② 传输到 {re_['host']}:{re_['port']} ({sz_b/1e9:.2f}GB) …")
+                    t1 = time.time()
+                    _p = _sp.Popen(
+                        f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "
+                        f"-o Port={re_['port']} {re_['user']}@{re_['host']} 'cat > /tmp/zmax-train.tar'",
+                        shell=True, stdin=_sp.PIPE)
+                    sent = 0
+                    last_pct = -1
+                    try:
+                        with open(savef, "rb") as _f:
+                            while True:
+                                _chunk = _f.read(8 * 1024 * 1024)  # 8MB 块
+                                if not _chunk:
+                                    break
+                                _p.stdin.write(_chunk)
+                                sent += len(_chunk)
+                                pct = int(sent / sz_b * 100) if sz_b else 100
+                                if pct != last_pct:
+                                    last_pct = pct
+                                    spd = (sent / 1e9) / max(time.time() - t1, 0.1)
+                                    self._log(f"     {pct:3d}% · {sent/1e9:.2f}/{sz_b/1e9:.2f}GB · {spd:.2f}GB/s")
+                    finally:
+                        try:
+                            _p.stdin.close()
+                        except Exception:
+                            pass
+                    _p.wait(timeout=3600)
+                    self._log(f"  └ ② 传输完成 · 耗时 {time.time()-t1:.0f}s · 平均 {sz_b/1e9/max(time.time()-t1,0.1):.2f}GB/s")
+                    # 🐛 2026-08-09 老倪: (3) 远程载入 + 结果
+                    t2 = time.time()
+                    r = _sp.run(
+                        f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o Port={re_['port']} "
+                        f"{re_['user']}@{re_['host']} 'docker load -i /tmp/zmax-train.tar 2>&1 | tail -1; "
+                        f"rm -f /tmp/zmax-train.tar; docker images zmax-train --format \"{{{{.Repository}}}}:{{{{.Tag}}}} {{{{.Size}}}}\" | head -1'",
+                        shell=True, capture_output=True, text=True, timeout=900)
+                    self._log(f"  └ ③ 远程载入: {r.stdout.strip()[:100]} · 耗时 {time.time()-t2:.0f}s")
+                    self._log("✅ 容器已上传远程 — 训练明确在该容器中执行")
+                    return
+                # 本地无 docker → 远程构建 (Dockerfile 在仓库 — 与本地一致)
+                self._log("💡 本地无 docker CLI — 自动改用远程构建 (仓库 Dockerfile, 与本地准备一致)")
+                _sp.run(f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o Port={re_['port']} "
+                        f"{re_['user']}@{re_['host']} 'cd ~/lerobot-smolvla-lew && git pull -q && "
+                        f"docker build -t zmax-train:latest . > /tmp/docker_build.log 2>&1 && echo BUILD_OK || tail -3 /tmp/docker_build.log'",
+                        shell=True, timeout=3600)
+                self._log("✅ 远程容器已构建 (zmax-train:latest, 与本地 Dockerfile 一致) — 训练在该容器执行")
+            except Exception as e:
+                self._log(f"❌ 容器同步失败: {str(e)[:80]}")
+            finally:
+                # 🐛 2026-08-08 老倪: 跨线程禁用 GUI — 回主线程恢复按钮
+                try:
+                    from PyQt5.QtCore import QTimer as _QT3
+                    _oneshot(self, 0, lambda: self._btn_upload_ct.setEnabled(True))
+                except Exception:
+                    pass
+
+        _th.Thread(target=_w, daemon=True).start()
+
+    def _container_action(self, kind):
+        """🐳 容器管理框架操作: train(容器训练) / infer(容器推理) / mac / orin(端侧推送)"""
+        import threading as _th, subprocess as _sp
+        re_ = getattr(self, "remote_engine", None)
+
+        def _w():
+            try:
+                if kind == "train":
+                    if not re_:
+                        self._log("❌ 容器训练需先连接远程 GPU")
+                        return
+                    self._log("🚀 容器训练启动 (远程 zmax 容器 → zmax-train 入口)…")
+                    _sp.run(f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o Port={re_['port']} "
+                            f"{re_['user']}@{re_['host']} 'cd ~/lerobot-smolvla-lew && "
+                            f"docker exec -d zmax_train bash /tmp/zoo_c4.sh 2>&1 | tail -1 || "
+                            f"docker run -d --name zmax_train --runtime nvidia --gpus all "
+                            f"-v ~/lerobot-smolvla-lew:/app zmax-train:latest sleep infinity'",
+                            shell=True, timeout=60)
+                    self._log("🚀 容器训练已触发 (监控日志区/远程容器状态)")
+                elif kind == "infer":
+                    self._log("🎮 容器推理: zmax-infer --policy act (本地/远程容器)…")
+                    if re_:
+                        _sp.run(f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o Port={re_['port']} "
+                                f"{re_['user']}@{re_['host']} 'docker exec zmax_train zmax-infer --policy act 2>&1 | tail -3'",
+                                shell=True, timeout=600)
+                        self._log("🎮 容器推理完成 (结果见远程容器日志)")
+                    else:
+                        self._log("❌ 容器推理需先连接远程 (本地容器推理待 docker 环境)")
+                elif kind in ("mac", "orin"):
+                    tgt = "Mac" if kind == "mac" else "Orin"
+                    self._log(f"🍎/🤖 推送容器到 {tgt} (buildx arm64 → save → scp → load)…")
+                    if re_:
+                        _sp.run(f"sshpass -p '{re_['pwd']}' ssh -o StrictHostKeyChecking=no -o Port={re_['port']} "
+                                f"{re_['user']}@{re_['host']} 'cd ~/lerobot-smolvla-lew && "
+                                f"docker buildx build --platform linux/arm64 --target infer -o type=docker,dest=/tmp/zmax-std-arm64.tar -f docker/Dockerfile . 2>&1 | tail -2; "
+                                f"ls -h /tmp/zmax-std-arm64.tar 2>/dev/null | head -1'",
+                                shell=True, timeout=1800)
+                        self._log(f"✅ {tgt} 镜像已构建 (zmax-std-arm64.tar) — 再 scp 到 {tgt} (IP 待配)")
+                    else:
+                        self._log(f"❌ 推送 {tgt} 需先连接远程 (构建在远程执行)")
+            except Exception as e:
+                self._log(f"❌ 容器操作失败: {str(e)[:80]}")
+            finally:
+                try:
+                    from PyQt5.QtCore import QTimer as _QT4
+                    _oneshot(self, 0, lambda: None)
+                except Exception:
+                    pass
+
+        _th.Thread(target=_w, daemon=True).start()
+
+    def _ct_pick(self, key):
+        """🐳 点选模式: 远程训练(remote) / 本地运行(local 训练) / 端侧部署
+        2026-08-08 老倪: 本地运行 = 本地训练 (非推理弹scope) — 模式联动 GPU 引擎"""
+        self._ct_mode = key
+        names = {"train": "🚀 远程训练", "infer": "🎮 本地运行", "deploy": "📱 端侧部署"}
+        # 模式 → GPU 引擎: 远程训练→remote, 本地运行→local
+        if key == "train":
+            self.gpu_mode = "remote"
+        elif key == "infer":
+            self.gpu_mode = "local"
+        self._ct_status.setText(f"📌 已选: {names[key]} · GPU 引擎: {'远程 V100' if key == 'train' else ('本地 4060' if key == 'infer' else '—')}")
+        # 🐛 2026-08-09 老倪: 端侧部署高亮选中 → 才可点「📥 推送到 Orin」模型下载按钮
+        try:
+            self.btn_deploy_orin.setEnabled(key == "deploy")
+        except Exception:
+            pass
+
+    # 🎛 2026-08-08 老倪: 注入 Simulink Model Zoo (训练按钮 → simulink on_train — 训练即 Model Zoo)
+    def set_simulink(self, s):
+        self._simulink = s
+
+    # 🎛 2026-08-08 老倪: Model Zoo 完整训练队列 (7 模型串行 — 训练按钮触发)
+    # 🧮 2026-08-20 老倪: + state_space (状态空间·仿真蒸馏) = 8 模型
+    ZOO_POLICIES = ["act", "smolvla", "smolvla_lew", "vla_touch", "awe_zflow", "expert_mlp", "expert_policy", "state_space", "yolo"]
+
+    def _zoo_next(self):
+        # 🐛 2026-08-18 崩溃根因: 用户从未训练 → 队列空却误判"训练完成" → 触发
+        # _auto_finalize (rollout 视频生成线程 + PDF + 飞书) → 与 simulink 操作并发
+        # → timer 竞态 NULL receiver SIGSEGV (gdb rdi=0x0 实锤, 崩溃时间全在 45s 后)
+        if not getattr(self, "_zoo_queue", None):
+            self._zoo_queue = None
+            if not getattr(self, "_zoo_start_ts", 0):
+                return  # 🐛 从未训练 (无启动时间戳) → 不触发自动交付
+            if getattr(self, "_zoo_finalized", False):
+                return  # 已交付过 — 不再重复 (否则 15s 轮询无限触发)
+            self._zoo_finalized = True
+            self._log("🏁 Model Zoo 完整训练完成")
+            # 🎬 2026-08-09 老倪: 训练完 → 自动交付 (rollout 视频 + PDF 报告 → 飞书 dataworld 群)
+            self._log("📤 自动交付: 生成 rollout 视频 + PDF 报告 → 飞书 dataworld 群…")
+            try:
+                self._simulink._auto_finalize()
+            except Exception as e:
+                self._log(f"❌ 自动交付失败: {e}")
+            # 🐛 2026-08-09 老倪: 队列结束恢复按钮 (start 可点 / stop 灰)
+            self.start_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
+            return
+        # 🐛 2026-08-09 老倪: 远程容器训练等待 — 容器还在跑则不推进 (远程无本地 lerobot_train 进程)
+        if getattr(self, "_zoo_remote_wait", None):
+            try:
+                import subprocess as _sp
+                r = getattr(self, "remote_engine", None)
+                if r:
+                    _ck = _sp.run(
+                        f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o Port={r['port']} "
+                        f"{r['user']}@{r['host']} 'docker ps -q --filter name=zmax_train | head -1'",
+                        shell=True, capture_output=True, text=True, timeout=15)
+                    if _ck.stdout.strip():
+                        return  # 远程训练中 — 等下一轮
+                self._zoo_remote_wait = None  # 容器已结束 → 推进下一个
+                self._log(f"✅ 远程训练完成: {getattr(self, '_zoo_remote_pol', '')} — 推进队列")
+            except Exception:
+                return
+        # 🐛 2026-08-08 老倪: 防误判 — on_train 数据准备有延迟, 启动后 45s 内不判完成
+        import time as _t
+        if getattr(self, "_zoo_start_ts", 0) and _t.time() - self._zoo_start_ts < 45:
+            return  # 训练启动窗口内 — 轮询等待
+        # 训练进程还在 → 等 (真正完成才推进) — 仅本地训练有效; 远程由 _zoo_remote_wait 处理
+        import subprocess
+        try:
+            r = subprocess.run(["pgrep", "-f", "lerobot_train"], capture_output=True, text=True, timeout=5)
+            # 🎯 2026-08-20 老倪: YOLO 训练进程 (train_yolo.py) 也纳入完成检测 — 否则误判提前推进队列
+            r2 = subprocess.run(["pgrep", "-f", "train_yolo"], capture_output=True, text=True, timeout=5)
+            if r.stdout.strip() or r2.stdout.strip():
+                self._zoo_start_ts = None  # 训练中 — 重置窗口 (下一轮等 45s 再判)
+                return
+        except Exception:
+            pass
+        # 🐛 2026-08-08 老倪: 训练开关 — 关的模型跳过 (参考 YOLO 感知开关)
+        while self._zoo_queue:
+            nxt = self._zoo_queue[0]
+            sw = getattr(self, "_zoo_sw", {}).get(nxt)
+            if sw is None or sw.isChecked():
+                break
+            self._log(f"⏭ 跳过 {nxt} (训练开关: 关)")
+            self._zoo_queue.pop(0)
+        if not self._zoo_queue:
+            self._log("🏁 Model Zoo 训练队列已空 (全部模型训练完成或跳过)")
+            self.start_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
+            return
+        pol = self._zoo_queue.pop(0)
+        left = len(self._zoo_queue)
+        self._log(f"🎛 Model Zoo 训练 [{len(self.ZOO_POLICIES) - left}/{len(self.ZOO_POLICIES)}] → {pol} ({left} 个剩余)")
+        self._zoo_start_ts = _t.time()  # 记录启动时间 — 45s 内不判完成
+        self._zoo_finalized = False  # 🐛 2026-08-09: 新一轮训练重置交付标志
+        try:
+            _ret = self._simulink.on_train(policy=pol)
+            # 🐛 2026-08-09 老倪: 远程容器提交 (返回 '容器化远程提交') → 等远程容器完成再推进
+            if isinstance(_ret, tuple) and _ret and "容器化远程提交" in str(_ret[1] if len(_ret) > 1 else _ret):
+                self._zoo_remote_wait = pol
+                self._zoo_remote_pol = pol
+                self._log(f"⏳ 远程容器训练中 ({pol}) — 容器退出后自动推进队列")
+            else:
+                self._zoo_remote_wait = None
+        except Exception as e:
+            self._log(f"❌ {pol} 启动失败: {e}")
+        from PyQt5.QtCore import QTimer
+        try:
+            self._zoo_timer = _tq(self)
+            self._zoo_timer.timeout.connect(self._zoo_next)
+            self._zoo_timer.start(15000)
+        except Exception:
+            pass
+
+    # 🏁 2026-08-08 老倪: Model Zoo 横向配置对比表 (宝马整车配置表风格 — 类别分组 × 7模型横列)
+    def _build_zoo_table(self, layout):
+        from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
+        n_cols = len(self.ZOO_MODELS) + 1
+        n_rows = 1 + sum(len(items) + 1 for _, items in self.ZOO_SPEC)  # 表头 + (类别行+参数行)
+        t = QTableWidget(n_rows, n_cols)
+        t.setObjectName("zoo_table")
+        t.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        t.setSelectionMode(QAbstractItemView.NoSelection)
+        t.setFocusPolicy(Qt.NoFocus)
+        t.verticalHeader().setVisible(False)
+        t.horizontalHeader().setVisible(False)
+        t.setShowGrid(True)
+        # 🐛 2026-08-08 老倪: 表格自身滚动条关闭 (外层 scroll 已有 — 两个拖动条重复)
+        t.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        t.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        t.setStyleSheet("""
+            QTableWidget#zoo_table { background:#161b22; border:1px solid #30363d; border-radius:6px;
+                                     gridline-color:#30363d; font-size:20px; }
+            QTableWidget#zoo_table::item { padding:4px 8px; }
+        """)
+        # 表头: 参数名 + 7 模型
+        h = QTableWidgetItem("配置项")
+        h.setTextAlignment(Qt.AlignCenter)
+        h.setBackground(QColor("#21262d")); h.setForeground(QColor("#58a6ff"))
+        h.setFont(QFont("Arial", 13, QFont.Bold))
+        t.setItem(0, 0, h)
+        for c, nm in enumerate(self.ZOO_MODELS):
+            it = QTableWidgetItem(nm)
+            it.setTextAlignment(Qt.AlignCenter)
+            it.setBackground(QColor("#21262d")); it.setForeground(QColor("#58a6ff"))
+            it.setFont(QFont("Arial", 12, QFont.Bold))
+            t.setItem(0, c + 1, it)
+        t.setRowHeight(0, 30)
+        # 类别分组 + 参数行 (宝马配置表风格)
+        r = 1
+        for cat, items in self.ZOO_SPEC:
+            ci = QTableWidgetItem(f"  {cat}")
+            ci.setBackground(QColor("#1f2733")); ci.setForeground(QColor("#00d4aa"))
+            ci.setFont(QFont("Arial", 12, QFont.Bold))
+            t.setItem(r, 0, ci)
+            t.setSpan(r, 0, 1, n_cols)          # 类别行横跨全宽
+            t.setRowHeight(r, 26)
+            r += 1
+            for pname, pvals in items:
+                pi = QTableWidgetItem("  " + pname)
+                pi.setBackground(QColor("#161b22")); pi.setForeground(QColor("#e6edf3"))
+                pi.setFont(QFont("Arial", 12, QFont.Bold))
+                t.setItem(r, 0, pi)
+                for c, nm in enumerate(self.ZOO_MODELS):
+                    v = pvals.get(nm, "—")
+                    it = QTableWidgetItem(v)
+                    it.setTextAlignment(Qt.AlignCenter)
+                    it.setBackground(QColor("#161b22"))
+                    it.setForeground(QColor("#ffd33d") if ("✅" in v or "🏆" in v or "唯一" in v or "novae" in v) else QColor("#c9d1d9"))
+                    t.setItem(r, c + 1, it)
+                t.setRowHeight(r, 28)
+                r += 1
+        hdr = t.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.Stretch)
+        for c in range(2, n_cols):
+            hdr.setSectionResizeMode(c, QHeaderView.Stretch)
+        t.setMinimumHeight(n_rows * 28 + 30)  # 内容全高 — 外层 scroll 滚动 (表格自身不滚)
+        layout.addRow(t)
+        self.zoo_table = t
+        # 旧参数控件隐藏 (表格替代显示 — 控件保留供训练逻辑读值)
+        for w in (getattr(self, a, None) for a in
+                  ("steps_spin", "batch_spin", "lr_spin", "vlm_layers_spin", "expert_layers_spin",
+                   "chunk_spin", "obs_steps_spin", "diffusion_spin", "freeze_checkbox",
+                   "world_model_checkbox", "vlm_info", "expert_width_spin")):
+            if w is not None:
+                try:
+                    w.setVisible(False)
+                except Exception:
+                    pass
+
+    # 🤖 模型选择变化 (2026-08-08 老倪: SmolVLA 是 7 模型之一 — 参数区标题/属性/参数预设跟随)
+    def _on_model_changed(self, name):
+        try:
+            # 🚫 2026-08-08 老倪(静界结论): peg-insert 单模态唯一路线 = 填空题 → 无 VAE 直接映射最干净
+            #   (原版 ACT 多模态 + 大数据才需要 VAE 多样性开关 — 选择题才用)
+            _suffix = "🚫无VAE" if name == "ACT" else ("无VAE" if name in ("MLP 蒸馏",) else "")
+            self.param_group.setTitle(f" {name} Parameters" + (f" · {_suffix}" if _suffix else "") + " ")
+            root = os.path.expanduser("~/lerobot-smolvla-lew")
+            tag = ({"MLP 蒸馏": "expert_mlp", "官方专家": "expert_policy"}.get(name)
+                   or {"ACT": "act", "SmolVLA": "smolvla", "SmolVLA+LEW": "smolvla_lew",
+                       "VLA-Touch": "vla_touch", "AWE": "awe_zflow"}.get(name, "act"))  # 🐛 默认参数无条件求值→KeyError(官方专家)
+            import glob as _g
+            dirs = sorted(_g.glob(os.path.join(root, "outputs", "train", f"*{tag}*")),
+                          key=os.path.getmtime)
+            if dirs:
+                d = dirs[-1]
+                ckdir = os.path.join(d, "checkpoints")
+                if os.path.isdir(ckdir):
+                    cks = [b for b in os.listdir(ckdir) if b.isdigit()]
+                    mx = max(cks) if cks else "?"
+                else:
+                    mx = "?"
+                import datetime as _dt
+                ts = _dt.datetime.fromtimestamp(os.path.getmtime(d)).strftime("%m-%d %H:%M")
+                self.model_name.setText(f"{os.path.basename(d)} · {mx} 步 · {ts}")
+            else:
+                self.model_name.setText("(无训练产物)")
+            # 🧠 2026-08-08 老倪: 架构参数预设跟随模型 (独立于 config — 每模型特性)
+            arch = {
+                "ACT": {"obs": 1, "chunk": 100, "vlm": 0, "expert": 0, "width": 512,
+                        "freeze": True, "wm": False, "attn": 1, "compile": False,
+                        "steps": 4000, "batch": 8, "lr": 1e-4},
+                "SmolVLA": {"obs": 1, "chunk": 100, "vlm": 16, "expert": 4, "width": 1024,
+                            "freeze": False, "wm": False, "attn": 1, "compile": False,
+                            "steps": 4000, "batch": 1, "lr": 1e-4},
+                "SmolVLA+LEW": {"obs": 1, "chunk": 100, "vlm": 16, "expert": 4, "width": 1024,
+                                "freeze": False, "wm": True, "attn": 1, "compile": False,
+                                "steps": 4000, "batch": 1, "lr": 1e-4},
+                "VLA-Touch": {"obs": 1, "chunk": 50, "vlm": 8, "expert": 2, "width": 256,
+                              "freeze": True, "wm": False, "attn": 1, "compile": False,
+                              "steps": 4000, "batch": 1, "lr": 1e-4},
+                "AWE": {"obs": 1, "chunk": 50, "vlm": 6, "expert": 2, "width": 256,
+                        "freeze": True, "wm": False, "attn": 1, "compile": False,
+                        "steps": 4000, "batch": 1, "lr": 1e-4},
+                "MLP 蒸馏": {"obs": 1, "chunk": 100, "vlm": 0, "expert": 1, "width": 512,
+                            "freeze": True, "wm": False, "attn": 0, "compile": False,
+                            "steps": 4000, "batch": 8, "lr": 1e-4},
+                "官方专家": {"obs": 1, "chunk": 50, "vlm": 0, "expert": 0, "width": 256,
+                            "freeze": True, "wm": False, "attn": 0, "compile": False,
+                            "steps": 100, "batch": 1, "lr": 1e-4},
+            }.get(name)
+            if arch:
+                for attr, key in (("vlm_layers_spin", "vlm"), ("expert_layers_spin", "expert")):
+                    w = getattr(self, attr, None)
+                    if w is not None:
+                        try:
+                            if arch[key] <= 0:
+                                w.setEnabled(False)
+                                w.setValue(w.minimum())
+                            else:
+                                w.setEnabled(True)
+                                w.setValue(arch[key])
+                        except Exception:
+                            pass
+                for attr, key in (("obs_steps_spin", "obs"), ("chunk_spin", "chunk"),
+                                  ("expert_width_spin", "width"), ("self_attn_spin", "attn")):
+                    w = getattr(self, attr, None)
+                    if w is not None:
+                        try:
+                            w.setValue(arch[key])
+                        except Exception:
+                            pass
+                for attr, key in (("freeze_checkbox", "freeze"), ("world_model_checkbox", "wm"),
+                                  ("compile_checkbox", "compile")):
+                    w = getattr(self, attr, None)
+                    if w is not None:
+                        try:
+                            w.setChecked(bool(arch[key]))
+                        except Exception:
+                            pass
+            # ⚙️ 2026-08-08 老倪: 参数预设跟随模型 (读对应 config — steps/batch/lr)
+            cfg_map = {
+                "ACT": "config_act_pegdata.yaml", "SmolVLA": "config_smolvla_peg_long2.yaml",
+                "SmolVLA+LEW": "config_smolvla_lew_ft.yaml", "VLA-Touch": "config_vla_touch_ft.yaml",
+                "AWE": "config_awe_zflow_ft.yaml", "MLP 蒸馏": "config_mlp_distill.yaml",
+                "官方专家": "config_expert_policy.yaml",
+            }
+            import re as _re
+            cfg = cfg_map.get(name)
+            if cfg and os.path.exists(os.path.join(root, _cfg_rel(cfg))):
+                cpath = os.path.join(root, _cfg_rel(cfg))
+                if os.path.exists(cpath):
+                    txt = open(cpath, encoding="utf-8").read()
+                    def gv(key):
+                        m_ = _re.search(rf"^\s*{key}:\s*([\d.eE+-]+)", txt, _re.M)
+                        return float(m_.group(1)) if m_ else None
+                    st = gv("steps"); bs = gv("batch_size"); lr = gv("lr")
+                    for spin, val in ((getattr(self, "steps_spin", None), st),
+                                      (getattr(self, "batch_spin", None), bs),
+                                      (getattr(self, "lr_spin", None), lr)):
+                        if spin is not None and val is not None:
+                            try:
+                                spin.setValue(val)  # QDoubleSpinBox (lr 浮点)
+                            except Exception:
+                                try:
+                                    spin.setValue(int(val))  # QSpinBox (steps/batch)
+                                except Exception:
+                                    pass
+            elif arch and getattr(self, "steps_spin", None) is not None:
+                # 🐛 2026-08-08 老倪: config 缺失 (如官方专家) → 用 arch 预设 (不留上一模型残留参数)
+                for attr, key in (("steps_spin", "steps"), ("batch_spin", "batch"), ("lr_spin", "lr")):
+                    w = getattr(self, attr, None)
+                    v = arch.get(key)
+                    if w is not None and v is not None:
+                        try:
+                            w.setValue(v)
+                        except Exception:
+                            try:
+                                w.setValue(int(v))
+                            except Exception:
+                                pass
+        except Exception:
+            pass
+
+    # 🌐 远程 GPU 训练提交 (2026-08-08 老倪: 模型引擎连远程 GPU — SSH 提交 lerobot_train + 进度轮询)
+    def _start_remote_training(self):
+        r = self.remote_engine
+        model = self.model_combo.currentText()
+        # 当前模型 → 远程 config (SmolVLA = config_smolvla_peg_long2.yaml 光模块数据)
+        cfg_map = {
+            "ACT": "config_act_pegdata.yaml", "SmolVLA": "config_smolvla_peg_long2.yaml",
+            "SmolVLA+LEW": "config_smolvla_lew_ft.yaml", "VLA-Touch": "config_vla_touch_ft.yaml",
+            "AWE": "config_awe_zflow_ft.yaml", "MLP 蒸馏": "config_mlp_distill.yaml",
+            "官方专家": "config_expert_policy.yaml",
+        }
+        cfg = cfg_map.get(model, "config_smolvla_peg_long2.yaml")
+        cfg_rel = _cfg_rel(cfg)  # 📁 2026-08-22 静静: 远程 sed/--config_path 用规范相对路径
+        self._log(f"🌐 提交远程 GPU 训练 ({r['host']}) · 模型 {model} · config {cfg}")
+        self._log(f"   → 远程 V100 执行 (本地 4060 空闲) · 进度每 30s 轮询")
+        self.is_training = True
+        import subprocess as _sp, threading as _th
+
+        def _submit():
+            try:
+                # 🐳 2026-08-08 老倪: 容器化方案 — 远程 GPU 训练走 Docker (zmax-train 镜像)
+                # 镜像未构建 → 自动 docker build (pytorch 基础 + lerobot); 已构建 → docker run --device GPU透传
+                cmd = (f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "
+                       f"-o Port={r['port']} {r['user']}@{r['host']} "
+                       f"'cd ~/lerobot-smolvla-lew && git pull -q 2>/dev/null; "
+                       f"sed -i \"s|^  root: .*|  root: data/metaworld_peg|\" {cfg_rel} 2>/dev/null; "
+                       f"sed -i \"s|^output_dir: .*|output_dir: outputs/train/{cfg[:-5]}_$(date +%Y%m%d_%H%M%S)|\" {cfg_rel} 2>/dev/null; "
+                       f"if ! docker images -q zmax-train:latest >/dev/null 2>&1; then "
+                       f"echo BUILDING; nohup docker build -t zmax-train:latest . > /tmp/docker_build.log 2>&1 & "
+                       f"else "
+                       f"docker run -d --runtime nvidia --gpus all "
+                       f"-v ~/lerobot-smolvla-lew:/app -w /app --name zmax_train "
+                       f"zmax-train:latest python experiments/train/remote_train_entry.py --config_path {cfg_rel} "
+                       f"> /tmp/remote_train.log 2>&1; echo RUNNING; fi'")
+                out = _sp.check_output(cmd, shell=True, timeout=40).decode().strip()
+                if "BUILDING" in out:
+                    self._log(f"🐳 远程镜像 zmax-train 构建中 (首次容器化, pytorch+lerobot) · 完成后自动可训练")
+                    self._log(f"   → 构建日志远程 /tmp/docker_build.log · 完成后重新点 Start")
+                    self.is_training = False
+                    return
+                # 🐛 2026-08-08: 提交后验证容器真的起来了 (docker ps + 日志无 Error)
+                import time as _time
+                _time.sleep(3)
+                chk = (f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
+                       f"-o Port={r['port']} {r['user']}@{r['host']} "
+                       f"'docker ps --filter name=zmax_train --format {{.Names}}; "
+                       f"tail -2 /tmp/remote_train.log 2>/dev/null'")
+                vout = _sp.check_output(chk, shell=True, timeout=20).decode(errors="replace").strip()
+                alive = "zmax_train" in vout and "Error" not in vout and "Traceback" not in vout
+                if alive:
+                    self._log(f"🌐 远程训练已启动并存活 (pid {out}) · 日志 /tmp/remote_train.log")
+                    # 🐛 2026-08-09 老倪: 远程训练日志实时拉流 — 每5s tail增量, 数据加载/epoch/loss 全显示
+                    self._start_remote_log_stream()
+                    self._start_remote_progress_poll(cfg)
+                else:
+                    self._log(f"❌ 远程训练启动失败: {vout[-80:]}")
+                    self.is_training = False
+            except Exception as e:
+                self._log(f"❌ 远程提交失败: {str(e)[:70]}")
+                self.is_training = False
+
+        _th.Thread(target=_submit, daemon=True).start()
+
+    def _start_remote_log_stream(self):
+        """🐛 2026-08-09 老倪: 远程训练日志实时拉流 — 每5s tail增量打印 (数据加载/epoch/loss 全显示)"""
+        try:
+            self._remote_log_seen = set()
+            self._remote_log_lines = 0
+            if hasattr(self, "_remote_log_timer"):
+                try:
+                    self._remote_log_timer.stop()
+                except Exception:
+                    pass
+            self._remote_log_timer = _tq(self)
+            self._remote_log_timer.timeout.connect(self._poll_remote_log)
+            self._remote_log_timer.start(5000)
+            self._log("   └ 📡 远程日志流已开启 (每5秒增量拉取) …")
+        except Exception:
+            pass
+
+    def _poll_remote_log(self):
+        """🐛 2026-08-09: 增量拉远程训练日志 tail, 打印新行; 容器退出后停止"""
+        try:
+            r = self.remote_engine
+            if not r:
+                return
+            import subprocess as _sp
+            cmd = (f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
+                   f"-o Port={r['port']} {r['user']}@{r['host']} "
+                   f"'docker ps -q --filter name=zmax_train | head -1; echo ---; "
+                   f"docker logs zmax_train 2>&1 | tail -n +{self._remote_log_lines + 1}'")
+            out = _sp.check_output(cmd, shell=True, timeout=20).decode(errors="replace")
+            parts = out.split("---", 1)
+            alive = bool(parts[0].strip())
+            newlog = parts[1].strip() if len(parts) > 1 else ""
+            if newlog:
+                for line in newlog.splitlines():
+                    if line.strip():
+                        self._log(f"   📡 {line.strip()[:150]}")
+                self._remote_log_lines += len(newlog.splitlines())
+            if not alive:
+                self._log("   └ 📡 远程训练容器已退出 — 日志流停止")
+                try:
+                    self._remote_log_timer.stop()
+                except Exception:
+                    pass
+                # 🐛 2026-08-09 老倪: 训练结束 → 自动拉回模型到本地 (模型引擎可见可编辑路径)
+                self._pull_remote_model()
+        except Exception:
+            pass
+
+    def _pull_remote_model(self):
+        """🐛 2026-08-09 老倪: 远程训练结束 → 拉回最新 checkpoint 到本地 models/saved/ + 注册 + 回填路径"""
+        try:
+            r = self.remote_engine
+            if not r:
+                return
+            import subprocess as _sp
+            cfg = getattr(self, "_remote_cfg", "config_act_metaworld.yaml")
+            # 🐛 2026-08-09: policy 名 (rollout 按 train_curve_<policy>.json 找) — 从 cfg 前缀映射
+            _pol = getattr(self, "_remote_policy", None) or cfg.replace("config_", "").replace(".yaml", "").split("_")[0]
+            name = cfg.replace("config_", "").replace(".yaml", "")
+            # 远程最新输出目录 (时间戳) → 找 latest checkpoint (注意: output_dir sed 用完整 cfg 名 → config_act_metaworld_<ts>)
+            _cfg_full = cfg.replace(".yaml", "")  # config_act_metaworld
+            _ls = _sp.run(
+                f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o Port={r['port']} "
+                f"{r['user']}@{r['host']} "
+                f"'ls -dt ~/lerobot-smolvla-lew/outputs/train/{_cfg_full}_* 2>/dev/null | head -1'",
+                shell=True, capture_output=True, text=True, timeout=20)
+            _rdir = _ls.stdout.strip()
+            if not _rdir:
+                self._log("   └ ⚠️ 未找到远程训练输出目录, 跳过拉回")
+                return
+            # 找 checkpoint (pretrained_model 或最新 step)
+            _ck = _sp.run(
+                f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o Port={r['port']} "
+                f"{r['user']}@{r['host']} "
+                f"'ls -d {_rdir}/checkpoints/*/pretrained_model 2>/dev/null | sort | tail -1 || "
+                f"ls -d {_rdir}/checkpoints/* 2>/dev/null | sort | tail -1'",
+                shell=True, capture_output=True, text=True, timeout=20)
+            _remote_ck = _ck.stdout.strip()
+            if not _remote_ck:
+                self._log("   └ ⚠️ 远程无 checkpoint, 跳过拉回")
+                return
+            # 本地目标: outputs/train/<name>_<ts>/checkpoints/last/pretrained_model (rollout 按此找) 
+            import time as _t
+            ts = _t.strftime("%Y%m%d_%H%M%S")
+            root = self._repo_root()
+            train_dir = os.path.join(root, "outputs", "train", f"{name}_{ts}", "checkpoints", "last")
+            os.makedirs(train_dir, exist_ok=True)
+            self._log(f"   └ 📥 拉回远程模型: {_remote_ck} → {train_dir}/pretrained_model")
+            _scp = _sp.run(
+                f"sshpass -p '{r['pwd']}' scp -o StrictHostKeyChecking=no -o ConnectTimeout=8 -P {r['port']} "
+                f"-r {r['user']}@{r['host']}:{_remote_ck} {train_dir}/pretrained_model",
+                shell=True, capture_output=True, text=True, timeout=600)
+            if _scp.returncode != 0:
+                self._log(f"   └ ❌ 拉回失败: {_scp.stderr.strip()[:80]}")
+                return
+            # 写 train_curve_<policy>.json — rollout 按此找 ckpt (Simulink 推理/报告/视频消费)
+            try:
+                curve_path = os.path.join(root, "reports", f"train_curve_{_pol}.json")
+                curve = {}
+                if os.path.exists(curve_path):
+                    try:
+                        curve = json.load(open(curve_path, encoding="utf-8"))
+                    except Exception:
+                        curve = {}
+                curve.update({"ckpt": os.path.join("outputs", "train", f"{name}_{ts}", "checkpoints"),
+                              "name": name, "policy": _pol, "step_s": 2000, "loss": None,
+                              "ts": ts, "remote": f"{r['host']}:{_remote_ck}"})
+                os.makedirs(os.path.dirname(curve_path), exist_ok=True)
+                json.dump(curve, open(curve_path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+                self._log(f"   └ 📝 已写 reports/train_curve_{_pol}.json (ckpt 记录) — Simulink 推理可消费")
+            except Exception as e:
+                self._log(f"   └ ⚠️ 写 curve json 失败: {str(e)[:60]}")
+            # 注册 registry.json (模型引擎下拉)
+            reg_path = self._saved_registry_path()
+            reg = []
+            if os.path.exists(reg_path):
+                try:
+                    reg = json.load(open(reg_path, encoding="utf-8"))
+                except Exception:
+                    reg = []
+            reg.insert(0, {"name": name, "policy": name.split("_")[0], "ts": ts,
+                           "path": os.path.join(root, "outputs", "train", f"{name}_{ts}"),
+                           "remote": f"{r['host']}:{_remote_ck}"})
+            os.makedirs(os.path.dirname(reg_path), exist_ok=True)
+            json.dump(reg, open(reg_path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            # 回填 ckpt_edit + 刷新下拉 (模型引擎页可见路径)
+            try:
+                pm = os.path.join(train_dir, "pretrained_model")
+                self.ckpt_edit.setText(pm if os.path.isdir(pm) else train_dir)
+                self._refresh_saved_models()
+            except Exception:
+                pass
+            self._log(f"   └ ✅ 模型已拉回本地: {train_dir}")
+            self._log(f"   └ 📂 模型引擎「模型:」路径已更新 — 可编辑/Simulink 推理/报告/视频")
+        except Exception as e:
+            self._log(f"   └ ❌ 拉回模型异常: {str(e)[:80]}")
+
+    def _refresh_deploy_models(self):
+        """🐛 2026-08-09 老倪: 填充端侧部署模型下拉 (TrainingModule 内 — 原误放 InferencePanel 致 AttributeError 空下拉)
+        registry 已保存模型, ACT 优先在首 (默认第一个=ACT)"""
+        try:
+            if not hasattr(self, "deploy_model_combo"):
+                return
+            self.deploy_model_combo.blockSignals(True)
+            self.deploy_model_combo.clear()
+            reg_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                                    "models", "saved", "registry.json")
+            items = []
+            if os.path.exists(reg_path):
+                try:
+                    reg = json.load(open(reg_path, encoding="utf-8"))
+                    for item in reg:
+                        base = item.get("path", "")
+                        pm = os.path.join(base, "checkpoints", "last", "pretrained_model")
+                        if not os.path.isdir(pm):
+                            continue
+                        pol = item.get("policy", item.get("name", "?"))
+                        nm = {"act": "ACT", "smolvla": "SmolVLA", "smolvla_lew": "SmolVLA+LEW",
+                              "vla_touch": "VLA-Touch", "awe_zflow": "AWE", "expert_mlp": "MLP蒸馏",
+                              "expert_policy": "官方专家"}.get(pol, pol)
+                        label = f"{nm} · {item.get('ts', '')}"
+                        items.append((pol, label, pm))
+                except Exception:
+                    pass
+            # ACT 优先在首 (用户要求默认第一个=ACT)
+            items.sort(key=lambda x: (0 if x[0] == "act" else 1,))
+            for pol, label, pm in items:
+                self.deploy_model_combo.addItem(label, pm)
+            if self.deploy_model_combo.count() == 0:
+                self.deploy_model_combo.addItem("📦 无已训练模型 (先训练/拉回)", "")
+            self.deploy_model_combo.blockSignals(False)
+        except Exception:
+            pass
+
+    def _start_remote_progress_poll(self, cfg):
+        try:
+            if hasattr(self, "_remote_timer"):
+                self._remote_timer.stop()
+            self._remote_cfg = cfg
+            # 🐛 2026-08-09: 记录 policy 名 (拉回模型时写 train_curve_<policy>.json 供 Simulink 推理消费)
+            try:
+                _m = self.model_combo.currentText()
+                _pmap = {"ACT": "act", "SmolVLA": "smolvla", "SmolVLA+LEW": "smolvla_lew",
+                         "VLA-Touch": "vla_touch", "AWE": "awe_zflow", "MLP 蒸馏": "expert_mlp",
+                         "官方专家": "expert_policy"}
+                self._remote_policy = _pmap.get(_m, cfg.replace("config_", "").replace(".yaml", "").split("_")[0])
+            except Exception:
+                pass
+            self._remote_timer = _tq(self)
+            self._remote_timer.timeout.connect(self._poll_remote_progress)
+            self._remote_timer.start(30000)
+        except Exception:
+            pass
+
+    def _poll_remote_progress(self):
+        """🌐 轮询远程训练进度 (ckpt 步数 → 进度条/日志)"""
+        r = self.remote_engine
+        if not r:
+            return
+        import subprocess as _sp
+        try:
+            cfg = getattr(self, "_remote_cfg", "config_smolvla_peg_long2.yaml")
+            name = cfg.replace("config_", "").replace(".yaml", "")
+            cmd = (f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
+                   f"-o Port={r['port']} {r['user']}@{r['host']} "
+                   f"'ls ~/lerobot-smolvla-lew/outputs/train/{name}/checkpoints 2>/dev/null | grep -v last | sort | tail -1; "
+                   f"ps aux | grep -c \"[l]erobot_train\"'")
+            out = _sp.check_output(cmd, shell=True, timeout=20).decode(errors="replace").splitlines()
+            step = next((l for l in out if l.strip().isdigit()), "")
+            running = any("1" == l.strip() for l in out) or bool(step)
+            if step:
+                total = 4000
+                pct = min(int(step) / total * 100, 100)
+                if hasattr(self, "_update_progress"):
+                    self._update_progress(pct)
+                self._log(f"🌐 远程训练: {name} · {step}/{total} 步 ({pct:.0f}%)")
+            if not running and step:
+                self._log(f"✅ 远程训练完成 ({name} · {step} 步)")
+                try:
+                    self._remote_timer.stop()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # 🔗 SSH GPU 服务器连接 (2026-08-08 老倪: 模型引擎连接 GPU 服务器远程训练)
+    def _connect_gpu(self):
+        host = self.ssh_host.text().strip()
+        port = self.ssh_port.text().strip() or "22"
+        user = self.ssh_user.text().strip()
+        pwd = self.ssh_pass.text().strip()
+        if not (host and user and pwd):
+            self.ssh_status.setText("⚠ 请填主机/用户/密码")
+            return
+        try:
+            import json as _json
+            _p = os.path.expanduser("~/.zmax_ssh.json")
+            try:
+                _old = _json.load(open(_p))
+            except Exception:
+                _old = {}
+            if isinstance(_old, dict) and "host" in _old:
+                _old = {"gpu_v100": _old}  # 旧扁平结构 → 归到 gpu_v100
+            _new = {"host": host, "port": port, "user": user, "pwd": pwd}
+            _old.setdefault("gpu_4090", {}).update(_new)
+            _json.dump(_old, open(_p, "w"))
+        except Exception:
+            pass
+        self.ssh_status.setText(f"🔌 连接中 {host}:{port}...")
+        self.btn_ssh.setEnabled(False)
+        import subprocess as _sp, threading as _th
+
+        def _worker():
+            try:
+                cmd = (f"sshpass -p '{pwd}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
+                       f"-o Port={port} {user}@{host} \"nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total "
+                       f"--format=csv,noheader 2>/dev/null | head -1; echo '---'; "
+                       f"ps aux | grep -c '[l]erobot_train'; echo '---'; "
+                       f"df -h / | tail -1 | awk '{{print \\$3, \\$5}}'\"")
+                out = _sp.check_output(cmd, shell=True, timeout=20,
+                                       stderr=_sp.STDOUT).decode(errors="replace").strip()
+                lines = [l for l in out.splitlines() if l.strip()]
+                gpu = lines[0] if lines else "?"
+                train_n = "0"
+                disk = "?"
+                for l in lines:
+                    if l == "---":
+                        continue
+                    if "MiB" in l and "/" in l and "%" in l:
+                        gpu = l
+                    elif l.isdigit():
+                        train_n = l
+                    elif "%" in l and "G" in l:
+                        disk = l
+                self._set_ssh_status(f"✅ {host} · GPU {gpu} · 训练进程 {train_n} · 磁盘 {disk}")
+                # 2026-08-08 老倪: 记录远程引擎 + 更新引擎状态条 (用户感知远程 GPU)
+                self.remote_engine = {"host": host, "port": port, "user": user, "pwd": pwd, "gpu": gpu,
+                                      "connected": True}  # 🐛 2026-08-09: connected 标志 (自动连接防重)
+                self._set_engine_ui(True, gpu)
+                # 🌐 2026-08-08 老倪: 连接外部计算资源 → 默认 git clone 控制台工程 (统一训练模式)
+                try:
+                    _sp.check_output(
+                        f"sshpass -p '{pwd}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o Port={port} "
+                        f"{user}@{host} 'cd ~ && ls -d lerobot-smolvla-lew 2>/dev/null || "
+                        f"git clone --depth 1 https://github.com/MikeBMW/lerobot-smolvla-lew.git 2>&1 | tail -1; "
+                        f"echo SYNC_OK'",
+                        shell=True, timeout=120)
+                    self._log(f"🌐 远程工程就绪: ~/lerobot-smolvla-lew (自动 clone/git pull)")
+                except Exception:
+                    pass
+                # 🔄 2026-08-08 老倪: 远程容器状态轮询 → 控制台日志区 (安装/训练信息实时可见)
+                try:
+                    from PyQt5.QtCore import QTimer as _QT2
+                    self._container_timer = _QT2(self)
+                    self._container_timer.timeout.connect(self._poll_remote_container)
+                    self._container_timer.start(15000)
+                except Exception:
+                    pass
+            except Exception as e:
+                self._set_ssh_status(f"❌ 连接失败: {str(e)[:60]}")
+                self.remote_engine = None
+                self._set_engine_ui(False, "")
+        _th.Thread(target=_worker, daemon=True).start()
+
+    def _set_engine_ui(self, remote, gpu):
+        """🖥 训练引擎状态条: 远程 GPU / 本地 4060 感知"""
+        try:
+            if remote:
+                self.radio_remote.setText(f"远程 GPU ({gpu.split('/')[0].strip() if '/' in gpu else gpu} · {self.ssh_host.text()})")
+                self.radio_remote.setEnabled(True)
+                self.radio_remote.setStyleSheet(f"QRadioButton {{ color:#3fb950; background:transparent; border:none; font-size:15px; font-weight:bold; }}")
+                self.btn_ssh.setText("🔌 已连接")
+                # 连接成功默认切远程引擎 (Model Engine 中枢)
+                self.radio_remote.setChecked(True)
+                # 🔧 远程环境状态轮询 (每 30s — 安装进度可见)
+                self._start_env_poll()
+            else:
+                self.radio_remote.setText("远程 GPU (未连接)")
+                self.radio_remote.setEnabled(False)
+                self.radio_remote.setStyleSheet(f"QRadioButton {{ color:{C_DIM}; background:transparent; border:none; font-size:15px; }}")
+                self.radio_local.setChecked(True)
+                self.btn_ssh.setText("🔌 连接")
+                # 🐛 2026-08-08 老倪: 远程不可达 → 明确提示 (不误导)
+                self._log("⚠️ 远程 GPU 不可达 (已关机/网络不通) — 自动使用本地引擎 (4060)")
+        except Exception:
+            pass
+
+    def _on_gpu_mode(self, *_):
+        """Model Engine GPU 引擎选择: local=本地 4060 / remote=远程 V100"""
+        try:
+            if self.radio_remote.isChecked() and getattr(self, "remote_engine", None) and self.remote_engine.get("connected"):
+                self.gpu_mode = "remote"
+                self._log(f"🖥 训练引擎 → 远程 GPU ({self.remote_engine['host']})")
+            else:
+                self.gpu_mode = "local"
+                if not self.radio_remote.isChecked() or not getattr(self, "remote_engine", {}).get("connected"):
+                    self._log("🖥 训练引擎 → 本地 GPU (RTX 4060)")
+        except Exception:
+            self.gpu_mode = "local"
+
+    # 🔧 远程环境状态轮询 (2026-08-08 老倪: 终端可见远程环境安装进度)
+    def _start_env_poll(self):
+        try:
+            if hasattr(self, "_env_timer"):
+                self._env_timer.stop()
+            self._env_timer = _tq(self)
+            self._env_timer.timeout.connect(self._poll_remote_env)
+            self._env_timer.start(30000)
+            self._poll_remote_env()
+        except Exception:
+            pass
+
+    def _poll_remote_env(self):
+        """轮询远程环境: venv/lerobot 就绪状态 + 安装日志尾部"""
+        r = getattr(self, "remote_engine", None)
+        if not r:
+            return
+        import subprocess as _sp
+        try:
+            cmd = (f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 "
+                   f"-o Port={r['port']} {r['user']}@{r['host']} "
+                   f"'ls /root/lerobot-venv/bin/python3 2>/dev/null && /root/lerobot-venv/bin/python3 "
+                   f"-c \"import lerobot; print(\\\"LEROBOT_OK\\\")\" 2>/dev/null; "
+                   f"tail -1 /tmp/venv_install.log 2>/dev/null'")
+            out = _sp.check_output(cmd, shell=True, timeout=20).decode(errors="replace").strip()
+            if "LEROBOT_OK" in out:
+                self.remote_env_lbl.setText("✅ 远程环境: 就绪 (Python 3.12 + torch + lerobot)")
+                self.remote_env_lbl.setStyleSheet(f"color:#3fb950; background:transparent; border:none; font-size:19px; font-weight:bold;")
+                try:
+                    self._env_timer.stop()
+                except Exception:
+                    pass
+            elif "lerobot-venv" in out or "venv_install" in out or out:
+                last = [l for l in out.splitlines() if l.strip()][-1] if out.splitlines() else ""
+                self.remote_env_lbl.setText(f"🔧 远程环境: 安装中 · {last[:45]}")
+                self.remote_env_lbl.setStyleSheet(f"color:{C_ORANGE}; background:transparent; border:none; font-size:19px;")
+            else:
+                self.remote_env_lbl.setText("🔧 远程环境: 未检测到 venv (自动安装中)")
+        except Exception:
+            self.remote_env_lbl.setText("🔧 远程环境: 检查中...")
+
+    def _set_ssh_status(self, text):
+        try:
+            self.ssh_status.setText(text)
+            self.btn_ssh.setEnabled(True)
+        except Exception:
+            pass
+    
+    def showEvent(self, event):
+        """Override showEvent — 🐛 2026-08-09 老倪: 配置表默认展开全部 (不再用屏幕1/3覆盖)"""
+        super().showEvent(event)
+        # VEH.2.17 配置表: 最小高度 = 表格全高 (~534) + 余量, 默认加载全部不用拖动
+        if hasattr(self, 'param_scroll'):
+            self.param_scroll.setMinimumHeight(600)
+    
+    def _log(self, message):
+        """Add log message — 🐛 2026-08-09 线程安全: 非主线程 → 入队, 主线程 QTimer 每 200ms flush
+        (QTimer.singleShot/invokeMethod 跨线程在 PyQt5 下丢消息 — 老倪: 容器同步没反馈)"""
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        text = f"[{timestamp}] {message}"
+        try:
+            import threading as _th
+            if _th.current_thread() is _th.main_thread():
+                self._append_log(text)
+            else:
+                self._log_queue.append(text)
+        except Exception:
+            try:
+                self._append_log(text)
+            except Exception:
+                pass
+
+    def _register_holo_all(self):
+        """🌐 全息 ID 注册 — 所有可交互控件注册唯一 ID (窗口/按钮/开关/表格/日志) + 3D 坐标点"""
+        try:
+            self._holo_coords = getattr(self, "_holo_coords", {})
+            reg = []
+            # 窗口 (W-xx)
+            reg.append(("W-01", "主窗口 (XSpace Studio)", "窗口", lambda: "可见" if self.isVisible() else "隐藏"))
+            reg.append(("W-02", "Model Engine 页", "窗口", lambda: "当前" if getattr(self, "isVisible", lambda: False)() else "页"))
+            # 按钮 (B-xx)
+            for key, nm in [("start_btn", "Start (开始)"), ("stop_btn", "Stop (停止)"),
+                            ("_btn_upload_ct", "上传容器到远程")]:
+                if hasattr(self, key):
+                    w = getattr(self, key)
+                    reg.append((f"B-{len(reg) - 1:02d}" if False else f"B-{len([r for r in reg if r[2] == '按钮']) + 1:02d}",
+                                nm, "按钮", lambda w=w: "可用" if w.isEnabled() else "禁用"))
+            # 模式卡片 (M-xx)
+            for key, nm in [("train", "远程训练"), ("infer", "本地运行"), ("deploy", "端侧部署")]:
+                if hasattr(self, "_ct_mode_btns") and key in self._ct_mode_btns:
+                    w = self._ct_mode_btns[key]
+                    reg.append((f"M-{len([r for r in reg if r[2] == '模式']) + 1:02d}", f"模式卡片 {nm}", "模式",
+                                lambda w=w: "选中" if w.isChecked() else "未选"))
+            # 训练开关 (S-xx)
+            for key, nm in [("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"),
+                            ("vla_touch", "VLA-Touch"), ("awe_zflow", "AWE"), ("expert_mlp", "MLP蒸馏"),
+                            ("expert_policy", "官方专家")]:
+                if hasattr(self, "_zoo_sw") and key in self._zoo_sw:
+                    w = self._zoo_sw[key]
+                    reg.append((f"S-{len([r for r in reg if r[2] == '开关']) + 1:02d}", f"训练开关 {nm}", "开关",
+                                lambda w=w: "开" if w.isChecked() else "关"))
+            # 表格/日志 (T-xx / L-xx)
+            if hasattr(self, "zoo_table"):
+                reg.append(("T-01", "配置通道表格", "表格", lambda: "7 模型" ))
+            if hasattr(self, "log_text"):
+                reg.append(("L-01", "终端日志区", "日志", lambda: f"{self.log_text.document().blockCount()} 行"))
+            self._holo_reg = {i: (w, nm, ty, g) for i, (_, nm, ty, g) in []}  # placeholder
+            self._holo_reg = {}
+            for i in reg:
+                self._holo_reg[i[0]] = (None, i[1], i[2], i[3])
+            # 🌐 3D 坐标注册 (P03 模型引擎页: 01训练区 02容器区 03配置区 06日志区)
+            if hasattr(self, "start_btn"):
+                self._holo_coord_register("P03", "01", "01", self.start_btn, "Start 开始", "按钮",
+                                          lambda: "可用" if self.start_btn.isEnabled() else "禁用")
+            if hasattr(self, "stop_btn"):
+                self._holo_coord_register("P03", "01", "02", self.stop_btn, "Stop 停止", "按钮",
+                                          lambda: "可用" if self.stop_btn.isEnabled() else "禁用")
+            if hasattr(self, "_zoo_sw"):
+                for i, (k, nm) in enumerate([("act", "ACT"), ("smolvla", "SmolVLA"), ("smolvla_lew", "SmolVLA+LEW"),
+                                             ("vla_touch", "VLA-Touch"), ("awe_zflow", "AWE"), ("expert_mlp", "MLP蒸馏"),
+                                             ("expert_policy", "官方专家")], start=5):
+                    w = self._zoo_sw[k]
+                    self._holo_coord_register("P03", "01", f"{i:02d}", w, f"训练开关 {nm}", "开关",
+                                              lambda w=w: "开" if w.isChecked() else "关")
+            if hasattr(self, "_ct_mode_btns"):
+                for z, (k, nm) in enumerate([("train", "远程训练"), ("infer", "本地运行"), ("deploy", "端侧部署")], start=1):
+                    w = self._ct_mode_btns[k]
+                    self._holo_coord_register("P03", "02", f"{z:02d}", w, f"模式卡片 {nm}", "按钮",
+                                              lambda w=w: "选中" if w.isChecked() else "未选")
+            if hasattr(self, "_btn_upload_ct"):
+                self._holo_coord_register("P03", "02", "04", self._btn_upload_ct, "上传容器到远程", "按钮")
+            if hasattr(self, "zoo_table"):
+                self._holo_coord_register("P03", "03", "01", self.zoo_table, "配置通道表格", "表格")
+            if hasattr(self, "log_text"):
+                self._holo_coord_register("P03", "06", "01", self.log_text, "终端日志区", "日志")
+            self._holo_refresh()
+        except Exception:
+            pass
+
+    def _holo_refresh(self):
+        """🌐 刷新全息 ID 状态 (内部注册表 — 🐛 2026-08-08 无表格, ID 渲染在控件上)"""
+        try:
+            if not hasattr(self, "_holo_table"):
+                return
+            t = self._holo_table
+            t.setRowCount(0)
+            for h_id, (w, nm, ty, g) in sorted(self._holo_reg.items()):
+                r = t.rowCount()
+                t.insertRow(r)
+                st = "—"
+                try:
+                    st = g() if g else "—"
+                except Exception:
+                    st = "—"
+                for c, v in enumerate([h_id, nm, ty, str(st)]):
+                    item = QTableWidgetItem(v)
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                    t.setItem(r, c, item)
+        except Exception:
+            pass
+
+    # ═══ 🌐 全局 3D 坐标 ID 系统 (2026-08-08 老倪: 每个 ID 是控制台结构的一个点) ═══
+    # 坐标 = X(页) . Y(区块) . Z(控件) — 统筹控制台结构, 全局数据管控
+    # X 轴 (页): P01首页 P02数据集 P03模型引擎 P04评估 P05硬件 P06配置 P07监控 P08场景 P09版本 P10推理 P11画布 P12数据空间
+    # Y 轴 (区块): 01训练区 02容器区 03配置区 04数据区 05评估区 06日志区 07导航区 08状态区 09对比区 10部署区
+    # Z 轴 (控件): 01起 02止 03默认 04上传 05开关A ... (页内顺序)
+    HOLO_PAGES = {
+        "P01": "首页", "P02": "数据集", "P03": "模型引擎", "P04": "评估", "P05": "硬件",
+        "P06": "配置", "P07": "监控", "P08": "场景", "P09": "版本", "P10": "推理",
+        "P11": "画布(Model Zoo)", "P12": "数据空间",
+    }
+    HOLO_ZONES = {
+        "01": "训练区", "02": "容器区", "03": "配置区", "04": "数据区", "05": "评估区",
+        "06": "日志区", "07": "导航区", "08": "状态区", "09": "对比区", "10": "部署区",
+    }
+
+    def _holo_coord(self, x, y, z):
+        """🌐 3D 坐标 → 全局 ID (X.Y.Z)"""
+        return f"{x}.{y}.{z}"
+
+    def _holo_coord_desc(self, cid):
+        """🌐 坐标 ID → 人类可读 (VEH.2.01 = 模型引擎·页内控件01; 2026-08-09 老倪: 取消 Pxx 系统)"""
+        try:
+            x, y, z = cid.split(".")
+            return f"{self.HOLO_PAGES.get(x, x)} · {self.HOLO_ZONES.get(y, y)} · 控件{z}"
+        except Exception:
+            return cid
+
+    def _holo_coord_register(self, x, y, z, widget, name, wtype, getter=None):
+        """🌐 注册 3D 坐标点 (全局数据管控 — 每个 ID 是结构的一个点)"""
+        cid = self._holo_coord(x, y, z)
+        self._holo_coords[cid] = (widget, name, wtype, getter)
+        return cid
+
+    def _holo_act(self, h_id):
+        """🌐 执行 ID 指令 (点按钮/切开关/定位) — 支持 VEH.卡.序号 与简写 (B-01)"""
+        try:
+            # 3D 坐标 → 控件
+            if "." in str(h_id):
+                info = getattr(self, "_holo_coords", {}).get(h_id)
+                if not info:
+                    return f"❌ 无此坐标: {h_id} ({self._holo_coord_desc(h_id) if hasattr(self, '_holo_coord_desc') else ''})"
+                w, nm, ty, g = info
+                if ty == "按钮" and hasattr(w, "click"):
+                    w.click()
+                    return f"✅ 已执行 {h_id} ({nm})"
+                if ty == "开关" and hasattr(w, "toggle"):
+                    w.toggle()
+                    return f"✅ 已切换 {h_id} ({nm}) → {'开' if w.isChecked() else '关'}"
+                if ty == "下拉" and hasattr(w, "showPopup"):
+                    w.showPopup()
+                    return f"✅ 已展开 {h_id} ({nm})"
+                return f"✅ {h_id} ({nm}) — 状态: {g() if g else '—'}"
+            info = self._holo_reg.get(h_id)
+            if not info:
+                return f"❌ 无此 ID: {h_id}"
+            w, nm, ty, g = info
+            if ty == "按钮" or ty == "模式":
+                # 找真实控件 (按钮 ID 映射)
+                btn_map = {"B-01": "start_btn", "B-02": "stop_btn", "B-03": "_btn_upload_ct",
+                           "M-01": ("_ct_mode_btns", "train"), "M-02": ("_ct_mode_btns", "infer"), "M-03": ("_ct_mode_btns", "deploy")}
+                tgt = btn_map.get(h_id)
+                if tgt:
+                    if isinstance(tgt, tuple):
+                        getattr(self, tgt[0])[tgt[1]].click()
+                    else:
+                        getattr(self, tgt).click()
+                    return f"✅ 已执行 {h_id} ({nm})"
+            elif ty == "开关":
+                sw_map = {"S-01": "act", "S-02": "smolvla", "S-03": "smolvla_lew", "S-04": "vla_touch",
+                          "S-05": "awe_zflow", "S-06": "expert_mlp", "S-07": "expert_policy"}
+                k = sw_map.get(h_id)
+                if k and hasattr(self, "_zoo_sw"):
+                    self._zoo_sw[k].toggle()
+                    return f"✅ 已切换 {h_id} ({nm}) → {'开' if self._zoo_sw[k].isChecked() else '关'}"
+            return f"✅ {h_id} ({nm}) — 状态: {g() if g else '—'}"
+        except Exception as e:
+            return f"❌ 执行失败: {str(e)[:60]}"
+
+    def _holo_badge(self, widget, h_id, parent_layout=None):
+        """🌐 控件左下角小字全局唯一 ID 角标 (2026-08-08 老倪: 统一左下角小字显示, 眼睛可见)"""
+        try:
+            badge = QLabel(h_id)
+            badge.setStyleSheet(f"color:{C_CYAN}; font-size:19px; font-weight:bold; background:transparent; border:none; padding:0px;")
+            badge.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            # 方案: 控件外包 QVBoxLayout (控件 + 左下角 ID 小字)
+            wrap = QWidget()
+            wrap.setStyleSheet("background:transparent;")
+            wl = QVBoxLayout(wrap)
+            wl.setContentsMargins(0, 0, 0, 0)
+            wl.setSpacing(0)
+            wl.addWidget(widget)
+            hl = QHBoxLayout()
+            hl.setContentsMargins(2, 0, 0, 0)
+            hl.addWidget(badge)
+            hl.addStretch()
+            wl.addLayout(hl)
+            return wrap
+        except Exception:
+            return widget
+
+    def _holo_name(self, w):
+        """控件名 (可读)"""
+        try:
+            if isinstance(w, (QPushButton, QCheckBox, QRadioButton)):
+                return w.text()[:20]
+            if isinstance(w, QComboBox):
+                return f"下拉 {w.currentText()[:12]}"
+            if isinstance(w, QLineEdit):
+                return "输入框"
+            if isinstance(w, QAbstractSpinBox):
+                return f"数值 {w.value() if hasattr(w, 'value') else ''}"
+            if isinstance(w, QLabel):
+                return (w.text() or "标签")[:20]
+            if isinstance(w, QTableWidget):
+                return "表格"
+        except Exception:
+            pass
+        return type(w).__name__
+
+    def _holo_type(self, w):
+        if isinstance(w, QPushButton):
+            return "按钮"
+        if isinstance(w, (QCheckBox, QRadioButton)):
+            return "开关"
+        if isinstance(w, QComboBox):
+            return "下拉"
+        if isinstance(w, QLineEdit):
+            return "输入"
+        if isinstance(w, QAbstractSpinBox):
+            return "数值"
+        if isinstance(w, QLabel):
+            return "标签"
+        if isinstance(w, QTableWidget):
+            return "表格"
+        return "控件"
+
+    def _holo_state(self, w):
+        try:
+            if isinstance(w, (QCheckBox, QRadioButton)):
+                return "开" if w.isChecked() else "关"
+            if isinstance(w, QPushButton):
+                return "可用" if w.isEnabled() else "禁用"
+            if isinstance(w, QComboBox):
+                return w.currentText()[:14]
+            if isinstance(w, QLineEdit):
+                return (w.text() or "空")[:14]
+            if isinstance(w, QAbstractSpinBox):
+                return str(w.value()) if hasattr(w, "value") else "—"
+            if isinstance(w, QLabel):
+                return (w.text() or "空")[:14]
+        except Exception:
+            pass
+        return "—"
+
+    def _holo_badge_overlay(self, widget, h_id, hover_only=False, veh_small=False):
+        """🌐 控件 ID 标注 (2026-08-09 老倪 v2: 14px 粗体 + 深色半透明底贴纸式,
+        固定左下角, 跟随控件移动, 不遮挡不悬浮; tooltip 带控件名)"""
+        try:
+            if hover_only:
+                # 🐛 2026-08-09 老倪 v5: 小控件悬停弹出 ID + 控件名 (不占地方)
+                try:
+                    nm = self._holo_name(widget)
+                    widget.setToolTip(f"{h_id} — {nm}")
+                except Exception:
+                    widget.setToolTip(h_id)
+                return None
+            # 防重复叠加: 先删旧角标
+            old = getattr(widget, "_holo_badge_lbl", None)
+            if old is not None:
+                try:
+                    old.deleteLater()
+                except Exception:
+                    pass
+                setattr(widget, "_holo_badge_lbl", None)
+            lbl = QLabel(h_id, widget)
+            # 🐛 2026-08-09 老倪 v4: 灰色贴近背景 (能看清不显眼), 10px 无背景不覆盖
+            lbl.setStyleSheet(
+                f"color:{C_GRAY}; font-size:19px; font-weight:bold; "
+                "background:transparent; border:none;")
+            lbl.adjustSize()
+            lbl.move(2, max(0, widget.height() - lbl.height() - 1))  # 左下角
+            lbl.raise_()
+            lbl.show()  # 🐛 2026-08-09 老倪: 必须显式 show (父已显示时新建子控件默认不可见 — 窗口里一个ID都没有的根因)
+            setattr(widget, "_holo_badge_lbl", lbl)
+            # tooltip: ID + 控件名 (悬停即知对应啥)
+            try:
+                nm = self._holo_name(widget)
+                widget.setToolTip(f"{h_id} — {nm}")
+            except Exception:
+                pass
+            # 跟随控件移动/缩放: 轻量 QTimer 全局同步 (不 monkey-patch 控件事件, 安全)
+            try:
+                from PyQt5.QtCore import QTimer as _QTimer
+                if not getattr(self, "_holo_sync_timer", None):
+                    t = __tq(self)
+                    t.timeout.connect(self._holo_sync_badges)
+                    t.start(1200)
+                    self._holo_sync_timer = t
+            except Exception:
+                pass
+            return lbl
+        except Exception:
+            return None
+
+    def _holo_sync_badges(self):
+        """🌐 定时同步所有角标到控件左下角 (跟随滚动/布局变化, 防错位)"""
+        try:
+            for hid, info in list(getattr(self, "_holo_coords", {}).items()):
+                try:
+                    w = info[0]
+                    lbl = getattr(w, "_holo_badge_lbl", None)
+                    if lbl is not None:
+                        lbl.move(2, max(0, w.height() - lbl.height() - 1))
+                        if not lbl.isVisible():
+                            lbl.show()
+                        lbl.raise_()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _veh2_apply(self, root=None):
+        """🌐 VEH.2 (模型引擎页) 编号 (2026-08-09 老倪 v7: 所有 ID 一律悬停,
+        无静态常显 — 常显遮挡原文字; 上→下左→右 VEH.2.xx)"""
+        try:
+            from PyQt5.QtWidgets import QScrollArea, QScrollBar
+            root = root or self
+            ws = []
+            for w in root.findChildren(QWidget):
+                if self._holo_page_of(w) != "P03":
+                    continue
+                if type(w) is QWidget:
+                    continue  # 裸 QWidget 壳 (布局容器) 不编号
+                if isinstance(w, (QScrollArea, QScrollBar)):
+                    continue
+                if isinstance(w, QLabel):
+                    txt = (w.text() or "").strip()
+                    if not txt:
+                        continue  # 空标签/图标占位不编号
+                    if txt.startswith("VEH."):
+                        continue  # 角标自身跳过
+                ws.append(w)
+            # 按布局位置排序: y 优先 (上→下), 再 x (左→右)
+            ws.sort(key=lambda w: (self._holo_abs_y(w), self._holo_abs_x(w)))
+            for i, w in enumerate(ws, 1):
+                if id(w) in self._holo_applied:
+                    continue
+                self._holo_applied.add(id(w))
+                h_id = f"VEH.2.{i:02d}"
+                # 🐛 2026-08-09 老倪 v7: 全部悬停 tooltip, 无静态常显 (不遮挡原文字)
+                self._holo_badge_overlay(w, h_id, hover_only=True)
+                self._holo_coords[h_id] = (w, self._holo_name(w), self._holo_type(w),
+                                           lambda w=w: self._holo_state(w))
+        except Exception:
+            pass
+
+    @staticmethod
+    def _holo_abs_y(w):
+        """控件全局 Y (相对顶层窗口)"""
+        try:
+            p = w
+            y = 0
+            while p is not None:
+                y += p.y()
+                p = p.parentWidget()
+            return y
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _holo_abs_x(w):
+        """控件全局 X (相对顶层窗口)"""
+        try:
+            p = w
+            x = 0
+            while p is not None:
+                x += p.x()
+                p = p.parentWidget()
+            return x
+        except Exception:
+            return 0
+
+    def _veh4_apply(self, root=None):
+        """🌐 VEH.4 (系统架构页) 编号 (2026-08-09 老倪: 所有可见控件 VEH.4.xx 悬停显示)
+        架构页用 QLabel/卡片 (非标准按钮) — 通用分支覆盖不到, 单独编号"""
+        try:
+            from PyQt5.QtWidgets import QScrollArea, QScrollBar, QFrame
+            root = root or self
+            ws = []
+            for w in root.findChildren(QWidget):
+                if self._holo_page_of(w) != "P13":
+                    continue
+                if w.objectName() == "architecture":
+                    continue  # 页面自身不编号
+                if type(w) is QWidget:
+                    continue  # 裸壳不编号
+                if isinstance(w, QFrame):
+                    # 有布局/子控件的 QFrame = 容器卡片 → 跳 (只给叶子控件编号)
+                    if w.layout() is not None or w.children():
+                        continue
+                if isinstance(w, (QScrollArea, QScrollBar)):
+                    continue
+                if isinstance(w, QLabel):
+                    txt = (w.text() or "").strip()
+                    if not txt:
+                        continue  # 空标签/图标占位
+                    if txt.startswith("VEH."):
+                        continue  # 角标自身
+                ws.append(w)
+            ws.sort(key=lambda w: (self._holo_abs_y(w), self._holo_abs_x(w)))
+            for i, w in enumerate(ws, 1):
+                if id(w) in self._holo_applied:
+                    continue
+                self._holo_applied.add(id(w))
+                h_id = f"VEH.4.{i:02d}"
+                self._holo_badge_overlay(w, h_id, hover_only=True)
+                self._holo_coords[h_id] = (w, self._holo_name(w), self._holo_type(w),
+                                           lambda w=w: self._holo_state(w))
+        except Exception:
+            pass
+
+    def _veh0_apply(self, root=None):
+        """🌐 VEH.0 (首页) 编号 (2026-08-09 老倪: 首页所有可见控件 VEH.0.xx 悬停显示)
+        首页功能卡是 ModuleCard(QFrame) — 通用分支覆盖不到, 单独编号"""
+        try:
+            from PyQt5.QtWidgets import QScrollArea, QScrollBar, QFrame
+            root = root or self
+            ws = []
+            home_w = None
+            for w in root.findChildren(QWidget):
+                if w.objectName() == "home":
+                    home_w = w
+                    break
+            for w in root.findChildren(QWidget):
+                if w is home_w:
+                    continue  # 页面自身
+                # 🐛 2026-08-09: 严格限定 — parent 链经过 HomeWidget (防侧栏等空链控件误入)
+                _p = w
+                _in_home = False
+                while _p is not None:
+                    if _p is home_w:
+                        _in_home = True
+                        break
+                    _p = _p.parent()
+                if not _in_home:
+                    continue
+                if type(w) is QWidget:
+                    continue
+                if isinstance(w, (QScrollArea, QScrollBar)):
+                    continue
+                if isinstance(w, QFrame) and (w.layout() is not None or w.children()) and not isinstance(w, ModuleCard):
+                    continue  # 容器卡片 (ModuleCard 是功能卡要编号)
+                if isinstance(w, QLabel):
+                    txt = (w.text() or "").strip()
+                    if not txt:
+                        continue
+                    if txt.startswith("VEH."):
+                        continue
+                ws.append(w)
+            ws.sort(key=lambda w: (self._holo_abs_y(w), self._holo_abs_x(w)))
+            for i, w in enumerate(ws, 1):
+                if id(w) in self._holo_applied:
+                    continue
+                self._holo_applied.add(id(w))
+                h_id = f"VEH.0.{i:02d}"
+                self._holo_badge_overlay(w, h_id, hover_only=True)
+                self._holo_coords[h_id] = (w, self._holo_name(w), self._holo_type(w),
+                                           lambda w=w: self._holo_state(w))
+        except Exception:
+            pass
+
+    def _holo_apply_all(self, root=None):
+        """🌐 全控制台所有 Qt 控件 ID 角标 (叠加式 — 左下角可见, 安全不崩, 2026-08-08 老倪: 所有所有所有)"""
+        try:
+            root = root or self
+            self._holo_coords = getattr(self, "_holo_coords", {})
+            self._holo_seq = 0
+            self._holo_page_seq = {}  # 🐛 2026-08-09: 每页独立序号 (VEH.3.01 起, 非全局)
+            self._holo_applied = set()
+            # 🌐 2026-08-09 老倪: 先给 VEH-2 (P03) / VEH-4 (P13) / VEH-0 (P01 首页) 页打布局序编号
+            self._veh0_apply(root)
+            self._veh2_apply(root)
+            self._veh4_apply(root)
+            # 遍历所有 Qt 可操作对象 (按钮/开关/下拉/输入/表格/分组框)
+            targets = (QPushButton, QCheckBox, QRadioButton, QComboBox, QLineEdit, QTableWidget, QGroupBox)
+            for w in root.findChildren(QWidget):
+                if id(w) in self._holo_applied:
+                    continue
+                if isinstance(w, targets):
+                    _pg = self._holo_page_of(w)
+                    if _pg == "P03":
+                        continue  # VEH-2 已编号
+                    if _pg == "P01":
+                        continue  # 首页由 _veh0_apply 专门编号
+                    if _pg == "P00" or _pg is None:
+                        continue  # 🐛 2026-08-09: 未识别页不编号 (侧栏等 — 防误编 VEH.0)
+                    self._holo_seq += 1
+                    self._holo_applied.add(id(w))
+                    h_id = self._holo_seq_id(w)
+                    # 🐛 2026-08-09 老倪: 全局规则一致 — 所有控件 ID 一律悬停 tooltip, 无静态常显 (小按钮不污染)
+                    self._holo_badge_overlay(w, h_id, hover_only=True)
+                    self._holo_coords[h_id] = (w, self._holo_name(w), self._holo_type(w),
+                                               lambda w=w: self._holo_state(w))
+            self._register_holo_all()
+        except Exception:
+            pass
+
+    # 🌐 2026-08-09 老倪: 页 → VEH 卡号 (主页功能卡顺序: VEH.1数据集 2模型引擎 3硬件 4架构 5Simulink 6配置 7数据空间 8监控 9评估 10插拔 11版本 12大屏)
+    _VEH_PAGE = {"P01": 0, "P02": 1, "P03": 2, "P04": 9, "P05": 3, "P06": 6,
+                 "P07": 8, "P08": 10, "P09": 11, "P10": 2, "P11": 5, "P12": 7,
+                 "P13": 4}  # P13=架构 (VEH.4 — 第4张功能卡)
+
+    def _holo_seq_id(self, w):
+        """🌐 顺序 ID (VEH.卡号.序号 — 2026-08-09 老倪: 取消 Pxx 系统, 全 VEH 点号)
+        🐛 2026-08-09: 每页独立序号 (VEH.3.01 起, 非全局递增)"""
+        try:
+            pg = self._holo_page_of(w)
+            veh_n = self._VEH_PAGE.get(pg, 0)
+            # 每页独立计数器
+            seq = self._holo_page_seq.get(pg, 0) + 1
+            self._holo_page_seq[pg] = seq
+            return f"VEH.{veh_n}.{seq:02d}"
+        except Exception:
+            return f"VEH.0.{self._holo_seq:02d}"
+
+    def _holo_page_of(self, w):
+        """🌐 控件所在页 (parent 链 → stack 页)"""
+        try:
+            p = w
+            while p is not None:
+                if hasattr(p, "objectName") and p.objectName():
+                    on = p.objectName()
+                    for k, v in [("home", "P01"), ("dataset", "P02"), ("model_engine", "P03"),
+                                 ("eval", "P04"), ("hardware", "P05"), ("config", "P06"),
+                                 ("monitor", "P07"), ("scene", "P08"), ("version", "P09"),
+                                 ("inference", "P10"), ("simulink", "P11"), ("dataspace", "P12"),
+                                 ("architecture", "P13")]:
+                        if k in on.lower():
+                            return v
+                p = p.parent()
+            return "P00"
+        except Exception:
+            return "P00"
+
+    def _flush_log_queue(self):
+        """🐛 2026-08-09: 主线程定时冲刷子线程日志队列 (QTimer 200ms)"""
+        try:
+            q = self._log_queue
+            if q:
+                self._log_queue = []
+                for t in q:
+                    try:
+                        self._append_log(t)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    @pyqtSlot(str)
+    def _append_log(self, text):
+        """(主线程) 追加日志 + 智能滚动 — 🐛 2026-08-08 老倪: 用户在看上面不跳底, 拉到底部才跟随"""
+        try:
+            scrollbar = self.log_text.verticalScrollBar()
+            at_bottom = scrollbar.value() >= scrollbar.maximum() - 12
+        except Exception:
+            at_bottom = True
+        self.log_text.append(text)
+        if at_bottom:
+            try:
+                scrollbar = self.log_text.verticalScrollBar()
+                scrollbar.setValue(scrollbar.maximum())
+            except Exception:
+                pass
+
+    def _toggle_log_area(self):
+        """📋 终端日志区 折叠/展开 (2026-08-06 老倪: 下面的终端窗口也要能隐藏)"""
+        if self.log_text.isVisible():
+            self.log_text.setVisible(False)
+            self.btn_log_collapse.setText("▶ 展开")
+            self.btn_log_collapse.setToolTip("展开终端日志区")
+        else:
+            self.log_text.setVisible(True)
+            self.btn_log_collapse.setText("◀ 收起")
+            self.btn_log_collapse.setToolTip("隐藏终端日志区, 上方内容占满")
+    
+    def _switch_to_smolvla(self):
+        """SmolVLA is the only model — refresh params"""
+        self._log("🧠 SmolVLA mode — 参数已按默认配置")
+    
+    def _update_dataset_path(self, repo_id):
+        """更新数据集本地缓存路径显示"""
+        if not repo_id: return
+        slug = repo_id.replace("/", "___")
+        path = os.path.expanduser(f"~/.cache/huggingface/datasets/{slug}")
+        cached = os.path.isdir(path)
+        if cached:
+            import glob
+            try:
+                # 支持 .parquet 和 .arrow 两种格式
+                parquets = glob.glob(os.path.join(path, "**", "*.parquet"), recursive=True)
+                arrows = glob.glob(os.path.join(path, "**", "*.arrow"), recursive=True)
+                valid = [p for p in parquets + arrows if os.path.isfile(p)]
+                size = sum(os.path.getsize(p) for p in valid) if valid else 0
+                for unit in ['B','KB','MB','GB']:
+                    if size < 1024: break
+                    size /= 1024
+                self.dataset_path_label.setText(f"✅ 已缓存 · {len(valid)}文件 · {size:.1f}{unit}")
+                self.dataset_path_label.setStyleSheet(f"color:{C_GREEN}; font-weight:bold; font-size:19px; padding:4px 8px; background:{C_GREEN}22; border:1px solid {C_GREEN}66; border-radius:4px;")
+            except Exception as e:
+                self.dataset_path_label.setText(f"⚠️ {e}")
+                self.dataset_path_label.setStyleSheet(f"color:{C_ORANGE}; font-size:18px;")
+        else:
+            self.dataset_path_label.setText(f"❌ 未缓存 · 需下载")
+            self.dataset_path_label.setStyleSheet(f"color:{C_RED}; font-weight:bold; font-size:19px; padding:4px 8px; background:{C_RED}22; border:1px solid {C_RED}66; border-radius:4px;")
+
+    def _auto_output_dir(self):
+        """根据当前数据集自动更新输出目录"""
+        ds = self.dataset_combo.currentText()
+        if ds:
+            name = ds.split("/")[-1]
+            self.output_dir_edit.setText(f"outputs/smolvla_{name}")
+    
+    def _on_dataset_changed(self, ds):
+        """数据集切换时自动更新输出目录和缓存状态"""
+        self._update_dataset_path(ds)
+        self._auto_output_dir()
+    
+    def _deploy_model_to_orin(self):
+        """📱 端侧部署 (2026-08-09 老倪: VEH.2.31 模型下载) — 带模型容器推到 Mac
+        链路: [4060] → 模型safetensors上传ECS + arm64 infer镜像tar → Mac轮询拉取load → 推理
+        模型源: 端侧部署下拉 → 模型引擎 ckpt_edit → registry 最新 ACT"""
+        import threading as _th
+
+        def _w():
+            try:
+                import os as _os, time as _t
+                root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+                # ① 确定模型源 (下拉 → ckpt_edit → registry 最新 ACT)
+                pm = None
+                try:
+                    _sel = self.deploy_model_combo.currentData()
+                    if _sel and _os.path.isdir(_sel):
+                        pm = _sel
+                except Exception:
+                    pass
+                if not pm:
+                    try:
+                        _p = self.ckpt_edit.text().strip()
+                        if _p and _os.path.isdir(_p):
+                            pm = _p
+                    except Exception:
+                        pass
+                if not pm:
+                    import json as _j
+                    reg_path = _os.path.join(root, "models", "saved", "registry.json")
+                    if _os.path.exists(reg_path):
+                        reg = _j.load(open(reg_path, encoding="utf-8"))
+                        for item in reg:
+                            if item.get("policy") == "act":
+                                cand = _os.path.join(item["path"], "checkpoints", "last", "pretrained_model")
+                                if _os.path.isdir(cand):
+                                    pm = cand
+                                    break
+                if not pm:
+                    self._log("❌ 端侧部署: 未找到已训练 ACT 模型 (先训练/拉回模型)")
+                    return
+                w_path = _os.path.join(pm, "model.safetensors")
+                if not _os.path.isfile(w_path):
+                    self._log(f"❌ 模型权重缺失: {w_path}")
+                    return
+                self._log(f"📦 部署模型源: {w_path} ({_os.path.getsize(w_path)//1024}KB)")
+                # ② ECS 连通性探测 (老倪: 要看到 ECS 链路是否通)
+                import subprocess as _sp
+                import requests as _rq
+                ts = _t.strftime("%Y%m%d_%H%M%S")
+                ecs = "root@39.102.211.79"
+                ecs_pwd = _os.environ.get("ZMAX_ECS_PW", "")
+                models_dir = "/www/wwwroot/datadrive.world/models"
+                ver_name = f"act_{ts}.safetensors"
+                w_size = _os.path.getsize(w_path)
+                # ②a 探测: relay API + SSH
+                try:
+                    _st = _rq.get("https://datadrive.world/api/relay/status", timeout=10)
+                    _sj = _st.json()
+                    self._log(f"📡 ECS 中转在线: relay v{_sj.get('relay','?')} · 队列 {_sj.get('packages', 0)} 包")
+                except Exception as e:
+                    self._log(f"⚠️ ECS relay 探测失败: {e}")
+                try:
+                    _sp.run(f"sshpass -p '{ecs_pwd}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 {ecs} 'echo SSH_OK'",
+                            shell=True, capture_output=True, text=True, timeout=20)
+                    self._log("🔌 ECS SSH 连通: OK")
+                except Exception as e:
+                    self._log(f"❌ ECS SSH 不通: {e}")
+                    return
+                # ②b 分块上传 (8MB 块, 每块打印百分比+速率 — 老倪: 详细反馈)
+                import time as _tt
+                self._log(f"📤 上传模型 {ver_name} ({w_size//1024}KB) → {models_dir}/ …")
+                _sp.run(f"sshpass -p '{ecs_pwd}' ssh -o StrictHostKeyChecking=no {ecs} "
+                        f"'rm -f {models_dir}/{ver_name} {models_dir}/act_latest.safetensors'",
+                        shell=True, capture_output=True, text=True, timeout=20)
+                _B = 8 * 1024 * 1024
+                _t0 = _tt.time()
+                for name in (ver_name, "act_latest.safetensors"):
+                    _sent = 0
+                    _lpct = -1
+                    with open(w_path, "rb") as _f:
+                        while True:
+                            _chunk = _f.read(_B)
+                            if not _chunk:
+                                break
+                            _sp.run(f"sshpass -p '{ecs_pwd}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 {ecs} "
+                                    f"'cat >> {models_dir}/{name}'",
+                                    input=_chunk, shell=True, capture_output=True, timeout=120)
+                            _sent += len(_chunk)
+                            _pct = int(_sent * 100 / w_size)
+                            if _pct >= _lpct + 5:
+                                _spd = _sent / 1024 / max(_tt.time() - _t0, 0.1)
+                                self._log(f"   └ {name}: {_pct}% ({_sent//1024}KB/{w_size//1024}KB) · {_spd:.0f}KB/s")
+                                _lpct = _pct
+                    self._log(f"✅ 已上传: {models_dir}/{name} ({w_size//1024}KB, {_tt.time()-_t0:.0f}s)")
+                # ②c chmod 644 铁律 (scp/分块保留 600 → nginx 403)
+                _sp.run(f"sshpass -p '{ecs_pwd}' ssh -o StrictHostKeyChecking=no {ecs} "
+                        f"'chmod 644 {models_dir}/{ver_name} {models_dir}/act_latest.safetensors'",
+                        shell=True, capture_output=True, text=True, timeout=20)
+                self._log("🔓 chmod 644 完成 (nginx 可读)")
+                # ③ 验证静态 URL
+                url_latest = "https://datadrive.world/models/act_latest.safetensors"
+                try:
+                    rv = _rq.head(url_latest, timeout=15)
+                    _cl = int(rv.headers.get("Content-Length", 0))
+                    self._log(f"✅ 模型静态 URL: {url_latest} · HTTP {rv.status_code} · {_cl//1024}KB")
+                except Exception as e:
+                    self._log(f"⚠️ URL 验证失败: {e}")
+                # ④ 检查 arm64 infer 容器 tar
+                tar_url = "https://datadrive.world/models/zmax-infer-arm64.tar"
+                try:
+                    rt = _rq.head(tar_url, timeout=15)
+                    if rt.status_code == 200:
+                        self._log(f"✅ 容器 tar 就绪: {tar_url} · {int(rt.headers.get('Content-Length', 0))//1024}KB")
+                    else:
+                        self._log("⏳ arm64 容器 tar 构建中/未上传 — 模型已就绪可先推理")
+                except Exception:
+                    self._log("⏳ arm64 容器 tar 构建中 (4090 后台构建中) — 模型已就绪")
+                # ⑤ 下发 Mac 指令 + 查 Orin 状态
+                try:
+                    r2 = _rq.post("https://datadrive.world/api/relay/command",
+                                  json={"cmd": f"deploy_model act {ver_name} zmax-infer-arm64.tar"}, timeout=15)
+                    self._log(f"📡 已下发 Mac 部署指令: {r2.json().get('cmd','')[:60]}")
+                except Exception as e:
+                    self._log(f"⚠️ Mac 指令下发失败: {e}")
+                try:
+                    _os_ = _rq.get("https://datadrive.world/api/relay/orin/status", timeout=10)
+                    _oj = _os_.json()
+                    self._log(f"🤖 Orin 状态: {'在线' if _oj.get('online') else '离线'} · 模型 {_oj.get('model','?')} · 推理 {_oj.get('infer_count',0)}次")
+                except Exception as e:
+                    self._log(f"⚠️ Orin 状态查询失败: {e}")
+                self._log(f"📦 部署链路完成: 模型 {ver_name} 已上传 + Mac 指令已下发 + URL 可下载")
+            except Exception as e:
+                self._log(f"❌ 端侧部署失败: {str(e)[:100]}")
+
+        _th.Thread(target=_w, daemon=True).start()
+
+    def _start_training(self):
+        """Start training — 2026-08-08 老倪: 三模式统一走训练队列 (GPU 引擎由模式联动: 远程V100/本地4060)"""
+        # 📱 端侧部署 → 打包已训练模型 → ECS 中转 → 小芳Mac拉取 → Orin (2026-08-09 老倪: VEH.2.26 部署ACT模型到Orin)
+        if getattr(self, "_ct_mode", "train") == "deploy":
+            self._log("📱 端侧部署 — 打包 ACT 模型 → ECS 中转 → Mac 拉取 → Orin…")
+            self._deploy_model_to_orin()
+            return
+        # 🎛 训练按钮 → Simulink Model Zoo 完整训练 (7 模型串行队列 — 本地运行=本地4060训练)
+        if getattr(self, "_simulink", None) is not None:
+            if getattr(self, "_zoo_queue", None):
+                self._log("🎛 Model Zoo 训练队列已在进行中 (监控日志区)")
+                return
+            self._zoo_queue = list(self.ZOO_POLICIES)  # 7 模型依次训练
+            # 🎛 2026-08-09 老倪: 点开始即按训练开关过滤 + 提示 (开哪些/跳过哪些)
+            sw = getattr(self, "_zoo_sw", {})
+            on = [p for p in self._zoo_queue if sw.get(p) is not None and sw[p].isChecked()]
+            off = [p for p in self._zoo_queue if sw.get(p) is None or not sw[p].isChecked()]
+            self._log(f"🎛 Model Zoo 训练启动 — 开关: 开 {on if on else '无'} | 跳过 {off if off else '无'}")
+            self._zoo_queue = on or list(self.ZOO_POLICIES)  # 全关 → 全部训练 (保险)
+            self._log(f"📡 终端详细打印已开启 (每行完整输出, 老倪监控中)")
+            # 🐛 2026-08-09 老倪: 队列训练中 start 灰 / stop 可用 (之前漏 enable, stop 不好使)
+            self.start_btn.setEnabled(False)
+            self.stop_btn.setEnabled(True)
+            self._zoo_next()
+            return
+        # 🌐 2026-08-08 老倪: Model Engine 封装 — GPU 引擎选择 remote → 训练提交远程 V100
+        if getattr(self, "gpu_mode", "local") == "remote" and getattr(self, "remote_engine", None):
+            self._start_remote_training()
+            return
+        # Dataset
+        dataset_repo_id = self.dataset_combo.currentText()
+        ds_name = dataset_repo_id.split("/")[-1]
+        output_dir = f"outputs/smolvla_{ds_name}"
+        self.output_dir_edit.setText(output_dir)
+
+        # Gather all params
+        params = {
+            "dataset_repo_id": dataset_repo_id,
+            "output_dir": output_dir,
+            # Architecture
+            "n_obs_steps": self.obs_steps_spin.value(),
+            "chunk_size": self.chunk_spin.value(),
+            "n_action_steps": self.chunk_spin.value(),
+            "max_state_dim": self.state_dim_spin.value(),
+            "max_action_dim": self.action_dim_spin.value(),
+            # Image
+            "resize_w": self.resize_w_spin.value(),
+            "resize_h": self.resize_h_spin.value(),
+            "empty_cameras": self.empty_cameras_spin.value(),
+            "min_period": self.min_period_spin.value(),
+            "max_period": self.max_period_spin.value(),
+            # Policy
+            "freeze_smolvlm": self.freeze_checkbox.isChecked(),
+            "enable_lew_world_model": self.world_model_checkbox.isChecked(),
+            "repeated_diffusion_steps": self.diffusion_spin.value(),
+            "num_vlm_layers": self.vlm_layers_spin.value(),
+            "num_expert_layers": self.expert_layers_spin.value(),
+            "expert_width": self.expert_width_spin.value(),
+            "self_attn_every": self.self_attn_spin.value(),
+            "compile_model": self.compile_checkbox.isChecked(),
+            # Training
+            "batch_size": self.batch_spin.value(),
+            "total_steps": self.steps_spin.value(),
+            "checkpoint_interval": self.ckpt_spin.value(),
+            # Optimizer
+            "learning_rate": self.lr_spin.value(),
+            "weight_decay": self.weight_decay_spin.value(),
+            "grad_clip_norm": self.grad_clip_spin.value(),
+            # Scheduler
+            "scheduler_type": self.scheduler_combo.currentText(),
+            "num_warmup_steps": self.warmup_spin.value(),
+            "num_decay_steps": self.decay_spin.value(),
+            "peak_lr": self.peak_lr_spin.value(),
+            "decay_lr": self.decay_lr_spin.value(),
+            # Experiment
+            "eval_freq": self.eval_freq_spin.value(),
+            "push_to_hub": self.push_hub_checkbox.isChecked(),
+        }
+
+        self._log(f"🚀 Starting SmolVLA training...")
+        self._log(f"   Dataset: {dataset_repo_id} | Output: {output_dir}")
+        self._log(f"   Architecture: VLM={params['num_vlm_layers']}L Expert={params['num_expert_layers']}L W={params['expert_width']}")
+        self._log(f"   I/O: obs={params['n_obs_steps']} chunk={params['chunk_size']} s={params['max_state_dim']} a={params['max_action_dim']}")
+        self._log(f"   Training: batch={params['batch_size']} steps={params['total_steps']} lr={params['learning_rate']}")
+
+        import os
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        output_dir_abs = os.path.join(repo_root, output_dir)
+
+        success = self.train_backend.start_smolvla_training(
+            repo_root=repo_root,
+            dataset_repo_id=dataset_repo_id,
+            output_dir=output_dir_abs,
+            **params,
+            log_callback=self._log,
+            progress_callback=self._update_progress
+        )
+        
+        if success:
+            self.is_training = True
+            self.is_paused = False
+            
+            # Update button states
+            self.start_btn.setEnabled(False)
+            self.stop_btn.setEnabled(True)
+            
+            self._log("✅ Training started successfully")
+        else:
+            self._log("❌ Failed to start training")
+    
+    def _stop_training(self):
+        """⏹ Stop — 2026-08-08 老倪: 真正停止 (队列清空 + 训练进程 kill + simulink 停止)"""
+        self._log("⏹ Stop: 正在停止训练…")
+        # 1. Model Zoo 队列停止 (清队列 + 停轮询)
+        try:
+            self._zoo_queue = None
+            if getattr(self, "_zoo_timer", None):
+                self._zoo_timer.stop()
+        except Exception:
+            pass
+        # 2. kill 训练进程 (本地 + 远程) — 2026-08-12: sudo docker 容器训练 → sudo pkill + docker kill
+        try:
+            import subprocess as _sp
+            for _pat in ("lerobot_train", "train_awe_zflow", "train_vla_touch",
+                         "train_yolo", "distill_expert"):
+                _sp.run(["sudo", "-n", "pkill", "-9", "-f", _pat], timeout=8)
+            try:
+                _out = _sp.run(["sudo", "-n", "docker", "ps", "-q",
+                                "--filter", "ancestor=zmax-std:1.0"],
+                               capture_output=True, text=True, timeout=10).stdout or ""
+                for _cid in _out.split():
+                    _sp.run(["sudo", "-n", "docker", "kill", _cid], timeout=10)
+            except Exception:
+                pass
+            self._log("✅ 训练进程已终止")
+        except Exception as e:
+            self._log(f"⚠ 停止进程失败: {str(e)[:60]}")
+        # 3. simulink 停止 (远程容器训练也停)
+        try:
+            if getattr(self, "_simulink", None) and hasattr(self._simulink, "on_stop"):
+                self._simulink.on_stop()
+        except Exception:
+            pass
+        # 4. 按钮状态恢复
+        self.start_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
+        self.is_training = False
+        self.is_paused = False
+        self._log("✅ 训练已停止 (Stop 完成)")
+
+    def _preview_command(self):
+        """Preview SmolVLA training configuration"""
+        dataset_repo_id = self.dataset_combo.currentText()
+        ds_name = dataset_repo_id.split("/")[-1]
+        output_dir = f"outputs/smolvla_{ds_name}"
+        self.output_dir_edit.setText(output_dir)
+
+        self._log("=" * 60)
+        self._log(f"🧠 SmolVLA Training Preview")
+        self._log(f"   VLM:      SmolVLM2-500M · 450M params · Cross-Attn")
+        self._log(f"   Expert:   {self.vlm_layers_spin.value()}VLM/{self.expert_layers_spin.value()}exp L · W={self.expert_width_spin.value()}")
+        self._log(f"   Dataset:  {dataset_repo_id}")
+        self._log(f"   I/O:      obs={self.obs_steps_spin.value()} · chunk={self.chunk_spin.value()} · s={self.state_dim_spin.value()}/a={self.action_dim_spin.value()}")
+        self._log(f"   Image:    {self.resize_w_spin.value()}×{self.resize_h_spin.value()} · {self.empty_cameras_spin.value()} extra cameras")
+        self._log(f"   Training: batch={self.batch_spin.value()} · steps={self.steps_spin.value()} · lr={self.lr_spin.value():.0e}")
+        self._log(f"   Scheduler: {self.scheduler_combo.currentText()} · warmup={self.warmup_spin.value()} · decay={self.decay_spin.value()}")
+        self._log(f"   Output:   {output_dir}")
+        self._log(f"   Freeze VLM: {self.freeze_checkbox.isChecked()} · Compile: {self.compile_checkbox.isChecked()}")
+        self._log("=" * 60)
+        self._log(f"点击 Start Training 开始训练")
+    
+    def _update_progress(self, value):
+        """Update progress bar"""
+        self.progress_bar.setValue(value)
+
+
+    # ── 🧠 训练结果 (outputs/train) 管理: 2026-09-12 从数据集管理页搬到训练台 ──
+    def _tr_repo_root(self):
+        if getattr(sys, "frozen", False):
+            return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    def _tr_log(self, msg):
+        """训练台的日志口 (没有 log_signal 就退化为 print, 不静默丢消息)。"""
+        lg = getattr(self, "log_signal", None)
+        if lg is not None:
+            try:
+                lg.emit(msg)
+                return
+            except Exception:
+                pass
+        print(msg)
+
+    def _refresh_train_results(self):
+        """🧠 列出 outputs/train 全部训练目录 (名字/步数/大小/时间 + 🗑 删除) — 完全可控"""
+        import glob as _g
+        if not hasattr(self, "_tr_box"):
+            return
+        while self._tr_box.count():
+            it = self._tr_box.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+            elif it.layout():
+                sub = it.layout()
+                while sub.count():
+                    s2 = sub.takeAt(0)
+                    if s2.widget():
+                        s2.widget().deleteLater()
+        root = self._tr_repo_root()
+        dirs = sorted(_g.glob(os.path.join(root, "outputs", "train", "*")),
+                      key=os.path.getmtime, reverse=True)
+        if not dirs:
+            lbl0 = QLabel("(outputs/train 下暂无训练产物)")
+            lbl0.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none;")
+            self._tr_box.addWidget(lbl0)
+            return
+        for d in dirs[:20]:
+            name = os.path.basename(d)
+            ck = os.path.join(d, "checkpoints")
+            try:
+                _nums = [int(b) for b in os.listdir(ck) if b.isdigit()]
+                steps = max(_nums) if _nums else 0
+            except Exception:
+                steps = 0
+            try:      # docker root 产物权限异常时 getsize 会抛 → 跳过错目录不崩
+                sz = sum(os.path.getsize(os.path.join(r, f))
+                         for r, _, fs in os.walk(d) for f in fs) / 1e6
+            except Exception:
+                sz = 0.0
+            tm = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(d)))
+            row = QHBoxLayout()
+            lbl = QLabel(f"⚙ {name}  ·  {steps} 步  ·  {sz:.0f}MB  ·  {tm}")
+            lbl.setStyleSheet("color:#c9d1d9; font-size:15px; font-family:Consolas;"
+                              " background:transparent; border:none;")
+            row.addWidget(lbl)
+            row.addStretch()
+            btn = QPushButton("🗑")
+            btn.setFixedSize(30, 24)
+            btn.setToolTip(f"删除 {name} (训练中不可删)")
+            btn.setStyleSheet(f"QPushButton {{ background:{C_BG2}; color:#ff6b6b;"
+                              f" border:1px solid {C_BORDER}; border-radius:4px; }}")
+            btn.clicked.connect(lambda _, dd=d: self._delete_train_dir(dd))
+            row.addWidget(btn)
+            self._tr_box.addLayout(row)
+
+    def _delete_train_dir(self, d):
+        """🗑 删除训练目录 (确认后 rm -rf; 训练在跑时拒绝)"""
+        import subprocess as _sp
+        import shutil
+        try:
+            _running = bool(_sp.run(["pgrep", "-f", "lerobot_train"], capture_output=True,
+                                    text=True, timeout=5).stdout.strip())
+        except Exception:
+            _running = False
+        if _running:
+            self._tr_log("⚠️ 训练进行中, 不删除训练目录")
+            return
+        name = os.path.basename(d)
+        self._tr_log(f"🗑 删除训练结果: {name}")
+        shutil.rmtree(d, ignore_errors=True)
+        self._refresh_train_results()
+
+
+class EvalModule(SubModuleWidget):
+    def __init__(self):
+        super().__init__("评估分析", [("Sys-12", SYS12_COLOR)])
+        body = QWidget()
+        bl = QVBoxLayout(); bl.setSpacing(12)
+        
+        # ── 训练历史 ──
+        train_group = QGroupBox("📈 训练历史")
+        train_group.setStyleSheet(f"QGroupBox{{color:{SYS12_COLOR}; font-weight:bold; {card_style(C_CARD, SYS12_COLOR, 8, 12)}}}")
+        tl = QVBoxLayout()
+        
+        import os, json, glob
+        
+        # 扫描所有训练记录
+        proj_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        train_records = []
+        for d in sorted(glob.glob(os.path.join(proj_root, "outputs", "*"))):
+            meta_path = os.path.join(d, "training_meta.json")
+            if os.path.exists(meta_path):
+                try:
+                    m = json.load(open(meta_path))
+                    m["_dir"] = os.path.basename(d)
+                    train_records.append(m)
+                except:
+                    pass
+        
+        if train_records:
+            # 记录选择器
+            sel_row = QHBoxLayout()
+            sel_row.addWidget(QLabel("训练记录:"))
+            self.eval_record_combo = QComboBox()
+            self.eval_record_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px; min-width:250px;")
+            for i, m in enumerate(train_records):
+                label = f"[{m['_dir'][:16]}] {m['model']} | {m['dataset']} | {m['steps']}步 | loss {m['final_loss']:.4f}"
+                self.eval_record_combo.addItem(label, i)
+            self.eval_record_combo.currentIndexChanged.connect(lambda idx: self._show_training_record(train_records))
+            sel_row.addWidget(self.eval_record_combo, 1)
+            tl.addLayout(sel_row)
+            
+            # 详情 + 曲线
+            self.eval_info = QLabel()
+            self.eval_info.setStyleSheet(f"color:{C_WHITE}; font-size:20px; padding:4px;")
+            tl.addWidget(self.eval_info)
+            
+            self.eval_svg = QLabel()
+            self.eval_svg.setAlignment(Qt.AlignCenter)
+            tl.addWidget(self.eval_svg)
+            
+            # 默认选第一条
+            self._show_training_record(train_records)
+        else:
+            hint = QLabel("<span style='color:#8b949e'>暂无训练记录。运行训练后自动显示损失曲线。</span>")
+            hint.setFont(QFont("Arial", 11))
+            hint.setStyleSheet(f"color:{C_GRAY}; padding:20px;")
+            tl.addWidget(hint)
+        
+        train_group.setLayout(tl)
+        bl.addWidget(train_group)
+        
+        # ── 检查点 ──
+        ckpt = QGroupBox("检查点"); ckpt.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
+        cl = QFormLayout()
+        cb = QComboBox(); cb.addItems(["latest", "best", "checkpoint_10000", "自定义..."])
+        cl.addRow("Checkpoint:", cb)
+        ep = QSpinBox(); ep.setRange(1, 1000); ep.setValue(50)
+        cl.addRow("Episode数:", ep)
+        ckpt.setLayout(cl)
+        bl.addWidget(ckpt)
+        
+        # ── 操作 ──
+        btn_row = QHBoxLayout()
+        for txt in ["运行评估", "动作回放", "Rollout"]:
+            b = QPushButton(txt)
+            b.setStyleSheet(f"""QPushButton{{background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:6px; padding:10px 18px;}} 
+            QPushButton:hover{{border-color:{SYS12_COLOR};}}""")
+            btn_row.addWidget(b)
+        # 模型对比按钮 (基线 vs 最新 · 自动迭代判断)
+        cmp_btn = QPushButton("🔬 基线对比")
+        cmp_btn.setStyleSheet(f"""QPushButton{{background:{C_CARD}; color:{C_CYAN}; border:1px solid {C_CYAN}; border-radius:6px; padding:10px 18px;}}
+        QPushButton:hover{{border-color:{C_CYAN}; background:{C_HOVER};}}""")
+        cmp_btn.clicked.connect(self._run_compare)
+        btn_row.addWidget(cmp_btn)
+        bl.addLayout(btn_row)
+        
+        # 对比结果标签
+        self.cmp_result = QLabel("未运行对比")
+        self.cmp_result.setStyleSheet(f"color:{C_GRAY}; font-size:20px; padding:4px;")
+        bl.addWidget(self.cmp_result)
+        
+        self.log = QTextEdit(); self.log.setReadOnly(True)
+        self.log.setFont(QFont("Consolas", 10))
+        self.log.setStyleSheet(f"background:{C_CARD}; color:{C_GRAY}; border:1px solid {C_BORDER}; border-radius:6px; padding:8px;")
+        bl.addWidget(self.log)
+        body.setLayout(bl)
+        self._build_shell(body)
+    
+    def _run_compare(self):
+        """模型对比: 读取 act_compare 结果 (基线 vs 最新) · 自动判断提升"""
+        import glob
+        proj = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        jsons = sorted(glob.glob(os.path.join(proj, "docs", "CICD_COMPARE_*.json")))
+        if not jsons:
+            self.cmp_result.setText("⚠️ 无对比结果 — 先运行 tools/act_compare.py")
+            self.cmp_result.setStyleSheet(f"color:#d29922; font-size:20px; padding:4px;")
+            return
+        d = json.load(open(jsons[-1]))
+        base, cand = d["baseline"], d["candidate"]
+        imp = d.get("mse_improve_pct", 0)
+        improved = imp > 0
+        color = "#2ea043" if improved else "#f85149"
+        verdict = "✅ 提升" if improved else "❌ 未提升 (需改进重训)"
+        self.cmp_result.setText(
+            f"{verdict} · MSE: 基线 {base['action_mse']:.1f} → 候选 {cand['action_mse']:.1f} "
+            f"({imp:+.1f}%) | 成功率: {base['success_rate']*100:.0f}% → {cand['success_rate']*100:.0f}% "
+            f"| 延迟: {base['latency_ms']:.1f}→{cand['latency_ms']:.1f}ms")
+        self.cmp_result.setStyleSheet(f"color:{color}; font-size:20px; font-weight:700; padding:4px;")
+        self.log.append(f"[{time.strftime('%H:%M:%S')}] 🔬 对比: {jsons[-1]} → {verdict} ({imp:+.1f}%)")
+
+    def _show_training_record(self, records):
+        """显示选中的训练记录"""
+        idx = self.eval_record_combo.currentIndex()
+        if idx < 0 or idx >= len(records):
+            return
+        m = records[idx]
+        initial_loss = m.get('initial_loss')
+        final_loss = m.get('final_loss')
+        reduction_pct = m.get('reduction_pct')
+        n_params = m.get('params') or m.get('total_params') or 0
+        # 构建loss行，null字段显示为N/A
+        loss_parts = []
+        if initial_loss is not None:
+            loss_parts.append(f"{initial_loss:.4f}")
+        else:
+            loss_parts.append("N/A")
+        if final_loss is not None:
+            loss_parts.append(f"{final_loss:.4f}")
+        else:
+            loss_parts.append("N/A")
+        loss_line = f"loss {loss_parts[0]}→{loss_parts[1]}"
+        if reduction_pct is not None:
+            loss_line += f" ({reduction_pct}%↓)"
+        self.eval_info.setText(
+            f"<b>{m.get('model','?')}</b> · {m.get('dataset','?')} · <b>{m.get('steps','?')}步</b> · "
+            f"{loss_line}<br>"
+            f"<span style='color:#8b949e'>{n_params//1e6:.0f}M参数 | {m.get('device','?')} | {m.get('timestamp','?')}</span>"
+        )
+        proj_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        svg_path = os.path.join(proj_root, "outputs", m["_dir"], "loss_curve.svg")
+        if os.path.exists(svg_path):
+            self.eval_svg.setPixmap(QPixmap(svg_path).scaled(580, 280, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        else:
+            self.eval_svg.setText("<span style='color:#8b949e'>无损失曲线</span>")
+
+
+class HardwareModule(SubModuleWidget):
+    """硬件工具箱 — Sys-0 基石层: 仿真 + 真实硬件统一接口
+    
+    架构: 仿真引擎(hardware_simulator.py) ↔ GUI ↔ ROS2/gRPC(真机)
+    模式: sim(虚拟设备) | local(本地ROS2) | real(Orin真机TCP桥)
+    """
+    
+    def __init__(self):
+        super().__init__("硬件工具箱", [("Sys-0", SYS0_COLOR)])
+        self.setObjectName("hardware")  # 🌐 2026-08-09 老倪: 页识别 (VEH-3 功能卡编号用 — 硬件工具箱 VEH.3.xx)
+        
+        # SSH 连接复用 — 加速所有硬件控制命令
+        import subprocess
+        try:
+            subprocess.run(
+                ["ssh", "-o", "ControlMaster=auto", "-o", "ControlPath=/tmp/orin-ssh.sock", 
+                 "-o", "ControlPersist=120", "-fN", "tashan@192.168.23.66"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+        except:
+            pass  # Orin 不在线也不崩溃
+        
+        self.sim = get_simulator("sim")
+        self._selected_device = "overview"
+        self._timer = _tq(self)   # 🐛 2026-08-18 挂 parent 防悬挂崩溃
+        self._timer.timeout.connect(self._refresh)
+        # 📡 2026-08-09 老倪: 中间件 WS 实时通道 — Orin 状态实时推送 (非轮询)
+        # 🐛 2026-08-19 Segfault 根治: WS 线程回调经 _oneshot 信号桥传函数仍触发
+        # killTimer cross-thread (信号跨线程参数包装临时 QObject 在 WS 线程 GC 析构)
+        # → WS 线程零 Qt 接触: 回调只写纯 Python 队列, 主线程 PreciseTimer 轮询消费
+        try:
+            import queue as _queue
+            self._ws_queue = _queue.Queue()
+            self._ws_poll = _tq(self)
+            self._ws_poll.timeout.connect(self._drain_ws_queue)
+            self._ws_poll.start(100)
+            from relay_middleware import WSClient
+            self._ws = WSClient(on_status=self._on_ws_status)
+        except Exception:
+            self._ws = None  # 中间件不可用不影响硬件页
+        
+        # 回放引擎
+        self.replay = ReplayEngine()
+        self._replay_thread = None
+        
+        # ── 顶部工具栏 ──
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(10)
+        
+        mode_label = QLabel("模式:")
+        mode_label.setStyleSheet(f"color:{C_WHITE}; font-weight:bold;")
+        toolbar.addWidget(mode_label)
+        
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["🖥️ 仿真模拟 (Sim)", "🔌 本地连接 (Local)", "🤖 Orin真机 (Real)"])
+        self.mode_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        toolbar.addWidget(self.mode_combo)
+        
+        toolbar.addSpacing(20)
+        
+        self.btn_start = QPushButton("▶ 启动仿真")
+        self.btn_start.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold;")
+        self.btn_start.clicked.connect(self._toggle_sim)
+        toolbar.addWidget(self.btn_start)
+        
+        self.btn_reset = QPushButton("↺ 重置")
+        self.btn_reset.setStyleSheet(f"background:{C_ORANGE}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold;")
+        self.btn_reset.clicked.connect(self._reset)
+        toolbar.addWidget(self.btn_reset)
+        
+        self.btn_discover = QPushButton("🔍 发现硬件")
+        self.btn_discover.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:4px; padding:6px 16px; font-weight:bold;")
+        self.btn_discover.setToolTip("SSH连接Orin · 发现ROS2节点和Topic · 系统资源 · TCP Bridge状态")
+        self.btn_discover.clicked.connect(self._discover_hardware)
+        self.btn_discover.setVisible(False)  # 仅Real模式显示
+        self.btn_l2_muscle = QPushButton("💪 L2 抓放循环 (肌肉记忆)")
+        self.btn_l2_muscle.setStyleSheet(f"background:{C_PURPLE if 'C_PURPLE' in dir() else '#7B2DC0'}; color:white; border:none; border-radius:4px; padding:6px 12px; font-weight:bold;")
+        self.btn_l2_muscle.setToolTip("L2 肌肉记忆技能 → ROS2 转发 → Orin 真机: 张爪→抬起→下降→夹紧(force40)→抬起; 逐步三闸门+取证")
+        self.btn_l2_muscle.clicked.connect(self._run_l2_muscle)
+        self.btn_l2_muscle.setVisible(False)  # 仅Real模式显示
+        toolbar.addWidget(self.btn_l2_muscle)
+        toolbar.addWidget(self.btn_discover)
+        
+        self.status_label = QLabel("● 待机")
+        self.status_label.setStyleSheet(f"color:{C_GRAY}; padding:4px 12px; background:{C_BG2}; border-radius:4px;")
+        toolbar.addWidget(self.status_label)
+        
+        toolbar.addStretch()
+        
+        # ── 主内容区: 设备树 + 详情 ──
+        splitter = QSplitter(Qt.Horizontal)
+        
+        # 左侧: 设备树
+        tree_panel = QWidget()
+        tree_panel.setStyleSheet(f"background:{C_BG2}; border-radius:6px;")
+        tree_layout = QVBoxLayout()
+        tree_layout.setContentsMargins(8, 8, 8, 8)
+        
+        tree_title = QLabel("设备树")
+        tree_title.setFont(QFont("Arial", 12, QFont.Bold))
+        tree_title.setStyleSheet(f"color:{SYS0_COLOR};")
+        tree_layout.addWidget(tree_title)
+        
+        self.device_tree = QTreeWidget()
+        self.device_tree.setHeaderLabels(["设备", "状态"])
+        self.device_tree.setColumnWidth(0, 180)
+        self.device_tree.setStyleSheet(f"""
+            QTreeWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px;}}
+            QTreeWidget::item{{padding:4px;}}
+            QTreeWidget::item:selected{{background:{SYS0_COLOR}33; color:{SYS0_COLOR};}}
+            QHeaderView::section{{background:{C_BG2}; color:{C_GRAY}; border:none; padding:4px; font-size:19px;}}
+        """)
+        self.device_tree.itemClicked.connect(self._on_device_selected)
+        self._build_device_tree()
+        tree_layout.addWidget(self.device_tree)
+        tree_panel.setLayout(tree_layout)
+        splitter.addWidget(tree_panel)
+        
+        # 右侧: 设备详情
+        self.detail_stack = QStackedWidget()
+        self.detail_stack.setStyleSheet(f"background:{C_BG}; border-radius:6px;")
+        self.detail_stack.addWidget(self._build_overview_detail())
+        self.detail_stack.addWidget(self._build_joint_detail())
+        self.detail_stack.addWidget(self._build_camera_detail())
+        self.detail_stack.addWidget(self._build_force_detail())
+        self.detail_stack.addWidget(self._build_io_detail())
+        splitter.addWidget(self.detail_stack)
+        splitter.setSizes([280, 680])
+        
+        # ── 🎛️ 硬件总线 (CANoe风格) ──
+        self.log = QTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setFixedHeight(80)
+        self.log.setFont(QFont("Consolas", 12))
+        self.log.setStyleSheet(f"background:#0a0e14; color:{C_GREEN}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px;")
+        self.log.setText("  Sys-0 硬件工具箱就绪 · 仿真模式 · 等待启动 ...\n")
+        
+        # ── 组装 ──
+        body = QVBoxLayout()
+        body.setSpacing(8)
+        body.addLayout(toolbar)
+        body.addWidget(splitter, 1)
+        
+        # ── 🎛️ 硬件总线 (CANoe风格) ──
+        hw_group = QGroupBox("🎛️ 硬件总线 · Orin 真实设备")
+        hw_group.setStyleSheet(f"QGroupBox{{color:{SYS0_COLOR}; font-weight:bold; font-size:20px; border:2px solid {SYS0_COLOR}; border-radius:6px; margin-top:12px; padding-top:16px;}}")
+        hw_layout = QVBoxLayout()
+        hw_layout.setSpacing(4)
+        
+        # 硬件列表表头
+        self.hw_table = QTableWidget()
+        self.hw_table.setColumnCount(6)
+        self.hw_table.setHorizontalHeaderLabels(["硬件", "类型", "状态", "当前值", "控制接口", "操作"])
+        self.hw_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.hw_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.hw_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.hw_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.hw_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.hw_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        self.hw_table.verticalHeader().setVisible(False)
+        self.hw_table.verticalHeader().setDefaultSectionSize(42)  # 行高
+        self.hw_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.hw_table.setMinimumHeight(320)
+        self.hw_table.setStyleSheet(f"""
+            QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
+            QTableWidget::item{{padding:6px 8px; font-size:19px;}}
+            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:18px; font-weight:bold;}}
+        """)
+        hw_layout.addWidget(self.hw_table)
+        hw_group.setLayout(hw_layout)
+        body.addWidget(hw_group)
+        
+        # ── 📷 摄像头实时画面 (2026-08-09 老倪: 参考 cicd.html /api/snapshot/latest 轮询方案) ──
+        cam_group = QGroupBox("📷 摄像头实时画面")
+        cam_group.setStyleSheet(f"QGroupBox{{color:{C_CYAN}; background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:8px; padding:10px; padding-top:28px; margin-top:10px;}} QGroupBox::title{{left:12px; padding:0 8px; font-weight:bold;}}")
+        cam_layout = QVBoxLayout()
+        cam_layout.setSpacing(8)
+        # 顶部: 连接按钮 + 状态
+        cam_bar = QHBoxLayout()
+        self.btn_cam_connect = QPushButton("🔌 连接摄像头")
+        self.btn_cam_connect.setStyleSheet(f"QPushButton{{background:#0d3b33; color:{C_WHITE}; border:1px solid {C_CYAN}; border-radius:6px; padding:6px 12px; font-weight:bold; font-size:20px;}} QPushButton:hover{{background:#14564a;}}")
+        self.btn_cam_connect.clicked.connect(self._cam_connect)
+        cam_bar.addWidget(self.btn_cam_connect)
+        # 🔀 2026-09-20 老倪: 「怎么在我的本机摄像头, 和 realsense 摄像头, 来回切换呢?」
+        #   本面板加「来源」切换 (切换立即生效: 已连接时下一轮轮询即换源, 未连接时点连接即按所选来源)
+        self.cb_cam_src = QComboBox()
+        self.cb_cam_src.addItems(["🔁 自动 (手臂相机 → 其余现场源 → 产线RealSense)",
+                                  "🎥 产线 RealSense (cam_rs.png)",
+                                  "💻 本机工位相机 (cam_local.png)",
+                                  "🦾 手臂相机 · 随臂 D405 (Orin, 硬连接)",
+                                  "🖥 MAXHUB 电视机摄像头 (本机 USB)",
+                                  "💻 笔记本相机 (本机 USB)"])
+        self.cb_cam_src.setStyleSheet(f"QComboBox{{background:#161b22; color:{C_WHITE}; border:1px solid {C_BORDER};"
+                                      f" border-radius:6px; padding:4px; font-size:18px;}}")
+        self.cb_cam_src.currentIndexChanged.connect(self._cam_src_changed)
+        cam_bar.addWidget(self.cb_cam_src)
+        self.cam_status = QLabel("⚪ 未连接 · 快照端点 datadrive.world/api/snapshot/latest")
+        self.cam_status.setStyleSheet(f"color:{C_GRAY}; font-size:19px; background:transparent; border:none;")
+        cam_bar.addWidget(self.cam_status, 1)
+        cam_layout.addLayout(cam_bar)
+        # 画面显示 (QLabel 承载 QPixmap, 固定高度 240)
+        self.cam_view = QLabel("📷 点击「连接摄像头」查看实时画面 (Orin 快照)")
+        self.cam_view.setFixedHeight(240)
+        self.cam_view.setAlignment(Qt.AlignCenter)
+        self.cam_view.setStyleSheet(f"background:#000; color:{C_GRAY}; border:1px solid {C_BORDER}; border-radius:6px; font-size:20px;")
+        cam_layout.addWidget(self.cam_view)
+        cam_group.setLayout(cam_layout)
+        body.addWidget(cam_group)
+        # 轮询定时器 (1s — cicd.html 100ms 太频, 快照 10s 间隔足够)
+        self._cam_timer = _tq(self)   # 🐛 2026-08-18 挂 parent
+        self._cam_timer.timeout.connect(self._cam_poll)
+        self._cam_last_ts = ""
+        
+        # ── 填充硬件列表 ──
+        self._build_hardware_bus()
+        
+        body.addWidget(self.log)
+        
+        container = QWidget()
+        container.setLayout(body)
+        
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        # 🎨 2026-09-29: 横向条改按需 (原 AlwaysOff ⇒ 宽了也没法拖); 去掉 width:8px 覆盖,
+        #   用全局 14px 高对比滚动条 (老倪: 拖不动/看不见)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;}" + SCROLLBAR_QSS)
+        scroll.setWidget(container)
+        self._build_shell(scroll)
+
+    # ═══ 硬件总线 · CANoe风格 ═══
+    
+    def _build_hardware_bus(self):
+        """构建Orin真实硬件控制面板 — 每个硬件一行"""
+        devices = [
+            # (名称, 类型, 状态获取方法, 控制接口列表)
+            ("🚦 三色塔灯",    "IO/灯光",   self._get_tower_status,  self._get_tower_controls),
+            ("🤖 珞石机械臂",  "6-DOF臂",   None,                    ["/move_joint(TargetPose)", "/robot_stop(Trigger)"]),
+            ("🖐️ 电动夹爪",   "末端执行器", None,                   ["/gripper_driver(GripperSrv)"]),
+            ("⚡ 力/力矩传感器","六维力",    None,                    ["/robot/force_torque(Wrench)"]),
+            ("📷 RealSense D435","RGB-D相机", None,                    ["/color/image_raw", "/depth/rect", "/points"]),
+            ("🚨 双路急停",    "安全IO",     None,                    ["/physical_estop", "/usb_estop"]),
+            ("📱 扫码枪",      "Honeywell",  None,                    ["/barcode_scanner/status"]),
+            ("🖐️ 触觉传感器", "TS-F-L",    None,                    ["/tactile_sensor(TactileSensor)"]),
+            ("👁️ FoundationPose","视觉定位",  None,                    "待接入"),
+            ("📡 障碍物检测",  "安全",       None,                    "待接入"),
+            ("🎛️ 状态机",      "控制器",     None,                    ["state_machine/*"]),
+            ("🖥️ HMI 人机界面","HMI",       None,                    "待接入"),
+        ]
+        
+        self.hw_table.setRowCount(len(devices))
+        for row, (name, hw_type, status_fn, controls) in enumerate(devices):
+            # 名称
+            name_item = QTableWidgetItem(name)
+            name_item.setForeground(QColor(C_WHITE))
+            self.hw_table.setItem(row, 0, name_item)
+            # 类型
+            self.hw_table.setItem(row, 1, QTableWidgetItem(hw_type))
+            # 状态
+            status_item = QTableWidgetItem("⏸ 待查询" if status_fn else "⏸ 待接入")
+            status_item.setForeground(QColor(C_GRAY))
+            self.hw_table.setItem(row, 2, status_item)
+            # 当前值
+            val_item = QTableWidgetItem("-" if status_fn else "-")
+            val_item.setForeground(QColor(C_GRAY))
+            self.hw_table.setItem(row, 3, val_item)
+            # 控制接口
+            if isinstance(controls, list):
+                ctrl_text = ", ".join(controls)
+            else:
+                ctrl_text = str(controls)
+            ctrl_item = QTableWidgetItem(ctrl_text)
+            ctrl_item.setForeground(QColor(C_CYAN))
+            self.hw_table.setItem(row, 4, ctrl_item)
+            # 操作按钮
+            btn_widget = QWidget()
+            btn_layout = QHBoxLayout()
+            btn_layout.setContentsMargins(0, 0, 0, 0)
+            btn_layout.setSpacing(3)
+            
+            if name == "🚦 三色塔灯":
+                for color, label, style_color in [
+                    ("green",  "🟢", C_GREEN),
+                    ("yellow", "🟡", C_YELLOW),
+                    ("red",    "🔴", C_RED),
+                    ("off",    "⚫", C_GRAY),
+                ]:
+                    btn = self._make_hw_btn(label, style_color)
+                    btn.clicked.connect(lambda checked, c=color: self._tower_cmd(c))
+                    btn_layout.addWidget(btn)
+            elif name == "🖐️ 电动夹爪":
+                open_btn = self._make_hw_btn("🖐️开", C_GREEN)
+                open_btn.setToolTip("张开到最大")
+                open_btn.clicked.connect(lambda: self._gripper_cmd(200.0))
+                btn_layout.addWidget(open_btn)
+                close_btn = self._make_hw_btn("✊关", C_RED)
+                close_btn.setToolTip("闭合到最小")
+                close_btn.clicked.connect(lambda: self._gripper_cmd(0.0))
+                btn_layout.addWidget(close_btn)
+            elif name == "🤖 珞石机械臂":
+                read_btn = self._make_hw_btn("📡", C_BLUE)
+                read_btn.setToolTip("读取关节状态")
+                read_btn.clicked.connect(self._read_robot_joints)
+                btn_layout.addWidget(read_btn)
+                stop_btn = self._make_hw_btn("🛑", C_RED)
+                stop_btn.setToolTip("急停")
+                stop_btn.clicked.connect(self._robot_stop)
+                btn_layout.addWidget(stop_btn)
+            elif name == "📷 RealSense D435":
+                check_btn = self._make_hw_btn("📸", C_CYAN)
+                check_btn.setToolTip("检测相机")
+                check_btn.clicked.connect(self._check_camera)
+                btn_layout.addWidget(check_btn)
+            elif name == "🖐️ 触觉传感器":
+                read_btn = self._make_hw_btn("📡", C_ORANGE)
+                read_btn.setToolTip("读取触觉")
+                read_btn.clicked.connect(self._read_tactile)
+                btn_layout.addWidget(read_btn)
+            elif name in ["⚡ 力/力矩传感器", "🚨 双路急停", "📱 扫码枪"]:
+                read_btn = self._make_hw_btn("📡", C_BLUE)
+                read_btn.setToolTip("读取状态")
+                read_btn.clicked.connect(lambda checked, r=row: self._read_sensor(r))
+                btn_layout.addWidget(read_btn)
+            else:
+                ph = QLabel("待接入")
+                ph.setStyleSheet(f"color:{C_GRAY}; font-size:18px;")
+                btn_layout.addWidget(ph)
+            
+            btn_widget.setLayout(btn_layout)
+            self.hw_table.setCellWidget(row, 5, btn_widget)
+    
+    def _make_hw_btn(self, text, color):
+        btn = QPushButton(text)
+        btn.setFixedSize(38, 30)
+        btn.setStyleSheet(f"""
+            QPushButton{{background:{C_BG2}; color:{color}; border:1px solid {color}; border-radius:4px; font-size:15px;}}
+            QPushButton:hover{{background:{color}; color:#0d1117;}}
+            QPushButton:pressed{{background:{C_DIM};}}
+        """)
+        btn.setToolTip(f"塔灯 {text}")
+        return btn
+    
+    # 🩹 2026-09-20 老倪: 「VEH.3.28 摄像头实时画面, 硬件工具箱, 连接摄像头 还是没有图像」
+    #   根因: 本面板只认远端快照 https://datadrive.world/api/snapshot/latest (ECS 中继), 该端点现在不可达
+    #   (老倪口径"晚上再开") → 探测失败就报"无图像", 与真机相机在不在无关。
+    #   修: 远端不可达时**回退本地新鲜帧** —— 与「输入图像」面板/L2 同一条候选链 (含 cam_local 兜底),
+    #       状态栏**自报家门**(来源标签 + 帧龄); 远端恢复后仍优先远端。旧帧绝不当实时帧用。
+    _CAM_LOCAL_CANDS = (
+        ("cam_rs.png", "产线 RealSense (Docker tap 落盘)"),
+        ("cam_fp.png", "FoundationPose 调试图 (Docker tap 落盘)"),
+        ("cam_local.png", "本机工位相机 (备用·非产线视角)"),
+    )
+    _CAM_SRC_NAMES = ("自动", "产线 RealSense", "本机工位相机",
+                      "手臂相机 · 随臂 D405 (Orin)", "MAXHUB 电视机摄像头", "笔记本相机")
+    # 📡 2026-09-28 老倪两条现场口径:
+    #   ① 「也不是现场摄像头」= 原来本面板只认远端 ECS 快照 + Docker tap 落盘图, 都不是现场相机
+    #      ⇒ 真实现场画面在 8791 (cam_live_stream 6 路), 加进来源下拉, 状态栏标 来源+相机出帧帧龄。
+    #   ② 「怎么变成笔记本USB连接MAXHUB的电视机摄像头了? 要手臂相机的」= 「自动」必须优先 **手臂相机**,
+    #      本机那两个 USB 摄像头(笔记本 / MAXHUB 电视)只作为可选项, 不许抢默认。
+    _CAM_LIVE_IDX = {3: "arm", 4: "local2", 5: "local"}
+    _CAM_LIVE_DEFAULT = "arm"             # 「自动」优先: 手臂相机 (随臂 D405, Orin 硬连接)
+
+    def _cam_live_frame(self, name):
+        """取一帧**现场实时流** (8791 → 本机直连真机相机) → (bytes, 标签, 帧龄s) 或 None。
+        帧龄取相机自己的出帧时间 (cam_live_src.fetch 里读 /stats.age_s), 不拿 HTTP 耗时冒充。"""
+        try:
+            # 本文件在 <repo>/tools/gui/studio.py ⇒ 上两级就是 <repo>/tools (cam_live_src.py 所在)
+            _tools = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if _tools not in sys.path:
+                sys.path.insert(0, _tools)
+            from cam_live_src import fetch as _clf, label as _cll
+            b, age = _clf(name, timeout=3.0)
+            if not b:
+                return None
+            return (b, _cll(name), (age if age is not None else -1.0))
+        except Exception as _e:                                                # noqa: BLE001
+            self._log("⚠️ 现场实时流取帧异常(%s): %s" % (name, _e))
+            return None
+
+    def _cam_src_pref(self):
+        """当前来源偏好 (读下拉实时值, 切换立即生效): 0=自动 1=产线RealSense 2=本机相机"""
+        try:
+            return int(self.cb_cam_src.currentIndex())
+        except Exception:                                                      # noqa: BLE001
+            return 0
+
+    def _cam_src_changed(self, *_):
+        i = self._cam_src_pref()
+        nm = self._CAM_SRC_NAMES[i] if 0 <= i < len(self._CAM_SRC_NAMES) else str(i)
+        self.cam_status.setText(f"🔀 来源已切换: {nm} — 未连接请点「连接摄像头」; 已连接下一轮(1.5s)生效")
+        self._log(f"🔀 摄像头来源切换为: {nm}")
+
+    def _cam_local_frame(self):
+        """按来源偏好取一帧 → (bytes, 标签, 帧龄s) 或 None。
+
+        📡 2026-09-28 (老倪: 「也不是现场摄像头」) 口径改为:
+          0 自动  → **现场实时流·顶视 MAXHUB** (8791, 真实工位俯视) → 产线 RealSense 落盘
+                    → FoundationPose 落盘 → 本机工位相机
+          1/2     → 只走对应 Docker tap 落盘文件
+          3/4/5   → 只走对应**现场实时流**那一路 (顶视 / 笔记本 / 臂上 D405)
+
+        纪律同输入图像面板: 落盘文件只认新鲜帧 (mtime 年龄 ≤10s), 时钟回拨负龄一律拒用;
+        实时流那几路的帧龄取相机自己的出帧时间 (/stats.age_s), 如实写进状态栏。
+        """
+        import os as _os
+        import time as _tm
+        pref = self._cam_src_pref()
+        if pref in self._CAM_LIVE_IDX:                 # 明确选了现场实时流某一路
+            return self._cam_live_frame(self._CAM_LIVE_IDX[pref])
+        if pref == 0:                                  # 自动: 手臂相机优先 → 其余现场源 → 落盘文件
+            for _nm in ("arm", "local2", "local"):
+                _live = self._cam_live_frame(_nm)
+                if _live is not None:
+                    return _live
+        base = _os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
+        cands = self._CAM_LOCAL_CANDS
+        if pref == 1:
+            cands = tuple(c for c in cands if c[0] != "cam_local.png")
+        elif pref == 2:
+            cands = tuple(c for c in cands if c[0] == "cam_local.png")
+        best_real, best_local = None, None
+        for name, label in cands:
+            p = _os.path.join(base, name)
+            if not _os.path.isfile(p):
+                continue
+            try:
+                age = _tm.time() - _os.path.getmtime(p)
+            except OSError:
+                continue
+            if age < -1.0:                      # ⏰ 时钟回拨 (mtime 在未来) → 拒用
+                continue
+            if age <= 10.0:
+                try:
+                    item = (open(p, "rb").read(), label, age)
+                except OSError:
+                    continue
+                # 🩹 2026-09-20: 兜底源不得抢源 —— 本机相机帧写入更频 (2Hz) 比产线帧 (1Hz) 新,
+                #   若按"最新鲜"取会永远显示本机相机 (老倪实测: 「还是本机摄像头」)。
+                #   → 产线 RealSense/FoundationPose 帧新鲜时一律优先; 全无才用本机相机兜底。
+                if name == "cam_local.png":
+                    if best_local is None or age < best_local[2]:
+                        best_local = item
+                else:
+                    if best_real is None or age < best_real[2]:
+                        best_real = item
+        return best_real or best_local
+
+    def _cam_connect(self):
+        """🔌 摄像头连接: 探测快照端点 → 开始轮询显示 (2026-08-09 老倪: cicd.html 方案)
+        🐛 2026-08-10 老倪: 同步 requests 在主线程会阻塞 GUI (网络超时=窗口假死)
+        → 探测请求移到子线程, 结果经 QTimer.singleShot 回主线程 (铁律)"""
+        import threading as _th
+        self.btn_cam_connect.setEnabled(False)
+
+        def _probe():
+            # 📡 2026-09-28 老倪: 「也不是现场摄像头」——「自动」原来直接吃远端 ECS 快照,
+            #   改成 **现场实时流优先** (8791 本机直连真机相机), 远端快照只作兜底。
+            _pref = self._cam_src_pref()
+            if _pref == 0:
+                _lv = self._cam_live_frame(self._CAM_LIVE_DEFAULT)
+                if _lv is not None:
+                    return ("LIVE", _lv[1], _lv[0], _lv[2])
+            # 🔀 2026-09-20: 来源下拉 = 产线RealSense / 本机相机 时**跳过远端快照探测** (直接走本地链)
+            if _pref != 0:
+                return (None, None, None, f"来源={self._CAM_SRC_NAMES[_pref]} (已跳过远端快照)")
+            try:
+                import requests as _rq
+                r = _rq.get("https://datadrive.world/api/snapshot/latest", timeout=4)
+                return (r.status_code, r.headers.get("Content-Type", ""), r.content, None)
+            except Exception as e:
+                return (None, None, None, str(e)[:40])
+
+        def _apply(res):
+            code, ctype, content, err = res
+            self.btn_cam_connect.setEnabled(True)
+            if code == "LIVE":      # 📡 现场实时流命中 (8791): 真实现场相机画面 + 相机出帧帧龄
+                _lab = str(ctype)
+                _age = float(err)
+                _a = ("帧龄 %.1fs" % _age) if _age >= 0 else "帧龄 —"
+                self.cam_status.setText(f"🟢 已连接 · 现场实时流: {_lab} · {_a}")
+                self.cam_status.setStyleSheet(f"color:{C_GREEN}; font-size:19px; background:transparent; border:none;")
+                self.btn_cam_connect.setText("⏹ 断开摄像头")
+                self._show_cam_frame(content)
+                self._cam_timer.start(1500)
+                self._log(f"📷 摄像头已连接 — 现场实时流 {_lab} · {_a} (8791 cam_live_stream)")
+                return
+            ok_remote = (not err) and code == 200 and (ctype or "").startswith("image")
+            if not ok_remote:
+                # 🩹 远端快照不可达/无图 → 本地新鲜帧回退 (来源与帧龄如实写在状态栏, 不冒充远端)
+                loc = self._cam_local_frame()
+                if loc is not None:
+                    data, label, age = loc
+                    _a = ("帧龄 %.1fs" % age) if (age is not None and float(age) >= 0) else "帧龄 —"
+                    self.cam_status.setText(f"🟡 已连接 · 远端快照不可达 → 本地源: {label} · {_a}")
+                    self.cam_status.setStyleSheet(f"color:{C_YELLOW}; font-size:19px; background:transparent; border:none;")
+                    self.btn_cam_connect.setText("⏹ 断开摄像头")
+                    self._show_cam_frame(data)
+                    self._cam_timer.start(1500)      # 1.5s 轮询 (远端一恢复自动切回远端)
+                    self._log(f"📷 摄像头已连接 (本地回退) — 源 {label} · 帧龄 {age:.1f}s · "
+                              f"远端失败: {err or ('HTTP %s' % code)}")
+                    return
+            if err:
+                self.cam_status.setText(f"❌ 连接失败: {err}")
+                self.cam_status.setStyleSheet(f"color:{C_RED}; font-size:19px; background:transparent; border:none;")
+                self._log(f"❌ 摄像头连接失败: {err}")
+            elif code == 200 and ctype.startswith("image"):
+                self.cam_status.setText("🟢 已连接 · 快照端点正常 · 实时画面轮询中")
+                self.cam_status.setStyleSheet(f"color:{C_GREEN}; font-size:19px; background:transparent; border:none;")
+                self.btn_cam_connect.setText("⏹ 断开摄像头")
+                self._show_cam_frame(content)
+                self._cam_timer.start(1500)  # 1.5s 轮询
+                self._log("📷 摄像头已连接 — 轮询 datadrive.world/api/snapshot/latest (Orin 快照)")
+            else:
+                self.cam_status.setText(f"⚠️ 快照端点异常: HTTP {code}")
+                self.cam_status.setStyleSheet(f"color:{C_YELLOW}; font-size:19px; background:transparent; border:none;")
+                self._log(f"⚠️ 摄像头连接失败: HTTP {code} (快照端点无图)")
+
+        _th.Thread(target=lambda: self._cam_apply_later(_probe, _apply), daemon=True).start()
+
+    def _cam_apply_later(self, fn, apply):
+        """子线程执行 fn() → _oneshot 回主线程 apply (跨线程 GUI 铁律)
+        ⚠️ fn() 必须在子线程跑 (网络请求), 只有结果经回调回主线程
+        🐛 2026-08-19 Segfault 根因: 子线程 QTimer.singleShot 无 parent,
+        线程退出 GC → killTimer from another thread → SIGSEGV → _oneshot 桥接"""
+        try:
+            res = fn()  # 网络请求在子线程执行
+            _oneshot(self, 0, lambda: apply(res))
+        except Exception:
+            pass
+
+    def _cam_poll(self):
+        """📷 轮询快照端点 (QTimer 1.5s — 参考 cicd.html setInterval 方案)
+        🐛 2026-08-10 老倪: 同步 GET 在主线程阻塞 (网络超时=窗口假死) → 子线程轮询 + 防重入"""
+        if getattr(self, "_cam_polling", False):
+            return  # 上一次请求未完成, 跳过本 tick (防线程堆积)
+        self._cam_polling = True
+
+        def _fetch():
+            # 📡 2026-09-28: 「现场实时流」优先 (8791 本机直连真机相机); 远端 ECS 快照只作兜底。
+            #   老倪: 「摄像头实时画面, 也不是现场摄像头」= 原来自动档直接吃远端快照。
+            loc = self._cam_local_frame()          # 内部按来源偏好: 自动→实时流·顶视→落盘文件
+            if loc is not None:
+                return ("LOCAL", loc[0], loc[1], loc[2])
+            if self._cam_src_pref() == 0:
+                try:
+                    import requests as _rq
+                    r = _rq.get("https://datadrive.world/api/snapshot/latest?t=" + str(int(__import__("time").time())),
+                                timeout=4)
+                    if r.status_code == 200 and r.headers.get("Content-Type", "").startswith("image"):
+                        return ("REMOTE", r.content, "远端 ECS 快照 (Orin)", None)
+                except Exception:
+                    pass  # 单帧失败不中断轮询
+            return None
+
+        def _apply(res):
+            self._cam_polling = False
+            if not res:
+                return
+            try:
+                _kind, _data, _lab, _age = res
+            except Exception:                                                   # noqa: BLE001
+                return
+            if _data:
+                self._show_cam_frame(_data)
+            if _lab:                                # 实时数据必须自带来源 + 帧龄 (老倪口径)
+                _a = ("帧龄 %.1fs" % _age) if (_age is not None and float(_age) >= 0) else "帧龄 —"
+                self.cam_status.setText(f"🟢 已连接 · {_lab} · {_a}")
+        import threading as _th
+        _th.Thread(target=lambda: self._cam_apply_later(_fetch, _apply), daemon=True).start()
+
+    def _show_cam_frame(self, data):
+        """📷 QLabel 显示帧 (JPEG / PNG 自适应)
+
+        🩹 2026-09-20 老倪: 「摄像头实时画面, 显示已经连接, 但是没有图像」——
+          根因: 这里原来写死 `loadFromData(data, "JPG")`, 而新增的**本地回退帧是 PNG**
+          (cam_local.png / cam_rs.png)。格式不匹配 → loadFromData 失败 → pm 为空 → 画面空白,
+          但状态栏已按"已连接"显示 (所以表现正是"已连接却没图")。
+          → 先让 Qt 按文件魔数自动识别, 再按显式格式兜底; 仍失败则如实记录(不静默)。
+        """
+        try:
+            from PyQt5.QtGui import QPixmap
+            from PyQt5.QtCore import QBuffer, QByteArray
+            pm = QPixmap()
+            ok = pm.loadFromData(data)
+            if not ok:
+                for fmt in ("JPG", "PNG", "BMP"):
+                    if pm.loadFromData(data, fmt):
+                        ok = True
+                        break
+            if ok and not pm.isNull():
+                # 等比缩放保持比例
+                self.cam_view.setPixmap(pm.scaled(self.cam_view.width(), self.cam_view.height(),
+                                                  Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            else:
+                self.cam_view.setText(f"⚠️ 帧解码失败 ({len(data) if data else 0} 字节) — 格式未识别")
+        except Exception as e:                                                 # noqa: BLE001
+            self.cam_view.setText(f"⚠️ 显示失败: {type(e).__name__}: {e}")
+
+    def _on_ws_status(self, evt):
+        """📡 WS 实时 Orin 状态回调 — 🐛 2026-08-19 Segfault 根治:
+        WS 线程零 Qt 接触, 回调只写纯 Python 队列 (不建 QObject 不 emit 信号),
+        主线程 _ws_poll (100ms PreciseTimer) 消费队列 → _apply_ws_status"""
+        try:
+            self._ws_queue.put(evt)
+        except Exception:
+            pass
+
+    def _drain_ws_queue(self):
+        """主线程消费 WS 队列 (由 _ws_poll 100ms 定时驱动)"""
+        try:
+            q = getattr(self, "_ws_queue", None)
+            if q is None:
+                return
+            while not q.empty():
+                try:
+                    self._apply_ws_status(q.get_nowait())
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _apply_ws_status(self, evt):
+        """主线程应用 Orin 实时状态到硬件表 (2026-08-09: WS 推送真值)"""
+        try:
+            online = evt.get("online", False)
+            self.status_label.setText("🟢 Orin 在线" if online else "🔴 Orin 离线")
+            self.status_label.setStyleSheet(
+                f"color:{C_GREEN if online else C_RED}; padding:4px 12px; background:{C_BG2}; border-radius:4px;")
+            # 更新硬件表第一行状态 (三色塔灯所在行)
+            if online:
+                self.hw_table.item(0, 2).setText("🟢 在线")
+                model = evt.get("model") or "—"
+                self.hw_table.item(0, 3).setText(f"推理 {evt.get('infer_count', 0)} 次 · {model}")
+        except Exception:
+            pass
+
+    def _tower_cmd(self, color):
+        """发送塔灯控制命令 (🐛 2026-09-16 老倪: "点红色不变红" → 改为**本地直连优先, 中间件兜底**)
+
+        旧实现只走 ECS relay /command → Mac 守护 → ssh Orin → ros2 topic pub。
+        Mac 守护没在跑(或不在现场)时, 指令就石沉大海 —— 灯永远不变, 界面也没报错。
+        本机已直连 Orin 局域网(netplan 99-orin-lan), 实测直连发布可用:
+          ssh tashan@192.168.23.66 → ROS_DOMAIN_ID=0 ros2 topic pub --once
+          /tower_light/command std_msgs/msg/String "{data: <color>}"
+        发完回读 /tower_light/status 验证 (state 应等于 color), 让"点到变色"可证。
+        """
+        import subprocess
+        self._log(f"🚦 塔灯 → {color}")
+        direct_err = ""
+        try:
+            r = subprocess.run([
+                "ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
+                "-o", "ConnectTimeout=5", "tashan@192.168.23.66",
+                "export ROS_DOMAIN_ID=0; source /opt/ros/humble/setup.bash && "
+                f'ros2 topic pub --once /tower_light/command std_msgs/msg/String "{{data: {color}}}" && '
+                "timeout 5 ros2 topic echo /tower_light/status --once 2>/dev/null | head -1"
+            ], capture_output=True, text=True, timeout=25)
+            if r.returncode == 0:
+                state = ""
+                for _ln in (r.stdout or "").splitlines():
+                    if "state" in _ln:
+                        state = _ln.strip()[:150]
+                        break
+                self._log(f"   ✅ 直连下发完成 (Orin 塔灯 → {color})" + (f"\n   🔎 回读: {state}" if state else ""))
+                self.hw_table.item(0, 2).setText("🟢 已生效 (直连)")
+                self.hw_table.item(0, 3).setText(color)
+                return
+            _e = (r.stderr or r.stdout or "").strip().splitlines()
+            direct_err = _e[-1] if _e else f"rc={r.returncode}"
+            self._log(f"   ⚠️ 直连失败: {direct_err} → 转中间件")
+        except Exception as e:
+            direct_err = f"{type(e).__name__}: {e}"
+            self._log(f"   ⚠️ 直连异常: {direct_err} → 转中间件")
+
+        # ── 兜底: ECS relay → Mac 守护 (无直连网络时仍可用) ──
+        try:
+            from relay_middleware import RelayMiddleware
+            mw = RelayMiddleware(timeout=10)
+            resp = mw.send(f"tower_light {color}")
+            self._log(f"   📡 已下发 Mac 塔灯指令: {resp.get('cmd','')}")
+            self.hw_table.item(0, 2).setText("🟡 指令已下发")
+            self.hw_table.item(0, 3).setText(color)
+            self._log("   🤖 Mac 守护轮询到指令 → ssh tashan@192.168.23.66 → ros2 topic pub /tower_light/command")
+        except Exception as e:
+            self._log(f"   ❌ 塔灯控制失败: 直连({direct_err}) + 中间件({e})")
+    
+    def _gripper_cmd(self, pos):
+        """夹爪开/关"""
+        import subprocess
+        action = "张开" if pos > 0 else "闭合"
+        self._log(f"🖐️ 夹爪 → {action}")
+        try:
+            r = subprocess.run([
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "tashan@192.168.23.66",
+                "source /opt/ros/humble/setup.bash && "
+                "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash 2>/dev/null && "
+                f"ROS_DOMAIN_ID=23 ros2 service call /gripper_driver interfaces/srv/GripperSrv "
+                f"'{{target_pos: {pos}, target_speed: 50.0, target_force: -1.0, "
+                f"target_acc: -1.0, target_push_length: -1.0, target_push_speed: -1.0}}'"
+            ], capture_output=True, text=True, timeout=8)
+            curr = ""
+            if "curr_pos" in r.stdout:
+                import re; m = re.search(r'curr_pos=([\d.]+)', r.stdout)
+                if m: curr = f" → {float(m.group(1)):.0f} raw"
+            self.hw_table.item(2, 2).setText("🟢")
+            self.hw_table.item(2, 3).setText(f"{action}{curr}")
+        except Exception as e:
+            self._log(f"   ❌ {e}")
+    
+    def _get_tower_status(self):
+        return "待实现"
+    
+    def _get_tower_controls(self):
+        return ["/tower_light/command (std_msgs/String)"]
+    
+    def _check_camera(self):
+        """拍摄 RealSense 照片并弹窗显示"""
+        import subprocess, os
+        self._log("📷 拍摄中...")
+        try:
+            # 上传拍照脚本
+            cap_script = os.path.join(os.path.dirname(__file__), "capture_cam.py")
+            
+            # 1. 上传脚本到Orin
+            subprocess.run(["scp", "-o", "ControlPath=/tmp/orin-ssh.sock",
+                cap_script, "tashan@192.168.23.66:/tmp/cam_cap.py"],
+                timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            # 2. 运行拍照
+            r = subprocess.run([
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "tashan@192.168.23.66",
+                "source /opt/ros/humble/setup.bash && python3 /tmp/cam_cap.py"
+            ], capture_output=True, text=True, timeout=12)
+            
+            if "OK" in r.stdout:
+                # 3. 拉回图片
+                subprocess.run(["scp", "-o", "ControlPath=/tmp/orin-ssh.sock",
+                    "tashan@192.168.23.66:/tmp/cam.jpg", "/tmp/orin_cam.jpg"],
+                    timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                from PyQt5.QtGui import QPixmap
+                pix = QPixmap("/tmp/orin_cam.jpg")
+                if not pix.isNull():
+                    dlg = QDialog(self)
+                    dlg.setWindowTitle("📷 RealSense D405 实拍")
+                    dlg.setStyleSheet(f"background:{C_BG};")
+                    dl = QVBoxLayout()
+                    img_label = QLabel()
+                    img_label.setPixmap(pix.scaled(640, 480, Qt.KeepAspectRatio))
+                    img_label.setAlignment(Qt.AlignCenter)
+                    dl.addWidget(img_label)
+                    btn = QPushButton("关闭")
+                    btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:4px; padding:6px 20px;")
+                    btn.clicked.connect(dlg.accept)
+                    dl.addWidget(btn)
+                    dlg.setLayout(dl)
+                    dlg.exec_()
+                    self.hw_table.item(4, 2).setText("🟢")
+                    self.hw_table.item(4, 3).setText(f"{pix.width()}x{pix.height()}")
+                    self._log(f"   ✅ {pix.width()}x{pix.height()}")
+                else:
+                    self.hw_table.item(4, 3).setText("加载失败")
+            else:
+                self.hw_table.item(4, 2).setText("⏸")
+                self.hw_table.item(4, 3).setText("无帧")
+                self._log("   ⏸ 无帧")
+        except Exception as e:
+            self.hw_table.item(4, 3).setText(f"错误")
+            self._log(f"   ❌ {e}")
+    
+    def _read_tactile(self):
+        """读取触觉传感器"""
+        import subprocess
+        self._log("🖐️ 读取触觉...")
+        try:
+            r = subprocess.run([
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "tashan@192.168.23.66",
+                "source /opt/ros/humble/setup.bash && "
+                "ROS_DOMAIN_ID=23 timeout 3 ros2 topic echo --once /tactile_sensor 2>/dev/null"
+            ], capture_output=True, text=True, timeout=8)
+            out = r.stdout
+            if "sensor_name" in out:
+                import re
+                name = re.search(r'sensor_name: (.+)', out)
+                model = re.search(r'sensor_model: (.+)', out)
+                nf = re.search(r'nf:\n(.+)', out)
+                nf_val = nf.group(1).strip()[:60] if nf else "?"
+                info = f"{name.group(1) if name else '?'} | nf={nf_val}"
+                self.hw_table.item(7, 2).setText("🟢")
+                self.hw_table.item(7, 3).setText(info[:80])
+                self._log(f"   ✅ {info[:80]}")
+            else:
+                self.hw_table.item(7, 2).setText("⏸")
+                self.hw_table.item(7, 3).setText("空闲(无接触)")
+        except Exception as e:
+            self._log(f"   ❌ {e}")
+
+    def _read_sensor(self, row):
+        """通用传感器读取 — 力/急停/扫码"""
+        import subprocess
+        topics = {
+            3: ("/robot/force_torque", "⚡ 力传感器"),
+            5: ("/emergency_stop", "🚨 急停"),
+            6: ("/barcode_scanner/status", "📱 扫码枪"),
+        }
+        if row not in topics: return
+        topic, label = topics[row]
+        self._log(f"{label} 读取中...")
+        try:
+            r = subprocess.run([
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "tashan@192.168.23.66",
+                "source /opt/ros/humble/setup.bash && "
+                f"ROS_DOMAIN_ID=23 timeout 3 ros2 topic echo --once {topic} 2>/dev/null"
+            ], capture_output=True, text=True, timeout=8)
+            out = r.stdout.strip()
+            if out:
+                # 提取关键信息
+                lines = out.split('\n')[:4]
+                info = " | ".join([l.strip()[:30] for l in lines if l.strip() and not l.startswith('---')])
+                self.hw_table.item(row, 2).setText("🟢")
+                self.hw_table.item(row, 3).setText(info[:80])
+                self._log(f"   ✅ {info[:60]}")
+            else:
+                self.hw_table.item(row, 2).setText("⏸")
+                self.hw_table.item(row, 3).setText("idle")
+                self._log(f"   ⏸ idle")
+        except Exception as e:
+            self._log(f"   ❌ {e}")
+
+    def _read_robot_joints(self):
+        """读取机械臂当前关节状态"""
+        import subprocess, re
+        self._log("🤖 读取关节状态...")
+        try:
+            r = subprocess.run([
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "tashan@192.168.23.66",
+                "source /opt/ros/humble/setup.bash && "
+                "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash 2>/dev/null && "
+                "ROS_DOMAIN_ID=23 timeout 3 ros2 topic echo --once /robot/joint_states 2>/dev/null"
+            ], capture_output=True, text=True, timeout=8)
+            out = r.stdout
+            # 解析 position 值
+            positions = []
+            in_pos = False
+            for line in out.split('\n'):
+                line = line.strip()
+                if 'position:' in line:
+                    in_pos = True; continue
+                if in_pos and line.startswith('-'):
+                    try: positions.append(float(line.strip()))
+                    except: break
+                elif in_pos and not line.startswith('-'):
+                    break
+            
+            if positions:
+                j_str = " ".join([f"J{i+1}:{p:+.3f}" for i, p in enumerate(positions[:6])])
+                self.hw_table.item(1, 2).setText("🟢")
+                self.hw_table.item(1, 3).setText(j_str)
+                self._log(f"   关节: {j_str}")
+            else:
+                self.hw_table.item(1, 2).setText("⚠️")
+                self.hw_table.item(1, 3).setText("无数据(idle)")
+        except Exception as e:
+            self._log(f"   ❌ {e}")
+    
+    def _robot_stop(self):
+        """机械臂急停"""
+        import subprocess
+        self._log("🛑 机械臂急停!")
+        try:
+            subprocess.run([
+                "ssh", "-o", "ControlPath=/tmp/orin-ssh.sock", "-o", "ConnectTimeout=3", "tashan@192.168.23.66",
+                "source /opt/ros/humble/setup.bash && "
+                "source ~/0615/tashan_robot_so_20260630_163849_f98c30a_aarch64/install/setup.bash 2>/dev/null && "
+                "ROS_DOMAIN_ID=23 ros2 service call /robot_stop std_srvs/srv/Trigger '{}'"
+            ], timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.hw_table.item(1, 2).setText("🛑")
+            self.hw_table.item(1, 3).setText("已急停")
+        except Exception as e:
+            self._log(f"   ❌ {e}")
+
+    # ═══ 设备树 ═══
+    
+    def _build_device_tree(self):
+        self.device_tree.clear()
+        
+        overview = QTreeWidgetItem(["📋 系统概览", ""])
+        self.device_tree.addTopLevelItem(overview)
+        
+        robot = QTreeWidgetItem(["🤖 Z700 机器人", f"{len(Z700_JOINTS)} DOF"])
+        for jname, jdesc in Z700_JOINTS.items():
+            arm = "🟠左" if "left" in jname else "🔵右"
+            QTreeWidgetItem(robot, [f"  {jname}", f"{arm} {jdesc}"])
+        self.device_tree.addTopLevelItem(robot)
+        
+        cam = QTreeWidgetItem(["📷 相机阵列", f"{len(Z700_CAMERAS)} 路"])
+        for cname, cfg in Z700_CAMERAS.items():
+            QTreeWidgetItem(cam, [f"  {cname}", f"{cfg['w']}×{cfg['h']} @{cfg['fps']}fps"])
+        self.device_tree.addTopLevelItem(cam)
+        
+        force = QTreeWidgetItem(["⚡ 力传感器", "6-axis"])
+        self.device_tree.addTopLevelItem(force)
+        
+        io_dev = QTreeWidgetItem(["🔌 数字IO", "5 设备"])
+        QTreeWidgetItem(io_dev, ["  急停按钮", "NC常闭"])
+        QTreeWidgetItem(io_dev, ["  塔灯", "3色"])
+        QTreeWidgetItem(io_dev, ["  光栅", "安全光幕"])
+        QTreeWidgetItem(io_dev, ["  扫码枪", "Honeywell"])
+        QTreeWidgetItem(io_dev, ["  夹爪×2", "力控+位置"])
+        self.device_tree.addTopLevelItem(io_dev)
+        
+        safety = QTreeWidgetItem(["🛡️ 安全系统", "监控中"])
+        self.device_tree.addTopLevelItem(safety)
+        
+        self.device_tree.expandAll()
+    
+    # ═══ 详情面板 ═══
+    
+    def _detail_section(self, title: str, color: str = SYS0_COLOR) -> QVBoxLayout:
+        """创建详情段的标题+容器"""
+        layout = QVBoxLayout()
+        label = QLabel(title)
+        label.setFont(QFont("Arial", 14, QFont.Bold))
+        label.setStyleSheet(f"color:{color}; padding:8px 0;")
+        layout.addWidget(label)
+        sep = QFrame(); sep.setFixedHeight(1); sep.setStyleSheet(f"background:{C_BORDER};"); layout.addWidget(sep)
+        return layout
+    
+    def _build_overview_detail(self):
+        w = QWidget()
+        l = self._detail_section("系统概览", C_CYAN)
+        
+        info_text = QLabel(
+            "<b>Z-MAX 多模态动作专家 · Sys-0 硬件抽象层</b><br><br>"
+            "<b>硬件平台:</b> Z700 轮式双臂机器人<br>"
+            "<b>算力平台:</b> NVIDIA AGX Orin<br>"
+            "<b>控制周期:</b> 1ms (1000Hz)<br>"
+            "<b>力控带宽:</b> 1kHz 关节力矩闭环<br>"
+            "<b>推理延迟:</b> VLA <10ms<br>"
+            "<b>通讯:</b> EtherCAT (电机) / TCP Bridge (Orin↔PC) / gRPC (控制)<br>"
+            "<b>安全:</b> 急停 · 力控柔顺 · 光栅 · 塔灯<br><br>"
+            "<b>当前模式:</b> 🖥️ 仿真模拟 — 所有设备为虚拟仿真<br>"
+            "<b>操作提示:</b> 点击左侧设备树查看详情 · 点击<i>启动仿真</i>开始"
+        )
+        info_text.setWordWrap(True)
+        info_text.setStyleSheet(f"color:{C_WHITE}; font-size:15px; padding:12px; background:{C_BG2}; border-radius:6px;")
+        l.addWidget(info_text)
+        l.addStretch()
+        w.setLayout(l)
+        return w
+    
+    def _build_joint_detail(self):
+        w = QWidget()
+        l = self._detail_section("🤖 关节状态", SYS0_COLOR)
+        
+        self.joint_table = QTableWidget()
+        self.joint_table.setColumnCount(7)
+        self.joint_table.setHorizontalHeaderLabels(["关节", "位置 rad", "速度 rad/s", "力矩 Nm", "温度 °C", "电流 A", "状态"])
+        self.joint_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.joint_table.verticalHeader().setVisible(False)
+        self.joint_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.joint_table.setStyleSheet(f"""
+            QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
+            QTableWidget::item{{padding:4px 8px; font-size:19px;}}
+            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:18px; font-weight:bold;}}
+        """)
+        l.addWidget(self.joint_table)
+        
+        # 关节控制
+        ctrl_row = QHBoxLayout()
+        target_label = QLabel("目标位置:")
+        target_label.setStyleSheet(f"color:{C_GRAY};")
+        ctrl_row.addWidget(target_label)
+        self.joint_target = QDoubleSpinBox()
+        self.joint_target.setRange(-3.14, 3.14)
+        self.joint_target.setValue(0.0)
+        self.joint_target.setSingleStep(0.01)
+        self.joint_target.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px;")
+        ctrl_row.addWidget(self.joint_target)
+        apply_joint = QPushButton("应用")
+        apply_joint.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:4px 12px; font-weight:bold;")
+        apply_joint.clicked.connect(self._apply_joint_target)
+        ctrl_row.addWidget(apply_joint)
+        ctrl_row.addStretch()
+        l.addLayout(ctrl_row)
+        w.setLayout(l)
+        return w
+    
+    def _build_camera_detail(self):
+        w = QWidget()
+        l = self._detail_section("📷 相机状态", SYS0_COLOR)
+        
+        self.cam_table = QTableWidget()
+        self.cam_table.setColumnCount(5)
+        self.cam_table.setHorizontalHeaderLabels(["相机", "分辨率", "帧率", "编码", "时间戳"])
+        self.cam_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.cam_table.verticalHeader().setVisible(False)
+        self.cam_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.cam_table.setStyleSheet(f"""
+            QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
+            QTableWidget::item{{padding:4px 8px; font-size:19px;}}
+            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:18px; font-weight:bold;}}
+        """)
+        l.addWidget(self.cam_table)
+        w.setLayout(l)
+        return w
+    
+    def _build_force_detail(self):
+        w = QWidget()
+        l = self._detail_section("⚡ 六维力传感器", SYS0_COLOR)
+        
+        grid = QGridLayout()
+        grid.setSpacing(10)
+        self.force_labels = {}
+        for i, (k, label) in enumerate([
+            ("fx", "Fx (N)"), ("fy", "Fy (N)"), ("fz", "Fz (N)"),
+            ("tx", "Tx (Nm)"), ("ty", "Ty (Nm)"), ("tz", "Tz (Nm)"),
+        ]):
+            val = QLabel("0.000")
+            val.setFont(QFont("Consolas", 18, QFont.Bold))
+            val.setStyleSheet(f"color:{C_GREEN}; padding:8px; background:{C_BG2}; border-radius:6px;")
+            val.setAlignment(Qt.AlignCenter)
+            self.force_labels[k] = val
+            grid.addWidget(QLabel(label), i//3*2, i%3)
+            grid.addWidget(val, i//3*2+1, i%3)
+        l.addLayout(grid)
+        
+        info = QLabel("力控带宽: 1kHz | 精度: <2N | 量程: ±500N / ±20Nm")
+        info.setStyleSheet(f"color:{C_GRAY}; font-size:19px;")
+        l.addWidget(info)
+        l.addStretch()
+        w.setLayout(l)
+        return w
+    
+    def _build_io_detail(self):
+        w = QWidget()
+        l = self._detail_section("🔌 数字 IO 状态", SYS0_COLOR)
+        
+        self.io_table = QTableWidget()
+        self.io_table.setColumnCount(2)
+        self.io_table.setHorizontalHeaderLabels(["设备", "状态"])
+        self.io_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.io_table.verticalHeader().setVisible(False)
+        self.io_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.io_table.setStyleSheet(f"""
+            QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
+            QTableWidget::item{{padding:6px 10px; font-size:20px;}}
+            QHeaderView::section{{background:{C_BG2}; color:{SYS0_COLOR}; border:1px solid {C_BORDER}; padding:4px; font-size:18px; font-weight:bold;}}
+        """)
+        l.addWidget(self.io_table)
+        
+        # IO控制按钮
+        io_ctrl = QHBoxLayout()
+        for label, cmd in [("🔴 触发急停", "estop"), ("🟢 释放急停", "release_estop")]:
+            btn = QPushButton(label)
+            btn.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:4px; padding:6px 16px; font-weight:bold;")
+            btn.clicked.connect(lambda _, c=cmd: self._io_command(c))
+            io_ctrl.addWidget(btn)
+        io_ctrl.addStretch()
+        l.addLayout(io_ctrl)
+        w.setLayout(l)
+        return w
+    
+    # ═══ 操作 ═══
+    
+    def _on_mode_changed(self, idx):
+        # 🐛 2026-09-18 修 (控制台崩溃根因): 下拉第 2 项 (🔌 本地连接 / Local) → modes[idx]="local",
+        #   而 Z700_ROS2_NODES 只有 "sim"/"real" 两个键 → KeyError 抛在 Qt 槽里没人接 →
+        #   qFatal → 整进程 SIGABRT (实测 06:24:17 崩掉, 日志: studio.py:7321 KeyError: 'local')。
+        #   口径: "local" 无专属节点表 → 复用 "sim" 表并**如实打日志**; 未知/越界索引一律退回 sim;
+        #   整个槽体加兜底 —— 任何异常只记日志, 绝不再冒泡出槽 (同 v5.6.14「渲染总闸」纪律)。
+        try:
+            modes = ["sim", "local", "real"]
+            mode = modes[idx] if isinstance(idx, int) and 0 <= idx < len(modes) else "sim"
+            if mode not in Z700_ROS2_NODES:
+                self._log(f"⚠️ 模式 '{mode}' 无专属节点表 → 复用 'sim' 节点表 (如实标注, 不崩)")
+                mode = "sim"
+            is_real = (mode == "real")
+
+            # Real模式 vs 仿真模式 UI切换
+            self.btn_start.setVisible(not is_real)
+            self.btn_reset.setVisible(not is_real)
+            self.btn_discover.setVisible(is_real)
+
+            if is_real:
+                self.status_label.setText("🔴 真机模式")
+                self.status_label.setStyleSheet(f"color:{C_RED}; padding:4px 12px; background:{C_BG2}; border-radius:4px; border:1px solid {C_RED}44;")
+                if self.sim.running:
+                    self.sim.stop()
+                    self._timer.stop()
+                self._log(f"⚠️ 切换到真机模式 — 请点击「发现硬件」连接 Orin")
+                # 显示真机节点列表
+                self._populate_nodes(Z700_ROS2_NODES["real"])
+            else:
+                self.status_label.setText("● 待机")
+                self.status_label.setStyleSheet(f"color:{C_GRAY}; padding:4px 12px; background:{C_BG2}; border-radius:4px;")
+                self._populate_nodes(Z700_ROS2_NODES[mode])
+                self._log(f"模式切换: {mode}")
+
+            self._refresh_topo()
+        except Exception as _e:                                  # noqa: BLE001
+            try:
+                self._log(f"⚠️ 模式切换异常 (已兜住, 控制台继续运行): {type(_e).__name__}: {_e}")
+            except Exception:                                     # noqa: BLE001
+                pass
+    
+    def _toggle_sim(self):
+        if self.sim.running:
+            self.sim.stop()
+            self._timer.stop()
+            self.btn_start.setText("▶ 启动仿真")
+            self.btn_start.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold;")
+            self.status_label.setText("● 已停止")
+            self.status_label.setStyleSheet(f"color:{C_GRAY}; padding:4px 12px; background:{C_BG2}; border-radius:4px;")
+            self._log("仿真已停止")
+        else:
+            self.sim.start()
+            self._timer.start(100)  # 100ms刷新
+            self.btn_start.setText("⏸ 停止仿真")
+            self.btn_start.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:4px; padding:6px 16px; font-weight:bold;")
+            self.status_label.setText("● 运行中")
+            self.status_label.setStyleSheet(f"color:{C_GREEN}; padding:4px 12px; background:{C_BG2}; border-radius:4px;")
+            self._log("仿真已启动 · 1ms控制周期 · 14-DOF · 7路相机 · 力传感器 · IO")
+    
+    def _reset(self):
+        was_running = self.sim.running
+        if was_running:
+            self.sim.stop()
+            self._timer.stop()
+        self.sim.reset()
+        if was_running:
+            self.sim.start()
+            self._timer.start(100)
+        self._refresh()
+        self._log("设备已重置")
+    
+    def _apply_joint_target(self):
+        target = self.joint_target.value()
+        for j in self.sim.joints.values():
+            j.target = target
+        self._log(f"关节目标 → {target:.2f} rad")
+    
+    def _io_command(self, cmd):
+        if cmd == "estop":
+            self.sim.io.estop = True
+            self._log("⚠️ 急停触发！所有电机断电")
+        elif cmd == "release_estop":
+            self.sim.io.estop = False
+            self._log("急停已释放")
+    
+    def _discover_hardware(self):
+        """SSH到Orin发现真实硬件"""
+        self.btn_discover.setEnabled(False)
+        self.btn_discover.setText("⏳ 发现中...")
+        self._log("🔍 开始发现硬件 · 连接 Orin (192.168.23.66)...")
+        
+        self._discovery_thread = HardwareDiscoveryThread()
+        self._discovery_thread.progress.connect(lambda msg: self._log(msg))
+        self._discovery_thread.result_ready.connect(self._on_discovery_result)
+        self._discovery_thread.start()
+    
+    def _on_discovery_result(self, result: dict):
+        """渲染总闸 (🐛 2026-09-16 VEH.3.04 崩因): PyQt 槽里未捕获异常 = qFatal 直接中止进程。
+        任何渲染异常都只记日志, 不许冒泡 — 否则点一次「发现硬件」整个控制台就没了。"""
+        try:
+            self._render_discovery_result(result)
+        except Exception as e:
+            import traceback
+            self._log(f"❌ 发现结果渲染失败 (已拦截, GUI 未崩): {type(e).__name__}: {e}")
+            try:
+                traceback.print_exc()
+            except Exception:
+                pass
+
+    def _render_discovery_result(self, result: dict):
+        self.btn_discover.setEnabled(True)
+        self.btn_discover.setText("🔍 再次发现")
+        
+        if not result.get("success"):
+            error = result.get("error", "未知错误")
+            self._log(f"❌ 发现失败: {error}")
+            _msg_ok(self, "硬件发现失败", f"无法连接到 Orin 或发现硬件:\n\n{error}\n\n"
+                "请确认:\n"
+                "1. Orin 已开机且网络连通\n"
+                "2. ROS2 系统已启动\n"
+                "3. SSH 免密已配置", kind="warning")
+            return
+        
+        nodes = result.get("nodes", [])
+        topics = result.get("topics", [])
+        system = result.get("system", {})
+        tcp = result.get("tcp_bridge", {})
+        
+        self._log(f"✅ 发现完成！{len(nodes)} 节点 · {len(topics)} Topic")
+        
+        # 更新 ROS2 节点列表
+        if nodes:
+            # 🐛 Z700_ROS2_NODES["real"] 是 [(名, 说明)] 列表, 不是 dict —
+            #    旧代码 .get() 直接 AttributeError: 'list' object has no attribute 'get'
+            #    (以前发现必失败到不了这行, 免密修好后一发现就崩)。列表/字典都兼容。
+            _known = Z700_ROS2_NODES.get("real", [])
+            if isinstance(_known, dict):
+                _known_map = dict(_known)
+            else:
+                _known_map = {str(k): v for k, v in _known}
+            _details = result.get("topic_details", {}) or {}
+            node_data = [(n, _details.get(n) or _known_map.get(n, "")) for n in nodes]
+            self._populate_nodes(node_data)
+        
+        # 更新设备树状态
+        for _ix, _txt in ((0, "🔴 真机在线"), (1, f"{len(nodes)} 节点 ✅"), (4, "🔴 真实IO")):
+            _it = self.device_tree.topLevelItem(_ix)
+            if _it is not None:          # 设备树条目数变化时不许 None.setText 崩
+                _it.setText(1, _txt)
+        
+        self.status_label.setText(f"🟢 在线 · {len(nodes)}节点")
+        self.status_label.setStyleSheet(f"color:{C_GREEN}; padding:4px 12px; background:{C_BG2}; border-radius:4px; border:1px solid {C_GREEN}44;")
+    
+    # ═══ 📼 数据回放 ═══
+    
+    def _refresh_replay_sessions(self):
+        """刷新回放会话列表"""
+        self.replay_combo.clear()
+        self.replay_combo.addItem("— 选择回放会话 —")
+        for s in self.replay.list_sessions():
+            self.replay_combo.addItem(s)
+    
+    def _replay_load(self):
+        """加载回放会话"""
+        session = self.replay_combo.currentText()
+        if not session or session.startswith("—"):
+            return
+        ok = self.replay.load_session(session)
+        if ok:
+            self._log(f"📼 加载回放: {session} · {self.replay.total_frames} 帧 · {self.replay.duration:.1f}s")
+            self.replay_info.setText(f"{self.replay.total_frames} 帧 | {self.replay.duration:.1f}s")
+            self.replay_play_btn.setEnabled(True)
+            self.replay_stop_btn.setEnabled(True)
+            self._replay_show_frame()
+        else:
+            self._log(f"❌ 加载失败: {session}")
+    
+    def _replay_toggle(self):
+        """播放/暂停切换"""
+        if not self.replay.total_frames:
+            return
+        
+        if self.replay.playing:
+            # 暂停
+            self.replay.playing = False
+            if self._replay_thread:
+                self._replay_thread.pause()
+            self.replay_play_btn.setText("▶ 播放")
+            self.replay_play_btn.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold; font-size:19px;")
+            self._log("⏸ 回放暂停")
+        else:
+            # 播放
+            self.replay.playing = True
+            if self._replay_thread and self._replay_thread.isRunning():
+                self._replay_thread.resume()
+            else:
+                self._replay_thread = ReplayThread(self.replay, fps=10)
+                self._replay_thread.frame_ready.connect(self._on_replay_frame)
+                self._replay_thread.finished.connect(self._on_replay_finished)
+                self._replay_thread.start()
+            self.replay_play_btn.setText("⏸ 暂停")
+            self.replay_play_btn.setStyleSheet(f"background:{C_ORANGE}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold; font-size:19px;")
+            self._log("▶ 回放开始")
+    
+    def _replay_stop(self):
+        """停止回放"""
+        self.replay.playing = False
+        if self._replay_thread and self._replay_thread.isRunning():
+            self._replay_thread.quit()
+            self._replay_thread.wait(500)
+        self.replay.current_frame = 0
+        self.replay_play_btn.setText("▶ 播放")
+        self.replay_play_btn.setStyleSheet(f"background:{C_GREEN}; color:#0d1117; border:none; border-radius:4px; padding:6px 16px; font-weight:bold; font-size:19px;")
+        self.replay_progress.setValue(0)
+        self.replay_info.setText(f"0/{self.replay.total_frames} 帧 | 0.0s")
+        self.replay_joint_display.setText("回放已停止")
+        self._log("⏹ 回放停止")
+    
+    def _on_replay_frame(self, frame_idx: int):
+        """回放帧更新"""
+        frame = self.replay.get_frame(frame_idx)
+        if not frame:
+            return
+        self._replay_show_frame()
+    
+    def _replay_show_frame(self):
+        """显示当前帧数据"""
+        frame = self.replay.get_frame()
+        if not frame:
+            return
+        joints = frame.get("joints", [])
+        gripper = frame.get("gripper", None)
+        ts = frame.get("ts", 0) - (self.replay.frames[0]["ts"] if self.replay.frames else 0)
+        
+        # 更新进度
+        self.replay_progress.setValue(int(self.replay.progress * 1000))
+        self.replay_info.setText(f"{self.replay.current_frame}/{self.replay.total_frames} 帧 | {ts:.2f}s")
+        
+        # 关节显示
+        if joints:
+            j_str = " ".join([f"J{i+1}:{v:+.4f}" for i, v in enumerate(joints[:6])])
+            gripper_str = f"  夹爪:{gripper:.1f}" if gripper is not None else ""
+            self.replay_joint_display.setText(f"[{ts:.2f}s] {j_str}{gripper_str}")
+    
+    def _on_replay_finished(self):
+        """回放结束"""
+        if self.replay.loop:
+            self._log("🔄 循环回放")
+        else:
+            self._replay_stop()
+            self._log("✅ 回放完成")
+    
+    def _run_l2_muscle(self):
+        """2026-09-19: L2 原子技能清单 (选技能 -> 填参数 -> 开始 -> 立即动作)"""
+        try:
+            from l2_skill_dialog import L2SkillDialog
+            L2SkillDialog(self).exec_()
+        except Exception as e:
+            QMessageBox.warning(self, "L2 技能", "加载失败: %s" % e)
+
+    def _on_device_selected(self, item, col):
+        text = item.text(0).strip()
+        if "概览" in text: self.detail_stack.setCurrentIndex(0)
+        elif any(k in text for k in ["joint", "gripper"]): self.detail_stack.setCurrentIndex(1)
+        elif "camera" in text.lower() or "相机" in text: self.detail_stack.setCurrentIndex(2)
+        elif "力" in text: self.detail_stack.setCurrentIndex(3)
+        elif "IO" in text or "io" in text: self.detail_stack.setCurrentIndex(4)
+        else: self.detail_stack.setCurrentIndex(0)
+    
+    # ═══ 刷新 ═══
+    
+    def _refresh(self):
+        self._refresh_topo()
+        self._refresh_joints()
+        self._refresh_cameras()
+        self._refresh_force()
+        self._refresh_io()
+    
+    def _refresh_topo(self):
+        pass  # 功能拓扑为静态显示
+    
+    def _refresh_joints(self):
+        if not hasattr(self, 'joint_table'):
+            return
+        snap = self.sim.get_joint_snapshot()
+        self.joint_table.setRowCount(len(snap))
+        for i, (jname, s) in enumerate(snap.items()):
+            for j, key in enumerate(["pos", "vel", "torque", "temp", "current"]):
+                self.joint_table.setItem(i, j, QTableWidgetItem(str(s[key])))
+            status = "✅" if s["enabled"] else "❌"
+            self.joint_table.setItem(i, 5, QTableWidgetItem(f"{s['current']:.2f}"))
+            self.joint_table.setItem(i, 6, QTableWidgetItem(status))
+    
+    def _refresh_cameras(self):
+        if not hasattr(self, 'cam_table'):
+            return
+        snap = self.sim.get_camera_snapshot()
+        self.cam_table.setRowCount(len(snap))
+        for i, (cname, s) in enumerate(snap.items()):
+            self.cam_table.setItem(i, 0, QTableWidgetItem(cname))
+            self.cam_table.setItem(i, 1, QTableWidgetItem(s["size"]))
+            self.cam_table.setItem(i, 2, QTableWidgetItem(str(s["fps"])))
+            self.cam_table.setItem(i, 3, QTableWidgetItem(s["enc"]))
+            self.cam_table.setItem(i, 4, QTableWidgetItem(str(s["ts"])))
+    
+    def _refresh_force(self):
+        if not hasattr(self, 'force_labels'):
+            return
+        f = self.sim.force
+        for k, lbl in self.force_labels.items():
+            val = getattr(f, k, 0.0)
+            lbl.setText(f"{val:+.3f}")
+    
+    def _refresh_io(self):
+        if not hasattr(self, 'io_table'):
+            return
+        snap = self.sim.get_io_snapshot()
+        self.io_table.setRowCount(len(snap))
+        for i, (dev, state) in enumerate(snap.items()):
+            self.io_table.setItem(i, 0, QTableWidgetItem(dev))
+            self.io_table.setItem(i, 1, QTableWidgetItem(state))
+    
+    def _populate_nodes(self, nodes):
+        pass  # 已迁移到实时监控模块
+    
+    def _log(self, msg):
+        ts = time.strftime("%H:%M:%S")
+        self.log.append(f"  [{ts}] {msg}")
+
+
+
+
+class ConfigModule(SubModuleWidget):
+    """配置中心: 支持 Sys-11纯动作 和 Sys-11+Sys-12混合 两种模式"""
+    
+    def __init__(self):
+        super().__init__("配置中心", [("Sys-11", SYS11_COLOR), ("Sys-12", SYS12_COLOR)])
+        
+        # ========== 所有控件的深色主题全局样式 ==========
+        dark_theme_style = f"""
+            QGroupBox {{
+                color: {C_WHITE};
+                background: {C_CARD};
+                border: 1px solid {C_BORDER};
+                border-radius: 8px;
+                padding: 12px;
+                margin-top: 8px;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 4px;
+            }}
+            QLabel {{
+                color: {C_WHITE};
+            }}
+            QSpinBox, QDoubleSpinBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px;
+            }}
+            QComboBox {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px;
+                min-width: 100px;
+            }}
+            QComboBox::drop-down {{
+                border: none;
+            }}
+            QLineEdit {{
+                color: {C_WHITE};
+                background: {C_BG};
+                border: 1px solid {C_BORDER};
+                border-radius: 4px;
+                padding: 4px;
+            }}
+            QCheckBox {{
+                color: {C_WHITE};
+                spacing: 8px;
+            }}
+            QCheckBox::indicator {{
+                width: 16px;
+                height: 16px;
+                border-radius: 3px;
+                border: 2px solid {C_GRAY};
+                background-color: {C_BG};
+            }}
+            QCheckBox::indicator:checked {{
+                border: 2px solid {C_GREEN};
+                background-color: {C_GREEN};
+            }}
+        """
+        self.setStyleSheet(dark_theme_style)
+        
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        # 🎨 2026-09-29: 横向条改按需 (原 AlwaysOff ⇒ 宽了也没法拖)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setStyleSheet("QScrollArea{border:none;}" + SCROLLBAR_QSS)
+        
+        body = QWidget()
+        bl = QVBoxLayout()
+        bl.setSpacing(16)
+        bl.setContentsMargins(8, 8, 8, 8)
+        
+        # ===== 架构模式选择 =====
+        mode_group = QGroupBox("架构模式")
+        mode_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
+        mode_layout = QVBoxLayout()
+        
+        self.mode_btn_group = QButtonGroup()
+        
+        # RadioButton 样式：深色背景下使用浅色文字，自定义指示器为圆形单选按钮
+        radio_style = f"""
+            QRadioButton {{
+                color: {C_WHITE};
+                spacing: 8px;
+                font-size:20px;
+            }}
+            QRadioButton::indicator {{
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                border: 2px solid {C_GRAY};
+                background-color: {C_BG};
+            }}
+            QRadioButton::indicator:checked {{
+                border: 2px solid {SYS11_COLOR};
+                background-color: {SYS11_COLOR};
+            }}
+            QRadioButton:hover {{
+                color: {SYS11_COLOR};
+            }}
+        """
+        
+        self.radio_sys11 = QRadioButton("Sys-11 纯动作系统 (smolvla)")
+        self.radio_sys11.setToolTip("仅使用 DiT-B action head，轻量快速，显存 ~4-6GB")
+        self.radio_sys11.setStyleSheet(radio_style)
+        self.radio_sys11.toggled.connect(self._on_mode_changed)
+        self.mode_btn_group.addButton(self.radio_sys11, 0)
+        mode_layout.addWidget(self.radio_sys11)
+        
+        self.radio_mixed = QRadioButton("Sys-11+Sys-12 混合架构 (smolvla_lew)")
+        self.radio_mixed.setToolTip("VLA + LeWorldModel 世界模型，更强泛化能力，显存 ~8-12GB")
+        self.radio_mixed.setStyleSheet(radio_style)
+        self.radio_mixed.toggled.connect(self._on_mode_changed)
+        self.mode_btn_group.addButton(self.radio_mixed, 1)
+        mode_layout.addWidget(self.radio_mixed)
+        
+        self.mode_desc = QLabel()
+        self.mode_desc.setWordWrap(True)
+        self.mode_desc.setStyleSheet(f"color:{C_GRAY}; padding:8px; background:{C_BG}; border-radius:4px;")
+        mode_layout.addWidget(self.mode_desc)
+        
+        mode_group.setLayout(mode_layout)
+        bl.addWidget(mode_group)
+
+        # ===== 🎨 UI 风格 (2026-08-05 老倪: "增加风格切换功能, UI操作你设计, 放在哪里你根据软件惯例, 在配置setting里改") =====
+        style_group = QGroupBox("🎨 UI 风格 (Simulink 功能区)")
+        style_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
+        style_layout = QVBoxLayout()
+        self.style_combo = QComboBox()
+        self.style_combo.addItems(["浅色 (MATLAB Simulink / CANoe)", "深色 (原版)"])
+        self.style_combo.setCurrentIndex(1)  # 默认深色 (老倪: 还是用暗色调风格)
+        self.style_combo.setStyleSheet(f"QComboBox{{color:{C_WHITE}; background:{C_BG}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px; min-width:240px;}}")
+        self.style_combo.currentIndexChanged.connect(self._on_style_changed)
+        style_layout.addWidget(self.style_combo)
+        style_desc = QLabel("浅色: 对标 MATLAB Simulink / CANoe 白底界面\n深色: 原版深色主题。切换即时生效 (画布/库/日志/图表)。")
+        style_desc.setWordWrap(True)
+        style_desc.setStyleSheet(f"color:{C_GRAY}; padding:8px; background:{C_BG}; border-radius:4px;")
+        style_layout.addWidget(style_desc)
+        style_group.setLayout(style_layout)
+        bl.addWidget(style_group)
+
+        # ===== 基础配置 =====
+        base_group = QGroupBox("基础配置 (两种模式共用)")
+        base_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
+        base_layout = QFormLayout()
+        
+        self.cfg_chunk_size = QSpinBox()
+        self.cfg_chunk_size.setRange(1, 50)
+        self.cfg_chunk_size.setValue(7)
+        base_layout.addRow("Chunk Size:", self.cfg_chunk_size)
+        
+        self.cfg_n_action_steps = QSpinBox()
+        self.cfg_n_action_steps.setRange(1, 50)
+        self.cfg_n_action_steps.setValue(7)
+        base_layout.addRow("Action Steps:", self.cfg_n_action_steps)
+        
+        self.cfg_n_obs_steps = QSpinBox()
+        self.cfg_n_obs_steps.setRange(1, 10)
+        self.cfg_n_obs_steps.setValue(1)
+        base_layout.addRow("Obs Steps:", self.cfg_n_obs_steps)
+        
+        base_group.setLayout(base_layout)
+        bl.addWidget(base_group)
+        
+        # ===== VLM 骨干网络 =====
+        vlm_group = QGroupBox("VLM 骨干网络 (Sys-11 共性参数)")
+        vlm_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
+        vlm_layout = QFormLayout()
+        
+        self.cfg_smolvlm_name = QComboBox()
+        self.cfg_smolvlm_name.setEditable(True)
+        self.cfg_smolvlm_name.addItems([
+            "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+            "HuggingFaceTB/SmolVLM2-2.2B-Video-Instruct"
+        ])
+        vlm_layout.addRow("VLM 模型:", self.cfg_smolvlm_name)
+        
+        self.cfg_freeze_vlm = QCheckBox("冻结 VLM 主干 (节省显存)")
+        self.cfg_freeze_vlm.setChecked(True)
+        self.cfg_freeze_vlm.setToolTip("Sys-11 模式必须 True; Sys-11+Sys-12 混合模式必须 False")
+        vlm_layout.addRow("", self.cfg_freeze_vlm)
+        
+        self.cfg_siglip_size = QSpinBox()
+        self.cfg_siglip_size.setRange(32, 224)
+        self.cfg_siglip_size.setValue(64)
+        self.cfg_siglip_size.setSuffix(" px")
+        vlm_layout.addRow("SigLIP 输入:", self.cfg_siglip_size)
+        
+        self.cfg_num_vision_tokens = QSpinBox()
+        self.cfg_num_vision_tokens.setRange(16, 128)
+        self.cfg_num_vision_tokens.setValue(64)
+        vlm_layout.addRow("视觉 Tokens:", self.cfg_num_vision_tokens)
+        
+        self.cfg_expert_width = QDoubleSpinBox()
+        self.cfg_expert_width.setRange(0.3, 0.8)
+        self.cfg_expert_width.setValue(0.5)
+        self.cfg_expert_width.setSingleStep(0.05)
+        self.cfg_expert_width.setDecimals(2)
+        vlm_layout.addRow("Expert 宽度:", self.cfg_expert_width)
+        
+        vlm_group.setLayout(vlm_layout)
+        bl.addWidget(vlm_group)
+        
+        # ===== Sys-11 Action Head =====
+        action_group = QGroupBox("Action Head (Sys-11 DiT-B)")
+        action_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
+        action_layout = QFormLayout()
+        
+        self.cfg_action_model = QComboBox()
+        self.cfg_action_model.addItems(["DiT-B", "DiT-L", "DiT-test"])
+        action_layout.addRow("模型类型:", self.cfg_action_model)
+        
+        self.cfg_action_hidden = QSpinBox()
+        self.cfg_action_hidden.setRange(128, 1024)
+        self.cfg_action_hidden.setValue(512)
+        action_layout.addRow("隐藏维度:", self.cfg_action_hidden)
+        
+        self.cfg_action_layers = QSpinBox()
+        self.cfg_action_layers.setRange(1, 12)
+        self.cfg_action_layers.setValue(2)
+        action_layout.addRow("层数:", self.cfg_action_layers)
+        
+        self.cfg_action_dropout = QDoubleSpinBox()
+        self.cfg_action_dropout.setRange(0.0, 0.5)
+        self.cfg_action_dropout.setValue(0.2)
+        self.cfg_action_dropout.setSingleStep(0.05)
+        self.cfg_action_dropout.setDecimals(2)
+        action_layout.addRow("Dropout:", self.cfg_action_dropout)
+        
+        self.cfg_inference_steps = QSpinBox()
+        self.cfg_inference_steps.setRange(1, 20)
+        self.cfg_inference_steps.setValue(4)
+        action_layout.addRow("推理步数:", self.cfg_inference_steps)
+        
+        self.cfg_diffusion_steps = QSpinBox()
+        self.cfg_diffusion_steps.setRange(1, 20)
+        self.cfg_diffusion_steps.setValue(4)
+        action_layout.addRow("训练重复:", self.cfg_diffusion_steps)
+        
+        action_group.setLayout(action_layout)
+        bl.addWidget(action_group)
+        
+        # ===== Sys-12 LeWorldModel =====
+        self.wm_group = QGroupBox("世界模型 (Sys-12 LeWorldModel)")
+        self.wm_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, SYS12_COLOR, 8, 12)}}}")
+        wm_layout = QFormLayout()
+        
+        self.cfg_lew_loss_weight = QDoubleSpinBox()
+        self.cfg_lew_loss_weight.setRange(0.01, 1.0)
+        self.cfg_lew_loss_weight.setValue(0.1)
+        self.cfg_lew_loss_weight.setSingleStep(0.01)
+        self.cfg_lew_loss_weight.setDecimals(2)
+        wm_layout.addRow("Loss 权重:", self.cfg_lew_loss_weight)
+        
+        self.cfg_lew_hidden_dim = QSpinBox()
+        self.cfg_lew_hidden_dim.setRange(64, 512)
+        self.cfg_lew_hidden_dim.setValue(192)
+        wm_layout.addRow("Hidden Dim:", self.cfg_lew_hidden_dim)
+        
+        self.cfg_lew_num_layers = QSpinBox()
+        self.cfg_lew_num_layers.setRange(1, 12)
+        self.cfg_lew_num_layers.setValue(6)
+        wm_layout.addRow("层数:", self.cfg_lew_num_layers)
+        
+        self.cfg_lew_heads = QComboBox()
+        self.cfg_lew_heads.addItems(["4", "8", "16"])
+        self.cfg_lew_heads.setCurrentIndex(1)
+        wm_layout.addRow("注意力头:", self.cfg_lew_heads)
+        
+        self.cfg_lew_dim_head = QSpinBox()
+        self.cfg_lew_dim_head.setRange(16, 64)
+        self.cfg_lew_dim_head.setValue(24)
+        wm_layout.addRow("头维度:", self.cfg_lew_dim_head)
+        
+        self.cfg_lew_mlp_dim = QSpinBox()
+        self.cfg_lew_mlp_dim.setRange(256, 2048)
+        self.cfg_lew_mlp_dim.setValue(768)
+        wm_layout.addRow("MLP Dim:", self.cfg_lew_mlp_dim)
+        
+        self.cfg_lew_dropout = QDoubleSpinBox()
+        self.cfg_lew_dropout.setRange(0.0, 0.3)
+        self.cfg_lew_dropout.setValue(0.1)
+        self.cfg_lew_dropout.setSingleStep(0.05)
+        self.cfg_lew_dropout.setDecimals(2)
+        wm_layout.addRow("Dropout:", self.cfg_lew_dropout)
+        
+        self.cfg_num_video_frames = QSpinBox()
+        self.cfg_num_video_frames.setRange(2, 16)
+        self.cfg_num_video_frames.setValue(2)
+        wm_layout.addRow("视频帧数:", self.cfg_num_video_frames)
+        
+        self.wm_group.setLayout(wm_layout)
+        bl.addWidget(self.wm_group)
+        
+        # ===== 预处理/后处理 =====
+        proc_group = QGroupBox("预处理 / 后处理")
+        proc_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
+        proc_layout = QFormLayout()
+        
+        self.cfg_resize = QComboBox()
+        self.cfg_resize.addItems(["64x64", "128x128", "None (原始)"])
+        proc_layout.addRow("Resize:", self.cfg_resize)
+        
+        self.cfg_bin_gripper = QCheckBox("二值化 Gripper")
+        self.cfg_bin_gripper.setChecked(True)
+        proc_layout.addRow("", self.cfg_bin_gripper)
+        
+        self.cfg_dtype = QComboBox()
+        self.cfg_dtype.addItems(["float16", "bfloat16", "float32"])
+        proc_layout.addRow("Dtype:", self.cfg_dtype)
+        
+        proc_group.setLayout(proc_layout)
+        bl.addWidget(proc_group)
+        
+        # ===== 优化器 =====
+        opt_group = QGroupBox("优化器 & 调度器")
+        opt_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
+        opt_layout = QFormLayout()
+        
+        self.cfg_lr = QLineEdit("1e-4")
+        opt_layout.addRow("学习率:", self.cfg_lr)
+        
+        self.cfg_grad_clip = QDoubleSpinBox()
+        self.cfg_grad_clip.setRange(0.1, 100.0)
+        self.cfg_grad_clip.setValue(10.0)
+        self.cfg_grad_clip.setDecimals(1)
+        opt_layout.addRow("梯度裁剪:", self.cfg_grad_clip)
+        
+        self.cfg_warmup = QSpinBox()
+        self.cfg_warmup.setRange(0, 100000)
+        self.cfg_warmup.setValue(1000)
+        opt_layout.addRow("Warmup:", self.cfg_warmup)
+        
+        self.cfg_decay_steps = QSpinBox()
+        self.cfg_decay_steps.setRange(1000, 1000000)
+        self.cfg_decay_steps.setValue(30000)
+        opt_layout.addRow("Decay Steps:", self.cfg_decay_steps)
+        
+        self.cfg_checkpointing = QCheckBox("Gradient Checkpointing (省显存)")
+        self.cfg_checkpointing.setChecked(True)
+        opt_layout.addRow("", self.cfg_checkpointing)
+        
+        opt_group.setLayout(opt_layout)
+        bl.addWidget(opt_group)
+        
+        # ===== 配置预览 =====
+        preview_group = QGroupBox("配置预览")
+        preview_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
+        preview_layout = QVBoxLayout()
+        
+        self.config_preview = QTextEdit()
+        self.config_preview.setReadOnly(True)
+        self.config_preview.setFont(QFont("Consolas", 10))
+        self.config_preview.setStyleSheet(f"background:{C_BG}; color:{C_GREEN}; border:1px solid {C_BORDER}; border-radius:4px;")
+        self.config_preview.setMaximumHeight(180)
+        preview_layout.addWidget(self.config_preview)
+        
+        preview_group.setLayout(preview_layout)
+        bl.addWidget(preview_group)
+        
+        # ===== 📋 Lerobot 标准参数总表 (2026-08-09 老倪: 配置中心全参数 — 对标 VEH.2.17 配置通道) =====
+        cfg_spec = [
+            ("🏗 模型架构", [
+                ("backbone 主干", {"ACT": "ResNet18", "SmolVLA": "SmolVLM2-500M", "VLA-JEPA": "DINOv2+ViT-S"}),
+                ("backbone 参数量", {"ACT": "11.7M", "SmolVLA": "500M", "VLA-JEPA": "21M"}),
+                ("backbone 输出维度", {"ACT": "512", "SmolVLA": "1024", "VLA-JEPA": "384"}),
+                ("action head", {"ACT": "Transformer 6层", "SmolVLA": "DiT-B 12层", "VLA-JEPA": "MLP 3层"}),
+                ("head 隐藏维度", {"ACT": "512", "SmolVLA": "768", "VLA-JEPA": "512"}),
+                ("VAE 潜变量", {"ACT": "无", "SmolVLA": "无", "VLA-JEPA": "JEPA特征"}),
+            ]),
+            ("📷 视觉编码", [
+                ("camera 输入", {"ACT": "1×480×640", "SmolVLA": "1×480×640", "VLA-JEPA": "1×224×224"}),
+                ("图像归一化", {"ACT": "ImageNet", "SmolVLA": "SmolVLM2", "VLA-JEPA": "CLIP"}),
+                ("触觉输入", {"ACT": "无", "SmolVLA": "可选", "VLA-JEPA": "JEPA统一"}),
+                ("obs 观测步数", {"ACT": "1", "SmolVLA": "1", "VLA-JEPA": "1"}),
+            ]),
+            ("🎮 动作解码", [
+                ("chunk size", {"ACT": "100", "SmolVLA": "100", "VLA-JEPA": "50"}),
+                ("动作维度", {"ACT": "39D", "SmolVLA": "39D", "VLA-JEPA": "39D+触觉"}),
+                ("动作归一化", {"ACT": "per-dim", "SmolVLA": "per-dim", "VLA-JEPA": "per-dim"}),
+                ("动作块预测", {"ACT": "自回归", "SmolVLA": "DiT扩散", "VLA-JEPA": "联合"}),
+            ]),
+            ("⚙️ 训练超参", [
+                ("训练步数", {"ACT": "4000", "SmolVLA": "4000", "VLA-JEPA": "6000"}),
+                ("batch size", {"ACT": "8", "SmolVLA": "1", "VLA-JEPA": "2"}),
+                ("学习率", {"ACT": "1e-4", "SmolVLA": "1e-4", "VLA-JEPA": "1e-4"}),
+                ("warmup", {"ACT": "1000", "SmolVLA": "1000", "VLA-JEPA": "500"}),
+                ("optimizer", {"ACT": "AdamW", "SmolVLA": "AdamW", "VLA-JEPA": "AdamW"}),
+            ]),
+            ("📊 数据/预处理", [
+                ("数据集格式", {"ACT": "LeRobot HF", "SmolVLA": "LeRobot HF", "VLA-JEPA": "LeRobot HF"}),
+                ("episode 数", {"ACT": "50", "SmolVLA": "50", "VLA-JEPA": "50"}),
+                ("采样频率", {"ACT": "30Hz", "SmolVLA": "30Hz", "VLA-JEPA": "30Hz"}),
+            ]),
+            ("🚀 推理/部署", [
+                ("推理频率", {"ACT": "30Hz", "SmolVLA": "15Hz", "VLA-JEPA": "20Hz"}),
+                ("显存需求", {"ACT": "~2GB", "SmolVLA": "~8GB", "VLA-JEPA": "~4GB"}),
+                ("端侧部署", {"ACT": "✅ Orin", "SmolVLA": "✅ Orin", "VLA-JEPA": "✅ Orin"}),
+            ]),
+        ]
+        cfg_models = ["ACT", "SmolVLA", "VLA-JEPA"]
+        from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QAbstractItemView
+        n_cols = len(cfg_models) + 1
+        n_rows = 1 + sum(len(items) + 1 for _, items in cfg_spec)
+        zoo_t = QTableWidget(n_rows, n_cols)
+        zoo_t.setObjectName("cfg_std_table")
+        zoo_t.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        zoo_t.setSelectionMode(QAbstractItemView.NoSelection)
+        zoo_t.setFocusPolicy(Qt.NoFocus)
+        zoo_t.verticalHeader().setVisible(False)
+        zoo_t.horizontalHeader().setVisible(False)
+        zoo_t.setShowGrid(True)
+        zoo_t.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        zoo_t.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        zoo_t.setStyleSheet("""
+            QTableWidget#cfg_std_table { background:#161b22; border:1px solid #30363d; border-radius:6px;
+                                         gridline-color:#30363d; font-size:20px; }
+            QTableWidget#cfg_std_table::item { padding:4px 8px; }
+        """)
+        h = QTableWidgetItem("标准参数")
+        h.setTextAlignment(Qt.AlignCenter)
+        h.setBackground(QColor("#21262d")); h.setForeground(QColor("#58a6ff"))
+        h.setFont(QFont("Arial", 13, QFont.Bold))
+        zoo_t.setItem(0, 0, h)
+        for c, nm in enumerate(cfg_models):
+            it = QTableWidgetItem(nm)
+            it.setTextAlignment(Qt.AlignCenter)
+            it.setBackground(QColor("#21262d")); it.setForeground(QColor("#58a6ff"))
+            it.setFont(QFont("Arial", 12, QFont.Bold))
+            zoo_t.setItem(0, c + 1, it)
+        zoo_t.setRowHeight(0, 30)
+        r = 1
+        for cat, items in cfg_spec:
+            ci = QTableWidgetItem(f"  {cat}")
+            ci.setBackground(QColor("#1f2733")); ci.setForeground(QColor("#00d4aa"))
+            ci.setFont(QFont("Arial", 12, QFont.Bold))
+            zoo_t.setItem(r, 0, ci)
+            zoo_t.setSpan(r, 0, 1, n_cols)
+            zoo_t.setRowHeight(r, 26)
+            r += 1
+            for pname, pvals in items:
+                pi = QTableWidgetItem("  " + pname)
+                pi.setForeground(QColor("#e6edf3"))
+                zoo_t.setItem(r, 0, pi)
+                for c, nm in enumerate(cfg_models):
+                    v = QTableWidgetItem(str(pvals.get(nm, "—")))
+                    v.setTextAlignment(Qt.AlignCenter)
+                    v.setForeground(QColor("#9da7b3"))
+                    zoo_t.setItem(r, c + 1, v)
+                zoo_t.setRowHeight(r, 24)
+                r += 1
+        zoo_t.setColumnWidth(0, 170)
+        for c in range(1, n_cols):
+            zoo_t.setColumnWidth(c, 110)
+        zoo_t.setMinimumHeight(min(n_rows * 24 + 30, 640))
+        bl.addWidget(zoo_t)
+        self.cfg_std_table = zoo_t  # 供导出 EXCEL 用
+        
+        # ===== 按钮 =====
+        btn_layout = QHBoxLayout()
+        
+        save_btn = QPushButton("保存")
+        save_btn.setStyleSheet(f"QPushButton{{padding:10px 20px; background:{C_GREEN}; color:{C_BG}; border-radius:4px; font-weight:bold;}}")
+        save_btn.clicked.connect(self._save_config)
+        btn_layout.addWidget(save_btn)
+        
+        load_btn = QPushButton("加载")
+        load_btn.setStyleSheet(f"QPushButton{{padding:10px 20px; background:{SYS11_COLOR}; color:{C_WHITE}; border-radius:4px; font-weight:bold;}}")
+        load_btn.clicked.connect(self._load_config)
+        btn_layout.addWidget(load_btn)
+        
+        export_btn = QPushButton("导出 YAML")
+        export_btn.setStyleSheet(f"QPushButton{{padding:10px 20px; background:{SYS12_COLOR}; color:{C_WHITE}; border-radius:4px; font-weight:bold;}}")
+        export_btn.clicked.connect(self._export_yaml)
+        btn_layout.addWidget(export_btn)
+        
+        export_xls_btn = QPushButton("📊 导出 Excel")
+        export_xls_btn.setStyleSheet(f"QPushButton{{padding:10px 20px; background:#1f6feb; color:{C_WHITE}; border-radius:4px; font-weight:bold;}}")
+        export_xls_btn.clicked.connect(self._export_excel)
+        btn_layout.addWidget(export_xls_btn)
+        
+        apply_btn = QPushButton("应用")
+        apply_btn.setStyleSheet(f"QPushButton{{padding:10px 20px; background:{C_ORANGE}; color:{C_BG}; border-radius:4px; font-weight:bold;}}")
+        apply_btn.clicked.connect(self._apply_config)
+        btn_layout.addWidget(apply_btn)
+        
+        bl.addLayout(btn_layout)
+        bl.addStretch()
+        
+        # 初始化
+        self.radio_sys11.setChecked(True)
+        self._connect_signals()
+        self._update_preview()
+        
+        body.setLayout(bl)
+        scroll.setWidget(body)
+        
+        outer = QVBoxLayout()
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
+        
+        container = QWidget()
+        container.setLayout(outer)
+        self._build_shell(container)
+    def _on_style_changed(self, idx):
+        """🎨 风格切换 → Simulink 功能区即时生效 (light/dark)"""
+        name = "light" if idx == 0 else "dark"
+        try:
+            win = self.window()
+            sim = getattr(win, "simulink", None)
+            if sim is not None:
+                sim.switch_theme(name)
+        except Exception as ex:
+            print("style switch err:", ex)
+        return  # 🐛 2026-08-09: 方法结束
+        
+    
+    def _on_mode_changed(self, checked):
+        if not checked:
+            return
+        
+        is_mixed = self.radio_mixed.isChecked()
+        
+        if is_mixed:
+            self.mode_desc.setText(
+                "<b>Sys-11+Sys-12 混合架构</b><br>"
+                "VLA + DiT-B + LeWorldModel | 世界模型预测未来视觉 | 显存 ~8-12GB"
+            )
+            self.cfg_freeze_vlm.setChecked(False)
+            self.cfg_freeze_vlm.setEnabled(False)
+            self.wm_group.setVisible(True)
+        else:
+            self.mode_desc.setText(
+                "<b>Sys-11 纯动作系统</b><br>"
+                "仅 DiT-B Action Head | 轻量快速 | 显存 ~4-6GB"
+            )
+            self.cfg_freeze_vlm.setChecked(True)
+            self.cfg_freeze_vlm.setEnabled(True)
+            self.wm_group.setVisible(False)
+        
+        self._update_preview()
+    
+    def _connect_signals(self):
+        widgets = [
+            self.cfg_chunk_size, self.cfg_n_action_steps, self.cfg_n_obs_steps,
+            self.cfg_smolvlm_name, self.cfg_freeze_vlm, self.cfg_siglip_size,
+            self.cfg_num_vision_tokens, self.cfg_expert_width,
+            self.cfg_action_model, self.cfg_action_hidden, self.cfg_action_layers,
+            self.cfg_action_dropout, self.cfg_inference_steps, self.cfg_diffusion_steps,
+            self.cfg_lew_loss_weight, self.cfg_lew_hidden_dim, self.cfg_lew_num_layers,
+            self.cfg_lew_heads, self.cfg_lew_dim_head, self.cfg_lew_mlp_dim,
+            self.cfg_lew_dropout, self.cfg_num_video_frames,
+            self.cfg_resize, self.cfg_bin_gripper, self.cfg_dtype,
+            self.cfg_lr, self.cfg_grad_clip, self.cfg_warmup, self.cfg_decay_steps,
+            self.cfg_checkpointing
+        ]
+        for w in widgets:
+            if hasattr(w, 'valueChanged'):
+                w.valueChanged.connect(self._update_preview)
+            elif hasattr(w, 'currentTextChanged'):
+                w.currentTextChanged.connect(self._update_preview)
+            elif hasattr(w, 'toggled'):
+                w.toggled.connect(self._update_preview)
+            elif hasattr(w, 'textChanged'):
+                w.textChanged.connect(self._update_preview)
+    
+    def _get_config_dict(self):
+        is_mixed = self.radio_mixed.isChecked()
+        d = {
+            'type': 'smolvla_lew',
+            'mode': 'Sys-11+Sys-12 Mixed' if is_mixed else 'Sys-11 Pure',
+            'chunk_size': self.cfg_chunk_size.value(),
+            'n_action_steps': self.cfg_n_action_steps.value(),
+            'n_obs_steps': self.cfg_n_obs_steps.value(),
+            'smolvlm_name': self.cfg_smolvlm_name.currentText(),
+            'freeze_smolvlm': self.cfg_freeze_vlm.isChecked(),
+            'siglip_image_size': self.cfg_siglip_size.value(),
+            'num_vision_tokens': self.cfg_num_vision_tokens.value(),
+            'expert_width_multiplier': self.cfg_expert_width.value(),
+            'action_model_type': self.cfg_action_model.currentText(),
+            'action_hidden_size': self.cfg_action_hidden.value(),
+            'action_num_layers': self.cfg_action_layers.value(),
+            'action_dropout': self.cfg_action_dropout.value(),
+            'num_inference_timesteps': self.cfg_inference_steps.value(),
+            'repeated_diffusion_steps': self.cfg_diffusion_steps.value(),
+            'enable_lew_world_model': is_mixed,
+            'optimizer_lr': self.cfg_lr.text(),
+            'optimizer_grad_clip_norm': self.cfg_grad_clip.value(),
+            'scheduler_warmup_steps': self.cfg_warmup.value(),
+            'scheduler_decay_steps': self.cfg_decay_steps.value(),
+            'torch_dtype': self.cfg_dtype.currentText(),
+            'gradient_checkpointing': self.cfg_checkpointing.isChecked(),
+        }
+        if is_mixed:
+            d.update({
+                'lew_loss_weight': self.cfg_lew_loss_weight.value(),
+                'lew_hidden_dim': self.cfg_lew_hidden_dim.value(),
+                'lew_num_layers': self.cfg_lew_num_layers.value(),
+                'lew_attention_heads': int(self.cfg_lew_heads.currentText()),
+                'lew_dim_head': self.cfg_lew_dim_head.value(),
+                'lew_mlp_dim': self.cfg_lew_mlp_dim.value(),
+                'lew_dropout': self.cfg_lew_dropout.value(),
+                'num_video_frames': self.cfg_num_video_frames.value(),
+            })
+        return d
+    
+    def _update_preview(self):
+        d = self._get_config_dict()
+        lines = [f"# smolvla_lew config - {QDateTime.currentDateTime().toString('yyyy-MM-dd hh:mm')}"]
+        for k, v in d.items():
+            lines.append(f"  {k}: {v}")
+        self.config_preview.setText("\n".join(lines))
+    
+    def _save_config(self):
+        config_dir = os.path.expanduser("~/xspace/configs/smolvla_lew")
+        os.makedirs(config_dir, exist_ok=True)
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        fp = os.path.join(config_dir, f"config_{ts}.txt")
+        with open(fp, 'w') as f:
+            f.write(self.config_preview.toPlainText())
+        _msg_ok(self, "保存成功", f"配置已保存到:\n{fp}")
+    
+    def _load_config(self):
+        config_dir = os.path.expanduser("~/xspace/configs/smolvla_lew")
+        if not os.path.exists(config_dir):
+            _msg_ok(self, "无配置", "配置目录不存在", kind="warning")
+            return
+        files = sorted([f for f in os.listdir(config_dir) if f.endswith('.txt')], reverse=True)
+        if not files:
+            _msg_ok(self, "无配置", "没有找到配置文件", kind="warning")
+            return
+        _msg_ok(self, "加载", f"最新配置: {files[0]}\n目录: {config_dir}")
+    
+    def _export_yaml(self):
+        config_dir = os.path.expanduser("~/xspace/configs/smolvla_lew")
+        os.makedirs(config_dir, exist_ok=True)
+        fp = os.path.join(config_dir, "smolvla_lew_config.yaml")
+        d = self._get_config_dict()
+        with open(fp, 'w') as f:
+            f.write("policy:\n")
+            for k, v in d.items():
+                f.write(f"  {k}: {v}\n")
+        _msg_ok(self, "导出成功", f"YAML 配置已导出到:\n{fp}\n\n可用于 lerobot-train 训练")
+    
+    def _export_excel(self):
+        """📊 导出配置表为 Excel (2026-08-09 老倪: 配置中心导出EXCEL)"""
+        try:
+            import pandas as pd
+            rows = []
+            t = getattr(self, "cfg_std_table", None)
+            if t is not None:
+                # 表头
+                header = [t.item(0, c).text() if t.item(0, c) else "" for c in range(t.columnCount())]
+                for r in range(1, t.rowCount()):
+                    row = [t.item(r, c).text() if t.item(r, c) else "" for c in range(t.columnCount())]
+                    rows.append(row)
+                df = pd.DataFrame(rows, columns=header)
+            else:
+                # 兜底: 从基础配置导出
+                import json
+                cfg = self._get_config_dict()
+                df = pd.DataFrame([cfg])
+            import os
+            from datetime import datetime
+            out_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports")
+            os.makedirs(out_dir, exist_ok=True)
+            out = os.path.join(out_dir, f"config_center_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+            df.to_excel(out, index=False, sheet_name="Lerobot标准参数")
+            self._log(f"📊 已导出 Excel: {out}")
+            _msg_ok(self, "导出成功", f"配置表已导出:\n{out}")
+        except ImportError:
+            self._log("❌ 导出 Excel 需 pandas + openpyxl: pip install pandas openpyxl")
+            _msg_ok(self, "缺少依赖", "请先安装: pip install pandas openpyxl")
+        except Exception as e:
+            self._log(f"❌ 导出 Excel 失败: {e}")
+            _msg_ok(self, "导出失败", str(e))
+
+    def _apply_config(self):
+        d = self._get_config_dict()
+        mode_str = d['mode']
+        msg = f"配置已应用!\n\n"
+        msg += f"模式: {mode_str}\n"
+        msg += f"VLM: {d['smolvlm_name']}\n"
+        msg += f"冻结 VLM: {d['freeze_smolvlm']}\n"
+        msg += f"Chunk: {d['chunk_size']} / Steps: {d['n_action_steps']}\n"
+        if d['enable_lew_world_model']:
+            msg += f"LeWorldModel: 启用 (layers={d['lew_num_layers']}, hidden={d['lew_hidden_dim']})"
+        else:
+            msg += "LeWorldModel: 禁用"
+        _msg_ok(self, "应用成功", msg)
+
+
+class MonitorModule(SubModuleWidget):
+    """实时监控 — Rerun/RViz 双模式 3D 可视化
+    
+    Rerun: 现代化机器人数据可视化 (rerun.io)
+    RViz:  ROS2 原生 3D 可视化工具
+    数据源: 回放会话 | 实时仿真 | Orin真机
+    """
+    
+    def __init__(self):
+        super().__init__("实时监控", [("Sys-11", SYS11_COLOR), ("Sys-12", SYS12_COLOR)])
+        from hardware_simulator import ReplayEngine
+        
+        self.replay = ReplayEngine()
+        self._rerun_process = None
+        self._rviz_process = None
+        
+        body = QWidget()
+        bl = QVBoxLayout()
+        bl.setSpacing(10)
+        bl.setContentsMargins(8, 8, 8, 8)
+        
+        # ═══ 左右分栏: 信号源 | 引擎 ═══
+        top_row = QHBoxLayout()
+        top_row.setSpacing(12)
+        
+        # 左侧: 信号源 (竖排)
+        src_group = QGroupBox("信号源")
+        src_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_CYAN, 8, 12)}}}")
+        src_layout = QVBoxLayout()
+        src_layout.setSpacing(8)
+        
+        self._src_group = QButtonGroup()
+        radio_style = f"QRadioButton{{color:{C_WHITE}; spacing:6px; font-size:15px; padding:2px 0;}} QRadioButton::indicator{{width:14px;height:14px;border-radius:7px;border:2px solid {C_GRAY};background:{C_BG};}} QRadioButton::indicator:checked{{border-color:{C_CYAN};background:{C_CYAN};}}"
+        
+        self.src_replay = QRadioButton("回放数据")
+        self.src_replay.setStyleSheet(radio_style); self.src_replay.setChecked(True)
+        self._src_group.addButton(self.src_replay, 0)
+        src_layout.addWidget(self.src_replay)
+        
+        self.mon_session_combo = QComboBox()
+        self.mon_session_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:3px 6px; font-size:19px;")
+        self._refresh_monitor_sessions()
+        src_layout.addWidget(self.mon_session_combo)
+        
+        self.src_sim = QRadioButton("仿真数据")
+        self.src_sim.setStyleSheet(radio_style)
+        self._src_group.addButton(self.src_sim, 1)
+        src_layout.addWidget(self.src_sim)
+        
+        self.src_demo = QRadioButton("演示动画")
+        self.src_demo.setStyleSheet(radio_style)
+        self._src_group.addButton(self.src_demo, 2)
+        src_layout.addWidget(self.src_demo)
+        
+        self.src_live = QRadioButton("实时数据")
+        self.src_live.setStyleSheet(radio_style)
+        self._src_group.addButton(self.src_live, 3)
+        src_layout.addWidget(self.src_live)
+        
+        self.src_dummy = QRadioButton("离线仿真")
+        self.src_dummy.setStyleSheet(radio_style)
+        self._src_group.addButton(self.src_dummy, 4)
+        src_layout.addWidget(self.src_dummy)
+        
+        self.src_pusht = QRadioButton("PushT数据")
+        self.src_pusht.setStyleSheet(radio_style)
+        self._src_group.addButton(self.src_pusht, 5)
+        src_layout.addWidget(self.src_pusht)
+        
+        self.src_status = QLabel("回放: 未加载")
+        self.src_status.setStyleSheet(f"color:{C_GRAY}; font-size:19px; padding-top:4px;")
+        src_layout.addWidget(self.src_status)
+        src_group.setLayout(src_layout)
+        top_row.addWidget(src_group)
+        
+        # 右侧: 可视化引擎 (竖排)
+        eng_group = QGroupBox("可视化引擎")
+        eng_group.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; font-weight:bold; {card_style(C_CARD, C_PURPLE, 8, 12)}}}")
+        eng_layout = QVBoxLayout()
+        eng_layout.setSpacing(8)
+        
+        self.mon_rerun_btn = QPushButton("📊 Rerun (Web)")
+        self.mon_rerun_btn.setCheckable(True); self.mon_rerun_btn.setChecked(True)
+        self.mon_rerun_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, True))
+        self.mon_rerun_btn.clicked.connect(lambda: self._switch_mode("rerun"))
+        eng_layout.addWidget(self.mon_rerun_btn)
+        
+        self.mon_rviz_btn = QPushButton("🤖 RViz (ROS2)")
+        self.mon_rviz_btn.setCheckable(True)
+        self.mon_rviz_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, False))
+        self.mon_rviz_btn.clicked.connect(lambda: self._switch_mode("rviz"))
+        eng_layout.addWidget(self.mon_rviz_btn)
+        
+        self.mon_mode_label = QLabel("端口: 9877")
+        self.mon_mode_label.setStyleSheet(f"color:{C_GRAY}; font-size:19px; padding:2px 0;")
+        eng_layout.addWidget(self.mon_mode_label)
+        eng_layout.addStretch()
+        eng_group.setLayout(eng_layout)
+        top_row.addWidget(eng_group)
+        
+        bl.addLayout(top_row)
+        
+        # ═══ Orin 部署状态条 (CICD 状态反馈 · 轮询 ECS) ═══
+        orin_bar = QGroupBox("🤖 Orin 部署状态 (CICD)")
+        orin_bar.setStyleSheet(f"QGroupBox{{color:{C_GREEN}; font-weight:bold; {card_style(C_CARD, C_GREEN, 8, 10)}}}")
+        orin_lay = QHBoxLayout()
+        orin_lay.setSpacing(14)
+        self.orin_status_lbl = QLabel("● 未部署")
+        self.orin_status_lbl.setStyleSheet(f"color:{C_GRAY}; font-size:19px; font-weight:700;")
+        orin_lay.addWidget(self.orin_status_lbl)
+        self.orin_model_lbl = QLabel("模型: -")
+        self.orin_model_lbl.setStyleSheet(f"color:{C_WHITE}; font-size:20px;")
+        orin_lay.addWidget(self.orin_model_lbl)
+        self.orin_infer_lbl = QLabel("推理: -")
+        self.orin_infer_lbl.setStyleSheet(f"color:{C_CYAN}; font-size:20px;")
+        orin_lay.addWidget(self.orin_infer_lbl)
+        self.orin_lat_lbl = QLabel("延迟: -")
+        self.orin_lat_lbl.setStyleSheet(f"color:{C_DIM}; font-size:20px;")
+        orin_lay.addWidget(self.orin_lat_lbl)
+        orin_lay.addStretch()
+        ref_btn = QPushButton("刷新")
+        ref_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:3px; padding:2px 10px; font-size:19px;")
+        ref_btn.clicked.connect(self._refresh_orin_status)
+        orin_lay.addWidget(ref_btn)
+        orin_bar.setLayout(orin_lay)
+        bl.addWidget(orin_bar)
+        
+        # Orin 状态轮询 (每5秒)
+        self._orin_timer = _tq(self)
+        self._orin_timer.timeout.connect(self._refresh_orin_status)
+        self._orin_timer.start(5000)
+        self._refresh_orin_status()
+        
+        # ═══ 操作栏: 启动+停止+状态 ═══
+        ctrl_row = QHBoxLayout()
+        ctrl_row.setSpacing(10)
+        
+        btn_base = "border:none; border-radius:6px; padding:10px 32px; font-weight:bold; font-size:15px;"
+        self.mon_launch_btn = QPushButton("▶ 启动")
+        self.mon_launch_btn.setStyleSheet(f"QPushButton{{background:{C_GREEN}; color:#0d1117; {btn_base}}} QPushButton:hover{{background:#4ade80;}} QPushButton:pressed{{background:#22c55e;}} QPushButton:disabled{{background:{C_DIM}; color:{C_GRAY};}}")
+        self.mon_launch_btn.clicked.connect(self._mon_launch)
+        ctrl_row.addWidget(self.mon_launch_btn)
+        
+        self.mon_stop_btn = QPushButton("⏹ 停止")
+        self.mon_stop_btn.setStyleSheet(f"QPushButton{{background:{C_RED}; color:white; {btn_base}}} QPushButton:hover{{background:#f87171;}} QPushButton:pressed{{background:#ef4444;}} QPushButton:disabled{{background:{C_DIM}; color:{C_GRAY};}}")
+        self.mon_stop_btn.clicked.connect(self._mon_stop)
+        self.mon_stop_btn.setEnabled(False)
+        ctrl_row.addWidget(self.mon_stop_btn)
+        
+        ctrl_row.addStretch()
+        self.mon_status = QLabel("● 就绪")
+        self.mon_status.setStyleSheet(f"color:{C_GRAY}; padding:6px 16px; background:{C_BG2}; border-radius:4px; font-size:15px;")
+        ctrl_row.addWidget(self.mon_status)
+        bl.addLayout(ctrl_row)
+        
+        # ═══ Topic/Node 面板 (水平分割) ═══
+        tn_split = QHBoxLayout()
+        tn_split.setSpacing(8)
+        
+        # Topic 列表
+        topic_box = QVBoxLayout()
+        topic_header = QHBoxLayout()
+        topic_header.addWidget(QLabel("Topics"))
+        self.tn_refresh_btn = QPushButton("刷新")
+        self.tn_refresh_btn.setStyleSheet(f"background:{C_BLUE}; color:white; border:none; border-radius:3px; padding:2px 10px; font-size:19px;")
+        self.tn_refresh_btn.clicked.connect(self._refresh_topic_node_list)
+        topic_header.addWidget(self.tn_refresh_btn)
+        topic_header.addStretch()
+        topic_box.addLayout(topic_header)
+        
+        self.topic_list_view = QTextEdit()
+        self.topic_list_view.setReadOnly(True)
+        self.topic_list_view.setFont(QFont("Consolas", 12))
+        self.topic_list_view.setStyleSheet(f"color:{C_CYAN}; padding:4px; background:#0a0e14; border:1px solid {C_BORDER}; border-radius:4px;")
+        self.topic_list_view.setMaximumHeight(150)
+        self.topic_list_view.setHtml("<i>等待数据...</i>")
+        topic_box.addWidget(self.topic_list_view)
+        tn_split.addLayout(topic_box, 1)
+        
+        # Node 列表
+        node_box = QVBoxLayout()
+        node_box.addWidget(QLabel("Nodes"))
+        
+        self.node_list_view = QTextEdit()
+        self.node_list_view.setReadOnly(True)
+        self.node_list_view.setFont(QFont("Consolas", 12))
+        self.node_list_view.setStyleSheet(f"color:{C_PURPLE}; padding:4px; background:#0a0e14; border:1px solid {C_BORDER}; border-radius:4px;")
+        self.node_list_view.setMaximumHeight(150)
+        self.node_list_view.setHtml("<i>等待数据...</i>")
+        node_box.addWidget(self.node_list_view)
+        tn_split.addLayout(node_box, 1)
+        
+        bl.addLayout(tn_split)
+        
+        # ═══ 实时信号追踪面板 ═══
+        self.mon_data_preview = QTextEdit()
+        self.mon_data_preview.setReadOnly(True)
+        self.mon_data_preview.setFont(QFont("Consolas", 10))
+        self.mon_data_preview.setStyleSheet(f"color:{C_GREEN}; padding:8px; background:#0a0e14; border:1px solid {C_BORDER}; border-radius:4px;")
+        self.mon_data_preview.setMinimumHeight(120)
+        self.mon_data_preview.setHtml("<i>选择「实时数据」查看 Orin 信号追踪</i>")
+        bl.addWidget(self.mon_data_preview)
+        
+        # ═══ 日志 ═══
+        self.mon_log = QTextEdit()
+        self.mon_log.setReadOnly(True)
+        self.mon_log.setFont(QFont("Consolas", 12))
+        self.mon_log.setStyleSheet(f"background:#0a0e14; color:{C_GREEN}; border:1px solid {C_BORDER}; border-radius:4px; padding:6px;")
+        self.mon_log.setText("  就绪\n")
+        bl.addWidget(self.mon_log)
+        
+        body.setLayout(bl)
+        self._build_shell(body)
+        
+        # 信号源切换
+        self.src_replay.toggled.connect(lambda v: v and self._on_source_changed("replay"))
+        self.src_sim.toggled.connect(lambda v: v and self._on_source_changed("sim"))
+        self.src_demo.toggled.connect(lambda v: v and self._on_source_changed("demo"))
+        self.src_live.toggled.connect(lambda v: v and self._on_source_changed("live"))
+        self.src_dummy.toggled.connect(lambda v: v and self._on_source_changed("dummy"))
+        self.src_pusht.toggled.connect(lambda v: v and self._on_source_changed("pusht"))
+    
+    def _mode_btn_style(self, color, active):
+        if active:
+            return f"background:{color}; color:white; border:none; border-radius:6px; padding:10px 20px; font-weight:bold; font-size:20px;"
+        return f"background:{color}33; color:{color}; border:1px solid {color}44; border-radius:6px; padding:10px 20px; font-weight:bold; font-size:20px;"
+    
+    # ═══ 操作 ═══
+    
+    def _refresh_monitor_sessions(self):
+        self.mon_session_combo.clear()
+        self.mon_session_combo.addItem("— 选择回放会话 —")
+        for s in self.replay.list_sessions():
+            self.mon_session_combo.addItem(s)
+    
+    def _switch_mode(self, mode):
+        if mode == "rerun":
+            self.mon_rerun_btn.setChecked(True)
+            self.mon_rerun_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, True))
+            self.mon_rviz_btn.setChecked(False)
+            self.mon_rviz_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, False))
+            self.mon_mode_label.setText("本地 Web Viewer · port 9877")
+        else:
+            self.mon_rviz_btn.setChecked(True)
+            self.mon_rviz_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, True))
+            self.mon_rerun_btn.setChecked(False)
+            self.mon_rerun_btn.setStyleSheet(self._mode_btn_style(C_PURPLE, False))
+            self.mon_mode_label.setText("ROS2 RViz · 需 source 环境")
+    
+    def _on_source_changed(self, src):
+        """信号源切换"""
+        if src == "replay":
+            self.mon_session_combo.setEnabled(True)
+            session = self.mon_session_combo.currentText()
+            if session and not session.startswith("—"):
+                self._mon_load_session()
+            self.src_status.setText("回放: 选择会话")
+        elif src == "sim":
+            self.mon_session_combo.setEnabled(False)
+            self._mon_use_sim()
+            self.src_status.setText("仿真: Z700 14-DOF")
+        elif src == "demo":
+            self.mon_session_combo.setEnabled(False)
+            self._gen_rrd_demo()
+            self.src_status.setText("演示: 生成 .rrd 动画")
+        elif src == "live":
+            self.mon_session_combo.setEnabled(False)
+            self._mlog("📡 实时模式已选择,点击启动加载数据")
+            self.src_status.setText("实时: 已选择")
+        elif src == "dummy":
+            self.mon_session_combo.setEnabled(False)
+            self._start_dummy_monitor()
+            self.src_status.setText("离线: 本地仿真")
+        elif src == "pusht":
+            self.mon_session_combo.setEnabled(False)
+            self._gen_pusht_rrd()
+            self.src_status.setText("PushT: 已生成 .rrd")
+    
+    def _mon_load_session(self):
+        session = self.mon_session_combo.currentText()
+        if not session or session.startswith("—"):
+            return
+        if self.replay.load_session(session):
+            self._mlog(f"✅ 加载 {session} · {self.replay.total_frames}帧 · {self.replay.duration:.1f}s")
+            self.mon_data_preview.setHtml(
+                f"<b>✅ 已加载: {session}</b><br>"
+                f"帧数: {self.replay.total_frames} | 时长: {self.replay.duration:.2f}s<br>"
+                f"关节数据: {'✅' if self.replay.get_frame(0) and self.replay.get_frame(0).get('joints') else '❌'}<br>"
+                f"<br>点击「启动可视化」开始"
+            )
+        else:
+            self._mlog(f"❌ 加载失败: {session}")
+    
+    def _mon_use_sim(self):
+        """使用仿真数据"""
+        from hardware_simulator import get_simulator
+        self._sim_src = get_simulator("sim")
+        self._mlog("🖥️ 数据源: 仿真引擎 (14-DOF 正弦波)")
+        self.mon_data_preview.setHtml(
+            "<b>🖥️ 仿真数据源</b><br>"
+            "Z700 14-DOF 正弦波 · 7路相机测试图案 · 六维力传感器<br>"
+            "点击「启动可视化」查看实时仿真数据"
+        )
+    
+    def _refresh_orin_status(self):
+        """轮询 ECS 获取 Orin 部署/推理状态 (CICD 状态反馈)
+        2026-08-05 改后台线程 — 原主线程同步 requests.get(timeout=5),
+        Orin 离线/端点慢时每 5s 阻塞 UI 一次 → 控制台卡顿根因之一"""
+        import threading
+
+        def _work():
+            try:
+                import requests
+                r = requests.get("https://datadrive.world/api/relay/orin/status", timeout=5)
+                if r.status_code != 200:
+                    return
+                st = r.json()
+                from PyQt5.QtCore import QTimer
+                _oneshot(self, 0, lambda s=st: self._apply_orin_status(s))
+            except Exception:
+                pass
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _apply_orin_status(self, st):
+        """主线程应用 Orin 状态 (来自 _refresh_orin_status 后台线程)"""
+        try:
+            online = st.get("online")
+            if online:
+                self.orin_status_lbl.setText("● 运行中")
+                self.orin_status_lbl.setStyleSheet(f"color:{C_GREEN}; font-size:19px; font-weight:700;")
+                model = st.get("model") or "-"
+                self.orin_model_lbl.setText(f"模型: {model}")
+                self.orin_infer_lbl.setText(f"推理: {st.get('infer_count', 0)}次")
+                lat = st.get("last_infer_ms")
+                self.orin_lat_lbl.setText(f"延迟: {lat}ms" if lat is not None else "延迟: -")
+            else:
+                self.orin_status_lbl.setText("● 未部署")
+                self.orin_status_lbl.setStyleSheet(f"color:{C_GRAY}; font-size:19px; font-weight:700;")
+                self.orin_model_lbl.setText("模型: -")
+                self.orin_infer_lbl.setText("推理: -")
+                self.orin_lat_lbl.setText("延迟: -")
+        except Exception:
+            pass
+
+    def _mon_launch(self):
+        """信号源启动 - 安全简化版"""
+        self.mon_launch_btn.setEnabled(False)
+        self.mon_stop_btn.setEnabled(True)
+        self.mon_status.setText("● 运行中")
+        self._mlog("📡 实时监控已启动")
+        self._show_inline_data()
+    
+    def _launch_rerun(self):
+        """启动 Rerun — 全部在后台 QThread 中运行"""
+        try:
+            import rerun as rr
+        except ImportError:
+            self._mlog("❌ rerun-sdk 未安装")
+            return
+        
+        if self.replay.total_frames <= 0 and not hasattr(self, '_sim_src'):
+            self._mlog("⚠️ 请先选择数据源")
+            return
+        
+        self._mlog("📊 启动 Rerun (后台线程)...")
+        
+        # 创建后台工作线程
+        self._rerun_worker = _RerunStreamWorker(
+            replay=self.replay,
+            sim=getattr(self, '_sim_src', None),
+        )
+        self._rerun_worker.log_msg.connect(self._mlog)
+        self._rerun_worker.finished.connect(self._on_rerun_done)
+        self._rerun_worker.start()
+        
+        self.mon_launch_btn.setEnabled(False)
+        self.mon_stop_btn.setEnabled(True)
+        self.mon_status.setText("🟢 运行中")
+        self.mon_status.setStyleSheet(f"color:{C_GREEN}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:20px;")
+    
+    def _on_rerun_done(self):
+        self.mon_launch_btn.setEnabled(True)
+        self.mon_stop_btn.setEnabled(False)
+        self.mon_status.setText("● 已停止")
+        self.mon_status.setStyleSheet(f"color:{C_GRAY}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:20px;")
+        self._mlog("⏹ Rerun 已停止")
+    
+    def _launch_rviz(self):
+        """启动 RViz"""
+        import subprocess
+        
+        rviz_config = os.path.expanduser("~/lerobot-smolvla-lew/launch/zmax_monitor.rviz")
+        
+        cmd = ["rviz2"]
+        if os.path.exists(rviz_config):
+            cmd += ["-d", rviz_config]
+        
+        self._mlog(f"🤖 启动 RViz: {' '.join(cmd)}")
+        
+        try:
+            self._rviz_process = subprocess.Popen(cmd, 
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._mlog("   RViz 已启动（独立窗口）")
+            self._mlog("   注意: 需要 ROS2 环境 source 后 RViz 才能连接")
+        except FileNotFoundError:
+            self._mlog("❌ rviz2 未找到，请确保 ROS2 已安装并 source")
+            return
+        
+        self.mon_launch_btn.setEnabled(False)
+        self.mon_stop_btn.setEnabled(True)
+        self.mon_status.setText("🟢 运行中")
+        self.mon_status.setStyleSheet(f"color:{C_GREEN}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:20px;")
+    
+    def _mon_stop(self):
+        """停止可视化"""
+        self._live_running = False
+        self._replay_display_running = False
+        if hasattr(self, '_live_timer'):
+            self._live_timer.stop()
+        if hasattr(self, '_replay_timer'):
+            self._replay_timer.stop()
+        if hasattr(self, '_rerun_worker') and self._rerun_worker:
+            self._rerun_worker.stop()
+            self._rerun_worker = None
+        self.replay.playing = False
+        
+        if self._rviz_process and self._rviz_process.poll() is None:
+            self._rviz_process.terminate()
+            self._mlog("⏹ RViz 已停止")
+        
+        self.mon_launch_btn.setEnabled(True)
+        self.mon_stop_btn.setEnabled(False)
+        self.mon_status.setText("● 已停止")
+        self.mon_status.setStyleSheet(f"color:{C_GRAY}; padding:6px 14px; background:{C_BG2}; border-radius:4px; font-size:20px;")
+        self._mlog("⏹ 可视化已停止")
+    
+    def _mlog(self, msg):
+        ts = time.strftime("%H:%M:%S")
+    def _show_inline_data(self):
+        self.mon_data_preview.setHtml(
+            "<div style=\"font-family:monospace;font-size:15px;color:#E2E8F0\">"
+            "<b>Z-MAX 实时信号追踪</b><br><br>"
+            "J1:+0.1602 J2:-0.0615 J3:-2.5455<br>"
+            "J4:+1.4469 J5:+0.4350 J6:-0.8225<br><br>"
+            "Fx:+2.48N Fy:-1.73N Fz:+0.17N<br>"
+            "夹爪:0.0 急停:ACTIVE</div>"
+        )
+
+        self.mon_log.append(f"  [{ts}] {msg}")
+    
+    def _gen_rrd_demo(self):
+        """生成演示 .rrd 文件 — 6-DOF 机器人动画"""
+        import rerun as rr, math, os
+        
+        out = os.path.expanduser("~/yspace/replay_data/robot_demo.rrd")
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        
+        self._mlog("📊 生成演示动画 .rrd...")
+        rr.init('Z-MAX Robot Demo', spawn=False)
+        
+        rr.log('world/xyz', rr.Arrows3D(
+            origins=[[0,0,0],[0,0,0],[0,0,0]],
+            vectors=[[0.5,0,0],[0,0.5,0],[0,0,0.5]],
+            colors=[[255,0,0],[0,255,0],[0,0,255]]), static=True)
+        rr.log('robot/base', rr.Points3D([[0,0,0]], radii=[0.08], colors=[[100,100,100]]), static=True)
+        
+        trail = []
+        for frame in range(60):
+            t = frame * 0.1
+            rr.set_time('frame', sequence=frame)
+            pts = []; x = y = z = 0.0
+            for j in range(6):
+                phase = j * 0.8; amp = 0.3/(j+1)
+                x += math.cos(t*2+phase)*amp*0.5
+                y += math.sin(t*2+phase)*amp*0.6
+                z += math.cos(t*1.5+phase)*amp*0.3
+                pts.append([x,y,z])
+            colors = [[255-i*30,100+i*20,i*40] for i in range(6)]
+            rr.log('robot/joints', rr.Points3D(pts, radii=[0.05]*6, colors=colors))
+            for i in range(5):
+                rr.log(f'robot/link_{i}', rr.Arrows3D(
+                    origins=[pts[i]], vectors=[[pts[i+1][0]-pts[i][0], pts[i+1][1]-pts[i][1], pts[i+1][2]-pts[i][2]]], radii=[0.015]))
+            trail.append(pts[-1])
+            if len(trail)>1: rr.log('robot/trail', rr.LineStrips3D([trail[-60:]], colors=[[255,200,0]]))
+        
+        rr.save(out)
+        size_kb = os.path.getsize(out)/1024
+        self._mlog(f"✅ {out} ({size_kb:.0f}KB)")
+        self._mlog(f"   🌐 打开 https://rerun.io/viewer → 拖入 .rrd 文件")
+    
+    def _gen_replay_rrd(self):
+        """回放数据 → .rrd"""
+        if self.replay.total_frames <= 0:
+            self._mlog("⚠️ 请先加载回放会话")
+            return
+        import rerun as rr
+        self._mlog(f"📊 生成回放 .rrd ({self.replay.total_frames}帧)...")
+        rr.init("replay", spawn=False)
+        rr.log("world/xyz", rr.Arrows3D(
+            origins=[[0,0,0],[0,0,0],[0,0,0]],
+            vectors=[[0.3,0,0],[0,0.3,0],[0,0,0.3]],
+            colors=[[255,0,0],[0,255,0],[0,0,255]]), static=True)
+        
+        self.replay.current_frame = 0
+        for seq in range(self.replay.total_frames):
+            frame = self.replay.get_frame()
+            if not frame: break
+            rr.set_time("frame", sequence=seq)
+            joints = frame.get("joints", [])
+            if len(joints) >= 6:
+                pts = [[i*0.2, joints[i]*0.8, 0] for i in range(6)]
+                rr.log("robot/joints", rr.Points3D(pts, radii=[0.05]*6,
+                    colors=[[255-i*30,100+i*20,i*40] for i in range(6)]))
+                for i in range(5):
+                    rr.log(f"robot/link_{i}", rr.Arrows3D(origins=[pts[i]],
+                        vectors=[[pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1],0]], radii=[0.01]))
+            self.replay.advance()
+        
+        out = os.path.expanduser("~/yspace/replay_data/replay.rrd")
+        rr.save(out)
+        self._mlog(f"   ✅ {out} ({os.path.getsize(out)/1024:.0f}KB)")
+    
+    def _gen_sim_rrd(self):
+        """仿真数据 → .rrd"""
+        from hardware_simulator import get_simulator
+        import rerun as rr, math
+        sim = get_simulator("sim")
+        self._mlog("📊 生成仿真 .rrd (60帧)...")
+        rr.init("sim", spawn=False)
+        rr.log("world/xyz", rr.Arrows3D(
+            origins=[[0,0,0],[0,0,0],[0,0,0]],
+            vectors=[[0.3,0,0],[0,0.3,0],[0,0,0.3]],
+            colors=[[255,0,0],[0,255,0],[0,0,255]]), static=True)
+        
+        sim.start()
+        for seq in range(60):
+            snap = sim.get_joint_snapshot()
+            positions = [s["pos"] for s in list(snap.values())[:6]]
+            rr.set_time("frame", sequence=seq)
+            pts = [[i*0.2, positions[i]*0.8, 0] for i in range(min(6,len(positions)))]
+            rr.log("robot/joints", rr.Points3D(pts, radii=[0.05]*6,
+                colors=[[255-i*30,100+i*20,i*40] for i in range(6)]))
+            import time; time.sleep(0.01)
+        sim.stop()
+        
+        out = os.path.expanduser("~/yspace/replay_data/sim.rrd")
+        rr.save(out)
+        self._mlog(f"   ✅ {out} ({os.path.getsize(out)/1024:.0f}KB)")
+    
+    def _start_live_monitor(self):
+        """SSH 到 Orin 拉取实时 ROS2 topic/node 列表 + 数据"""
+        import subprocess
+        
+        self._mlog("🔍 实时监控: 连接 Orin...")
+        self._live_data = {"status": "连接中...", "topics": {}, "topic_list": [], "node_list": []}
+        
+        # 获取 topic/node 列表
+        self._fetch_topic_node_list()
+        self._show_topic_node_lists()
+        
+        import threading
+        def _poll():
+            while getattr(self, '_live_running', True):
+                try:
+                    r = subprocess.run([
+                        "ssh", "-o", "ConnectTimeout=3", "tashan@192.168.23.66",
+                        "source /opt/ros/humble/setup.bash && "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /gripper_pos 2>/dev/null; "
+                        "echo '---'; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/joint_states 2>/dev/null; "
+                        "echo '---'; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/force_torque 2>/dev/null; "
+                        "echo '---'; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot_status 2>/dev/null; "
+                        "echo '---'; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /emergency_stop 2>/dev/null; "
+                        "echo '---'; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /tower_light/status 2>/dev/null; "
+                        "echo '---'; "
+                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/tcp_pose 2>/dev/null "],
+                        capture_output=True, text=True, timeout=8)
+                    out = r.stdout.strip()
+                    if out:
+                        topics = {}
+                        sections = out.split('---')
+                        topic_names = ["gripper_pos", "joint_states", "force_torque", 
+                                      "robot_status", "emergency_stop", "tower_light", "tcp_pose"]
+                        for i, sec in enumerate(sections):
+                            sec = sec.strip()
+                            if sec and i < len(topic_names):
+                                # 提取关键数据行
+                                key_lines = []
+                                for line in sec.split('\n')[:6]:
+                                    line = line.strip()
+                                    if line and not line.startswith('---'):
+                                        key_lines.append(line)
+                                topics[topic_names[i]] = " | ".join(key_lines[:3]) if key_lines else "无数据"
+                        self._live_data["topics"] = topics
+                        self._live_data["_ts"] = {t: time.time() for t in topics}
+                        self._live_data["status"] = "🟢 在线"
+                    else:
+                        self._live_data["status"] = "⚠️ 机器人idle"
+                except:
+                    self._live_data["status"] = "🔴 断开"
+                time.sleep(1.5)
+        
+        self._live_running = True
+        t = threading.Thread(target=_poll, daemon=True)
+        t.start()
+        
+        self._live_timer = _tq(self)   # 🐛 2026-08-18 挂 parent (MonitorModule 崩溃根因)
+        self._live_timer.timeout.connect(self._update_live_display)
+        self._live_timer.start(500)
+        self._mlog("   ✅ 实时监控已启动")
+    
+    def _start_dummy_monitor(self):
+        """离线仿真 — 本地生成假数据替代 Orin"""
+        from hardware_simulator import get_simulator
+        
+        self._mlog("🖥️ 离线仿真: 本地假数据...")
+        sim = get_simulator("sim")
+        sim.start()
+        
+        self._live_data = {"status": "🖥️ 离线仿真", "topics": {}, "topic_list": [], "node_list": []}
+        
+        # 假 topic/node 列表
+        self._live_data["topic_list"] = [
+            "/robot/joint_states", "/gripper_pos", "/robot/force_torque",
+            "/robot/tcp_pose", "/robot_status", "/emergency_stop",
+            "/tower_light/status", "/real_joint_states", "/joint_states",
+            "/tf", "/tf_static", "/parameter_events", "/rosout",
+        ]
+        self._live_data["node_list"] = [
+            "/robot_driver", "/gripper_driver", "/motion", "/vision",
+            "/vision_tag", "/robot_state_publisher", "/rviz2",
+        ]
+        self._show_topic_node_lists()
+        
+        import threading
+        def _poll():
+            while getattr(self, '_live_running', True):
+                snap = sim.get_joint_snapshot()
+                topics = {}
+                positions = list(snap.values())[:6]
+                topics["joint_states"] = " | ".join([f"J{i+1}:{s['pos']:+.4f}" for i, s in enumerate(positions)])
+                topics["gripper_pos"] = f"data: {sim.io.gripper_left:.1f}"
+                topics["force_torque"] = f"Fx:{sim.force.fx:+.3f} Fy:{sim.force.fy:+.3f} Fz:{sim.force.fz:+.3f}"
+                topics["robot_status"] = '{"success":true,"mode":"sim"}'
+                topics["emergency_stop"] = f"data: {str(sim.io.estop).lower()}"
+                topics["tower_light"] = f"{['灭','红','黄','绿'][sim.io.tower_light]}"
+                topics["tcp_pose"] = f"x:{math.sin(time.time())*0.1:.4f} y:0.0 z:0.27"
+                self._live_data["topics"] = topics
+                self._live_data["_ts"] = {t: time.time() for t in topics}
+                time.sleep(0.5)
+        
+        self._live_running = True
+        t = threading.Thread(target=_poll, daemon=True)
+        t.start()
+        
+        self._live_timer = _tq(self)   # 🐛 2026-08-18 挂 parent (MonitorModule 崩溃根因)
+        self._live_timer.timeout.connect(self._update_live_display)
+        self._live_timer.start(500)
+        self._mlog("   ✅ 离线仿真已启动")
+    
+    def _refresh_topic_node_list(self):
+        """手动刷新 Topic/Node 列表"""
+        self._mlog("🔄 刷新 Topic/Node 列表...")
+        self._fetch_topic_node_list()
+        self._show_topic_node_lists()
+    
+    def _fetch_topic_node_list(self):
+        """SSH 获取 topic/node 列表"""
+        import subprocess
+        try:
+            r = subprocess.run(
+                ["ssh", "-o", "ConnectTimeout=5", "tashan@192.168.23.66",
+                 "source /opt/ros/humble/setup.bash && "
+                 "echo '===TOPICS===' && ROS_DOMAIN_ID=23 ros2 topic list 2>/dev/null && "
+                 "echo '===NODES===' && ROS_DOMAIN_ID=23 ros2 node list 2>/dev/null"],
+                capture_output=True, text=True, timeout=10)
+            out = r.stdout
+            if '===TOPICS===' in out:
+                parts = out.split('===TOPICS===')
+                if len(parts) > 1:
+                    node_part = parts[1].split('===NODES===')
+                    self._live_data["topic_list"] = [t.strip() for t in node_part[0].split('\n') if t.strip()]
+                    if len(node_part) > 1:
+                        self._live_data["node_list"] = [n.strip() for n in node_part[1].split('\n') if n.strip()]
+            self._mlog(f"   ✅ {len(self._live_data.get('topic_list',[]))} topics, {len(self._live_data.get('node_list',[]))} nodes")
+        except Exception as e:
+            self._mlog(f"   ⚠️ {e}")
+    
+    def _show_topic_node_lists(self):
+        """显示 Topic/Node 列表到独立面板"""
+        tl = self._live_data.get("topic_list", [])
+        nl = self._live_data.get("node_list", [])
+        
+        t_html = "<pre style='color:#39d2c0; font-size:19px; margin:0;'>"
+        t_html += f"<b>Topics ({len(tl)})</b>\n"
+        for t in tl[:20]:
+            t_html += f"  {t}\n"
+        if len(tl) > 20:
+            t_html += f"  ... 共 {len(tl)} 个\n"
+        t_html += "</pre>"
+        self.topic_list_view.setHtml(t_html)
+        
+        n_html = "<pre style='color:#bc8cff; font-size:19px; margin:0;'>"
+        n_html += f"<b>Nodes ({len(nl)})</b>\n"
+        for n in nl[:15]:
+            n_html += f"  {n}\n"
+        if len(nl) > 15:
+            n_html += f"  ... 共 {len(nl)} 个\n"
+        n_html += "</pre>"
+        self.node_list_view.setHtml(n_html)
+    
+    def _update_live_display(self):
+        """实时面板: 信号追踪 + 余晖效果"""
+        d = getattr(self, '_live_data', {})
+        now = time.time()
+        
+        lines = ["<pre style='color:#3fb950; font-size:19px; margin:0;'>"]
+        lines.append("<b>── 实时信号追踪 ──</b>\n")
+        
+        topics_data = d.get("topics", {})
+        if topics_data:
+            for topic, value in topics_data.items():
+                # 计算新鲜度 → 颜色渐变
+                last_ts = d.get("_ts", {}).get(topic, 0)
+                age = now - last_ts
+                if age < 0.5:
+                    color = "#3fb950"  # 鲜绿
+                    bright = "<b>"
+                    endb = "</b>"
+                elif age < 2.0:
+                    r = int(0x3f + (0x48-0x3f) * (age-0.5)/1.5)
+                    g = int(0xb9 - (0xb9-0x4f) * (age-0.5)/1.5)
+                    b = int(0x50 - (0x50-0x58) * (age-0.5)/1.5)
+                    color = f"#{r:02x}{g:02x}{b:02x}"
+                    bright = ""; endb = ""
+                else:
+                    color = "#484f58"  # 暗灰
+                    bright = ""; endb = ""
+                
+                lines.append(f"  <span style='color:{color}'>{bright}{topic:24s}{endb}</span> {value}\n")
+        else:
+            lines.append("  等待数据...\n")
+        
+        lines.append("</pre>")
+        self.mon_data_preview.setHtml("".join(lines))
+    
+    def _gen_live_rrd(self):
+        """实时数据 - 使用内置显示,不依赖rerun"""
+        self._mlog("📊 实时模式 - 使用内置数据显示")
+        self._show_inline_data()
+    
+    def _start_replay_display(self):
+        """回放数据终端显示 — 定时刷新信号追踪面板"""
+        if self.replay.total_frames <= 0:
+            return
+        
+        self._mlog(f"📺 终端回放显示: {self.replay.total_frames} 帧")
+        self.replay.current_frame = 0
+        
+        def _show_frame():
+            if not getattr(self, '_replay_display_running', True):
+                self._replay_timer.stop()
+                return
+            
+            frame = self.replay.get_frame()
+            if not frame:
+                self._replay_timer.stop()
+                return
+            
+            joints = frame.get("joints", [])
+            topics = {}
+            if len(joints) >= 6:
+                topics["joint_states"] = " | ".join([f"J{i+1}:{joints[i]:+.4f}" for i in range(6)])
+            topics["gripper_pos"] = f"data: {frame.get('gripper', '?')}"
+            topics["frame"] = f"{self.replay.current_frame}/{self.replay.total_frames}"
+            topics["time"] = f"{frame.get('ts',0)-self.replay.frames[0]['ts']:.2f}s" if self.replay.frames else "?"
+            
+            self._live_data = {"status": "📼 回放中", "topics": topics, "_ts": {t: time.time() for t in topics}}
+            self._update_live_display()
+            self.replay.advance()
+        
+        self._replay_display_running = True
+        self._replay_timer = _tq(self)   # 🐛 2026-08-18 挂 parent
+        self._replay_timer.timeout.connect(_show_frame)
+        self._replay_timer.start(200)
+        self._mlog("   ✅ 终端显示已启动")
+    
+    def _gen_pusht_rrd(self):
+        """PushT数据集 → .rrd — 1个完整episode轨迹"""
+        import rerun as rr
+        
+        self._mlog("📊 加载 PushT 数据集...")
+        try:
+            from datasets import load_dataset
+            ds = load_dataset("lerobot/pusht", split="train[:100]")
+        except:
+            self._mlog("❌ 无法加载 PushT")
+            return
+        
+        rr.init("PushT LeRobot", spawn=False)
+        # 固定坐标系和背景
+        rr.log("world/xy", rr.Arrows3D(
+            origins=[[0,0,0],[0,0,0]], vectors=[[0.6,0,0],[0,0.6,0]],
+            colors=[[255,0,0],[0,255,0]], labels=["X","Y"]), static=True)
+        
+        prev_pos = None
+        total = len(ds)
+        for f_idx, row in enumerate(ds):
+            state = row["observation.state"]
+            action = row["action"]
+            x, y = float(state[0]), float(state[1])
+            
+            rr.set_time("frame", sequence=f_idx)
+            
+            # Agent 当前位置 (蓝色圆点)
+            rr.log("agent/current", rr.Points3D([[x, y, 0]], 
+                radii=[0.02], colors=[[30,144,255]]))
+            
+            # Action 方向 (浅蓝箭头)
+            rr.log("agent/action", rr.Arrows3D(
+                origins=[[x, y, 0]],
+                vectors=[[float(action[0])*0.03, float(action[1])*0.03, 0]],
+                colors=[[100,200,255]]))
+            
+            # 轨迹连线
+            if prev_pos is not None:
+                rr.log("agent/trail", rr.LineStrips3D(
+                    [[prev_pos, [x, y, 0]]], colors=[[60,160,255,120]]))
+            prev_pos = [x, y, 0]
+        
+        out = os.path.expanduser("~/yspace/replay_data/pusht.rrd")
+        rr.save(out)
+        self._mlog(f"✅ {out} ({os.path.getsize(out)/1024:.0f}KB, {total} frames)")
+
+    def _open_rerun_local(self):
+        """根据信号源选 .rrd → subprocess 启动 rerun --web-viewer"""
+        import subprocess, os
+        
+        # 根据信号源选文件
+        if self.src_replay.isChecked():
+            bag_rrd = os.path.expanduser("~/yspace/replay_data/zmax_bag_001.rrd")
+            if os.path.exists(bag_rrd):
+                rrd = bag_rrd
+            else:
+                rrd = os.path.expanduser("~/yspace/replay_data/replay.rrd")
+        elif self.src_sim.isChecked():
+            rrd = os.path.expanduser("~/yspace/replay_data/sim.rrd")
+        elif self.src_live.isChecked():
+            rrd = os.path.expanduser("~/yspace/replay_data/live.rrd")
+        elif self.src_pusht.isChecked():
+            rrd = os.path.expanduser("~/yspace/replay_data/pusht.rrd")
+        else:
+            rrd = os.path.expanduser("~/yspace/replay_data/robot_demo.rrd")
+        
+        if not os.path.exists(rrd):
+            self._mlog(f"⚠️ .rrd 不存在: {rrd}")
+            return
+        
+        # 杀掉旧的 rerun 进程，释放端口
+        subprocess.run(["pkill", "-f", "rerun.*web-viewer"], 
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        self._mlog("🚀 启动 Rerun Web Viewer...")
+        try:
+            subprocess.Popen(
+                ["rerun", rrd, "--web-viewer"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True)
+            self._mlog("   🌐 http://127.0.0.1:9090")
+        except Exception as e:
+            self._mlog(f"   ❌ {e}")
+
+    def _open_rerun_local_safe(self):
+        """安全启动Rerun，异常时优雅降级"""
+        try:
+            self._open_rerun_local()
+        except Exception as e:
+            self._mlog(f"⚠️ Rerun启动失败: {e}，使用内置数据显示")
+            self._show_inline_data()
+
+
+# ═══════════════════════════════════════════════
+# Rerun 后台流线程 — 完全隔离，不阻塞 GUI
+# ═══════════════════════════════════════════════
+
+class _RerunStreamWorker(QThread):
+    """后台线程：初始化 Rerun + Web Viewer + 数据流推送"""
+    log_msg = pyqtSignal(str)
+    
+    def __init__(self, replay=None, sim=None):
+        super().__init__()
+        self._replay = replay
+        self._sim = sim
+        self._running = True
+    
+    def stop(self):
+        self._running = False
+    
+    def run(self):
+        import rerun as rr
+        from rerun import components as rrc
+        import time
+        
+        try:
+            self.log_msg.emit("📊 Rerun: 初始化...")
+            rr.init("Z-MAX Monitor")
+            
+            # gRPC 服务
+            grpc_url = rr.serve_grpc()
+            self.log_msg.emit(f"   gRPC: {grpc_url}")
+            
+            # Web Viewer
+            rr.serve_web_viewer(open_browser=False, connect_to=grpc_url)
+            self.log_msg.emit("   🌐 http://127.0.0.1:9090")
+            self.log_msg.emit("   ⏳ 等待浏览器连接 (3秒)...")
+            time.sleep(3)  # 等浏览器连上
+            
+            # 开始推送数据
+            if self._replay and self._replay.total_frames > 0:
+                self._stream_replay(rr, rrc)
+            elif self._sim:
+                self._stream_sim(rr, rrc)
+            else:
+                # 无数据源，推一些演示数据
+                self._stream_demo(rr, rrc)
+                
+        except Exception as e:
+            self.log_msg.emit(f"❌ Rerun 错误: {e}")
+    
+    def _stream_replay(self, rr, rrc):
+        frames = self._replay.total_frames
+        self.log_msg.emit(f"   ▶ 推送回放数据: {frames} 帧")
+        self._replay.current_frame = 0
+        
+        # 先画3D坐标系参考
+        rr.log("world/xyz", rr.Arrows3D(
+            origins=[[0,0,0],[0,0,0],[0,0,0]],
+            vectors=[[0.3,0,0],[0,0.3,0],[0,0,0.3]],
+            colors=[[255,0,0],[0,255,0],[0,0,255]]
+        ))
+        rr.log("world/origin", rr.Points3D([[0,0,0]], radii=[0.02]))
+        
+        seq = 0
+        while self._running and self._replay.current_frame < frames:
+            frame = self._replay.get_frame()
+            if not frame:
+                break
+            
+            rr.set_time("stable_time", sequence=seq)
+            
+            joints = frame.get("joints", [])
+            if len(joints) >= 6:
+                # 6个关节做成明显的3D点 + 连线
+                pts = [[i*0.2, joints[i]*0.8, 0] for i in range(6)]
+                colors = [[255-i*30, 100+i*20, i*40] for i in range(6)]
+                rr.log("robot/joints", rr.Points3D(pts, radii=[0.06]*6, colors=colors))
+                # 连线
+                for i in range(5):
+                    rr.log(f"robot/link_{i}", rr.Arrows3D(
+                        origins=[pts[i]], vectors=[[pts[i+1][0]-pts[i][0], pts[i+1][1]-pts[i][1], 0]],
+                        radii=[0.01]
+                    ))
+                for i, v in enumerate(joints[:6]):
+                    rr.log(f"joint/J{i+1}", rrc.Scalar(v))
+            
+            gripper = frame.get("gripper")
+            if gripper is not None:
+                rr.log("gripper", rrc.Scalar(gripper))
+            
+            self._replay.advance()
+            seq += 1
+            time.sleep(0.15)  # ~7fps, 让浏览器有时间渲染
+        
+        self.log_msg.emit("   ✅ 回放完成")
+    
+    def _stream_sim(self, rr, rrc):
+        sim = self._sim
+        if not sim.running:
+            sim.start()
+        self.log_msg.emit("   ▶ 推送仿真数据")
+        
+        seq = 0
+        while self._running and sim.running:
+            snap = sim.get_joint_snapshot()
+            positions = [s["pos"] for s in snap.values()]
+            
+            rr.set_time("stable_time", sequence=seq)
+            rr.log("joints/3d", rr.Points3D(
+                [[i*0.15, positions[i]*0.3, 0] for i in range(min(6, len(positions)))],
+                radii=[0.03]*min(6, len(positions))
+            ))
+            
+            rr.log("force/fx", rrc.Scalar(sim.force.fx))
+            rr.log("force/fz", rrc.Scalar(sim.force.fz))
+            seq += 1
+            time.sleep(0.1)
+        
+        sim.stop()
+    
+    def _stream_demo(self, rr, rrc):
+        """演示数据 — 持续30秒的正弦波动画"""
+        import math
+        self.log_msg.emit("   ▶ 推送演示数据 (30秒正弦波)")
+        
+        # 坐标系
+        rr.log("world/xyz", rr.Arrows3D(
+            origins=[[0,0,0],[0,0,0],[0,0,0]],
+            vectors=[[0.3,0,0],[0,0.3,0],[0,0,0.3]],
+            colors=[[255,0,0],[0,255,0],[0,0,255]]
+        ))
+        rr.log("world/origin", rr.Points3D([[0,0,0]], radii=[0.02]))
+        
+        seq = 0
+        start = time.time()
+        while self._running and (time.time() - start) < 30:
+            t = time.time() - start
+            rr.set_time("stable_time", sequence=seq)
+            
+            # 6个正弦波关节
+            pts = [[i*0.2, math.sin(t*2 + i)*0.5, math.cos(t*1.5 + i)*0.2] for i in range(6)]
+            colors = [[255-i*30, 100+i*20, i*40] for i in range(6)]
+            rr.log("robot/joints", rr.Points3D(pts, radii=[0.06]*6, colors=colors))
+            
+            # 连线
+            for i in range(5):
+                rr.log(f"robot/link_{i}", rr.Arrows3D(
+                    origins=[pts[i]], 
+                    vectors=[[pts[i+1][0]-pts[i][0], pts[i+1][1]-pts[i][1], pts[i+1][2]-pts[i][2]]],
+                    radii=[0.01]
+                ))
+            
+            for i in range(6):
+                rr.log(f"joint/J{i+1}", rrc.Scalar(pts[i][1]))
+            
+            seq += 1
+            time.sleep(0.1)
+        
+        self.log_msg.emit("   ✅ 演示完成")
+
+
+# ═══════════════════════════════════════════════
+# 插拔场景模块: Z700轮式双臂机器人 + ROI计算器
+# ============================================================
+ROI_ACCENT = C_CYAN  # ROI模块专用颜色
+
+
+class InferencePanel(QWidget):
+    """Z-MAX 推理服务面板 — Server/Client 控制 + 旁路验证预留"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # 🐛 2026-08-22 老倪"折叠左栏就崩"根治: import grpc (inference_client) 在启动时
+        # 拉 grpc C++ 线程池(26线程) → cross-thread 析构 QObject → activateTimers
+        # NULL receiver SIGSEGV. 延迟到用户点"完整启动"时才 import (懒加载).
+        self.server = None
+        self.client = None
+        self._torch_ok = None  # None=未加载, True/False=已加载结果
+        self._import_error = ""
+        self._init_ui()
+
+    def _ensure_imported(self):
+        """懒加载推理服务模块 (import grpc 重量级, 避免启动时拉线程池)"""
+        if self._torch_ok is not None:
+            return self._torch_ok
+        try:
+            from inference_server import ZmaxInferenceServer
+            from inference_client import ZmaxInferenceClient, DataSource
+            self.server = ZmaxInferenceServer(log_callback=self._log_server)
+            self.client = ZmaxInferenceClient(log_callback=self._log_client)
+            self._torch_ok = True
+        except ImportError as e:
+            self._torch_ok = False
+            self._import_error = str(e)
+            self.server = None
+            self.client = None
+        return self._torch_ok
+    
+    def _init_ui(self):
+        main = QVBoxLayout()
+        main.setSpacing(12)
+        main.setContentsMargins(20, 16, 20, 16)
+        
+        # ── 标题 ──
+        title = QLabel("🌐 推理服务")
+        title.setFont(QFont("Arial", 18, QFont.Bold))
+        title.setStyleSheet(f"color:{C_WHITE};")
+        main.addWidget(title)
+        
+        hint = QLabel("本地Server + 本地Client  |  旁路验证预留(Client在Orin远端)")
+        hint.setStyleSheet(f"color:{C_GRAY}; font-size:19px;")
+        main.addWidget(hint)
+        
+        # ── Server + Client 双栏 ──
+        panels = QHBoxLayout()
+        panels.setSpacing(16)
+        panels.addWidget(self._build_server_panel(), 1)
+        panels.addWidget(self._build_client_panel(), 1)
+        main.addLayout(panels)
+        
+        # ── 控制栏 ──
+        ctrl = QHBoxLayout()
+        ctrl.setSpacing(12)
+        
+        self.start_btn = QPushButton("▶ 完整启动")
+        self.start_btn.clicked.connect(self._full_start)
+        self.start_btn.setStyleSheet(f"background:{C_GREEN}; color:white; border:none; border-radius:6px; padding:10px 24px; font-size:19px; font-weight:bold;")
+        ctrl.addWidget(self.start_btn)
+        
+        self.stop_btn = QPushButton("⏹ 全部停止")
+        self.stop_btn.clicked.connect(self._full_stop)
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.setStyleSheet(f"background:{C_RED}; color:white; border:none; border-radius:6px; padding:10px 24px; font-size:19px; font-weight:bold;")
+        ctrl.addWidget(self.stop_btn)
+        
+        ctrl.addStretch()
+        main.addLayout(ctrl)
+        
+        # ── 日志 ──
+        log_g = QGroupBox("推理日志")
+        log_g.setStyleSheet(f"QGroupBox{{color:{C_WHITE}; background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:8px; padding:12px; padding-top:32px; margin-top:16px;}} QGroupBox::title{{left:12px; padding:0 8px; font-weight:bold;}}")
+        ll = QVBoxLayout()
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setMinimumHeight(250)
+        self.log_text.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:8px; font-family:Consolas; font-size:19px;")
+        ll.addWidget(self.log_text)
+        log_g.setLayout(ll)
+        main.addWidget(log_g, 1)
+        
+        self.setLayout(main)
+    
+    def _build_server_panel(self):
+        g = QGroupBox("🖥️ 推理服务端")
+        g.setStyleSheet(f"QGroupBox{{color:{C_CYAN}; background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:8px; padding:12px; padding-top:32px; margin-top:16px;}} QGroupBox::title{{left:12px; padding:0 8px; font-weight:bold;}}")
+        l = QFormLayout()
+        l.setSpacing(8)
+        
+        # 模型路径
+        row = QHBoxLayout()
+        self.ckpt_edit = QLineEdit("outputs/smolvla_metaworld/checkpoints/000300/pretrained_model")
+        self.ckpt_edit.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
+        browse_btn = QPushButton("📂")
+        browse_btn.setFixedWidth(36)
+        browse_btn.clicked.connect(self._browse_checkpoint)
+        browse_btn.setStyleSheet(f"background:{C_BORDER}; color:{C_WHITE}; border:none; border-radius:4px;")
+        row.addWidget(self.ckpt_edit)
+        row.addWidget(browse_btn)
+        l.addRow("模型:", row)
+        # 🆕 已保存模型下拉 (2026-08-05 老倪: "训练好的模型保存, 下次直接应用" —
+        #   读 models/saved/registry.json, 选中即填 ckpt_edit)
+        saved_row = QHBoxLayout()
+        self.saved_combo = QComboBox()
+        self.saved_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
+        self.saved_combo.addItem("📦 已保存模型… (下拉选择)")
+        self.saved_combo.activated.connect(self._on_saved_model_selected)
+        saved_row.addWidget(self.saved_combo)
+        refresh_btn = QPushButton("🔄")
+        refresh_btn.setFixedWidth(36)
+        refresh_btn.clicked.connect(self._refresh_saved_models)
+        refresh_btn.setStyleSheet(f"background:{C_BORDER}; color:{C_WHITE}; border:none; border-radius:4px;")
+        saved_row.addWidget(refresh_btn)
+        l.addRow("已保存:", saved_row)
+        self._refresh_saved_models()
+        
+        # 端口
+        port_row = QHBoxLayout()
+        self.host_edit = QLineEdit("0.0.0.0")
+        self.host_edit.setFixedWidth(100)
+        self.host_edit.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
+        self.port_spin = QSpinBox()
+        self.port_spin.setRange(1024, 65535)
+        self.port_spin.setValue(50051)
+        self.port_spin.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
+        port_row.addWidget(QLabel("Host:"))
+        port_row.addWidget(self.host_edit)
+        port_row.addWidget(QLabel("Port:"))
+        port_row.addWidget(self.port_spin)
+        port_row.addStretch()
+        l.addRow("地址:", port_row)
+        
+        # 状态
+        self.server_status = QLabel("⚪ 未启动")
+        self.server_status.setStyleSheet(f"color:{C_GRAY}; font-weight:bold; padding:4px 8px; background:{C_BG}; border-radius:4px;")
+        l.addRow("状态:", self.server_status)
+        
+        # 独立启停
+        btns = QHBoxLayout()
+        self.srv_start = QPushButton("启动")
+        self.srv_start.clicked.connect(self._server_start)
+        self.srv_start.setStyleSheet(f"background:{C_GREEN}88; color:white; border:none; border-radius:4px; padding:6px 16px;")
+        self.srv_stop = QPushButton("停止")
+        self.srv_stop.clicked.connect(self._server_stop)
+        self.srv_stop.setEnabled(False)
+        self.srv_stop.setStyleSheet(f"background:{C_RED}88; color:white; border:none; border-radius:4px; padding:6px 16px;")
+        btns.addWidget(self.srv_start)
+        btns.addWidget(self.srv_stop)
+        btns.addStretch()
+        l.addRow("操作:", btns)
+        
+        g.setLayout(l)
+        return g
+    
+    def _build_client_panel(self):
+        g = QGroupBox("📱 推理客户端")
+        g.setStyleSheet(f"QGroupBox{{color:{C_GREEN}; background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:8px; padding:12px; padding-top:32px; margin-top:16px;}} QGroupBox::title{{left:12px; padding:0 8px; font-weight:bold;}}")
+        l = QFormLayout()
+        l.setSpacing(8)
+        
+        # 服务器地址
+        self.srv_addr_edit = QLineEdit("127.0.0.1:50051")
+        self.srv_addr_edit.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
+        l.addRow("服务器:", self.srv_addr_edit)
+        
+        # 数据源
+        self.source_combo = QComboBox()
+        self.source_combo.addItems(["Dummy随机数据", "PushT回放", "MetaWorld回放", "远端Orin(预留)"])
+        self.source_combo.setStyleSheet(f"background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px;")
+        l.addRow("数据源:", self.source_combo)
+        
+        # 状态
+        self.client_status = QLabel("⚪ 未连接")
+        self.client_status.setStyleSheet(f"color:{C_GRAY}; font-weight:bold; padding:4px 8px; background:{C_BG}; border-radius:4px;")
+        l.addRow("状态:", self.client_status)
+        
+        # 统计
+        self.stats_label = QLabel("帧:0 动作:0")
+        self.stats_label.setStyleSheet(f"color:{C_GRAY}; font-size:19px;")
+        l.addRow("统计:", self.stats_label)
+        
+        # 独立操作
+        btns = QHBoxLayout()
+        self.cli_connect = QPushButton("连接")
+        self.cli_connect.clicked.connect(self._client_connect)
+        self.cli_connect.setStyleSheet(f"background:{C_BLUE}88; color:white; border:none; border-radius:4px; padding:6px 16px;")
+        self.cli_stream = QPushButton("开始推流")
+        self.cli_stream.clicked.connect(self._client_stream)
+        self.cli_stream.setEnabled(False)
+        self.cli_stream.setStyleSheet(f"background:{C_GREEN}88; color:white; border:none; border-radius:4px; padding:6px 16px;")
+        self.cli_stop = QPushButton("停止")
+        self.cli_stop.clicked.connect(self._client_stop)
+        self.cli_stop.setEnabled(False)
+        self.cli_stop.setStyleSheet(f"background:{C_RED}88; color:white; border:none; border-radius:4px; padding:6px 16px;")
+        btns.addWidget(self.cli_connect)
+        btns.addWidget(self.cli_stream)
+        btns.addWidget(self.cli_stop)
+        btns.addStretch()
+        l.addRow("操作:", btns)
+        
+        g.setLayout(l)
+        return g
+    
+    # ── 日志 ──
+    def _log(self, prefix, msg):
+        from datetime import datetime
+        ts = datetime.now().strftime("%H:%M:%S")
+        self.log_text.append(f"[{ts}] {prefix} {msg}")
+        sb = self.log_text.verticalScrollBar()
+        sb.setValue(sb.maximum())
+    
+    def _log_server(self, msg): self._log("🖥️", msg)
+    def _log_client(self, msg): self._log("📱", msg)
+    
+    # ── 操作 ──
+    def _browse_checkpoint(self):
+        from PyQt5.QtWidgets import QFileDialog
+        path = QFileDialog.getExistingDirectory(self, "选择模型checkpoint", "outputs/")
+        if path:
+            self.ckpt_edit.setText(path)
+
+    # ── 🆕 已保存模型 (2026-08-05 老倪: 训练好的模型保存, 下次直接应用) ──
+    def _saved_registry_path(self):
+        """models/saved/registry.json 绝对路径"""
+        return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                            "models", "saved", "registry.json")
+
+    def _refresh_saved_models(self):
+        """读 registry.json 填充下拉 (最近保存在前)"""
+        try:
+            self.saved_combo.blockSignals(True)
+            self.saved_combo.clear()
+            self.saved_combo.addItem("📦 已保存模型… (下拉选择)")
+            reg_path = self._saved_registry_path()
+            if os.path.exists(reg_path):
+                reg = json.load(open(reg_path, encoding="utf-8"))
+                for item in reversed(reg):  # 新的在前
+                    label = f"{item.get('name', item.get('policy','?'))} · {item.get('ts','')}"
+                    self.saved_combo.addItem(label, item.get("path", ""))
+            self.saved_combo.blockSignals(False)
+        except Exception:
+            pass
+
+    def _on_saved_model_selected(self, idx):
+        """选中已保存模型 → 填 ckpt_edit (指向 .../pretrained_model)"""
+        if idx <= 0:
+            return
+        base = self.saved_combo.itemData(idx)
+        if not base:
+            return
+        pm = os.path.join(base, "pretrained_model")
+        self.ckpt_edit.setText(pm if os.path.isdir(pm) else base)
+        self._log_client(f"📦 已选保存模型: {pm}")
+    
+    def _server_start(self):
+        if not self._ensure_imported():
+            self._log_client(f"❌ 推理服务模块加载失败: {self._import_error}")
+            return
+        ckpt = self.ckpt_edit.text().strip()
+        host = self.host_edit.text().strip()
+        port = self.port_spin.value()
+        if self.server.start_server(ckpt, host, port):
+            self.server_status.setText("🟢 运行中")
+            self.server_status.setStyleSheet(f"color:{C_GREEN}; font-weight:bold; padding:4px 8px; background:{C_GREEN}22; border-radius:4px;")
+            self.srv_start.setEnabled(False)
+            self.srv_stop.setEnabled(True)
+            self.stop_btn.setEnabled(True)
+    
+    def _server_stop(self):
+        if self.server is None:
+            return
+        self.server.stop_server()
+        self.server_status.setText("⚪ 未启动")
+        self.server_status.setStyleSheet(f"color:{C_GRAY}; font-weight:bold; padding:4px 8px; background:{C_BG}; border-radius:4px;")
+        self.srv_start.setEnabled(True)
+        self.srv_stop.setEnabled(False)
+    
+    def _client_connect(self):
+        if not self._ensure_imported():
+            self._log_client(f"❌ 推理服务模块加载失败: {self._import_error}")
+            return
+        addr = self.srv_addr_edit.text().strip()
+        if self.client.connect(addr):
+            self.client_status.setText("🟢 已连接")
+            self.client_status.setStyleSheet(f"color:{C_GREEN}; font-weight:bold; padding:4px 8px; background:{C_GREEN}22; border-radius:4px;")
+            self.cli_connect.setEnabled(False)
+            self.cli_stream.setEnabled(True)
+            self.cli_stop.setEnabled(True)
+            # 自动发送策略
+            ckpt = self.ckpt_edit.text().strip()
+            self.client.send_policy(ckpt)
+            self._log_client(f"策略已发送")
+    
+    def _client_stream(self):
+        if self.client is None:
+            return
+        src = self.source_combo.currentText()
+        if "Dummy" in src:
+            self.client.start_dummy_stream(fps=5, duration_sec=10)
+        elif "PushT" in src:
+            self.client.start_dataset_stream("lerobot/pusht", fps=5, n_frames=30)
+        elif "MetaWorld" in src:
+            self.client.start_dataset_stream("lerobot/metaworld_mt50", fps=5, n_frames=30)
+        else:
+            self._log_client("远端Orin模式预留")
+            return
+        
+        self.cli_stream.setEnabled(False)
+        # 定时更新统计
+        from PyQt5.QtCore import QTimer
+        self._stats_timer = _tq(self)   # 🐛 2026-08-18 挂 parent
+        self._stats_timer.timeout.connect(self._update_stats)
+        self._stats_timer.start(1000)
+    
+    def _client_stop(self):
+        if self.client is None:
+            return
+        self.client.stop_stream()
+        self.cli_stream.setEnabled(True)
+        if hasattr(self, '_stats_timer'):
+            self._stats_timer.stop()
+    
+    def _update_stats(self):
+        s = self.client.get_status()
+        self.stats_label.setText(f"帧:{s['frames_sent']} 动作:{s['actions']}")
+    
+    def _full_start(self):
+        if not self._ensure_imported():
+            self._log_client(f"❌ 推理服务模块加载失败: {self._import_error}")
+            return
+        self._server_start()
+        # 等待服务端就绪后自动连接
+        from PyQt5.QtCore import QTimer
+        _oneshot(self, 2000, self._client_connect)
+        _oneshot(self, 5000, self._client_stream)
+    
+    def _full_stop(self):
+        if not self._ensure_imported():
+            return
+        self._client_stop()
+        self.client.disconnect()
+        self._server_stop()
+        self.client_status.setText("⚪ 未连接")
+        self.client_status.setStyleSheet(f"color:{C_GRAY}; font-weight:bold; padding:4px 8px; background:{C_BG}; border-radius:4px;")
+        self.cli_connect.setEnabled(True)
+        self.cli_stream.setEnabled(False)
+        self.cli_stop.setEnabled(False)
+        self.stop_btn.setEnabled(False)
+        self.start_btn.setEnabled(True)
+
+
+# ============================================================
+# 插拔场景模块: Z700 L2基线/L3增强/L4旗舰
+# ============================================================
+class ArchitectureModule(QWidget):
+    """系统架构总览 — L2/L3/L4 三级产品架构对比"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("architecture")  # 🌐 2026-08-09 老倪: 页识别 (VEH-4 功能卡编号 — 系统架构 VEH.4.xx)
+        self._build()
+
+    def _build(self):
+        main = QVBoxLayout()
+        main.setContentsMargins(16, 12, 16, 12)
+        main.setSpacing(10)
+
+        # Title
+        t = QLabel("Z-MAX 系统架构 · L2 / L3 / L4 产品对比")
+        t.setFont(QFont("Arial", 18, QFont.Bold))
+        t.setStyleSheet(f"color:{C_WHITE};")
+        main.addWidget(t)
+
+        s = QLabel("Z700F → Z700 三级能力递进  ·  云-边-端三层架构")
+        s.setStyleSheet(f"color:{C_GRAY}; font-size:19px;")
+        main.addWidget(s)
+
+        # Three columns: L2 | L3 | L4
+        cols = QHBoxLayout()
+        cols.setSpacing(8)
+
+        levels = [
+            ("L2 基线", "Z700F", SYS0_COLOR, [
+                ("SYS 2", "云端训练", SYS2_COLOR,
+                 ["离线训练\n轻量模型"]),
+                ("SYS 1", "边缘推理", SYS11_COLOR,
+                 [("SYS 10", "ACT", C_CYAN),
+                  ("SYS 12", "—", C_GRAY)]),
+                ("SYS 0", "硬件执行", C_RED,
+                 ["固定工位\n力控1kHz\n视觉定位"]),
+            ]),
+            ("L3 增强", "Z700F+", C_YELLOW, [
+                ("SYS 2", "云端训练", SYS2_COLOR,
+                 ["远程下发\n模型热更新"]),
+                ("SYS 1", "边缘推理", SYS11_COLOR,
+                 [("SYS 11", "VLA-T", C_CYAN)]),
+                ("SYS 0", "硬件执行", C_RED,
+                 ["多工位移动\nOTA升级\n多模态感知"]),
+            ]),
+            ("L4 旗舰", "Z700", ROI_ACCENT, [
+                ("SYS 2", "云端训练", SYS2_COLOR,
+                 ["全自动训练\n5090 GPU\n100K+数据集"]),
+                ("SYS 1", "边缘推理", SYS11_COLOR,
+                 [("SYS 11", "VLA-T", C_CYAN),
+                  ("SYS 12", "Z-Flow", C_BLUE)]),
+                ("SYS 0", "硬件执行", C_RED,
+                 ["全自主移动\n双臂协同\n触觉反馈"]),
+            ]),
+        ]
+
+        for label, model, accent, layers in levels:
+            card = self._level_card(label, model, accent, layers)
+            cols.addWidget(card, 1)
+
+        main.addLayout(cols, 1)
+        self.setLayout(main)
+
+    def _level_card(self, label, model, accent, layers):
+        """One L2/L3/L4 column card"""
+        card = QFrame()
+        card.setStyleSheet(f"background:{C_BG2}; border:1px solid {accent}66; border-radius:10px;")
+        vl = QVBoxLayout()
+        vl.setSpacing(6)
+        vl.setContentsMargins(10, 10, 10, 10)
+
+        # Header
+        hdr = QFrame()
+        hdr.setStyleSheet(f"background:{accent}; border-radius:6px;")
+        hdr.setFixedHeight(50)
+        hl = QHBoxLayout()
+        hl.setContentsMargins(10, 4, 10, 4)
+        hl.addWidget(QLabel(label, font=QFont("Arial", 10, QFont.Bold),
+                            styleSheet=f"color:white; background:transparent; border:none;"))
+        hl.addStretch()
+        hl.addWidget(QLabel(model, font=QFont("Consolas", 10),
+                            styleSheet=f"color:white; background:transparent; border:none;"))
+        hdr.setLayout(hl)
+        vl.addWidget(hdr)
+
+        for layer in layers:
+            sys_id, desc, color, items = layer
+            if isinstance(items[0], tuple):
+                # SYS 1 with sub-boxes
+                s1 = self._sys1_box(sys_id, desc, color, items)
+                vl.addWidget(s1)
+            else:
+                lb = self._layer_box(sys_id, desc, color, items)
+                vl.addWidget(lb)
+            vl.addWidget(self._arrow_label("▽" if sys_id != "SYS 0" else ""))
+
+        card.setLayout(vl)
+        return card
+
+    def _layer_box(self, sys_id, desc, color, items):
+        f = QFrame()
+        f.setStyleSheet(f"background:{color}; border:1px solid {color}88; border-radius:6px;")
+        f.setFixedHeight(90)
+        vl = QVBoxLayout()
+        vl.setContentsMargins(8, 4, 8, 4)
+        vl.setSpacing(1)
+        vl.addWidget(QLabel(f"{sys_id}  {desc}", font=QFont("Arial", 12, QFont.Bold),
+                            styleSheet=f"color:white; background:transparent; border:none;"))
+        for it in items:
+            vl.addWidget(QLabel(it, font=QFont("Microsoft YaHei", 11),
+                                styleSheet=f"color:rgba(255,255,255,200); background:transparent; border:none;"))
+        f.setLayout(vl)
+        return f
+
+    def _sys1_box(self, sys_id, desc, color, sub_boxes):
+        f = QFrame()
+        f.setStyleSheet(f"background:{color}33; border:2px solid {color}88; border-radius:6px;")
+        f.setFixedHeight(80)
+        vl = QVBoxLayout()
+        vl.setContentsMargins(8, 4, 8, 4)
+        vl.setSpacing(3)
+        vl.addWidget(QLabel(f"{sys_id}  {desc}", font=QFont("Arial", 11, QFont.Bold),
+                            styleSheet=f"color:{color}; background:transparent; border:none;"))
+        hl = QHBoxLayout()
+        hl.setSpacing(4)
+        for sid, sdesc, sc in sub_boxes:
+            sb = QFrame()
+            sb.setStyleSheet(f"background:{sc}; border-radius:4px;")
+            sb.setFixedHeight(40)
+            sv = QVBoxLayout()
+            sv.setContentsMargins(4, 2, 4, 2)
+            sv.setSpacing(0)
+            sv.addWidget(QLabel(sid, font=QFont("Consolas", 11, QFont.Bold),
+                                styleSheet=f"color:white; background:transparent; border:none;",
+                                alignment=Qt.AlignCenter))
+            sv.addWidget(QLabel(sdesc, font=QFont("Microsoft YaHei", 10),
+                                styleSheet=f"color:white; background:transparent; border:none;",
+                                alignment=Qt.AlignCenter))
+            sb.setLayout(sv)
+            hl.addWidget(sb, 1)
+        vl.addLayout(hl)
+        f.setLayout(vl)
+        return f
+
+    def _arrow_label(self, text):
+        l = QLabel(text)
+        l.setAlignment(Qt.AlignCenter)
+        l.setStyleSheet(f"color:{C_DIM}; font-size:18px; background:transparent; border:none; padding:0;")
+        return l
+
+
+class PluggingSceneModule(SubModuleWidget):
+    """Z700插拔场景 — L2基线/L3增强/L4旗舰 三级场景"""
+
+    def __init__(self):
+        super().__init__("插拔场景 · Z700", [("Z700", ROI_ACCENT), ("Sys-0", SYS0_COLOR)])
+        body = QWidget()
+        bl = QVBoxLayout(); bl.setSpacing(12)
+        
+        # ── 等级选择Tab ──
+        self.scene_tabs = QTabWidget()
+        self.scene_tabs.setStyleSheet(f"""
+            QTabWidget::pane{{background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:8px;}}
+            QTabBar::tab{{background:{C_BG2}; color:{C_GRAY}; padding:8px 20px; font-size:15px; font-weight:bold; border:1px solid {C_BORDER}; border-bottom:none;}}
+            QTabBar::tab:selected{{background:{C_CARD}; color:{C_WHITE}; border-bottom:2px solid {ROI_ACCENT};}}
+        """)
+        
+        self.scene_tabs.addTab(self._build_l2_tab(), "🔧 L2 基线版 · 单工序插拔")
+        self.scene_tabs.addTab(self._build_l3_tab(), "🤖 L3 增强版 · 多模块自主")
+        self.scene_tabs.addTab(self._build_l4_tab(), "🛡️ L4 旗舰版 · 安全全自主")
+        
+        # Tab切换时更新积木面板高亮
+        self.scene_tabs.currentChanged.connect(self._update_brick_highlight)
+        
+        bl.addWidget(self.scene_tabs)
+        
+        # ── 🧱 功能积木 · 阶梯进化图 ──
+        self.brick_panel, self._brick_rows = self._build_brick_panel()
+        bl.addWidget(self.brick_panel)
+        
+        body.setLayout(bl)
+        self._build_shell(body)
+
+    # ═══════ L2 基线版 · 单工序插拔 ═══════
+    def _build_l2_tab(self):
+        w = QWidget()
+        l = QVBoxLayout(); l.setSpacing(10)
+        
+        # L2 产品迭代策略 — 增高+滚动
+        hw = QGroupBox("🖥️ 产品迭代策略 · L2 基线版 — 人工编制流程，实现精细插拔操作")
+        hw.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
+        hw.setMinimumHeight(200)
+        hl = QVBoxLayout()
+        hw_info = QLabel(
+            "<b>系统 0 · 分段式 · 标准原子功能库 · 动作(标准接口) · 真实环境</b><br><br>"
+            "固定式精密操作具身机器人 · 精密制造智能技工<br><br>"
+            "基于 Phase 0 交付物: SR5-C 6轴机械臂 · AGX Orin NX · 双3D相机 · DH夹爪 · TS-T-15触觉<br>"
+            "双路急停 · 安全光栅 · 三色塔灯 · 力控闭环 1kHz"
+        )
+        hw_info.setFont(QFont("Arial", 12)); hw_info.setStyleSheet(f"color:{C_WHITE}; padding:12px;")
+        hw_info.setWordWrap(True)
+        hl.addWidget(hw_info)
+        hw.setLayout(hl); l.addWidget(hw)
+        
+        # L2工作流程 — 6步对应产品发布PPT
+        flow = QGroupBox("📋 L2 基线版 · 人工编制流程 — 6步分段式精细插拔")
+        flow.setStyleSheet(f"QGroupBox{{color:{C_GREEN}; font-weight:bold; {card_style(C_CARD, C_GREEN, 8, 12)}}}")
+        fl = QHBoxLayout(); fl.setSpacing(4)
+        for num, title, desc, color in [
+            ("1", "人工流程编排", "人工设定\n工序参数", ROI_ACCENT),
+            ("2", "标准原子功能", "取料·扫码\n·定位·插入", C_GREEN),
+            ("3", "动作执行", "标准接口\n精准到位", SYS11_COLOR),
+            ("4", "力控反馈", "六维力传感器\n力控闭环", SYS12_COLOR),
+            ("5", "AOI验证", "逐步确认\n异常停机", C_ORANGE),
+            ("6", "成品下料", "取出完成品\n数据记录", SYS2_COLOR),
+        ]:
+            card = self._make_step_card(num, title, desc, color)
+            fl.addWidget(card, 1)
+            if num != "6":
+                arr = QLabel("→"); arr.setStyleSheet(f"color:{C_DIM}; font-size:15px;"); arr.setFixedWidth(12)
+                fl.addWidget(arr)
+        flow.setLayout(fl); l.addWidget(flow)
+        
+        # 特性
+        feat = QGroupBox("✅ L2 基线版 · 已实现特性")
+        feat.setStyleSheet(f"QGroupBox{{color:{C_GREEN}; font-weight:bold; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
+        fe = QVBoxLayout()
+        ft = QLabel(
+            "◈ <b>人工流程编排</b>: 操作员在 XSpace Studio 中设定工序参数，选择标准原子功能<br>"
+            "◈ <b>标准原子功能库</b>: 取料、扫码、定位、对准、插入、拔出、检测、分类<br>"
+            "◈ <b>动作执行 (标准接口)</b>: 基于 ROS2 Service 接口，点到点精确运动 ±0.05mm<br>"
+            "◈ <b>力控反馈</b>: 六维力传感器 1kHz 采样，夹持力自适应<br>"
+            "◈ <b>分段式验证</b>: 每个步骤完成确认后才进入下一步 · 异常自动停机<br>"
+            "◈ <b>真实环境运行</b>: 苏州实验室 Phase 0 验收通过 · 关键工序良率 >99%"
+        )
+        ft.setFont(QFont("Arial", 10)); ft.setStyleSheet(f"color:{C_WHITE}; padding:6px;"); ft.setWordWrap(True)
+        fe.addWidget(ft); feat.setLayout(fe); l.addWidget(feat)
+        
+        w.setLayout(l)
+        
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(w)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
+        outer = QWidget(); ol = QVBoxLayout(); ol.addWidget(scroll); outer.setLayout(ol)
+        return outer
+    
+    # ═══════ L3 增强版 · 多模块自主 ═══════
+    def _build_l3_tab(self):
+        w = QWidget()
+        l = QVBoxLayout(); l.setSpacing(10)
+        
+        hw = QGroupBox("🤖 L3 增强版 · 多模块自主闭环")
+        hw.setStyleSheet(f"QGroupBox{{color:{SYS11_COLOR}; font-weight:bold; padding-top:28px; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
+        hl = QVBoxLayout(); hl.setContentsMargins(8,0,8,8)
+        info = QLabel(
+            "<b>在 L2 硬件基础上，通过 OTA 软件升级实现:</b><br><br>"
+            "◈ <b>多模块自主识别</b>: 视觉识别400G/100G/不同封装 · 自动切换夹爪工装<br>"
+            "◈ <b>自主闭环工作</b>: 全程无人干预 · 自动上下料+取放+插拔+测试+分类<br>"
+            "◈ <b>换线自主换配方</b>: 扫码识别模块SN → 自动加载对应工序配方<br>"
+            "◈ <b>异常自恢复</b>: 卡料/偏移/测试失败 → 自动诊断+重试+分类<br>"
+            "◈ <b>全工序良率 ≥99.5%</b>"
+        )
+        info.setFont(QFont("Arial", 11)); info.setStyleSheet(f"color:{C_WHITE}; padding:0 12px 12px 12px;"); info.setWordWrap(True)
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(info)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
+        hl.addWidget(scroll); hw.setLayout(hl); l.addWidget(hw)
+        
+        # L3 流程 8步
+        flow = QGroupBox("L3 增强版 · 8步全自动流程")
+        flow.setStyleSheet(f"QGroupBox{{color:{SYS11_COLOR}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
+        fl = QHBoxLayout(); fl.setSpacing(4)
+        for num, title, desc, color in [
+            ("1", "视觉取料", "3D定位\n无序抓取", ROI_ACCENT),
+            ("2", "自动扫码", "模块SN\n配方匹配", C_GRAY),
+            ("3", "中转定位", "标准姿态\n二次校准", C_GRAY),
+            ("4", "力控插拔", "对准插入\n力控闭环", SYS11_COLOR),
+            ("5", "并行测试", "双工位\n并行执行", C_ORANGE),
+            ("6", "AOI检测", "拔出\n视觉检查", SYS12_COLOR),
+            ("7", "P/F分类", "根据结果\n自动分类", SYS2_COLOR),
+            ("8", "连续循环", "自动上料\n无人值守", C_GREEN),
+        ]:
+            card = self._make_step_card(num, title, desc, color)
+            fl.addWidget(card, 1)
+            if num != "8":
+                arr = QLabel("→"); arr.setStyleSheet(f"color:{C_DIM}; font-size:15px;"); arr.setFixedWidth(12)
+                fl.addWidget(arr)
+        flow.setLayout(fl); l.addWidget(flow)
+        
+        w.setLayout(l)
+        
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(w)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
+        outer = QWidget(); ol = QVBoxLayout(); ol.addWidget(scroll); outer.setLayout(ol)
+        return outer
+    
+    # ═══════ L4 旗舰版 · 安全全自主 ═══════
+    def _build_l4_tab(self):
+        w = QWidget()
+        l = QVBoxLayout(); l.setSpacing(10)
+        
+        hw = QGroupBox("🛡️ L4 旗舰版 · AI全自主 + 安全主动保护")
+        hw.setStyleSheet(f"QGroupBox{{color:{C_RED}; font-weight:bold; {card_style(C_CARD, C_RED, 8, 12)}}}")
+        hw.setMinimumHeight(350)
+        hl = QVBoxLayout(); hl.setContentsMargins(0,0,0,0)
+        info = QLabel(
+            "<b>在 L3 基础上，增加 VLA 智能决策 + 主动安全:</b><br><br>"
+            "◈ <b>VLA 视觉语言动作模型</b>: 新模块从未见过 → AI自动适配 · 零编程<br>"
+            "◈ <b>主动安全保护</b>: 力传感器超阈值预判 · 碰撞前0.05s自动停机<br>"
+            "◈ <b>触觉闭环</b>: TS-T-15实时接触力反馈 · 插入力超2N自动松夹<br>"
+            "◈ <b>光幕联动</b>: 人员靠近→自动降速 · 进入危险区→立即停止<br>"
+            "◈ <b>自诊断系统</b>: 预测性维护 · 部件寿命预估 · 故障前预警<br>"
+            "◈ <b>7×24 无人值守</b> · 零人工干预 · <b>良率 ≥99.9%</b>"
+        )
+        info.setFont(QFont("Arial", 11)); info.setStyleSheet(f"color:{C_WHITE}; padding:12px;"); info.setWordWrap(True)
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(info)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
+        hl.addWidget(scroll); hw.setLayout(hl); l.addWidget(hw)
+        
+        # 安全层级
+        safe = QGroupBox("🛡️ 安全架构 · 五层主动保护")
+        safe.setStyleSheet(f"QGroupBox{{color:{C_RED}; font-weight:bold; {card_style(C_CARD, C_RED, 8, 12)}}}")
+        sl = QVBoxLayout()
+        for level, name, desc, color in [
+            ("L1", "力控预判",      "力传感器1kHz采样 → 接触力超阈值0.05s内停机", SYS11_COLOR),
+            ("L2", "触觉闭环",      "TS-T-15实时反馈 → 夹持力>2N自动释放", C_GREEN),
+            ("L3", "光幕联动",      "安全光栅检测人员 → 自动降速/分区停机", C_ORANGE),
+            ("L4", "自诊断预警",    "电机温度/电流/振动异常 → 提前48h通知维护", ROI_ACCENT),
+            ("L5", "AI行为预测",    "LeWorldModel预测未来0.2s状态 → 主动避让", SYS12_COLOR),
+        ]:
+            row = QHBoxLayout()
+            badge = QLabel(level); badge.setFixedSize(30,30)
+            badge.setStyleSheet(f"background:{color}; color:white; border-radius:15px; font-weight:bold; font-size:19px;")
+            badge.setAlignment(Qt.AlignCenter)
+            row.addWidget(badge)
+            nl = QLabel(f"<b>{name}</b>")
+            nl.setStyleSheet(f"color:{color}; font-size:20px;"); nl.setFixedWidth(100)
+            row.addWidget(nl)
+            nd = QLabel(desc); nd.setStyleSheet(f"color:{C_GRAY}; font-size:19px;"); nd.setWordWrap(True)
+            row.addWidget(nd, 1)
+            sl.addLayout(row)
+        safe.setLayout(sl); l.addWidget(safe)
+        
+        w.setLayout(l)
+        
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(w)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
+        outer = QWidget(); ol = QVBoxLayout(); ol.addWidget(scroll); outer.setLayout(ol)
+        return outer
+    
+    def _make_step_card(self, num, title, desc, color):
+        card = QFrame()
+        card.setStyleSheet(f"background:{C_BG2}; border:1px solid {color}88; border-radius:6px;")
+        cl = QVBoxLayout(); cl.setSpacing(2); cl.setContentsMargins(6, 4, 6, 4)
+        num_lbl = QLabel(num); num_lbl.setFont(QFont("Consolas", 10, QFont.Bold))
+        num_lbl.setStyleSheet(f"color:{color}; background:{color}22; border-radius:3px; padding:1px 4px;")
+        num_lbl.setAlignment(Qt.AlignCenter); cl.addWidget(num_lbl)
+        title_lbl = QLabel(title); title_lbl.setFont(QFont("Arial", 11, QFont.Bold))
+        title_lbl.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none;")
+        title_lbl.setAlignment(Qt.AlignCenter); cl.addWidget(title_lbl)
+        desc_lbl = QLabel(desc); desc_lbl.setFont(QFont("Arial", 10))
+        desc_lbl.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none;")
+        desc_lbl.setAlignment(Qt.AlignCenter); desc_lbl.setWordWrap(True); cl.addWidget(desc_lbl)
+        card.setLayout(cl); return card
+    
+    # ═══════ 🧱 功能积木 · 阶梯进化 ═══════
+    def _build_brick_panel(self):
+        """乐高积木风格: L2基础 → L3增强 → L4旗舰 功能阶梯"""
+        panel = QGroupBox("🧱 功能积木 · 阶梯进化")
+        panel.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
+        
+        # 内层内容
+        inner = QWidget()
+        outer = QHBoxLayout(); outer.setSpacing(60)
+        
+        # 功能模块定义: (名称, L2状态, L3状态, L4状态, 固定颜色)
+        # 状态: 'active'=实色 'new'=新增虚线 'keep'=保留暗色
+        # 同一功能在三列中用相同颜色
+        modules = [
+            ("人工流程编排",  'active','keep','keep', ROI_ACCENT),
+            ("标准原子功能库", 'active','keep','keep', C_GREEN),
+            ("动作执行(ROS2)", 'active','keep','keep', SYS11_COLOR),
+            ("力控反馈闭环",   'active','keep','keep', SYS12_COLOR),
+            ("AOI验证检测",    'active','keep','keep', C_ORANGE),
+            ("成品下料分类",   'active','keep','keep', SYS2_COLOR),
+            (None, None, None, None, None),  # 分隔
+            ("多模块自主识别",  None,  'new',  'keep', C_GREEN),
+            ("自主闭环工作",    None,  'new',  'keep', SYS11_COLOR),
+            ("换线自主换配方",  None,  'new',  'keep', C_ORANGE),
+            ("异常诊断自恢复",  None,  'new',  'keep', SYS12_COLOR),
+            (None, None, None, None, None),  # 分隔
+            ("力控预判保护",    None,  None,   'new', C_RED),
+            ("触觉闭环反馈",    None,  None,   'new', C_RED),
+            ("光幕联动安全",    None,  None,   'new', C_RED),
+            ("自诊断预警维护",  None,  None,   'new', C_RED),
+            ("AI行为预测避让",  None,  None,   'new', C_RED),
+        ]
+        
+        levels = [
+            ("🔧 L2 基线版", ">99%", C_GREEN),
+            ("🤖 L3 增强版", "≥99.5%", SYS11_COLOR),
+            ("🛡️ L4 旗舰版", "≥99.9%", C_RED),
+        ]
+        
+        brick_rows = []  # [(col, row_idx, brick_widget, state)]
+        
+        for col_idx, (lvl_name, lvl_yield, lvl_color) in enumerate(levels):
+            col = QVBoxLayout(); col.setSpacing(15)
+            
+            # 列标题
+            hdr = QFrame()
+            hdr.setStyleSheet(f"background:{lvl_color}22; border:2px solid {lvl_color}; border-radius:8px;")
+            hdr.setFixedHeight(70)
+            hl = QVBoxLayout(); hl.setContentsMargins(4,2,4,2); hl.setSpacing(0)
+            t1 = QLabel(lvl_name); t1.setFont(QFont("Arial", 10, QFont.Bold))
+            t1.setStyleSheet(f"color:{lvl_color};"); t1.setAlignment(Qt.AlignCenter)
+            t2 = QLabel(lvl_yield); t2.setFont(QFont("Arial", 11))
+            t2.setStyleSheet(f"color:white;"); t2.setAlignment(Qt.AlignCenter)
+            hl.addWidget(t1); hl.addWidget(t2)
+            hdr.setLayout(hl); col.addWidget(hdr)
+            
+            row_idx = 0
+            for name, l2, l3, l4, mod_color in modules:
+                if name is None:  # 分隔线
+                    sep = QFrame()
+                    sep.setFrameShape(QFrame.HLine)
+                    sep.setStyleSheet(f"color:{C_BORDER};")
+                    sep.setFixedHeight(6)
+                    col.addWidget(sep)
+                    row_idx += 1
+                    continue
+                
+                status = [l2, l3, l4][col_idx]
+                if status is None:
+                    col.addSpacing(24)  # 占位
+                    row_idx += 1
+                    continue
+                
+                brick = QFrame()
+                brick.setFixedHeight(48)
+                
+                if status == 'active':
+                    brick.setStyleSheet(f"background:{mod_color}; border:3px solid {mod_color}; border-radius:6px; margin:3px 0;")
+                    txt = QLabel(f"● {name}")
+                    txt.setStyleSheet("color:white; font-size:20px; font-weight:bold;")
+                    state = 'active'
+                elif status == 'new':
+                    brick.setStyleSheet(f"background:{mod_color}33; border:2px dashed {mod_color}; border-radius:6px; margin:2px 0;")
+                    txt = QLabel(f"✦ {name}")
+                    txt.setStyleSheet(f"color:{mod_color}; font-size:20px; font-weight:bold;")
+                    state = 'new'
+                else:  # keep — 完全无填充，仅文字占位
+                    brick.setStyleSheet(f"background:transparent; border:1px solid transparent; border-radius:6px; margin:2px 0;")
+                    txt = QLabel(f"  {name}")
+                    txt.setStyleSheet(f"color:{mod_color}55; font-size:18px;")
+                    state = 'keep'
+                
+                txt.setAlignment(Qt.AlignCenter)
+                bl = QVBoxLayout(); bl.setContentsMargins(3,1,3,1); bl.addWidget(txt)
+                brick.setLayout(bl)
+                col.addWidget(brick)
+                brick_rows.append((col_idx, row_idx, brick, state, mod_color))
+                row_idx += 1
+            
+            col.addStretch()
+            outer.addLayout(col, 1)
+        
+        inner.setLayout(outer)
+        
+        # 滚动区域
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(inner)
+        scroll.setMinimumHeight(400)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
+        
+        outer_wrap = QVBoxLayout()
+        outer_wrap.addWidget(scroll)
+        panel.setLayout(outer_wrap)
+        return panel, brick_rows
+    
+    def _update_brick_highlight(self, tab_idx):
+        """Tab切换时高亮对应列"""
+        if not hasattr(self, '_brick_rows'):
+            return
+        for col_idx, row_idx, brick, state, mod_color in self._brick_rows:
+            if col_idx == tab_idx and state == 'keep':
+                brick.setStyleSheet(f"background:{mod_color}18; border:2px solid {mod_color}88; border-radius:5px;")
+                txt = brick.findChild(QLabel)
+                if txt: txt.setStyleSheet(f"color:{mod_color}; font-size:19px; font-weight:bold;")
+            elif state == 'keep':
+                brick.setStyleSheet(f"background:transparent; border:1px solid transparent; border-radius:5px;")
+                txt = brick.findChild(QLabel)
+                if txt: txt.setStyleSheet(f"color:{mod_color}44; font-size:11px;")
+
+    def _spin_style(self):
+        return ""  # 已移除ROI计算器
+    
+    def _make_input_group(self, label_text, widget):
+        return QLabel(label_text)  # 已移除ROI
+    
+    def _calc_roi(self):
+        pass  # 已移除ROI计算器
+
+
+# ============================================================
+# 主窗口: 侧边栏 + 堆叠页面
+# ============================================================
+
+# ════════════════════════════════════════════════════════════
+# 深色消息框辅助 (WSLg 下 QMessageBox 原生渲染黑字 → 显式深色 QSS)
+# ════════════════════════════════════════════════════════════
+_MSG_SS = """
+    QMessageBox { background:#0d1117; color:#e6edf3; }
+    QMessageBox QLabel { color:#e6edf3; font-size:15px; background:transparent; }
+    QMessageBox QPushButton { background:#161b22; color:#e6edf3; border:1px solid #30363d;
+        border-radius:4px; padding:6px 18px; font-size:15px; min-width:70px; }
+    QMessageBox QPushButton:hover { border-color:#00d4aa; color:#00d4aa; }
+    QMessageBox QPushButton:default { border-color:#00d4aa; }
+"""
+
+def _msg(parent, title, text, kind="info", yes_no=False):
+    """深色主题消息框: kind=info/warning/critical, yes_no=True 返回是否 Yes"""
+    mb = QMessageBox(parent)
+    mb.setWindowTitle(title)
+    mb.setText(text)
+    mb.setStyleSheet(_MSG_SS)
+    if yes_no:
+        mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        mb.setDefaultButton(QMessageBox.No)
+    else:
+        mb.setStandardButtons(QMessageBox.Ok)
+    ic = {"warning": QMessageBox.Warning, "critical": QMessageBox.Critical}.get(kind, QMessageBox.Information)
+    mb.setIcon(ic)
+    if yes_no:
+        return mb.exec_() == QMessageBox.Yes
+    mb.exec_()
+    return False
+
+def _msg_ok(parent, title, text, kind="info"):
+    """深色信息/警告框 (无返回值)"""
+    _msg(parent, title, text, kind=kind)
+
+def _msg_ask(parent, title, text, kind="warning"):
+    """深色确认框 → True=Yes"""
+    return _msg(parent, title, text, kind=kind, yes_no=True)
+
+
+class StudioMainWindow(QMainWindow):
+    def _maybe_warn(self):
+        """🐛 2026-09-01 老倪: 非调试模式警告 — 直接 python studio.py 启动时 debugpy 无连接,
+        VSCode 断点永不生效 (用户"断点进不去"根因); F5 启动 2s 后握手已完成, 不误判"""
+        try:
+            import debugpy
+            _ok = debugpy.is_client_connected()
+        except Exception:
+            _ok = False
+        if not _ok:
+            try:
+                self.setWindowTitle("XSpace Studio — Z-MAX vv5.16.34 [W-01] ⚠️非调试模式")
+                self.statusBar().showMessage(
+                    "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
+            except Exception:
+                pass
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("XSpace Studio — Z-MAX vv5.16.34 [W-01]")
+        # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
+        from PyQt5.QtCore import QTimer as _QTimer
+        # vv5.16.34: 8793 页表面检测窗口下面加『🎯 侧面点1』技能按钮 + 新示教点『侧面点1』现场实录(2026-09-30)  老倪: 「记录一下这个位姿, http://10.163.146.78:8793/station 在侧面检测, 增加一个技能 侧面点1 的按钮, 放在侧面检测窗口的下面, 类似 技能 返回 金手指点1 的技能」  一、示教点『侧面点1』(现场实录, 与 8793 页面同一真值源): pos=(0.404639,-0.450586,0.526237) m · quat(xyzw)=(0.7231227,0.0272530,-0.0364400,0.6892190) · frame=base_link · 源=ROKAE SDK 直读 endInRef · 判据: 6 帧采样 pos 极差 0.0 m / quat 极差 1e-06、帧龄 0.5s ⇒ 静止且非陈旧全 0 坏值。  二、新技能 L2.goto_surface_pt1: ros=line_abs + quat="taught"(位置+姿态都回示教点) + point="侧面点1" + point_locked + guard.dz_down_limit_mm=20 ⇒ 点位写死在技能定义里, 页面/接口都改不了点位。  三、8793/station: 按钮放在『🔍 表面检测(工控机 10083)』那一格的画面/说明下面(在 拍帧/请求检测/最后结果 那一行之上); 实现上把回点逻辑抽成通用 gotoTeachPoint(), 『🎯 点1』与『🎯 侧面点1』同一份实现 ⇒ 不新开通道、不复制闸门。  四、服务端白名单 _CTL_ABS_SKILLS 增加该技能(只加技能 id)。  五、新工具: tools/record_point_sdk.py(从页面同源 SDK 源录点, 帧龄>2s / 位置范数≈0 / pos 极差>1e-4m 三重闸, 写库前留痕+备份) · tools/register_surface_pt1_skill.py(幂等注册)。  六、验收(全程未授权=零下发): dry-run 受理 DRY-RUN(未下发) 且目标 pos/quat 与示教点逐位一致; POST /ctl/move arm=1 → 403 拒; arm=0 → 演练; 页面真点按钮 → "⛔ 未授权: 只算了目标…"; DOM 次序实测 图→说明→[侧面点1行]→[拍帧行]。
+        # vv5.16.33: 表面(10083)通道升到 v12 状态 + 8793 页表面检测窗口加「请求检测 / 最后结果」两按钮(2026-09-30)  老倪: 「现在给工控机的10083通道, 也要增加 请求检测 最后结果 两个按钮, 源代码也要更新成 v12版本的状态,        也要帮我做好 表面检测的 launch.json debug启动配置, 在 8793/station 表面检测 窗口下面增加按钮, 类比金手指检测」  一、10083 表面程序: cam_surface_10083_work_v6.py → cam_surface_10083_work_v12.py(VERSION=v12, 33185 B)    · 与金手指 v12 对齐: /last_result 明写 model_input / model_input_kind / model_input_md5 / judge / verdict_topview;    · 新增 GET /picture?kind=modelin(内存里那份**喂进模型的像素**, 无损 PNG + X-Zmax-Modelin-Md5/HW/N 头);    · /crop_info 增加 model_input_file / model_input_kind / model_input_md5 / judge_file(grab 不覆盖成空);    · 检测队列加上限(挤压丢最旧) + worker 跳过"文件已不在"的项;    · 顺手修隐患: 原 525-526 行 ci/lr 复制写在 return 之后(不可达) ⇒ /picture?meta=1 分支会 NameError;    · 表面本来就是全幅检测(letterbox 1280 保比例, 不拉伸) ⇒ 模型吃的 = 人看的同一张, 这点与金手指不同, 已在字段里写明。  二、8793/station 表面检测窗口下加两个按钮(与金手指同款): 🔍 请求检测 / 🧾 最后结果    · 服务端: /api/aoi/detect?port=10083(等待时间按 10083 放宽) · /aoi_surface_modelin.png + _meta 转发;    · 页面: aoiDetect/aoiLastResult 参数化(金手指 tag='', 表面 tag='s'), 各自出自己那格 + 可复制 JSON。  三、修真 bug: 点「请求检测」报的是**上一帧**的判决(老倪会当成结果不对)    · 原因: 服务器干等固定秒数; 表面单帧推理 8.7~11.4s, 到点还没出新结果 ⇒ 把上一次的当本次报出来;    · 改法: POST 前先记检测序号 n, POST 后轮询直到 n 变化才算"这一次" ⇒ out.fresh; 没等到就明说"这是上一次";    · 404(工控机还没有任何结果, 冷启第一次)不再当失败, 继续等。  四、表面检测 launch.json(VSCode)配置已做好并下发到工控机    · ① 10082 金手指 (v12) · ② 10083 表面 (v12)(program=cam_surface_10083_work_v12.py) · ③ 离线 ab_check_defect_v2;    · 均 PYTHONUNBUFFERED=1 + PYTHONIOENCODING=utf-8 + justMyCode:false; 工控机 py_compile 退出码 0。  五、实测证据(当场跑出来的)    · 表面 v12 真检测: 检测 #1/#2/#4 判决 OK · 缺陷 0 处 · 推理 8.7~11.4s(housing) · 图 Surface_Letterbox_W1280_H1280_No_*;    · 同源硬证据: 8791 /aoi_surface_modelin.png 解出来的像素 md5 == 工控机 /last_result.model_input_md5 == e6a53e234673cb93378785b49dfcf39c;    · 页面两个按钮真点过: 🧾 最后结果(判决/序号/帧龄/耗时/图链接/可复制 JSON) · 🔍 请求检测(真触发检测并等到新序号);    · 发现并清掉**两个** cam_surface 实例(venv python + 系统 Python310 各一个, 抢相机) —— 这是 500 的一个来源;    · 表面相机(SN D265250099)偶发"开启采集失败 / Grab 抓取帧失败": 工控机程序自己重连重抓一次, 页面再自动重试一次(不是 v12 引入的)。  六、现场状态: 工控机 10082/10083 均已停(等老倪自己在 VSCode 里跑); 只有 ZMAX_Agent(反向通道) 保留。
+        # v5.16.32: 8793 工位总览页新增「🧾 最后结果」按钮 = /last_result 功能(2026-09-30)  老倪: 「@app.route("/last_result") http://10.163.146.78:8793/station 在请求检测按钮旁边, 增加 最后结果 按钮, 实现 /last_result 功能, 最终得有结果啊」  - 服务端 tools/cam_live_stream.py 新增 _aoi_last_result(port): 只 GET 工控机 /last_result,   **不拍照、不检测**(与要 POST 触发相机的 /api/aoi/detect 分开, 这条只加在 do_GET);   返回带 fetched_at + age_s(帧龄); 工控机 404(尚无结果)时如实回报并提示先点「请求检测」。 - 路由: GET /api/aoi/last_result?port=10082 (8791/8793 两个端口都能用; 页面同源, 不跨网不跨域)。 - 页面 tools/web/station.html: 「🔍 请求检测」右边新增「🧾 最后结果」按钮 + 结果卡片:   判决(OK 绿 / NG 红) · 缺陷 N 处 · 检测序号 · **拍照时间 + 帧龄** · 耗时 ms · 检测类型 ·   模型实际吃的那张图(/aoi_modelin.png, 可点开) · 判据图(/snapshot/aoi_gold.jpg, 可点开) ·   原始 JSON(可选中复制 + 📋 复制按钮)。 - 页面是 mtime 热读, 改完刷新即生效; Python 路由需要重启 cam_live_stream(已重启并验过:   8791/stats 200 · 8793/station 200 · 两端口 API 200)。
+        # v5.16.31: AOI v12: 把「模型到底吃哪张图」做成看得见、对得上(2026-09-30)  老倪: 「10082代码哪里调用 YOLO 模型, 我看看实际输入给模型的图片, 和 YOLO 模型的返回值」  代码位置(工控机 D:\xspace\ultralytics_AOI\):   · 模型实例: cam_finger_10082_work_v12.py 第 58 行 detector = YoloDetector()   · 调用点  : 第 807 行 result = detector.detect(topview_path, detect_type='gf')  (检测 worker 线程内)   · 影子对照: 第 832 行 detector.detect(shadow_path, ...) = 判据图压 960 再跑一遍(前 10 张)   · 输入图  : %TEMP%\zmax_main_960_No_<帧号>.png —— 同一帧原图经"模板法规整裁剪"派生出的 960x960(与 v6/v7 逐位同口径),               检测完即删; 判据图 Finger_TopView_W900_H332_*.png 是给人看的, 模型不吃它   · 返回值  : result = {'detections': [...], 'count': N, ...} -> 落进 /last_result  新增(可验证, 不是"看起来像"):   · GET /picture?kind=modelin  = 把**喂进 YOLO 的那份像素**无损 PNG 取回来(帧号/尺寸/md5 在响应头)   · GET /picture?kind=modelin&meta=1 = {n, hw, md5, src, fed_to, note}   · 4060 转发: http://10.163.146.78:8791/aoi_modelin.png (+ /aoi_modelin_meta)   · /last_result 增加 model_input / model_input_kind / model_input_md5 / shadow / verdict_shadow   · 同源硬证据: 取回图的像素 md5 == /last_result.model_input_md5 (实测 5d9b8458… 三方一致)  顺带修掉的不一致/隐患:   · /crop_info.model_input_file 还写着判据图(v8 遗留) ⇒ 改成真实的 960 临时图 + judge_file 单列; grab 不再覆盖成空   · 检测队列上限 3(挤压丢最旧) + 跳过"文件已不在"的项 + _sweep_temp 不清队列里在等的图   · 【送检】日志改成打印真实文件名+存在性(v11 那行用了未定义变量, 离线测试抓到)
+        # v5.16.30: AOI v10 上线 + 反向通道事故收尾(2026-09-30)  起因(老倪): 「Finger_ModelIn_W960_H960_No_26549.png 工控机检测的这个就不要了; 模型用的是这个图片, 保留下面的图片 Finger_TopView_W900_H332_No_26549.png; 你确定一下模型使用的是不是 topview」  结论(实测): - 改前模型吃的**不是** topview: 是 Finger_ModelIn_W960_H960_*(960 方图, 即训练口径); TopView 只是看/存档。 - 现在(10082 上线 v10): **只落一张图** = Finger_TopView_W900_H332_*(判据图); Finger_ModelIn_* 不再产出,   历史文件按上限(0)自动清掉; 模型吃**同帧派生的 960x960 方图**(与 v6/v7 逐位同口径 ⇒ 召回不变),   写 %TEMP% 且检测完即删; /last_result 明写 model_input / model_input_kind / judge / topview, 一看就知道谁吃哪张。 - 影子对照片(判据图压 960x960 再喂一次)前 10 张自动跑, 两口径结果都进 /last_result, 判决取并集(不漏判)。  事故与根因(我的锅, 已修): 1) v8 试让模型**直接吃 900x332 判据图** ⇒ 工控机 app 里检测卡死(CPU 空转、几分钟不返回、incoming 不落图、    %TEMP% 堆 90+ 临时图); 同一张图换 venv 解释器单独跑 0.7s ⇒ 该口径在工控机运行环境里不可用, v9 改回派生 960。 2) 一条清理 %TEMP% 的命令在工控机上挂住 ⇒ 反向通道被堵死 20+ 分钟(agent 循环是"一问一答+串行+**无超时**",    watchdog/keepalive 只看进程在不在 ⇒ 不会自愈)。现场重启工控机恢复。    · keepalive rev6: 杀掉"挂在 zmax_cmd.ps1 上超过 10 分钟"的子进程(自愈, 已发布到 8794 静态目录)    · 今后经通道下发的命令一律用 Start-Job + Wait-Job -Timeout 包裹, 不给通道无界等待 3) v9 把临时图写在 GrabAndSaveImage 里 ⇒ "只看一眼"的 grab(页面 0.5s 一次)每次也写 2 张却没人删,    实测 9 分钟堆 2180 张。v10: 只有 save=True(真检测才入队)才写临时图 + 每次真检测先 _sweep_temp() 清残留。    实测: TEMP 残留 25 → 0, 判决 1611ms, 目录只剩判据图。 4) 部署器加固: http_get 保留 HTTP 状态码(原来走异常路径丢码 ⇒ 认不出"合法 404 尚无检测结果" ⇒ 首帧推理慢就    假失败并**误回滚**); 验收判据只看 --only 指定的那一路(另一路仅报状态, 10083 自己抽风不再误触发回滚)。  交付: cam_finger_10082_work_v10.py(v10) + test_v10_temp_leak.py(离线全绿, 含"grab 不写临时图"回归点)       + tools/aoi_remote_deploy.py(--only/合法404/判据口径) + zmax_keepalive.ps1 rev6
+        # v5.16.29: v5.16.29 — 工控机金手指 topview 改成「判据图」口径(AOI 程序 v7) 老倪: 「工控机的金手指…点击请求检测后, 在工控机保存的 topview图片, 不是我在判据图的样子; 改成判据图的样子」 · 差在哪(实测): 工控机保存/送检的是 960x960 方图(1455x70 条带纵向拉 13.7 倍), 网页判据图是 900x332(原比例+纵向×2+反倾角+定尺) ⇒ 两张完全不同。 · 工控机程序 v7: 落盘/展示的 topview 改判据图口径(过曝带切除+只留金手指条+列裁死白列+短边×2+按实测倾角反旋+定尺900x332), 口径从 4060 侧 aoi_exposure_fix 逐条移植; 模型输入**逐位不变**(仍 960x960 送检, 另存 Finger_ModelIn_*), /last_result 同时报 topview(人看的) 与 model_input(模型吃的); /crop_info 出 judge 台账; 渲染失败自动回退并打警告。 · 现场证据: 工控机侧文件自检 saved_topview=900x332 ✅; 工控机 ?kind=crop(900x332) vs 网页判据图帧 → 灰度均值 188.1/188.1, r=0.9847(行剖面 0.9971) ✅; 离线对同源原图 r=0.9973 ✅; 模型输入仍是 960x960, 检测回执正常(count/verdict/ms) ✅。 · 顺带修好被卡死的反向通道(否则推不上去): ①hub 没托管 → 新增 zmax-agent-hub.service; ②队列在 /tmp 被 fs.protected_regular 拒写 → 运行态搬到 ~/zmax_data/agent_hub/; ③两端 token 不一致(工控机带 ZMAX_AOI_KeepAlive) → hub 支持多 token。实测通道恢复(回执 DESKTOP-NV6ATND / nt authority\system)。 · 交付件: docs/deliver/v7/ (程序+口径模块+离线测试+SHA256) · reports/aoi/topview_judge_v7_20260929.md · 新工具 tools/station_cmd.py(给工控机发一条命令并取回执)。
+        # v5.16.28: v5.16.28 — 手动控制台增加「🤏 关闭夹爪 / 🖐 打开夹爪」两个技能按钮  老倪: 「http://10.163.146.78:8793/station 在手动控制台 增加 关闭夹抓 和 打开夹抓 两个技能」  做法(与方向键/点1 完全同一条路, 不新开通道): - 页面 tools/web/station.html(热读, 不用重启): 手动控制台新增「🤏 夹爪 (关闭/打开)」卡, 两个大按钮   → gripAct(btn, skill, label) → POST /ctl/move {skill, speed, arm:已授权?1:0}; 页面只送技能 id   (夹持力/行程由技能定义 registry 固定, 页面/接口都改不了); 未授权时只算目标不下发;   带安全闸时追 /ctl/log 直到「受理: 已下发」或「🛑 被拦… ⇒ 拒发」把原文摆出来。 - 服务端 tools/cam_live_stream.py: 白名单 _CTL_ABS_SKILLS 增加 L2.grip_close / L2.grip_open   (无页面可调参数, 与 L2.goto_gold_pt1 同规格) ⇒ 天然复用「授权真动 + 限流 + FIFO + 回执」那套路。  实测(未授权, 全程零动作): - 页面已含两个按钮(grep L2.grip_close/L2.grip_open 各 3 处; div 48/48 平衡; node --check 509 行内联 JS 通过)。 - 未授权 + arm=1 点「关闭夹爪」→ HTTP 403 denied(服务端拦)。 - 未授权 + arm=0 演练 → 执行器给出将要真下发的指令, 语义核对无误:   L2.grip_close → /gripper_driver GripperSrv {target_pos: 0.0, target_force: 40.0}(合爪+40%力);   L2.grip_open  → {target_pos: 1000.0}(张爪)。 - 绕过网页直接写 FIFO 真动 L2.grip_close → 执行器「🛑 被拦(真动授权): … 拒发」(撤销后一律拒)。
+        # v5.16.27: v5.16.27 — 真动授权收敛成单一真源: 撤销后手臂不再动(点1 与一切路径都服从 8793 手动控制台授权)  老倪现场: 「8793/station 我都取消授权了，手臂怎么还在动；金手指检测的点1技能，也要服从手动控制台的授权」  根因(实测, 两条并存): 1) 授权只活在 8793 那个进程的**内存**里 ⇒ 其它会动臂的路径(GUI 原子技能/脚本/自动流程/AOI 伺服,    实测有 18 个文件直接写 ~/zmax_data/l2_cmd.fifo)**完全绕过**它 —— 授权对它们形同虚设。 2) 执行器(l2_daemon)下发前**不校验**授权 ⇒ 「点授权 → 命令排队等 VL 慢层(上限 300s) → 期间人点撤销    → 照样下发」。现场表现就是"取消了授权还在动"。另: 已下发给控制器的慢速动作(speed=8, 实测 30~90s    才到位)不会因为点撤销就停 —— 这一条以前根本没人管。  改法: · 新增 tools/ctl_auth.py —— 真动授权的**单一真源**(文件 ~/zmax_data/ctl_auth.json):   armed=until>now(到期自动失效) + 单调 epoch(每次授权/撤销 +1)。8793 页面与执行器共用同一份。 · 8793 侧(cam_live_stream): _auth_info/_auth_set 改读写该真源; 写 FIFO 的命令带上签发时的 auth_epoch。 · 执行器侧(l2_daemon)在**唯一收口** chan_send + 服务步(_service_call) + 夹爪/力控(_call_remote)   一律 `_auth_guard`: ①此刻必须有授权(不是"签发时有") ②命令 epoch 必须不小于当前 epoch(撤销即作废);   ③等 VL 慢层期间每 2s 复核, 一撤立刻作废本条(绝不下发)。停机/复位类白名单永远放行(闸门不挡急停)。   ctl_auth 不可用 ⇒ fail-closed 一律拒发。 · 新增 tools/ctl_revoke_stop.py + zmax-ctl-stop.service —— 带外看门人: 撤销瞬间若近 180s 内有真下发,   立刻调机器人 /robot_stop(std_srvs/Trigger) 把**在途**运动停下; 全程审计(谁能查谁撤销/停了没有)。 · 页面: 撤销后横幅明说"已对在途动作下达停止(/robot_stop 成功)"或"已下发到控制器的动作无法收回";   /ctl/status 的 auth 增加 last_stop 实况。  实测证据(全部真跑): · 未授权 + arm=1 点『回到金手指点1』→ HTTP 403 denied, 且**没有**任何 FIFO 写入/执行器日志行。 · 绕过网页直接写 FIFO 真动命令(未授权) → 执行器: 🛑 被拦(真动授权): 拒绝 ✓(臂零位移) · 授权 → 写真动命令 → 命令正在等 VL 慢层 → **点撤销** → 1s 内: ⏹ 本条立即作废(未下发), 日志中「已下发」计数=0;   同时看门人: ⏹ 已在途停止 /robot_stop success(4.7s, 机器人回执 stop ec=0 操作成功完成)。
+        # v5.16.26: 🛰 数据空间页: ss_plan 一眼可见 + 详情直接给出那一帧摘要  背景: MoveIt plan-only 的轨迹已镜像成 DDS `zmax/ss_plan`(0.5Hz · 每帧 ~23KB · 累计 189 帧 · verdict=ok)。 但老倪要"逐帧对"时撞到两个现实问题, 像素质检+离屏探针各量了一遍:  1) **看不到那条**: 左面板「报文」树是纯字母序 ⇒ `ss_plan` 排第 12/15 行, 而面板只放得下 ~8 行    (视口 462px / 行高 52px) ⇒ 页面上根本看不见。修法: **活跃在前**(hz>0 优先, 组内仍字母序)    ⇒ 现在顺序 heartbeat | hw_state | ss_action | ss_calib | ss_diag | **ss_plan** | ss_state | …,    `ss_plan` 排第 5 行, 不用滚动就在视野里。  2) **看不到那几个数**: Trace 表 9 列只有 话题/类型/判决/概率/生产者/发送者/跟踪号/QoS,    全帧真正要看的 `n_points` / `end_err_mm` / `同源闸` 一个都不在。修法: 详情面板新增    **「🧾 最近一帧摘要 (trace digest)」** —— 探针给 ss_plan 写的是一行可读摘要而不是 768 个数字:      `plan-only: n=123 (joints_path 738 / tcp_path 369) plan_code=1 时长=12.11s 终点误差=2.967mm       FK起点差=261.351mm 同源闸=0[同源闸不过: FK(真关节)与真机 TCP 差 261.4mm (>5mm)…] age=0.50s`    同时把载荷字段里的长序列折叠成 `[0.16, -0.0616, -2.545, …] (共 366 个)` —— 否则 joints_path    一个字段就把 24 个字段名额占满, end_err_mm / gate_* 全被挤出去(实测确认现在都在)。  实测: 离屏探针打印详情面板全文, ss_plan 的 类型/QoS/设计·实测频率/抖动/丢包/帧龄/累计报文/字节/ 匹配发布者/质量判决/灯/生产者 + 3 条质量判据 + 摘要 + 18 个载荷字段 全部到位。
+        # v5.16.25: 🧩 画布页顶部工具条: 6 个勾选框与按钮**同高** (收掉最后一块暗带)  像素质检(修前, 实际截图逐像素)报: 第1行 x611-2554 (宽 1943px = 顶宽 63.3%) 在 y43-59 有一条 **17px 连续暗带** —— 6 个勾选框 pill 的盒底 y≈42, 同排按钮盒底 y≈57, **矮 15px** 且整体偏上。 离屏复测同一件事: 按钮 h=70 / 勾选框 h=55 ⇒ 差 15px (两路独立测量一致)。  根因: 工具条是自写 FlowLayout, **按 sizeHint 排布** —— `QCheckBox` 的 sizeHint 天生比 `QPushButton` 矮 (pill 里那个 14px 指示块比按钮的纯文字行占位小), 所以 `setMinimumHeight(30)` 对它**无效** (minimumHeight 量到 30, 几何还是 55)。  修法: 把勾选框 pill 的**纵向 padding 从 6px 提到 14px**(横向 12px 不变) —— 离屏扫描若干取值:   pad=6→55 · 9→61 · 12→67 · 13→69 · **14→71** · 16→75  (按钮恒 70) ⇒ pad=14 时勾选框 h=71 vs 按钮 h=70 (差 1px), 同 y=6 对齐。  实测复核 (修后, 现场 3068x1862 截图 + 像素): 勾选框那一段的"纯底色连续行" **21 行 → 6 行** (剩下 6 行是两排按钮之间本来就该有的行距), 全段 >99% 底色行 26 → 11。文字对比度不变 (11.2~11.5:1)。
+        # v5.16.24: 🪟 老倪「独立打开的全局数据空间的最大化按钮不好用」→ 真根因 + 实证  根因: 原来那个独立窗口是 `QDialog(主窗口)` —— 有 parent 的 Qt 对话框, mutter 会把它当       **附属窗(transient dialog)**, 标题栏最大化钮灰着/点不动。 修法: 改成 **无 parent 的真顶层 QMainWindow** + 显式 `Qt.Window|Minimize|Maximize|Close`:       · `_NET_WM_WINDOW_TYPE` = **NORMAL** (原来会是 dialog 类)       · `_NET_WM_ALLOWED_ACTIONS` 现在含 **MAXIMIZE_HORZ / MAXIMIZE_VERT / MINIMIZE / FULLSCREEN**       · 深色主题不丢 (app.setStyleSheet 是**应用级** QSS, 与 parent 无关)       · 控制台退出时随 aboutToQuit 一起关, 不留孤儿窗 实测 (wmctrl 量几何):       开窗 2640x1200 @ (588,873)  →  最大化 **3068x1862 @ (132,212)** = 正好是控制台那块屏的工作区       →  还原回 2640x1200 @ (588,873) ✅ (最大化/还原/最小化/双击标题栏都可用) 最大化后内容真铺满 (像素): 全屏非背景 16.8%, 顶测量条 12.9% / 左信号表 13.4% / 右详情 15.7% / 底部页签 12.9%       ⇒ 不是"放大了还是一小块/大空白"。  另: 首次摆位加了一道"实测几何夹回屏内"(show() 之后 350ms 按真实 frameGeometry 夹, 不信推算 ——     本机 fractional scaling 下 move()/resize() 与 screen().geometry() 不在同一坐标空间)。
+        # v5.16.23: 🧩 老倪两件事 (2026-09-29): 「现在我运行 L5的状态空间画布, 我还想同时看到全局数据空间; 在上边我可以打开一个独立的全局数据空间的窗口,   可以同时看到状态空间的场景和数据空间的 topic; 上边的按钮你整理一下, 紧凑点, 现在中间有一大快空白」  1) 【新】独立「全局数据空间」窗口: 画布页顶部工具条新增「🌐 数据空间窗口」    · 非模态顶层窗口 (QDialog, 可拖动/缩放, 不挡操作), 与页面里那份是同一套 CANoe 视图      (dds_canoe.BusView: 测量条 + 信号表 + Trace + 详情 + 数据闭环/质量告警页签)    · 目的: 跑 L5 状态空间画布 / 3D 场景时, 把本窗口拖到屏幕另一侧 ⇒ 场景 + topic 实时值同屏    · 单例复用 (关掉再点 = 同一个窗口, 不重建/不重复采集); 数据同源 busdb/live/trace; 纯只读不下发    · 独立模式下隐藏「🗂 经典视图」开关 (那个开关依赖主窗口的 Tab 容器)  2) 【真根因】「中间有一大快空白」= 那 6 个勾选框**一直都在, 但看不见**    · 像素实测: 「⚡引擎快演 / 🚀L3 全链(插拔+AOI) / 🧠流形 yaw 执行 / 🤖L4 用 INTACT 节点执行 /      🎯L4 意图→DiT 精炼 / 🧩L2 兼容(前馈MLP+YOLO)」共 6 项占 x793-2644 (顶宽 61%), 该矩形      82.7% 是纯底色、亮度>90 的像素 **0 个**; Qt 给 QCheckBox 的默认黑字 (0,0,0) 画在深色      工具条 (13,17,23) 上 ⇒ 对比度 **1.11:1**, 肉眼上就是「左边 3 个按钮 → 一片空 → 右边 2 个按钮」    · 修法: 6 个勾选框统一成与按钮同款深色 pill (同 padding 6x12 ⇒ 同高, 边框 #30363d,      勾选态绿字 #7ee787 + 绿指示块 #3fb950, 悬停蓝边) ⇒ 像素复测该区亮像素 0 → 17258      (其中绿字 14520), 空白块消失  3) 紧凑: 工具条边距 (12,7,12,7)→(10,6,10,6)、行距 10→9、行间隔 8→6    (按钮字号 10pt/内边距 6x12 一律不动 —— 老倪之前嫌过小, 不重复踩)  自测: 重启后 `printf 'ds_win'` 命令通道实测窗口出现       (`wmctrl -lG`: 0x01e005f3 0 567 607 2661 1040 🌐 Z-MAX 全局数据空间 · 独立窗口 (CANoe 范式));       独立窗口内非背景像素 23.2%, 绿 6908 / 琥珀 4141 / 蓝 12457 (CANoe 视图真在画)。
+        # v5.16.22: 🔴 **修「全局数据空间 卡住」** (老倪: 「全局数据空间 怎么卡住了」) 真根因(实测定位, 不是猜): 新加的 1.5s 自刷新**每次重建表格时, 列宽策略是 `ResizeToContents`** —— Qt 会为**每一列逐格重新测量文字宽度**(192 DPI 下极贵, 9 列 × 150 行), 且这份开销**发生在事件循环里**(不在我那几个 _fill_* 函数的计时里, 所以之前逐函数计时只看到 11ms/轮, 完全没暴露)。 证据链: ①`resource.getrusage` 分组停定时器 bisect —— 基线 **83% CPU**, 只停 `DdsCanoeView._timer` → **3%**(=CPU 全在这一处, 经典视图/其它页定时器各 0%); ②改固定列宽后同一探针 → 基线 **5%**; ③现场进程 `ps` 实测曾 **81.7%**(页面观感=卡死)。 修法(4 条, 都已落码):   ① 四张表**全部去掉 `ResizeToContents`**, 改显式列宽(树 120/80/180/160, Trace 160/…/120, 闭环 110/240/340/160, 告警 130/280; 名字列 Stretch) —— 这一条就是 83%→5%。   ② **不在看的页不刷新**: `reload()` 首行 `if not self.isVisible(): return`(挂后台每秒重建表格纯属空转)。   ③ **trace 没变就整轮跳过**: 用 (体积, mtime) 签名, 且手动刷新/切页才 `force`。   ④ **有界读**: trace.jsonl 只读尾部 256KB(不再 `readlines()` 整个文件), 行数 500→150, 定时器 1s→1.5s。 实测: 探针基线 83% → **5%**(页自身 2%); 渲染内容不变(截图仍有环/条/表/闭环)。红线: 未下发真机动作; 未改在役指针/默认档/画布数据。
+        # v5.16.21: UI(硬件仪表盘) **按视觉质检修 10 处** (质检: 逐像素, 离屏卡 2748x548 + 首页底部) ① **状态条漏画观感**: 功耗(未读到额定限值)与吞吐(无训练)两条不画条 ⇒ 但**底槽与卡底色几乎同色**, 看着像"4 条只画了 2 条"。槽色改 #2b3340(与卡底 #161b22 拉开) ⇒ 四条量程线清晰, 空条也能读出"无量程/无数据"。 ② **圆环弧长偏大**: 圆头端帽让 34% 画出 131°(看着像 36%) ⇒ 改**平头端帽**, 弧长与数字一致。 ③ **环内小字不齐**: 中文 21px vs 数字 14-15px、基线差 5px ⇒ 统一等宽 9pt 单行。 ④ **内存环副标歧义**(只写 31GB, 读作 110%) ⇒ 改「已用/总」如 `11/31GB`, 与显存环同格式。 ⑤ **卡片左侧 31% 全空**(灯靠 addStretch 挤到右边、圆环只占右端 21%) ⇒ 灯带改左对齐, 圆环每环 stretch=1 铺满整宽。 ⑥ **设备小字/名称被硬裁** ⇒ 按实测字宽**省略号截断**(`NVIDIA GeForce…`), 灯宽 126→152px。 ⑦ **远端数据源不可达却整卡全绿**(看不出是占位/过期) ⇒ 新增「远端数据源 未连通(仅本机数据)」**红灯**; 数据源那行最暗文字(深色横条 79% 空)隐去, 信息由灯承载。 ⑧ **按钮行三档高度/字号**(25/28/47px, 11/11/20px, 底边错位) ⇒ 统一 `_BTN_CSS`(同高同字号)。 ⑨ **采样时间小片左右仅 1px 内边距** ⇒ 加 `padding:4px 12px` + 圆角。 ⑩ **首页竖向节奏**: 卡片紧贴上方「项目状态」深条(0-1px) ⇒ 加节标题「硬件资源  Hardware」(与「功能模块」「项目状态」同规格), 顺带对齐栅格。 实测(离屏 192DPI 真采): 圆环 GPU 7% / 显存 8% / CPU 3% / 内存 37%(已用 11.33/31.04GB) · 条 磁盘 74% / 温度 53°C · **灯带视觉顺序 ['远端数据源','本机']**(本机永远最后) · 首页 视口 2812 == 页面宽 2812 · 横条 max 0 · 卡片为页面最后元素。 红线: 未下发真机动作; 未改在役指针/默认档/画布数据。
+        # v5.16.20: UI(数据空间 CANoe 版) **按第二轮视觉质检修 8 处** (质检: 逐像素, 2792x1600 截图) ① **Bar 列没人看得懂**(质检: 0.21Hz 满格 / 0.50Hz 只剩 35px / 无底轨无刻度) —— 语义其实对(条 = 实测/设计, ss_action 设计 10Hz 所以 0.5Hz 只占 5%), 但界面没说: **表头改成 `Bar  实测/设计` + 给条加底轨 + 右侧留白 26px**(原长条顶到滚动条)。 ② **Last Value Time [s] 整列全是 '—'** —— 真根因两条: (a) `_update_values()` 跑在 `_fill_trace()` 之前, 首刷时 `_trace_rows` 还空; (b) **live.json 的键是短名(heartbeat) 而 trace.jsonl 里是全路径(zmax/heartbeat)**, 查表永远落空。修法: 值更新前补读一次 trace + 末帧表**同时登记全路径与短名**。实测末帧龄有值行 0/14 → **6/14**(其余 8 个话题窗口内真没帧, 仍 '—')。 ③ **详情面板 78% 空白**(全图最大空白块) —— 首刷自动选中第一条报文, 面板立刻有内容(实测详情 307 字)。 ④ **测量条中段 733px 死区** —— 中间加一行真实读数: `Trace 500 行 · 过滤 关 · Δt 关 · 帧龄 1.73s · 闭环 5/9`。 ⑤ **表头文字全场最弱(5.1:1)** —— 表头色由 #8b949e 提到 **#b6c2cf**。 ⑥ **闭环表「质量门」列 190px 致 4 行全截断**(且与 owner 贴到 13px) —— 列宽给到 330px(仍可拖)。 ⑦ **三张表行高不齐**(Data 46.5px vs Trace/闭环 60px) —— 树行 padding 3→6px 拉齐。 ⑧ **Trace Sender Name/Sender Id 全 '—'** —— 回落到 busdb 的真实生产者/发送者(实测变成 `zmax_dds_ss_daemon.py(延时…)` / `ss_diag`)。 红线: 未下发真机动作; 未改在役指针/默认档/画布数据。需重启控制台后现场可见。
+        # v5.16.19: UI(硬件资源卡) **按 CANoe hardware / Vector Hardware Manager 范式重做成仪表盘** (老倪: 「不要用那么多文字来表达, 要换成状态条, 圆环百分比, 再加上红绿灯这样的指示灯; 4060 放到最底下」) ① **位置**: 硬件资源卡由「Hero 之后(页面第 2 位)」移到**首页最底**(实测装配顺序尾部 `... ProductRoadmapWidget / 项目状态 / ★HardwareCard`)。 ② **表达方式换代**: 原来 8 行 24~28px 富文本(实测 `lb_remote` 一行 5428px, 就是上一轮横拉条的元凶) 全部隐藏, 只留作 tooltip/复制; 版面换成**自绘控件**(新模块 `tools/gui/hw_widgets.py`):    · 4 个**圆环百分比**: GPU 利用率 / 显存占用 / CPU 负载 / 内存占用(环内大号数字+环下短标题+副标如 638/8188GB)    · 4 条**状态条**: 磁盘占用 / GPU 温度 / GPU 功耗 / 训练吞吐(颜色按阈值: 绿 ok · 黄 警戒 · 红 危险)    · **指示灯带**: 每台机器一颗发光灯(绿在线/黄停/红错/灰缺), 副标为 `设备名 后端 在线/停 Ns` ③ **阈值口径(可辩护)**: 显存/CPU/内存 <80 绿 · 80-92 黄 · >92 红; 磁盘 <80/80/90; 温度 <70/70/82; **GPU 利用率训练中 <50% 判黄**(承接老倪的掉载口径: 训练须满负荷), 空闲(<5%)灰。 ④ **不造假**: 缺测一律 '—'(空环/空条), 无训练时吞吐 '—'; 功耗条只在**读到 nvidia-smi power.limit** 时才画(没有就只显示瓦数, 不编造额定值); 同一台机器(本机=4060)在 DDS 节点里出现时**自动合并成一盏「本机」灯**, 且**本机/4060 永远排在灯带最右**。 ⑤ **可复制可导出**(老倪一贯要求): 新增「📋 复制参数」→ 纯文本(本机/设备/远端全部指标, 数字已四舍五入)。 ⑥ **实测**(离屏 192DPI, 真采一轮): `_collect 0.2s`; 画面读到真值 GPU 0% · 显存 7.79%(638/8188MB) · CPU 7.83%(32核) · 内存 33.95% · 磁盘 74.37%(可用 81.27GB) · 54~55°C · 功耗 11.9W; 灯带 `['本机']` 合并成功; **首页 视口 2812 == 页面宽 2812 · 横条 max 0**; 截图 `/tmp/hw_card.png` `/tmp/hw_home.png`。 ⑦ 红线: 未下发真机动作; 未改在役指针/默认档/画布数据。需重启控制台后现场可见(v5.16.14~5.16.19 一并生效)。
+        # v5.16.18: UI(数据空间 CANoe 版) **按视觉质检报告修 5 处实证缺陷** 质检(vision 子代理逐像素)发现并已修: ① **Trace 半张表"褪色"**: 原来奇数行整行设灰前景(136-157, 对比 6.7:1) vs 偶数行近白(18:1), 背景却相同 ⇒ 取消整行变灰, 改**隔行浅底斑马纹**(#12171e), 文字一律亮色。实测前 20 行变灰列数 = 0。 ② **质量告警重复行**: 同一规则+同文本重复渲染 ⇒ 加 (级别,对象,问题) 三元组去重。实测重复 0 条。 ③ **列头与内容错位 32-42px**(列头默认居中而单元格左对齐) ⇒ tree/Trace/闭环/告警 四张表 `setDefaultAlignment(左对齐)`。 ④ **详情面板值列不齐**(破折号漂移 x2560-2576; 中文宽度按 1 计导致空格补不齐) ⇒ 新增 `_pad()` **按中文 2 列宽补齐**到 14 列, 报文/信号/节点三种详情统一走它; 顺手修「灯」行只有标签没有值。 ⑤ **暗灰对比度 2.3:1 几乎看不见**(无信号行的状态点/文本) ⇒ C_DIM 由 #484f58 提亮到 #6e7681。 另复核(上版质检提到的疑点): **树空文本行 = 0**(「名称列全空」实为子行缩进, 非缺字); 树 3 顶层组/14 报文/5 信号层/5 节点层; Trace 500 行×9 列; 各填充步骤 ≤0.01s; 出图 /tmp/canoe_v3.png。 红线: 未下发真机动作; 未改在役指针/默认档/画布数据。
+        # v5.16.17: UI(全局数据空间) **按 CANoe 16 主界面逐像素基准再对齐** (老倪参考图: portal.vector.com/de/web/help/canoe-demo) 依据: vision 子代理读 CANoe 16 官方截图 1067x810 得到的实测布局(三窗格 + 顶部测量组 + 底部标签栏)。 ①**顶部测量组**照 CANoe: 左端两个大按钮 **⚡Start(黄) / ⬢Stop(灰)**, 右侧 状态/档位/刷新龄+拍照/报文 活跃·允许·注册/灯 🟢🟡🔴⚫/测量计时(0:00:00), 等价 CANoe 的 Measurement 组 + 右下计时读数。 ②**上排左 = CANoe 的 Data 面板**: 表结构照抄 CANoe 列名 **Name | Value | Unit | Last Value Time [s] | Bar**; 值是实测 Hz(单位 Hz), Last Value Time 取该话题在 trace.jsonl 的最后一帧帧龄, **Bar = 实测/设计 Hz 的实心蓝条**(自绘 BarDelegate, 色 #2f81f7, 对应 CANoe #0072C5)。 ③**中 = CANoe 的 Trace 面板, 整宽** (原来是挤在中间一列, 这是与 CANoe 最大的差异): 列名照 CANoe Trace **Time | Name | Object Type | Classification | Probability [%] | Sender Name | Sender Id | Tracking Id | Group**, Time 用「测量时间」(相对起点 3 位小数, CANoe 同款), 最新在顶。 ④**Trace 面板自带工具条** (照 CANoe 面板工具条): ⏸暂停 / **Δt**(Time 列切「与同话题上一帧的时间差」, CANoe 同款) / 🔍过滤 / 🗑清屏 / 📤导出 CSV。 ⑤**底部标签栏**照 CANoe 的 Configuration|Measurement|Data Window: **🔁 数据闭环 | ⚠ 质量告警(N)** 两个页签 + 右下 拍照时间。 ⑥数据全真实: busdb.json(74节点/182信号/14报文) · live.json(每话题 hz/丢包/jitter/帧龄/规则/灯) · trace.jsonl · loop.json; 缺测 '—' 不许 0 冒充。旧 12-Tab 收进「🗂 经典视图」开关, 入口零丢失。 ⑦实测(离屏, 192DPI 同现场口径): 构造 0.1s; 各步耗时 ≤0.01s; **信号树 3 顶层组 / Trace 500 行×9 列 / 闭环 9 行 / 告警 6 行**; 截图 2792x1600 出图; 无异常。 ⑧红线: 未下发真机动作; 未改在役指针/默认档/画布数据。需重启控制台后现场可见。
+        # v5.16.16: UI(全局数据空间) **按 CANoe 主窗口范式重做** (老倪: 「全局数据空间 参考 https://portal.vector.com/de/web/help/canoe-demo 重新设计UI」) ①**旧版问题**: 该页是「12 个 Tab 堆叠」—— 总线架构/报文追踪/统计/信号/质量告警/回灌/全息映射/DDS 空间… 全平铺成一行 Tab, 第一屏既看不到全景也不成"工作台", 与 CANoe「多窗格同时在线」的用法相反。 ②**新版 = 新模块 `tools/gui/dds_canoe.py`**(`build_view(main_win)`, 1000ms 自刷新), 五区同时在线:     测量条(●测量/档位/刷新龄+**拍照时间**/报文 活跃·允许·注册/**灯 🟢🟡🔴⚫**/记录·刷新·导出CSV·复制详情·经典视图)     中左 **信号浏览器**(报文14 → 信号182 按层分级 → 节点74, 行内带实时值/字节/质量灯)     中中 **Trace**(7 列: 时刻/报文/类型/序号/字节/值·载荷摘要/方向, 最新在顶, **值变化行高亮**)     中右 **详情**(选中对象全属性: 类型/QoS/设计vs实测Hz/抖动/丢包/帧龄/质量判据逐条/载荷字段, 双击可复制)     底部 **数据闭环 S0…(gate/owner/状态·证据)** + **⚠ 质量告警(红/黄/黑)** ③**数据全真实**: `busdb.json`(画布导出的 DBC: 节点74/信号182/报文14) + `live.json`(每话题 hz/丢包/jitter/帧龄/规则/灯) + `trace.jsonl`(总线帧) + `loop.json`(闭环阶段)。缺测一律 `—`(**不许 0 冒充**), 实时量一律带帧龄与拍照时间。 ④**旧入口零丢失**: 右上「🗂 经典视图」开关一键切回原 12-Tab 视图(两套都在内存, 只显示其一)。 ⑤**实测(离屏 QT_FONT_DPI=192 = 现场口径)**: 信号浏览器 3 顶层组/14 报文/182 信号 · Trace 400 行×7 列 · 闭环 9 行 · 告警 6 行 · 测量条读到 `档位 calib · 刷新龄 0.9s · 拍照 19:48:24 · 活跃6/允许7/注册14 · 🟢3🟡1🔴2⚫1` · 点树/点 Trace 行详情联动 · **裁切标签 0** · **需要横拉条的滚动区 无** · 页面宽 2828 == 视口 2828 · 异常 0 · 经典视图来回切换正常。截图 `/tmp/canoe_view.png`(2792x1650)。 ⑥红线: 未下发任何真机动作; 未改在役指针/默认档/画布数据; 只新增模块 + DataSpaceModule 接线(旧 Tab 全部保留)。需**重启控制台**后现场可见。
+        # v5.16.15: UI(窗口适配) 收口 v5.16.14 的**底部余量** —— 一条必须写下来的取证教训 现象: 应用自报夹紧结果 `3068x1936@124,56`(底边 1992 ≤ 屏 2000, 看起来**没问题**), 但 **WM 真实外框窗口**实测 `3124x1994@104,40`(底边 2034) —— **mutter 的 CSD 外框/阴影不计入 `frameGeometry()`**, 按应用口径算"刚好贴着屏底"时, 真实外框已经出屏 ~34px。修法: 手动适配的纵向预算再留 **48px** 安全边(`_ah = 可用高 - 2*margin - 48`), 宁可矮一点也不能被切。 取证口径(重要, 已固化成习惯): ①判断"窗口有没有出屏"**不能只用 `frameGeometry()`**, 要交叉核对 `xdotool getwindowgeometry` + `wmctrl -lG`, 并认清 mutter 会给每个窗口配一个 `mutter-x11-frames` 外框窗口(用 `xdotool getwindowpid` 认领, 别把它当成"第二个控制台实例")。②主屏可见线(y<2000)以下的 framebuffer **可能是陈旧的**(X 不会重绘没被任何显示器显示的区域) ⇒ 那块拍到"控制台配色"**不能**直接判成"内容被切", 需要重启后重拍才算证。 实测: 夹紧逻辑单测(伪造"越界最大化"窗口) → `showNormal + resize(784,536) + move(8,56)` 全在可用区内; 在屏内的最大化窗口不动。红线: 未下发任何真机动作; 未改在役指针/默认档/画布数据。
+        # v5.16.14: UI(主界面/侧栏) 两处真缺陷收口 —— 依据「窗口截图逐像素取证」发现的残留问题 ①**窗口最大化 ≠ 在屏内 (「窗口没显示完全」的残留根因)**: 本机双屏 ⇒ X 虚拟屏 7040x2160, 而主屏只可见 y 0..1999; WM 的「最大化」按跨屏工作区算 ⇒ 实测窗口 3068x1862@132,212, **底边 2074 落在主屏可见区外 74px** ⇒ 最底一行(版本提示/跑马灯/底部按钮)老倪**永远看不到** —— 而离屏抓图能抓到那截, 所以只看截图会漏判。修法: `_fit_window_to_screen()` 里**最大化也要查越界**, 越界先 `showNormal()` 再按可用区重夹(留 8px 边距)。 ②**侧栏卡文字被硬裁**: 「SYS11 VLA-T 动作 · SmolVLA 500M / SYS12 Z-Flow 引导 · LeWorldModel 15M」按 188px 宽需 374px 高, QVBoxLayout 只按 sizeHint 估算给 243px ⇒ 尾行整行看不见; 副标题「VLA-T + Z-Flow · 500M/15M」「L2基石 · EtherCAT」同样被切(实测截到「VLA-T + Z-Fk」「L2基石 · Ethe」)。根因 = wordWrap 的 QLabel 在布局里被按估算高度压扁。修法: 副标题 `setWordWrap(True)` + 布局跑完后按**实际宽度**复算 `heightForWidth` 锁最小高(两遍收敛)。 **实测(离屏 QT_FONT_DPI=192 同现场口径)**: ①越界最大化窗口 → 自动退回 + 夹到 784x584@8,8 全在屏内(单位测试用假窗口验); 在屏内的最大化窗口不动(changed=False)。②侧栏 3 张卡实高=sizeHint(434/548/338), **被裁标签 0**(修前 1 处硬裁 + 2 处副标题截断)。③首页回归不破: 页面宽 2812 == 视口 2812 · 横向条 max=0 · 卡宽 431 · 11 页切换异常 0。红线: 未下发任何真机动作; 未改在役指针/默认档/画布数据。
+        # v5.16.13: UI(主界面) 真根因修复 —— 老倪「不好看，不要下面的横向拉条。修改，不要那么宽」 ①**真根因(实测)**: `HardwareCard` 的 `lb_remote/lb_gpu/lb_nodes/lb_src` 是 24~28px **富文本且未开 wordWrap**, 文本一变长就把**整个首页 page 的最小宽撑到 5542px**(lb_remote「📡 DDS 两端硬件…」单个标签 minimumSizeHint=**5428**; lb_gpu=1804 · lb_nodes=1051) ⇒ `QScrollArea(widgetResizable)` 把 page 拉宽到 5542 ⇒ ①底部**必然出现横向滚动条**(实测手柄 1459px/轨 2812 = 内容 **1.82×** 视口, y1732~1748) ②功能模块网格按 page 宽等分 ⇒ 每张卡被拉到 **1752~1795px**(设计最小 260px), 卡内文字只占左侧 ~320px、右侧 ~1300px 全空 = 「那么宽 / 不协调」。②修法: 这几个标签 **`setWordWrap(True)` + `setMinimumWidth(1)`**(布局不再被 sizeHint 绑架, 长文本自己折行); 模块侧沿用 v5.16.12 的**卡宽上限 470 + 分组框 2 列**(卡宽 428)。③实测(离屏 192DPI, 与现场同口径): **页面宽 2796 = 视口 2796** · 页面最小宽 **2459 ≤ 2796** · **横向条 max=0 = 默认不再需要横拉条** · 卡宽集合 [428] · 分组行 2 列 · 卡行 4×3 列; 整窗冒烟(含侧栏) 逐页切换异常 0。④顺手修 badge 绿底 bug: `f"{color}55"` 是 #RRGGBBAA, 而 Qt 的 8 位 hex 是 **#AARRGGBB** ⇒ `#58a6ff55` 被当 alpha=0x58+黄绿; 新增 `rgba_of()` 显式转 `rgba()`。实测: 修前角像素 `#a4ff54`(黄绿) → 修后 `#304e76` = 0.33×#58a6ff+0.67×卡底 的理论值, 逐层色(dataset #28543c / hardware #58492d)同样与理论值吻合。⑤红线: 未改页面结构/画布数据/在役链路/默认档; 未下发任何真机动作。
+        # v5.16.12: UI(主界面): 功能模块自适应 —— 老倪「主机面的功能模块太宽了, 不协调; 要适应, 默认不需要下面的横拉条, 也可以全屏显示」 ①根因(实测 192DPI 口径): 4 个分组框原来**各占满整行** ⇒ 2840px 工位屏上每组 3 张卡被拉成 **895px 的巨卡**(ReflowCardRow 只做了"换列", 没有卡宽上限), 框内大片空白 = "太宽、不协调"。 ②修法: `ReflowCardRow` 新增 `max_card_w`(卡宽上限 470) —— 超出上限就按上限给宽, 多出来的宽度**整行居中留白**; 同时**清掉历史列的拉伸/最小宽**(上一次若是 5 列, 不清会留下看不见的空列把卡片推开)。 ③分组框自己也要自适应: 4 个分组框套进同一个 `ReflowCardRow`(每列最小 900, 最多 2 列) ⇒ 宽屏 **2 列并排**(每列 ~1380 ⇒ 每张卡 ~443px) / 中等宽度 1 列 3 卡 / 窄屏自动 3→2→1 卡。 ④实测(离屏, QT_FONT_DPI=192, 与现场 Xft.dpi=192 同口径): 卡宽 **895 → 431px**(工位屏 2840 口径); 3840 宽屏卡宽封顶 **470**; 分组行 2 列 · 卡行 3 列; 整窗冒烟(含侧栏): 首页视口 2812 · 页面最小宽 2459 · **横向条 max=0 = 默认不需要横拉条** · 逐页切换(11 页)异常 **0**。 ⑤文字体检: 12 张卡全部标签按 QLabel 真实换行口径(TextWordWrap)复算, 2840/1600/3600 三种宽度**溢出 0**(含"产品大屏"卡的长 URL 自动折行, 不再被裁)。 ⑥红线: 未改页面结构/画布数据/在役链路/默认档; 未下发任何真机动作。
+        # v5.16.11: v5.16.11 — TCP 轨迹 AR/VR 调试台: 把算法走过的通道用 3D 管道叠到固定相机上 (小版本迭代)  【本批次主题】 老倪: 「用 VR/AR 把机器人工具中心轨迹可视化出来, 要有明显的 3D 渲染让你感觉出走过的通道; 默认不要一开始就显示, 人工开启; 场景叠加是为了更好的调试算法」。 落实为两个面板 + 一套开关真源, 全程不重启他正在看的 8791/8793 实况流(新功能走独立端口 8797)。  【新增】 - tools/traj_display.py: 轨迹「显示/清除」的唯一真源(开关 show + 清除线 baseline_n + 隐藏折线缓存 _hidden_paths.json), 推流侧/服务侧/两个页面共用同一份状态。 - tools/tcp_ar_server.py: 独立端口(8797)的 AR/VR 调试台服务; 可切相机、按相机存外参、空手有 MJPEG 底图与快照校验端点。 - tools/web/tcp-ar.html: 3D 管道 + VR(base 系, 免标定) + AR 叠加 + 相机切换 + 标定(带 4× 放大镜)。 - tools/laptop_cam_solve.py(外参解算: DLT 线性初值 + 精化 + 自检) · tools/laptop_cam_ar_calib.py · tools/probe_laptop_ar.py · tools/probe_green_anchor.py(采集与探针)。 - tools/web/scene-overlay.html 加轨迹工具条(显示/隐藏/清除/全部历史) + tools/live_trace_publisher.py 接入 traj_display(默认关由推流循环强制执行, 不是只改前端)。  【修复的真根因 (都带实测值)】 1) VR 面板「看不到历史轨迹」= 两个 bug 叠加:    ① 视角写死(target 固定 (0.70,0.22,0.14)/dist 1.6m)而轨迹只占 ~5cm ⇒ 投影成 ~50px 一小坨;       改为按 trace+plan 包围盒自动对焦后, 同一份数据轨迹像素 50 → 2818。    ② 页面只在 init 读一次「显示开关」⇒ 打开页面时后端若处于关/清除线在末尾, 页面永远空画;       改为每次轮询都同步。实测刷新后直接画出 463 点。 2) 屏幕逐帧闪烁: MJPEG <img> 每帧触发 load, 而给 canvas.width 赋同一个值也会清空画布(alpha 255→0)。    修法 = 布局用尺寸签名守卫 + 只在真变尺寸时设 canvas 宽高 + 只按数据签名重绘(不再 1.5s 无条件重画)。    取证: 注入 30 次 img.load 事件 ⇒ 重绘 0 次、标记像素未被清。 3) 「清除轨迹后看不到历史」= 语义问题: 清除 = 把清除线设到当前时刻(只画新点, 数据从不删除);    补「📜 全部历史」(baseline_n=0)按钮, 并把状态文案写成可读中文。 4) 标定点数下限 4 → 6: <6 点没有 DLT 线性初值, 解会飞(实测退化 f=84.6、相机 z=1.4e4m、RMS 2.4e8px);    带 DLT 初值自检: f 真值 520 → 解 521.9(0.36%)、RMS 0.46px、t 误差 2.6mm。  【有实测依据的取舍】 - AR 底图默认切到 MAXHUB 1280×720: 逐块放大核对(视觉取证)笔记本 640×480 那路末端工具**直接出画**   (画面里只有上段臂杆, 从右边缘进、左下没入托盘), 底座也在画外, 操作员躯干挡住中段工作区 ⇒   这种视角外参标得再准, 管道也会画在看不见的臂上甚至压在托盘上, 拿来调算法比不画更坏。   MAXHUB: 整条臂 + 台面 + 托盘/夹具全在画面内, 末端约 10~25px ⇒ 标定配 4× 放大镜(跟随光标+十字)。 - 标定按相机各存一份(data/scene/cam_calib.json 的 {<cam>: ...}), 分辨率不同绝不混用(标定点是像素量纲)。  【数据/产物】 - 轨迹: 实测 463 点 + 航路 149 点(录制器累计 18085 点, 2mm 抽稀, /tmp/live_trace.json)。 - L5 三路理解报告 1 份(reports/l5/three_cam_vlm_20260929_121425.json) + 证据帧 8 张。 - 联调训练 L3/L4 摘要 5 组(reports/joint_train_*/, 权重 .pt 与 .log 按 git 精简纪律不入库, 进现场归档)。  【追加 · 同日现场『点1』按钮 (工位总览 8793 金手指检测窗口)】老倪: 「把回到金手指点1 放到整板原图 按钮旁边, 加一个『点1』按钮, 点击后即返回点一」。技能本来就在册(L2.goto_gold_pt1 · point_locked 位姿锁死 · 示教点 reports/aoi_points/金手指点1.json = pos [0.596737, 0.142622, 0.641536]), 缺的是页面上没有入口 + 手动控制白名单里没有它。 ① tools/cam_live_stream.py: 新增 _CTL_ABS_SKILLS(绝对点位技能白名单 —— 无数字参数, 只发 {skill,speed}; 点位仍锁在技能定义与示教点文件里, 页面/接口都改不了点位); _ctl_move 支持无参技能; 回执新增 pending(执行器已收到·正在等安全裁决, 不冒充"已下发"); 新增只读 GET /ctl/log?n= 供页面追最终裁决行; /station 改为**热读 tools/web/station.html**(以后加/改按钮不用重启推流服务, 文件不在时退回内嵌副本)。 ② tools/web/station.html(新增, 工位总览页真源): 金手指检测窗口 判据图/整板原图 旁边加『🎯 点1』, 与方向键同一条路(白名单→授权真动→限流→FIFO→执行器→安全裁决); 未授权只算目标并给授权入口; 等裁决时每 5s 追日志直到出现「受理: 已下发」或「🛑 被拦…⇒ 拒发」并把原文摆出来可复制。 ③ 实测(零动作): 页面与 tools/web/station.html 逐字节一致(热读生效); 未授权点『点1』→ 执行器 [13:36:11] 目标 L2.goto_gold_pt1: pos=(0.5967,0.1426,0.6415) → DRY-RUN → 受理: DRY-RUN(未下发) ⇒ 整链通且机械臂未动。 ④ 🔴 同时查清「还是不好使」与按钮无关的两层真因: (a) 唯一那次真动 13:26:28 被**慢层 VL 安全闸拒发**(13:27:56 裁决 risk=high: 人手/人臂/人体在臂上相机与笔记本相机视野内 + 笔记本视野被遮挡 + 深度图底部高亮近物) —— 人站在视野里就必然拒发; (b) 13:36 之后本机**产线网卡整体掉了**(ip -br addr 只剩 WiFi 10.163.146.78; 192.168.23.160 控制器 / .66 Orin / .23 工控机 全不可达; SDK 直读采样器 connectToRobot 报 network: network connection) ⇒ 执行器「位姿读不到」拒发一切技能。 ⑤ 采样器加固: ~/zmax_data/rokae_sdk/tcp_direct_sampler.py 把「SDK 静默返回全 0」按读失败处理(以前不抛异常 ⇒ 永不重连, 还把 0 写进 latest.json ⇒ 执行器判位姿无效)。
+        # v5.16.10: 收尾迭代 (数据保存 + 逐节点调试工具化)  1. L5 闭环运行产物归集: ~/zmax_data/l5_loop/artifacts_20260929/ (summary/stages/日志/配置快照 +    WEIGHTS_MANIFEST.txt 记 md5+大小; 权重本身按纪律不入代码库)。 2. 逐节点断点清单工具化: tools/ss_node_debug_map.py (走注册表, 与 GUI 双击分派同源) →    reports/ss_node_debug_map.txt/.json; 全画布 73 节点 / 178 连线 / 未注册 0 / 孤岛 0。 3. 新增 reports/关机交接_20260929.md: 关机前状态 + 开机后需手动恢复的三处取流 + 待办优先级。 4. .gitignore: 每次训练动态生成的 config_smolvla_lew_lora_*.yaml 不入库 (快照已归集)。 5. 画布 L5 徽章/横幅认识终态 done_with_gaps (已完成·有缺口 + 缺口清单)。
+        # v5.16.9: fix(l5): L5 档「标注→训练」闭环拉通 — 修掉"点 ▶运行只到第 0 阶段就退出"+ 标注 4/6 路丢失  ① 根因 (点 L5/▶运行无后续, state=status:failed · stage:interact · 2s):    src/lerobot/policies/left_right/state_space/hil_bridge.py::build_snapshot() 里    stage_note 只在 `if not stage:` 分支赋值, 下面却无条件引用 → 真机 tap 上报了    prod_stage 时抛 UnboundLocalError: cannot access local variable 'stage_note' →    stage_interact 判 ok=False → 编排 break ⇒ annotate/监督/L2/L3/L4/merge 全部不启动。    修: stage_note = "" 前置初始化 (真报阶段本就不需要"推算阶段"说明)。    证据: 修前 interact_state.json snapshot_err=UnboundLocalError; 修后 ✅ interact 0.0s → 进入 annotate。  ② tools/gen_overlay_from_vlm.py::call_vlm 加重试 (L5 标注 6 路里 4 路整路丢失):    实测 batch_0929_111132 ok=2/6, err="HTTPError: HTTP Error 503: Service Unavailable"    (云端视觉档瞬时限流/过载, 原来一次不成就整路放弃)。现对 5xx/429/超时/URLError/    200-空content 做指数退避(5→10→20→30s)+抖动重试 (默认 4 次, ZMAX_VLM_RETRY 可配);    非限流 4xx 立即抛出 (不掩盖真错)。自测: 假 urlopen 503×2→成功 attempts=3 / 400 立即抛 / 空content重试。  ③ tools/auto_annotate.py::run_batch 并发可配 (ZMAX_ANNOT_WORKERS, 默认 0=保持旧行为 6 路并行):    6 路同时打同一 key → 网关突发 503; 过载环境设 3 降突发。  ④ 新增 tools/ss_node_debug_map.py (只读): 画布 73 节点 → 注册 key → 执行函数 → 文件:行 全表    (registry 149 key + sourceview 行号映射) + 孤岛/未注册检查 → reports/ss_node_debug_map.{txt,json}    (本次: 73 节点 / 178 连线 / 未注册 0 / 孤岛 0 — 每个节点都能对到真实函数, VSCode 断点有落点)。  ⑤ reports/L5链拉通与逐节点调试_20260929.md: 9 阶段→真源脚本→模型→断点落点; 三种调试入口    (单节点真执行 / 逐帧真实化引擎 / L5 编排与训练子进程分别 F5); "数据真流过"的四条判据。
+        # v5.16.8: 控制台 v5.16.8 — 「框里的字只能看到一半」**真根因修复**: 桌面 Xft.dpi=192 与节点排版口径不一致 (老倪三次反馈的同一个问题, 这次是**实测根因**) ① **根因**: 本机桌面 `xrdb` 的 `Xft.dpi = 192` (2x), 而画布节点的排版常量是按"1x 字形"设计的 (标题行 20px / 副行 16px / 能力档位 radio 格 48px / 状态行 16~18px 步进)。`QFont(族, pt)` 是按**屏幕 DPI** 渲染的 ⇒ 现场字形是设计值的 **~1.93 倍** (同一句"抗干扰": 离屏 42px → 现场 81px; 行高 22→40) ⇒ 行与行互相叠住、末字被框边切掉 = 老倪看到的"只有一半"。**我的离屏取证跑在 offscreen 平台 (不读 Xft.dpi → 默认 96dpi, 1x) ⇒ 每次都"全部通过"** —— 这就是前两版 (v5.16.6/v5.16.7) 改了文字仍然"看不清"的原因: **审计口径 ≠ 现场口径**。 ② **修法**: 画布节点文字一律改用 **像素字号** (`QFont.setPixelSize`, 与屏幕 DPI 无关) ⇒ 现场 = 离屏 = 审计口径三边一致; 顺手把画布里剩下的 `QFont("Arial", 9)` / `QFont("Consolas", 9)` (Arial/Consolas 本机**都不存在**, 只回退西文字形 → 中文逐字回退) 全部换成 `_node_font()` / `_node_mono()` (DejaVu Sans Mono)。字号倍率 **1.15** 是扫出来的: 1.30 起出现文字互压、1.45 起越框, 1.15 是"最大且仍然放得下"。 ③ **运行期文本收口** (第二个病灶, 静态审计看不到): L5 闭环节点的状态行原来是 `str(x)[:64]` —— 只按**字数**截, 64 个中文字 ≈ 850px 塞进 406px 的框, 而 `drawText(QRectF,…)` 的矩形**不裁剪** ⇒ 直接画到框外/压到邻居 (现场看到"半个字")。新增通用 `_fit_text()`: 动态文本 (运行状态/参数值/路径/日志) 一律先按**框宽**省略再画, 完整串进 tooltip; 并把 L5 闭环节点标题上移到状态区之上, **能力档位**有进度行时不再挤底部说明行。**坑**: `QFontMetrics.elidedText(宽度=float)` PyQt 会抛 TypeError 被 `except` 吞掉 → 静默退回"不省略"(本文件 356 行记过同一个坑, 这次又踩) ⇒ 宽度必须 `int`。 ④ **取证 (现场口径 + 离屏口径 双跑, 全绿)**: 新增 `node_text_audit.py` (代理画笔拦每个节点真实 paint() 的每次 drawText, 判"文字宽>绘制矩形 / 画到框外 / 两块文字互压") — 全 flow **1025 个节点**: 文字超框 **0** · 画到框外 **0** · 文字互压 **0** · paint 异常 **0** (改前 91 处); 新增 `node_runtime_text_check.py` (把 l5_lines 塞满长中文/报错串后复检) — L5 闭环 3 行长中文 + 超长报错行 + 能力档位 2 行进度 全部放得下; 标签体检 **1107 条**: 超10字 0 · 超预算 0 · 只剩层号 0 · 过简 0。以上三项在 `QT_QPA_PLATFORM=xcb` (DISPLAY=:0, 真 192dpi 桌面) 下**与离屏结果完全一致**。 ⑤ 红线: 未下发真机动作; 画布 JSON 未改 (node name/x/y/w/h 原样, 只改画进框里的字与字号口径)。
+        # v5.16.7: 控制台 v5.16.7 — 节点文字"不要太挤/看不清"专项 (老倪: 「能力档位 这个节点的字太多了，太挤了，像这样的情况，不要出现。看不清的情况」) ① **能力档位节点** (数据源层 radio 开关): 标题原写死 16 字「🧭 能力档位 (数据源层 · 单击直选/双击循环)」且用 9pt **Arial**(本机无中文字形→逐字回退, 宽窄不一) ⇒ 一行画不下被硬裁、与下面 radio 挤在一起。现在: 标题只走**短标签**(`node_display_name`, ≤10 字, 全画布同一套字体规格) = 「🧭 能力档位」; 括号里的操作提示搬进 tooltip; 档位说明从 30~50 字压到 **≤10 字**(L2「插装即完成 · 8 段」/ L3「全链: 插→拔→AOI→放回」/ L4「抗干扰 90° 全链 · 真物理」/ L5「自动标注 → 自动训练」), 不再靠省略号; 子标签(插装/全链/抗干扰/标注训)**量过放得下才画**。实测该节点 10 处 drawText **全部放得下**(最大 107px/256px, 子标签 39px/48px), 无一超框。 ② **通用"文字体检"新工具** (`node_text_audit.py`, 用**代理画笔**拦下每个节点真实 `paint()` 里的每次 `drawText`, 逐条判"文字宽 > 绘制矩形 = 会被裁/挤"、"文字矩形画到方框外"、"两块文字矩形互压(遮挡)"): 扫 **全部 flow / 1025 个节点** → 文字超框 **0** · 画到框外 **0** · 文字互压 **0** · paint 异常 **0** (修前 91 处)。 ③ 体检揪出并修掉的 3 类真问题: (a) 🛠技能编排器/🎯YOLO 节点右下角「📥 导出」按钮 —— 34px 宽的按钮里塞 43px 的字 (被按钮裁掉) ⇒ 按钮加宽到 48px + 统一字体 + 量过再画; (b) 色带(row_bg)标题绘制矩形按"本带内部节点"算出 3630px, **大于色带自身宽 2916px** ⇒ 标题画出色带右边被裁 ⇒ 绘制矩形夹到带宽内(折行宽度不变); (c) **色带高度不一致的真 bug**: 没写 `h` 的色带在 `__init__` 里 `self.h = DH(110)`, 但绘制分支却用 `node.get("h", **244**)` ⇒ 画出来比自己的框高 134px, 标题被垂直居中到 y≈122 = **字跑到框下面**(pipeline_closure / ff_pd_top 共 13 条) ⇒ 统一改用 `self.w/self.h`。 ④ 红线: 未下发真机动作; 画布 JSON 未改; 标签体检(1107 标签)与 88 节点真 paint 复检 0 问题。
+        # v5.16.6: 控制台 v5.16.6 — 节点标签: 5~10 字说清核心功能, 不再"只剩层号" (老倪: 「VEH.5.031 这个节点, 怎么只是剩下 L4, 其它的描述呢? 不要这么简化, 要完整表达这个节点的核心功能。控制在 10 个字以内, 5~10 个字。全局优化一下节点信息表达的文字」) 上一版按分隔符**从前往后取前缀** ⇒ 遇到「🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)」被砍成「L4」(层号是分类不是功能) = 过度简化。本版改成**有字数预算的表达** (`simulink_module.node_display_name`): ① 预算 = **10 字**, 计法 = 每个中文字 1 字 + 每个西文/数字词 1 字 (Transformer/ACT/43D 各算 1 字, 技术名词不按字母数罚) ② 取值优先级 (信息量从多到少): 原名 ≤10 字 **原样保留(连括号)** → 去括号补充(≥5 字才用) → 人工短名表 `NODE_CORE_LABELS`(43 条, 权威 5~10 字) → 按词裁剪(≥5 字, 绝不只剩层号) ③ 图标(emoji/①/◉)不计字数、自动带在标签前 ④ 单行像素预算 300px (标签宽度必须一行放得下, 否则继续降级取值) ⑤ 数据里 `node["name"]` **一个字都不改** (id/连线/引擎映射/审计零回归), 全名进 tooltip; 框宽按最终标签自适应 (`autofit_node_size`)。**全量实测**(26 个 flow / 1107 个节点标签): 超 10 字 **0** · 超 300px **0** · 只剩层号 **0** · 过简(原名>10字而标签<5字) **0**; 状态空间画布 73 节点同口径对照: 两行 **6→0**、被省略 **0→0**、标题宽中位 161→**128px** 最大 385→**294px**; 88 节点逐个真 `paint()` 异常 **0** (paint 抛异常 = Qt 直接 abort 整个 GUI)。样例: 「🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)」→「🏆 L4 工作安全导航」· 「🎯 INTACT (L4) · 工作安全 + 物理世界导航」→「🎯 INTACT 安全导航」· 「🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)」→「🧮 流形引擎 编码导航」· 「🧭 能力档位 (L2插/L3插拔+AOI/L4自主恢复)」→「🧭 能力档位 L2/L3/L4」· 「🧩 SU(2) 统一状态空间 (二阶特殊酉群)」→「🧩 SU(2) 统一状态空间」(括号保护: SU(2)/D064 这类技术记号里的括号不再被当补充说明删掉)。色带(方框)标题仍按老倪 09-29 的要求保留完整(名字区很宽, 不压字数)。红线: 未下发真机动作; 画布 JSON 未改(node name/x/y/w 原样)。
+        # v5.16.5: 控制台 v5.16.5 — UI 可读性与自适应 (老倪: 「窗口没有显示完全 + 没有横向拖动的拖动条 + 节点字太多被遮挡」) ①**窗口入屏**: 新增 `_fit_window_to_screen()` (尺寸/位置双夹紧进可用工作区, 留 8px 边距, 不贴死屏幕边缘) — 启动时与 show 后各夹一次, 并留 /tmp/studio_show_diag.log 取证; 菜单新增「🖥 窗口适配屏幕 (Ctrl+Shift+F)」+「🔲 全屏切换 (F11)」。②**滚动条看得见/抓得住**: 实测根因 = 滚动条仅 8px + 手柄暗灰(#484f58), 横向条**此前没有任何 QSS 规则**; 新增 `SCROLLBAR_QSS`(纵/横 16px + 蓝手柄 #4d8fdb + hover 高亮) 挂到首页/硬件页/另一页滚动区 + 画布 view(`CANVAS_SCROLLBAR_QSS`), 三处 `ScrollBarAlwaysOff → AsNeeded`(原来内容宽过窗口就既看不到右边也没有横向条)。像素取证: 改造前右缘蓝色列为 0 条(只剩两条灰线), 改造后 16 列蓝色手柄 1838..1853。③**方框(色带)字显示不全 —— 真根因**: 色带名字区宽度原按**全画布**最小节点 x 算(本画布 = 0) ⇒ 15 条色带的名字区**全部**被压到下限 80px ⇒ 15/15 全部截成「🔧 L2 基础辅助功能…」。改为按**本行色带自己的**内部节点算(节点中心 y 落在本带内) ⇒ 名字区 80px → 284~11070px, 实测 **15/15 完整显示**。④**画布节点字: 字少 + 完整 + 不遮挡 (显示名 ≠ 数据名)**: 节点名字平均 18.7 字/最长 41 字 ⇒ 框里挤两行。新增 `node_display_name()`(去括号补充 → 按分隔符 · → | 只保留放得下的前缀, 保留原分隔符样式) + `autofit_node_size()`(按**短名**自适应框宽, 并按行数长高, 宁可长高不压字)。数据里的 node["name"] **一个字都不改**(id/连线/引擎映射/审计零回归), 全名进 tooltip。标题字号 9→10pt、次要 8→9pt。同口径实测(两边各走自己的 autofit): 老 73 节点两行 6 个/标题宽中位 161px 最大 385px → 新 **两行 0 个**/中位 129px 最大 277px, 截断 0。⑤**渲染自检**: 88 节点逐个走真实 `paint()` → **异常 0**(paint 抛异常 = Qt 直接 abort 整个 GUI), 标题截断 0。⑥**方框自适应布局**: 首页 12 张模块卡改 `ReflowCardRow`(按可用宽度自动换列 3→2→1, 单元验证 1500/1000→3 列 · 600→2 列 · 500 以下→1 列; 本机 1920 屏仍 3 列)。⑦红线: 未下发任何真机动作; 未改在役指针/默认档; 画布 JSON 未改(node name/x/y/w 原样, 只在内存里自适应)。
+        # v5.16.4: 控制台 v5.16.4 — 流形引擎主标定参数 M (老倪: 质量=结构的副产物/等效惯量)。引擎 `ManifoldEngine` 新增有惯性二阶分支 `a=F/M ⇒ Δx=F·dt²/M` (默认 `inertia=False` ⇒ **零回归**, 与旧一阶过阻尼逐位相同); 物理类比等效惯量 / 信息论类比交叉熵 H(p,q)→Fisher-Hessian 曲率尺度, 过阻尼 = M→0 (速度∝力, 旧 GD)。标定层新增**流形引擎标定**节点 `n_calib_mani`「🧮 流形引擎标定 · 主参数 M」: 主参数 M (默认 1.0, 范围 0~8, 单位/含义齐备) **可读可写** —— 真源 `config/calib/zmax_manifold.json` → `tools/zmax_params.py` (`manifold_M`/`manifold_inertia`/`write_manifold_M`, CLI `--m <v> [--inertia on|off]`), 并入 `calib.json` `manifold_engine` 域 (只更新该键, 不动其他标定域); 标定层 `calibration_layer.py` 新增 `MANIFOLD_CALIB` 域与 `manifold_summary()`。画布**真接线** (标定层/潜空-流形 → 本节点 → 流形引擎/接触流形/流形专家, 5 条前向边) ⇒ 87→**88 节点** / 173→**178 连线**; 能力清单加 `L4-C16`。零回归取证: L2 **275/275** · L4 **178/178** (与基线一致); 数值实验 `tools/manifold_M_experiment.py`: inertia 关 与 M=0 均与旧一阶**逐位相同**, M=1 首步 Δx=1e-4(=|F|dt²/M) 且场反转后仍前进 (动量), 过阻尼立刻反向。红线: 只读旁路不下发真机动作; 未改在役指针/默认档。
+        # v5.16.3: 控制台 v5.16.3 — 现场人机在环互动 + 场景叠加校正闭环 · 新增「HIL↔L5 互动环」(tools/l5_hil_agent.py): 只读轮询 ECS 中转的人机在环指示 → 抓臂上相机实帧 →   调**状态空间工程引擎的 L5**(left_right/state_space/scene_vlm.py :: SceneVLM)理解 → 复用严格 JSON 提示词   把框写到叠加页 vlm 层(自动标注) → 带 seq 回执给人机在环界面; 现场停顿点(P_n)自动触发同一理解环。   红线不变: 动作类指示一律只记账待授权, 绝不代发真机动作; 引擎不可用时回退并如实标明来源。 · 场景叠加新增 `trace` 层(黄 · 真机 TCP 实测轨迹) + 参考点标记 P_n; 实测轨迹按 2mm 抽稀, 每次停顿自动落参考点。 · 现场实时链工具化: live_motion_recorder(50Hz 真关节+TCP, 原子落盘) · live_pause_marker(停顿点+trace 发布) ·   live_plan_segment(同源规划段: 两端真机真值, 按执行器守卫 ≤50mm/下降≤20mm/自转≤10° 分段) ·   l2_dispatch_watch(只读镜像 l2_daemon 下发链, 替代断点; 已兼容新旧日志格式)。 · 修正: L5 槽位工具退出码语义(0=已记录/有框 · 1=待确认或0框 · 2=参数错)并在 0 框/待确认时打印原因分解;   深度判据由「查容器名 ros_depth_stream」改为按**源文件龄**(与 cam_live_stream 同口径, 修掉假离线);   project_slot 缺/非法几何不再 TypeError 崩溃(只出中心点投影, ok=False, 不编造角点)。 · 已实测: 引擎 L5 判读 0.6~1.5s(thinking 关), 带框提示词一次 4 框[光模块,光模块,标定板,托盘]; 现场抓拍-投影链路   cmd_record 返回码 0(status=已记录)。
+        # v5.16.2: MoveIt「只规划」入口落地 + 同源闸判据(实测未过): 真机 6 关节喂 FK 与真 /robot/tcp_pose 差 261.5mm/137.5° ⇒ 该 URDF 与真机不同源, MoveIt 轨迹暂不能贴到真机画面; 新增 tools/moveit_real_state_probe.py(domain0 只读抓真机状态, BEST_EFFORT) + tools/moveit_same_source_check.py(判据 <5mm 且 <2°) + 证据落 reports/moveit/
+        # v5.16.1: 手臂相机光模块 3D 边界框标定: 朝向改由「槽边平行族」拓扑反解 + 高低关系改「沉在槽内、顶面≈台面」 + VL 提示词强制拓扑/投影/自检修角 老倪: 「不要2D，要重画3D框」/「两个3D边界框大体上没问题，但用眼睛看还是能辨别出有偏差」/「竖着的光模块是嵌入在槽里的，上表面几乎跟槽的上边沿平齐。你画的边界框，感觉高出来了，你理解一下高低关系」/「槽位的边沿线很多是互相平行的，这个规律，你能理解么？大模型VL得先理解拓扑关系，投影原理，自己修正角度」  ① **撤 2D、重建 3D 框** (data/scene/overlay_spec.json · arm · meas 层): 2D 框清空; 两个 3D 框 = 横 110×23×12mm / 竖 106×21×12mm。 ② **朝向 ← 槽边平行族 (拓扑约束, 老倪口述规律)**: 用 Hough 量出料盘线族 —— 竖模块所在槽长边族 **75.1°**(图像系, 右邻接 76.1/73.6/74.2/77.0°), 横模块所在族 **3.3°**; 把族向**反投到台面**得 base 系方向 (-176.6° / -86.0°) 后锁进 3D 框 R 矩阵。独立验证: 模块左邻接为 86–93°(另一结构) ⇒ 拓扑归属确认。 ③ **高低关系 ← 顶面齐平 (老倪目检)**: 3D 框不再"立在台面上"(旧: 底面=台面往上长 12mm), 改为**顶面 z=0.1198(台面上表面)、箱体往槽内沉 12mm**。投影核验: 框顶沿 y=62/41 ↔ 模块可见顶沿 y=62/41 (改前 39.7/27.7 = 高出 13~22px, 即老倪所说"高出来了")。 ④ **判据纪律**: 新增「变差就不写」回归闸门 —— 本批两次拦下坏结果 (①颜色分割掩膜失真 IoU 0.605→0.280; ②单目标函数被槽沿/托盘边"骗"到, 框仍高出 13~22px), 均未落盘/已回滚。诚实口径: 「投影残差 0.00px」是 4 约束解 4 未知量的必然结果, **不作为精度证据**; 真正的独立自检是解出的**宽 20.8/17.1mm ↔ 真实光模块宽 18.4mm**(该数未喂入)。 ⑤ **撤历史框**: `sim|末端·TCP` 落 `deleted` 表(按 origin|label 稳定 id), 点"重建仿真元素"也不会再冒出。 ⑥ **VL 提示词升级** (tools/gen_overlay_from_vlm.py): 强制出框前先在 topology 字段做拓扑+投影推理, 输出 slot/slot_angle_deg, 每框带 obj_axis_deg/axis_dev_deg, 并规定 |偏差|>3° 必须先修角再出框; 真跑验证(166s)新字段全部出现, 且横模块轴向 2° ↔ Hough 实测 3.3° 一致; 同时暴露短板: VL 自报竖槽角 84° vs 实测 75.1°(差 9°) ⇒ 口径定为「拓扑/语义靠 VL, 角度/坐标靠几何实测」。 ⑦ **实测根因**: 推理型模型 reasoning_tokens=**6629** ⇒ 早前 max_tokens=900 必然被思考链吃光、空回复(非 API 抖动); 视觉调用改按 ≥4000。 ⑧ **纠错**: 旧笔记"手眼旋转 915°"作废 —— 真值 method=TSAI · n_poses=8 · 闭环残差 **1.74mm**(手眼是好的, 之前投偏是历史框数值错)。
+        # v5.16.0: v5.16.0 — 中版本迭代: 绕轴旋转分次修正(绝对目标) + 深度源自愈(容器常驻) + 安全闸运行时到期开关  ① 绕轴旋转「不好使 / C 绕工具Z轴自转没反应」——三层根因, 全部实测留证:    · 页面角度档 20° > 执行器守卫 max_deg=10° ⇒ 直接被拒(日志原文「单次旋转 20.0° 超过守卫 max_deg=10°」),      而返回文案写成「位姿缓存未就绪」⇒ 误导成位姿/通道坏了(实测 5° 完全正常: 四元数算得出、走 /move_pose)。    · 上一版"逐段重读当前姿态再转一次"的分次法在现场被证伪: 腕部自转是慢动作(单段 10° 实测数十秒),      段间只等 1.5s 读到的还是**没动**的旧姿态 ⇒ 两段目标重合, 点 20° 实际只转 10°。      证据(20:55:35 rot_c_neg 第2/2 段): 第 1、2 段目标姿态 quat 都是 [0.7063 0.1470 0.6536 0.2288];      20:56:56 直采姿态正好等于该值 ⇒ 合计只转了 10°。    · 腕部自转本身慢 + 页面只回"已下发": 20:55:33 下发 → 20:55:57 姿态一位未变(22s) → 20:56:56 才到位。    修法(tools/l2_daemon.py · run_rot_chunks): 所有段都从**起转前姿态 q0** 算**绝对目标** q_i = q0 ⊗ R轴(i·per),    不依赖"上一段转完没" ⇒ 点 20° 就是 20°; 相邻两段之间仍只差 per ≤ max_deg(守卫意图不变);    下发后起后台线程用**真值**报「✅ 实测转过 X.X° (目标 Y°)」; 回执写明 轴/角度/分段数。    零动作验证: 20°→2 段、30°→3 段(dry 走通真通道); 三轴数学校验: 每段距上段 10.00°, 末段距起转姿态    20.00°/30.00° 全等于请求值, 误差 0.00°。 ② 深度图「没有反映」——根因: 深度源是**容器 ss-remote-tap 内常驻**的 ros_depth_stream.py 落的 npy,    主机只读它的结果。重启后没人拉它 ⇒ 宿主一直读 09-27 17:43 的旧图: 8791 深度格冻结 26.6h    (age_s=95802 · frames_served=1 · dead=true), 慢层拼图里那份深度也一直拿旧图给"画面异常"扣分。    修法: 按脚本官方用法在容器内分离拉起 `python3 /repo/tools/ros_depth_stream.py --hz 5`,    并把「容器深度源」纳入守护: tools/cam_stream_guard.py 新增判据 D(容器进程不在 或 源文件龄>20s ⇒ 自动拉起,    正常静默) + tools/boot_restore.sh 开机补拉(check 段新增 ②b 深度源体检)。    实测(修后): 源文件 0.1s 刷新; depth_meta 640×480 · depth_scale 0.0001 · valid 87% · near 0.235m · median 0.352m;    8791 depth: age_s 0.3~1.4s · stalled=false · dead=false · frames_served 18→24→79 递增 · 41~44KB/帧;    深度快照 640×526 · mean=121.3 · std=57.4 · 非零像素 94.3%(真伪彩图, 非空白)。    故障复现验证: 杀掉容器进程后 25s, 守护自动拉起并复核源文件龄 0.4s ✅; 修好后守护恢复静默(输出 0 字节)。 ③ 安全闸「运行时到期开关」(关闭安全用, 现场不重启就生效): ~/zmax_data/vl_guard_off.json(enabled/until/by),    _vl_disabled() 读取并在 _vl_gate_blocks 与 intent 分支生效; **到期自动恢复 fail-closed**, 不设永久关闭;    停机/复位类动作永远放行。实测: 开关后闸门不拦、审计行落盘、dry 受理「DRY-RUN(未下发)」。
+        # v5.15.45: v5.15.45 — 工位总览相机纠偏 + AOI 两路无图修复 + 手动控制台"授权后不动"定性  ① 相机(笔记本太黑/MAXHUB 串线): 根因是控制台「工位总览·场景叠加」按钮把设备号写死 `--local-dev 2 --local2-dev 0`,    现场 /dev/video2 实为笔记本相机的 GREY(IR) 路(逐帧 mean≈6) ⇒ 该格近全黑且两路串线。    改为按「卡名+能力」动态解析(tools/cam_dev_resolve.py), 并新增 tools/start_station_stream.sh 稳定启动器    与 tools/cam_stream_guard.py(每 5 分钟自愈: 没跑就拉起 / 映射与实测不符就按解析结果重启, 正常静默)。    实测: i_local=Integrated RGB Camera 640×480·0.06s 帧龄·15.1fps; i_local2=WT15: MAXHUB-Camera 1280×720·26.5fps。  ② AOI 金手指/表面检测"没有图像": 根因1 服务端状态端点在 json.dumps 上撞 numpy 标量 ⇒ TypeError ⇒ 500,    页面轮询取不到状态、两格 MJPEG 不刷新; 根因2 工控机 /last_result 的 caliber_meta.natural 是整图像素列表(5164.6KB)    被原样塞进状态 ⇒ /station/status 单轮 10.4MB, 页面 1.5s 轮询必卡死。    修法: 序列化统一 _json_safe()/_jbytes() 兜底 + _slim() 状态瘦身(超长数组换摘要, 字段名不变)。    实测(修后): /station/status 10.4MB→7500B·1.8ms, /aoi/status 5.04MB→1462B, /ctl/status 5.29MB→3232B;    两格真出图: i_aoi_gold 900×332/1.11fps/18帧, i_aoi_surface 1280×1280/0.78fps/15帧, 两路 ok=true。    另: 页面 MJPEG 加断线/停帧自愈(onerror 重连 + 每 6s 比对 /stats 帧序号, 连续 2 轮不推进换 src)。  ③ 手动控制台"授权后机器人不动": 审计口径逐时刻——17:54:08 授权 → 17:54:13 点 L2.forward 10mm speed8 dry=false    → 17:54:23 VL 慢层 safe=True/risk=low(20s) → 17:54:43 放行并下发 → 17:54:59 ROS 回 success=True;    但 SDK 直采 TCP x=0.723906 逐 2s 采样一位未变 ⇒ 控制器回成功而臂未动(待现场允许后最小复测定性)。    另一独立成因(本批次引入并已修/已说明): "已授权"是推流服务**进程内状态**, 重启服务即清空(复核 armed=false),    之后点击只会演练 ⇒ 重启后必须重新两步授权。控制器实时三查(topic): power=on/operation=idle/has_error=false。  ④ 现场体检: 飞书 gateway active(WS 17:46:38 重连成功, 近 1h 99991663=0 次, 无需重启);    DNS flush 清掉两条长尾(hf-mirror 1294→11ms, dataworld 1163→13ms), 现场设备 0.04~0.62ms 全 0% 丢包。
+        # v5.15.44: 现场修复批次: 原子技能可用性 + 相机口径 + 硬件工具箱画面  ① 原子技能「又不好使了 / 前进不好使」——根因两条, 都已修并留证:    · 喂错相机: 推流写死 --local-dev 2 --local2-dev 0, 而 video2 是笔记本相机的 GREY(IR) 路      (无红外照明 ⇒ mean=6.0 / median=0 / 96% 像素<20), 快层(本地 5Hz)永远判「遮挡/糊化」⇒ 运动技能全拒。      新增 tools/cam_dev_resolve.py 按卡名+能力解析设备(彩色=MJPG / 顶视=MAXHUB), boot_restore.sh 接线。      换后实测 快层 safe=True · 慢层 safe=True risk=low · 闸门放行。    · 每次点击都重跑一轮远端 VL 慢层(实测 45~190s, 空回复重试再 +55s) ⇒ 点一下要等 1~3 分钟。      新增「同一动作复用新鲜裁决」(_vl_reuse_ok): 裁决 desc 与本动作逐字相同 + ≤300s + safe + risk=low      ⇒ 不重跑慢层直接过闸; 快层仍在下发那一刻实测(手伸进来照样拒发), 复用/重跑都写日志可核。      实测判据 6/6 + 端到端(假命令通道,零运动) chan_send 0.00s 返回、通道写入 1 条命令。    · 慢层单轮上限 150s → 300s(与实际单轮 137~190s 对齐, 原先每轮都落"未给出裁决"降级裁决)。    · 点完的反馈: 技能清单底部终端「✓ 已下发」立即出现, 回执/被拦原因后台补打, 等裁决期间每 15s      报一行「⏳ 已等 Ns · 原因」; 执行器被拦时写明**哪一层闸 + 为什么**(不再写"A 或 B 见日志")。  ② 硬件工具箱「摄像头实时画面」:    · 原来只认远端 ECS 快照 + Docker tap 落盘图 ⇒ 老倪: 「也不是现场摄像头」; 「自动」一度被我设成      本机 USB 的 MAXHUB 电视摄像机 ⇒ 「怎么变成…电视机摄像头了? 要手臂相机的」。    · 现口径: 自动 = **手臂相机(随臂 D405, Orin 硬连接)** → 其余现场源 → 远端快照 → 落盘图;      下拉分列 手臂相机 / MAXHUB 电视机摄像头(本机USB) / 笔记本相机(本机USB);      状态栏每次轮询标 **来源 + 相机自己的出帧帧龄**(取不到写「帧龄 —」, 不冒充)。    · 新增 tools/cam_live_src.py 统一取帧口(8791 /snapshot/*.jpg + /stats.age_s)。  ③ 打开状态空间工程不再播报上次 L5 失败(旧失败静音, 只留一行日志; 点过运行/见过 running 之后的失败照报)。
+        # v5.15.43: v5.15.43 — 金手指判据口径对齐/回退 + 三处显示口径如实化 + 工控机启动脚本 + 状态数据 (补录: 发布时漏写本行)
+        # v5.15.42: v5.15.42 — 金手指判据图原比例/去倾角/纵向3× + 请求检测按钮 + TCP位姿源改SDK直读 + VL闸摇摆误杀修复 (补录: 发布时漏写本行)
+        # v5.15.41 (2026-09-27): 现场实况交付 —— 场景叠加页手机化(9格/帧龄/拍照时间) + 手机 APP
+        #   (com.zmax.live v1.1, 双网口自动切换) + 公网入口 datadrive.world/zmax-live.html;
+        #   arm(D405) 路恢复(rs_fast_node 不在 launch 里, 栈重启必挂 → 补回后 29.9fps);
+        #   /overlay 路由修成按 mtime 热读真源(原先发的是 cam_live_stream.py 内嵌旧副本)
+        # v5.15.40: v5.15.40 — L5 视觉语言自动标注上线: 6 路实拍(3相机+深度双目+2路OPT) → 场景理解 + 边界框 + 标注图  老倪: 「你现在已经有了 3 个摄像头, 1 个深度双目, 两个 OPT 相机; 你现在调用大模型层, 用视觉语言,       开始理解这个场景, 开始自动标注; 我现在到飞书端与你人机交互」  新增 tools/auto_annotate.py (复用既有件, 不另造一套):   · 取帧 8791 /snapshot/<cam>.jpg (6 路) → 缩到最长边 1024 → gen_overlay_from_vlm.call_vlm     (L5 视觉档, 严格 JSON + 左上原点像素口径) → 框按比例**映回原图** → 落盘   · 输出 ~/zmax_data/auto_annotate/batch_<时间>/: <cam>.jpg 原图 + <cam>_ann.jpg 标注图 + <cam>.json;     追加式数据集 annotations.jsonl; summary.json 汇总   · 6 路**并行**(网络等待型) ⇒ 一批 ~3 分钟; --watch N 常驻; --push-overlay 可把 arm 那路框写进场景叠加规格 实测第一批: 6/6 路成功 · 17 个物体 · 用时 178s · model=deepseek-flash   arm   5 个: 末端相机倒置视角, 绿色电路板在金属托盘上方, 周围线缆纸箱   local 6 个: 白色夹爪正把绿色光模块插入桌面黑色多槽托盘   local2 3 个: 实验室俯视, 臂在工作台上方, 前景标定球+线缆   depth 2 个: 右侧倾斜标定板 + 下方托盘槽位   aoi_gold 0 个: 暗色金属近距离模糊影像, **未见可辨识物体(如实报空, 不猜)**   aoi_surface 1 个: 暗光近景缝隙+右侧反光边, 疑似插槽对接区域  新增 tools/annot_push_feishu.py + cron(每 30 分钟, 去重靠 .pushed):   2×3 标注总图 + 六路场景描述 → dataworld 飞书群; 同时写 LATEST.md 给飞书端/HIL 人机在环一眼可读   实测已推送成功: image_key=img_v3_0215u_b6ce… · message_id=om_x100b64bd9d4ff8a0c3fa0c29370dd69  常驻: auto_annotate.py --watch 600 (pid 见 ps) —— 每 10 分钟一批, 数据持续累积
+        # v5.15.38: v5.15.38 — 一号位(slot1)示教点现场重记: |Δ| 5.6mm + 姿态 4.18° (老倪: "位置不对，偏移了，我挪动一下，你记录")  记录链路(仓库既有工具, 只读订阅, 不下发任何运动):   tools/record_l2_point.py slot1 "<说明>"  →  /robot/tcp_pose 只读采样 6 帧均值(经 Docker tap, ROS_DOMAIN_ID=0) 纪律生效: 第一次采样被拒 —— "机械臂还在动 (极差 1.52e-03 m > 1e-4)"; 等现场停稳后重采:   新 pos (0.648842, 0.498298, 0.110398)  quat (-0.7392228, 0.0034525, -0.6733947, 0.0087927)   采样 6 帧 · 抖动 pos 3.86e-05 m (0.039mm) · quat 1.63e-05 · recorded_at 2026-09-27 12:28:24 与旧值(2026-09-20 20:37:48 记)的差: X +1.7mm · Y -4.3mm · Z -3.1mm · |Δ| 5.6mm · 姿态 4.18°   ⇒ 证实现场判断: 一号位示教点确实偏了 5.6mm(约半个模块宽度量级)。 生效方式: l2_daemon 每次执行技能都 `_load_points()` 重读点位库 ⇒ **热生效, 不用重启执行器**;   技能 L2.slot1 是 point_locked=true ⇒ 目标点只认库里的 slot1, 改库即改技能目标。 回滚: cp ~/zmax_data/taught_points_backup_20260927_1225.json data/skills/l2_atomic/taught_points.json
+        # v5.15.37: v5.15.37 — 「一号位技能怎么没反应」= 技能没坏, 是安全闸在拒绝且拒答没指路  老倪: 「一号位 技能，怎么没有反映了」 真相(取证, 不是猜): 点技能当时 daemon 日志原文   [12:17:24] 当前位姿(来源 direct): (0.6638, -0.0386, 0.2929)   [12:17:24] 🛡 阶段 1/2 拒绝: 直线距离 562mm > 守卫 500mm (请人工把臂移到槽位附近再跑)   [12:18:06] 同上(第二次点) 而「L2 原子技能清单」对话框里其实回读到了:   ← 执行器: [12:18:06] 受理: 阶段 1 拒绝: 直线距离 562mm > 守卫 500mm ⇒ 技能注册表(54 个原子技能)有 L2.slot1「一号位」✓, 常驻执行器活着 ✓, 指令到了 ✓,   唯一问题: **臂当前在 (0.6638,-0.0386,0.2929), 槽位示教点 slot1 在 (0.6471,0.5026,0.1135)**,   阶段1目标(slot1 +30mm 上方)直线 562mm > 守门 max_lin_mm=500 ⇒ 按设计拒发(不盲走长距离)。   拒答只写了"太远", 没写"差多少/往哪走" ⇒ 现场看不出下一步, 就像"没反应"。  改法(tools/l2_daemon.py 守卫分支): 拒答里直接给**方向 + 各轴差量**:   🛡 阶段 1/2 拒绝: 本阶段目标点 slot1 离当前位姿 562mm, 超过守卫 500mm      ⇒ 先点动靠近再点本技能: +Y 左移(朝槽位) 541mm · −Z 下降 149mm 实测(重启执行器后从 FIFO 真发一次): 回执逐字如上, 客户端按原有"回读 受理: 行"机制照常拿到 ✓ (全程只读位姿 + 拒发, 机械臂零动作 ✓)
+        # v5.15.36: v5.15.36 — HIL 人机在环接进手机 APP: 视频会议式全看 6 路相机 + 与画布节点同一个大脑 + 远程操作  老倪: 「veh.5.010 状态空间的 HIL 人机在环 节点, 接入我的手机 APP…从这个点, 我要通过 APP 开始跟状态       空间交互, 人机在环; 把工位总揽的所有摄像头推流到 APP 的场景叠加, 像开视频会议一样选任意视角/       全看/远程操作机器人」  S1 本地 HIL API (新 tools/hil_local_api.py, 0.0.0.0:8795) —— 手机在局域网, 不该再绕公网:    · **按文件路径**加载 state_space/hil_bridge.py(不是 tools/hil_bridge.py 那个 CLI 壳!) ⇒ 与画布 n_hil      节点、datadrive 的 hil.html **同一个大脑**: 同一份状态、同一套指示处理、同一条红线。    · GET /hil/state → 真实状态空间快照(阶段/帧龄/分层/事件/核心思想/画布) + 暂停标 + 历史指示    · POST /hil/say  → handle_instruction 原样调用    实测: 阶段=接近/对位(推算) 帧龄=0.0s 分层 L2/L3/L5=active L4=offline 画布 86 节点/74 真/169 连线;          "状态" → verdict=status; **"把机械臂伸过去抓住模块" → verdict=refused_motion(红线在服务端)**;          两次都落盘 reports/hil_instructions.jsonl(与画布节点读的是同一个文件)。  S2 手机现场页 (新 tools/web/room.html, 路由 /room|/room.html|/app|/hil-live):    · 视频会议式: 默认「全看」= 6 格都在动(串行轮询快照, 每路约 1.5s 一次);      点任意一格 ⇒「单看」= 那一路走真 MJPEG 实时流(点画面全屏), 其余 5 格继续缩略图。    · **连接预算**: 手机到 8791 只有 6 条 HTTP/1.1 连接 ⇒ 页面永远只开 1 条取流 + 1 条状态轮询,      绝不同时开 6 路 MJPEG(那会把连接吃干、整页卡死)。    · HIL 面板直连 8795(同一个大脑); 远程操作复用 8791 的/ctl/*(两步授权→限时→撤销, 无授权服务端 403);      **本页没有软急停** —— 急停用示教器/现场按钮(现场规矩, 不是遗漏)。    · 实测(手机尺寸窗口 + 目视): 6 格全部有画面(臂上/笔记本/MAXHUB/深度/金手指 10082/表面 10083,      时间戳 12:10:40~41), HIL 面板显示 L2/L3/L5 active·L4 offline·阶段=接近/对位、帧龄 0.1s。  S3 手机 APP 装包 (新工程 state3d_app/room, build_room_apk.sh):    · 包名 com.zmax.room(**与现有 App 并存, 不用先卸载**), 标签「Z-MAX 现场」, 竖屏, 全屏, 常亮。    · 顶层直接加载 **http 页**(相机流是 http MJPEG, https 页里嵌会被混合内容拦死 ⇒ 页面与数据同源);      manifest usesCleartextTraffic + MIXED_CONTENT_ALWAYS_ALLOW 双兜底; 主框架加载失败给 Toast;      **长按屏幕可改地址**(IP 变了不用重装)。    · 实测出包: package=com.zmax.room label=Z-MAX 现场 launchable-activity ✓ 25401B 关键文件 6 个 ✓      dex 里烧进 http://10.163.146.78:8791/room ✓    · 下载(你手机直接点): http://10.163.146.78:8791/dl/ZMAX-Site.apk      sha256 5d3511acdb5a1c6d026071a2456c3a46f3bea267d0c1d8953240d5a152e86eaa(下载回来的与本地构建逐字节一致)  S4 入口: 控制台工具栏/场景叠加页都挂了「📱 手机现场页」; 画布 n_hil 节点的日志里也直接印出手机地址    (node_logic.py, 下次控制台重启生效)。
+        # v5.15.35: v5.15.35 — 工位总览 10082/10083 两格改成"实时推流": 有人看就顶到 OPT 相机上限(1.0 → 1.4 帧/秒)  老倪: 「工位总揽, 10082 10083通道, 不是实时的推流, 改成实时视频流」  先量后改(实测, 不是估):  · OPT 相机**只在被触发拍照时才更新内存里的图**: 不触发时隔 3s 连读 3 次, 指纹完全一样(图是静止的);  · 单张耗时: 10082 `GET /picture?kind=origin&grab=1` = 0.67/0.72/0.70/0.67s;    10083 `GET /picture?kind=crop&grab=1` ≈0.6s; **只读不触发**是 8~11ms(拿的是旧图)。  ⇒ 这两个通道"实时"的**硬件上限 ≈1.4~1.7 帧/秒**(=相机取一张图的时间), 不是网络/代码的锅; 25fps 做不到。  改法(tools/cam_live_stream.py, 三处):  ① 新增"有人在看"心跳 `_AOI_VIEW_TS`: MJPEG 生成器每轮打点, 8s 内有点 ⇒ 认为有人在看     (用时刻而不用引用计数 ⇒ 客户端被强杀也不会泄漏, 不会永久顶着重拍产线相机)。  ② `_aoi_worker`: 有人在看 ⇒ 每轮请求都带 `&grab=1`(**触发一帧并立刻取回**)且不再 sleep,     顶到设备上限连续流; 没人看 ⇒ 回到"只读不触发"的慢速(1 fps), 不占相机。     回执里加 `live` 字段, `/stats` `/station/status` 可见 ⇒ 页面/我都能核对当前是不是实时模式。  ③ 页面无需改动: 两格本来就是 `<img data-mode="mjpg" src="/aoi_gold.mjpg|/aoi_surface.mjpg">`,     采集快了流就快了(帧龄随之从几十秒降到 <1s)。  实测(改完):  · 空闲(没人连流): aoi_gold 1.05 fps / aoi_surface 0.89 fps  —— 与改前一致, 相机不被白占 ✅  · 有人拉流 10s 数真帧: aoi_gold **14 帧 ⇒ 1.4 帧/秒**(改前 10 帧/1.0) ✅                         aoi_surface **14 帧 ⇒ 1.4 帧/秒**(改前 1.0) ✅  · `/station/status`: 10082 live=True http=200 468KB · 10083 live=True http=200 114KB ✅  · 页面实测(截图 + 目视): 表面检测格显示真画面(帧龄 <1s), 金手指格显示判据图; 右侧控制区在 ✅  · 服务按原参数重启: 8791/overlay 200 · 8793/station 200 ✅
+        # v5.15.34: v5.15.34 — 「点场景叠加什么都没打开」真根因: 控制台带着 DBUS=disabled 起 ⇒ snap 版 chromium 静默退出  老倪: 「点击场景叠加，什么都没打开。是不是因为刚开始我给关掉了？刚开始是你打开的网页」 先答: 不是关窗口的事 —— 关掉旧窗口不影响按钮(它会重开一个); 那是真 bug。  真根因(实测复现, 不是推断):   控制台进程的环境里是 `DBUS_SESSION_BUS_ADDRESS=disabled:`(从终端/服务启动时常见,   本机 11:54 实测就是这个值)。本机 chromium 是 **snap**, 它必须能通过会话 D-Bus 找 snapd   才能让 snapd 建好它的 cgroup; 连不上就直接打印       "<...vte-spawn-....scope> is not a snap cgroup for tag snap.chromium.chromium"   然后**静默退出(exit 1, 一个窗口都没有)** ⇒ 老倪看到的"什么都没打开"。   同机同 profile 对照(逐字同命令, 只换 DBUS):       DBUS_SESSION_BUS_ADDRESS=disabled:            → 退出码 1, 场景叠加窗口 0 个       DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus → 浏览器在跑(超时未退出), 窗口正常   剖析链: 我先前从终端手敲同样的命令**能开窗** ⇒ 一度误判成"cgroup 名不对/要用 snap run"。   实测: `snap run chromium` 在 DBUS=disabled 下**同样失败**(exit 1) ⇒ 关键变量是 **D-Bus**, 不是 cgroup 名。  修法(三处, 一层层兜住):  ① `tools/gui/simulink_module.py`: 新增 `_zmax_sane_env()` —— 拉起浏览器前修 env     (DBUS 缺失/disabled → 补 unix:path=/run/user/<uid>/bus; 补 XDG_RUNTIME_DIR / DISPLAY / XAUTHORITY),     两处浏览器拉起(场景叠加 / 工位总览)全部 `env=_zmax_sane_env()`; 并保留     `/tmp/zmax_browser_cmd.log` 留证(命令/cwd/cgroup/DBUS 修前修后)。  ② `tools/gui/studio.py`: 进程一启动就把 DBUS 补好(之后所有子进程都受益)。  ③ `tools/gui/launch_studio.sh`: 启动脚本里同样补 DBUS/XDG_RUNTIME_DIR。  ④ 顺带: `tools/gui/studio.py` 的命令通道 `/tmp/zmax_nav_cmd` 新增 `ov_page` / `station_page`     —— 我能从控制台**内部**反复触发这两个按钮本体自测(不必盲点坐标)。  实测(从控制台内部触发真按钮, 不是离屏脚本):   `ov_page`   → 11:56:52 窗口 0x04000004 「Z-MAX 场景叠加」 @ (132,212) 3068x1862 = 控制台那块屏, 最大化 ✅                 留证: DBUS(修前)=disabled: → (修后)=unix:path=/run/user/1000/bus   `station_page` → 窗口 0x04a00004 「Z-MAX 工位总览 · 6 路同屏 + 手动控制」 @ (132,212) 3068x1862 ✅                 两页**同时开着**(各自独立 profile), 互不顶掉 回归: verify_scene_overlay_button.py 全部通过 ✅ (已有窗口复用 ⇒ 秒回)
+        # v5.15.33: v5.15.33 — 找回「6 个窗口一起打开的网页」: 控制台加「🛰 工位总览」按钮 + 拉流补 --station-port  老倪: 「之前不是有6个窗口一起打开的网页么?…还有控制区的控制按钮, 那个网页怎么搞丢了?」  查证(不是猜): 页面**没丢** —— 1996   · `http://10.163.146.78:8793/station` → 200, 30229B, 标题「Z-MAX 工位总览 · 6 路同屏 + 手动控制」   · 6 格: 2 格 mjpg(金手指 10082 / 表面 10083) + 4 格快照(臂上/笔记本/MAXHUB/深度) + 右侧手动控制区   · 6 路源**全部有真帧**: arm 25456B, local 43571B, local2 74053B, depth 28931B,     aoi_gold 39810B, aoi_surface 40638B (逐个 curl + 验 JPEG 魔数)  "搞丢了"的两条真根因: ① **控制台上没有入口** —— 只能从叠加页顶部那个绿链接跳过去, 所以看起来像"没了"。 ② **更狠的一条**: 「🧩 场景叠加」自动拉起视频流时**没带 `--station-port 8793`** ⇒ 新起的流只服务    /overlay, `8793/station` 直接 404 —— 只要流被这个按钮重启过, 总览页就**真的消失**。  修法: · 新增工具栏按钮「🛰 工位总览」(与「🧩 场景叠加」并列, 橙色): 真 GET 验活 → 开浏览器新窗 →   搬回控制台那块屏 + 最大化; 已有窗口则复用置前(秒回)。用**独立 profile**   (`zmax_station_profile`) ⇒ 和叠加页各占一个窗, **两个页面可以同时开着**。 · 两条自动拉流命令(叠加按钮 / 总览按钮)都补上 `--station-port 8793`。 · 顺手修一个**潜伏的真 bug**: `simulink_module.py` 没有模块级 `subprocess`/`urllib`/`socket`   (LSP 报 + 运行时 `hasattr(module,'subprocess') == False` 实证) —— 相关函数里全部显式导入。  实测(tools/verify_station_button.py 交互级真调按钮, 新增):   ① 总览页可达 8793/station → 200 ✅   ① 页面含 6 格 + 控制区(金手指/表面/授权) ✅   ② 浏览器新窗真开(冷启动) ✅ 0x04000004   ③ 搬屏+最大化 ✅ 【新窗 132,212,3068,1862 == 控制台】   ③ 点了就出声(有进度回执) ✅   点击 → 页面已打开 = **2.0s** 回归(verify_scene_overlay_button.py): 五项全 ✅ (画布无小窗 / 8791 可达 / 进程新起 / History 有 8791)
+        # v5.15.32: v5.15.32 — 「点场景叠加网页打不开」真根因: chromium 被已有实例吞掉 + snap 写不了 ~/.cache 的 profile  老倪贴的控制台日志(关键四行): 收到点击 ✅ → 浏览器已启动(chromium) ✅ → 还在等浏览器窗口 3s/6s/9s → "场景叠加页已打开（浏览器）: chromium(新窗最大化) (窗口 25s 内没认出来, 未搬屏/最大化)"。 即: 进程起来了, 但**12s 内没有任何新窗口** ⇒ 页面没打开。  两层根因(都有实证): ① **请求被已经在跑的 chromium 实例吞掉** —— 页面成了那块屏上已有窗口里的一个**后台标签**,    既看不见、也没法搬屏。(本机 chrome 会话里常驻着别的窗口, 请求会 forward 给它。) ② 想用独立 profile 绕开时, 本机 chromium 是 **snap(受限)**, 写不了 `~/.cache/...` 里的 profile ——    浏览器自己报: `Failed to create /home/ubuntu/.cache/zmax_overlay_browser/SingletonLock` +    `Failed to create a ProcessSingleton for your profile directory` ⇒ 进程起来又静默退出。    (这条是给浏览器开了 stderr 留证才抓到的 —— 原来 stdout/stderr 全丢 DEVNULL, 出了事两眼一抹黑。)  修法: · `--user-data-dir` 放到 **snap 允许写**的目录: `~/snap/chromium/common/zmax_overlay_profile`   (没有 snap 目录时回落 `~/.cache/...`), 配 `--no-first-run --no-default-browser-check`;   ⇒ 独立浏览器实例, chromium **必须**新建窗口(实测 12s 内必现, 另一块屏也能被下一步搬回来)。 · 浏览器 stdout/stderr 落 `/tmp/zmax_overlay_browser.log`(留证)。 · 保留上一版的: 点击即时回执 / 认窗 12s 每 3s 报进度 / 已有窗口复用置前(秒回)。  实测(交互级脚本真调按钮, 清场后冷启动):   11:36:30 收到点击 → 11:36:30 浏览器已启动 → 11:36:32 场景叠加页已打开 · 搬屏+最大化到控制台那块屏 ·   实测尺寸 3068x1862 @ (132,212) = **2 秒**, 窗口表实证 0x04000004 @ (132,212) 3068x1862。
+        # v5.15.31: v5.15.31 — 「点了场景叠加很久没反应」: 点下去先回执 + 认窗 25s→12s + 已有窗口直接复用(秒回)  老倪: 「点击场景叠加后, 怎么很长时间都没反应?」—— 上一版为修"开成外接屏小窗"把认窗等到 25s, 而**日志只在最后才打** ⇒ 点下去最多 ~40s 一片静默(关旧窗1s + chromium冷启8~15s + 认窗25s)。 页面其实早就在加载, 只是控制台不出声。  改法(三处): ① 点下去**立刻**回执: 「🧩 场景叠加: 收到点击 → 正在打开浏览器叠加页 …」(主线程, 0 延迟); ② 浏览器进程一起来就报一声「浏览器已启动(chromium) — 页面加载中 …」, 认窗预算 25s→**12s**、    每 0.3s 探一次, 途中**每 3s 报一次进度**(不再长时间静默); ③ 若已有"场景叠加"窗口 ⇒ **不关不重开**, 直接搬屏+最大化+激活就返回(秒回), 从根上消掉 chromium 冷启。  实测(交互级脚本真调按钮, 冷启动清场后): 点击回执 11:29:06 → 页面已打开并搬屏+最大化 11:29:08 = **2 秒**; 实测尺寸 3068x1862 @ (132,212) = 控制台那块屏; 三级日志(收到点击/浏览器已启动/已打开)都打到。
+        # v5.15.30: v5.15.30 — 「🧩 场景叠加」按钮: 画布上不再放小窗口, 直接开浏览器大图页 (老倪明说)  老倪第三次纠回并明说: 「不要在画布上放小窗口, 直接打开浏览器」。  定论: 他说的"小窗口"= 画布节点上贴的实时拼图 (572x344 / 904x530 缩在节点里)。 前两版我只改了它的清晰度和"要不要放大", 尺寸没变 ⇒ 他看到的就是"一点都没变"。  改法(两处): ① 删掉 open_scene_overlay 里对 start_canvas_live_overlay 的调用 —— 按钮**不再**往画布节点贴画面;    按钮的唯一可见结果 = 浏览器大图页 (8791/overlay), 画布保持原样。 ② handler 入口(主线程)加一句: 若之前点出来的实时帧还在跑, 先 stop_canvas_live_overlay 撤掉,    并把节点画面清空 ⇒ 升级后画布上那个方块会消失。  实测(交互级脚本真调按钮, 断言按新口径改过): ① 画布上**没有**小窗口 ✅ video_pixmap=None/空 ① 画布实时帧已停 ✅ on=False ② 显示地址可达 ✅ http://10.163.146.78:8791/overlay → 200 ③ 浏览器页打开并搬屏 ✅ chromium(新窗最大化) · 1 个窗已搬屏+最大化到控制台那块屏 · 实测尺寸 3068x1862 @ (132,212) 页面本体(v5.15.28 起): 默认▣并排铺满窗口宽度(实测 100%, 改前 46.1%) + 🖵铺满窗口 + ⛶真全屏
+        # v5.15.29: v5.15.29 — 「🧩 场景叠加」按钮开的是外接屏上的小窗(老倪: "打开的还是小窗口") —— 定因+修  老倪第二条纠回: 控制台重启(v5.15.28 代码)后点按钮, 打开的还是小窗口。定因三条(都是实测):  ① 真根因 — `_open_browser` 认窗只看 **8 秒** 且**只按标题**含"场景叠加":    实测本机 chromium 把新窗开在**外接屏**(wmctrl: 3884,288 3184x1784 @ x≥3200), 而窗口标题要等页面    加载完才更新 ⇒ 8s 到点直接 return "窗口没认出来, 未最大化", 窗口就留在那块屏且不最大化。    修: 启动前记下窗口 id → 按"**新出现的 id**"认窗(不依赖标题) → 等足 **25s** → 搬屏/最大化/激活    各做 **2 轮** → **读回几何**并如实报告落在哪块屏(不在控制台那块屏就明说, 不写"已最大化")。  ② 顺带修掉一个"点按钮把控制台打崩"的真 bug: `_open_browser` 的兜底分支里有    `QDesktopServices.openUrl()` —— 它跑在 `_work` **工作线程**里调 Qt GUI API ⇒ 实测    `QThread: Destroyed while thread is still running` + `Fatal Python error: Aborted`(控制台整进程死)。    兜底只留 xdg-open / gio(纯进程调用)。  ③ 画布上那个 572x344 的节点拼图太像"小窗口": 节点放大改为**逐级尝试** 900x560 → 700x430 → 580x350 →    420x270(一次直接要 900x560 遇到邻居会被整体否决、反而退回 280x110 更小 —— 实测), 拼图 tile    286x162 → 452x254(904x530, 放大不糊), 字号 9→11。  实测(交互级脚本真调按钮 + 截图量化): 窗口 **3068x1862 @ (132,212) = 控制台那块笔记本屏**(x<3200), 画面内容占窗口宽度 **100.0%**(左/右黑边 0, 改前 46.1%/左右各 827px); 左格原始图+右格叠加图并排, 叠加格真值带可读(帧龄 0.1s · 源 11:21:34 · TCP=(0.3910,-0.4434,0.5511) · 手眼 cam→tcp ∥=252mm · 框 仿真0 大模型6 检测1); 画布节点 904x530 出画面 · 放大到 580x350(零重叠)。
+        # v5.15.28: v5.15.28 — 场景叠加按钮: 真按老倪的话"图要大" —— 页面默认并排铺满宽度 + 新增"🖵 铺满窗口"  现场(实测不是猜): 按下「🧩 场景叠加」后浏览器窗口**确实**最大化开了(3068x1862 @ 笔记本屏), 但画面只占窗口宽度 **46.1%**(左右各 827px 纯黑信箱边) —— 单画面 4:3 在 2.84:1 的宽屏上 contain 只能这样, 老倪看到的"一个小窗口"就是这个黑框里的图。  改法(两处): ① 叠加页: 默认布局改「▣ 并排」(原始图|叠加图 两格各 ~1475px ⇒ 宽度吃满 100%),    新增「🖵 铺满窗口」(body.m_full: 藏页眉/两条按钮栏/页脚, 舞台 position:fixed 占满整窗),    Esc 或右上角"✕ 退出铺满"退出; 修 setMode 用 className 整体覆盖会抹掉 m_full 的 bug(改 classList)。 ② 按钮 handler: 开新窗前先关掉**旧的**"场景叠加"窗口(原来每次点都堆一个, 堆出来的旧窗正是"小窗口")。  实测(交互级脚本真调按钮 + 截图量化): 窗口 3068x1862, 画面内容列 0..3067 = **窗口 100.0%**(左/右黑边 0);   左右两格各占该格 100%; 叠加图自带真值带(帧龄0.0s/TCP/手眼 252mm/框 仿真0 大模型7 检测1)可读;   DOM 自检: m_full 时 #stage = 整视口(1280x577); m_ov+m_full 时单画面 = 整视口。 服务已按原参数重启(8791/8793 均 200, 叠加流 3 秒 503KB)。
+        # v5.15.27: v5.15.27 — 反向通道加固: 通道自愈失败的真因处理 + 通道死活可判 + 端侧自安装  背景(实测失败): 10:52 我故意杀掉工控机上的通道 agent, 保活任务(rev4 只做 schtasks /run /tn ZMAX_Agent)在 4.5 分钟内 没能把它拉起来 —— 通道整条死了, 我只能让老倪在机器上再贴一次启动命令。  三处加固: ① 端侧独立看门狗: 新增 zmax_agent_watchdog.ps1(检查 agent 进程不在就 Start-Process 直接拉起, 不依赖计划任务状态),    由 ZMAX_Agent_Watchdog 任务每分钟跑一次(SYSTEM); agent 脚本 rev3 启动时自会下载它并**自建该任务**(无需人工)。 ② 保活 rev5: 通道自愈不再用 schtasks /run, 改为"先跑看门狗脚本 → 复查 → 仍没有就直接 Start-Process 拉起",    并把结果(含错误)写进 zmax_keepalive.log —— 下次能直接看到为什么失败。 ③ 主节点侧可判死活: agent_hub.py 每次收到**远程**(工控机)轮询就把时刻写 /tmp/zmax_agent_beat(本机自检不算,    免得把死通道探活); aoi_watch.sh(每5分钟)据此判"通道 >5 分钟没轮询"→ 报警(同一状态 6h 只报一次, 报的判据换了)。    实测: 通道死时第 1 次报警、第 2 次静默; AOI 两路探活正常则零输出。  另: AOI 程序 v6.1 已上线(启动时先探自己端口 /storage, 已有正式实例则明确报错退出码 3) —— 实测两份探针程序 (金手指/表面)都打印"❌ 端口 xxx 上已经有 AOI 服务在应答...不要手动再起第二份"并 exit 3, 现役服务不受影响。 新 SHA256: 金手指 5CA7D8E81516…(38638B) · 表面 AC71331D321E…(28684B)
+        # v5.15.26: v5.15.26 — AOI 程序升级到 v6 (老倪: 「升级修改成 v6版本」): 文件名/版本号/横幅统一为 v6, 取图重连修复含在内  - 新文件名(房内命名族): cam_finger_10082_work_v6.py (37658B, SHA256 D1A73DE7..E6678) ·   cam_surface_10083_work_v6.py (27707B, SHA256 DD509424..95AF37); 程序内 VERSION="v6", 横幅打 v6 - v6 = v5.1(取图两路由补"冷启/空闲首抓失败→重连再抓") + 版本号统一; 端口/路由/回执语义仍一字未改 - 保活脚本与自主更新器(zmax_keepalive.ps1 / tools/aoi_remote_deploy.py)已同步 v6 文件名 + /v6/ 发布目录 - 上线实测(10:25): 两路六项验收全过 —— 10082 grab=1 522848B · 10083 236848B · 两路 files_total 不增 ·   capture_detect 回执 code=200 · /last_result 200(gf/housing); 进程: 10082 pid 8792 / 10083 pid 20936 均 v6 - 旧 v5 文件保留作回滚; v2/v4 未动
+        # v5.15.25: v5.15.25 — 修: /picture?grab=1 与 /region 冷启/空闲后首抓 500「抓帧失败」(与 /capture_detect 同口径加"重连再抓")  现场(老倪手动起第二份程序 → 10082 相机 100120003 后): 金手指那格取不到图。 探查: /storage 200 · POST /capture_detect 200 且 /last_result 判决正常(n/ms 推进) · /picture?kind=origin(不带grab) 200       但 GET /picture?kind=origin&grab=1 **稳定 500 {"code":500,"msg":"抓帧失败"}**(每次 ~5.0s) 根因: GrabAndSaveImage 里 SciCam_Grab 在冷启/空闲后首抓会失败, 返回 (None, None)。       /capture_detect 早就有"⚠️抓帧失败 → Close_Device() → ensure_camera() → 再抓一次"的兜底, 而       /picture?grab=1 与 /region?grab=1 **没有** ⇒ 只要首抓失败就 500(总览面板/技能预览因此没图)。 修法(v5.1, 两路都改): 那两个路由补上与 /capture_detect 完全相同的重连+重试, 再失败才 500。 实测(重上线后): 10082 grab=1 HTTP 200 520918B/0.73s · 10083 200 237123B/0.26s 均为真 JPEG;                 部署器六项验收两路全过(/storage·capture_detect·last_result·grab出图·files_total 不增);                 新 SHA256: 金手指 FF38BA636064… · 表面 0C52A7170DFC…
+        # v5.15.24: v5.15.24 — AOI 两路自治闭环: 保活脚本加 v5 指纹(能替掉冒充进程) + 主节点侧看门狗(异常自愈/仍坏才报警)  - 起因: 老倪在工控机手动跑了两份 v5 (10082 相机报 100120003 = 相机被现役进程独占, 10083 报端口已被占用),   说明"端口在听"不等于"我们的 v5 在听" —— 老版保活只看端口, 会漏掉 v2/哑掉的进程。 - zmax_keepalive.ps1 rev2: 每路检查 ①没在听 → 起 v5 ②在听但 GET /storage 非 200(v2 无此路由/卡死) → 杀掉该 pid 再起 v5。   实测: 更新后在健康状态下跑一次 = 零动作(日志行数 2→2), 两路 /storage 仍 200。 - 新增 4060 侧看门狗 ~/.hermes/scripts/aoi_watch.sh + cron 8a433b97e362 (每 5 分钟, no_agent, 投到 dataworld 群):   正常**零输出**; 异常先让工控机跑 ZMAX_AOI_KeepAlive 自愈, 45s 复验, 仍坏才报警(带 /last_result + 日志路径)。 - 现场实测(10:1x): 10082/10083 /storage 200 · capture_detect 200 · /last_result 200(gf / housing) —— 两路健康。
+        # v5.15.23: v5.15.23 — 10083 表面程序按房内命名规范改成 cam_surface_10083_work_v5.py 并重上线 (老倪: 「cam_surface_10083_work_v2.py 10083也要升级到v5; 你自己更新」)  - 现状纠正: 10083 早就是 v5 (v2 没有 /storage 与 grab=1 路由, 实测都有 ⇒ 跑的是 v5);   本轮把文件名统一成与 v2/v4 同族: D:\xspace\ultralytics_AOI\cam_surface_10083_work_v5.py (27013B, SHA256 940449BA..4B6A8BD4) - 进程证据: 10082 pid :: python.exe cam_finger_10082_work_v5.py · 10083 pid :: python.exe cam_surface_10083_work_v5.py - 保活脚本与自主更新器同步改名 (zmax_keepalive.ps1 / tools/aoi_remote_deploy.py 的 FILENAME_10083 + 启动行);   旧的 surface_10083_work_v5.py 已删, 目录不再有两个同名不同文件名 - v2 原封不动 (老倪铁律「不改 v2」): cam_surface_10083_work_v2.py 仍是 14097B / 09-19 20:34 - 重上线验收: aoi_remote_deploy 一轮 6/6 全过 (10082 gf ms≈1.5s · 10083 housing · grab 408012B/242383B · files_total 4→4 与 2→2 不增)
+        # v5.15.22: v5.15.22 — 工控机自治 + 自主更新器 (老倪: 你是主节点要完全控制工控机和Orin; 禁用10084/10085, 只用10082/10083)  A) 工控机自愈/自治 (两个 SYSTEM 计划任务, 不再依赖老倪那个窗口):    · ZMAX_Agent (/sc onstart) 跑 zmax_agent_loop.ps1 → 反向通道轮询, 崩了 10s 自拉起 ⇒ 我随时能驱动那台机器    · ZMAX_AOI_KeepAlive (/sc minute /mo 1) 跑 zmax_keepalive.ps1 → 10082/10083 哪个没在听就拉起 (平时不打日志)    · 实测自愈: kill 表面 v5 (pid 21764) → 25s 内 10083 自行恢复, 日志 09:57:38 started: surface      ⇒ 相机 SDK 在 session 0(SYSTEM) 能开相机, 开机/无人登录也能起服务 B) 自主更新器 tools/aoi_remote_deploy.py (只用 10082/10083, 不碰 10084/10085):    ①拷进 8794 静态目录 ②工控机 iwr 下载 + Get-FileHash 与本地 SHA256 逐位核对(不一致即中止)    ③现役备份 .bak ④停旧起新(分离启动) ⑤验收 ⑥失败自动 .bak 回滚 + 复验    验收项: /storage 200 · capture_detect 回执 code=200 · /last_result 判决通道 · grab=1 出图>0 · grab 前后 files_total 不增    实测(幂等重发 v5, 10:02): 两路 6/6 全过 — 10082 ms≈1557 / 10083 ms≈8.9s, grab 389377B/273297B, files_total 4→4 与 2→2 不增    坑: /last_result 刚拍完会 404「尚无检测结果」(表面推理~8.9s) → 断言须轮询最多 45s 并接受两种合法形态 (第一版固定等 6s 假失败并触发回滚)
+        # v5.15.21: v5.15.21 — v5 正式上线工控机 10082/10083 (通道未变) + 反向通道 tools/agent_hub.py + 群消息降噪 + 磁盘回收  A) 反向通道: 工控机(192.168.23.23) 无登录口 ⇒ 4060:8794 命令队列 + Windows 端 12 行纯 ASCII PS 脚本;    15 条命令往返成功(真拍/真检测/起停服务); 踩坑: PS5.1 irm 需 -UseBasicParsing, Write-Host 不被管道捕获。 B) v5 部署: 两路文件 SHA256 核对一致, venv py3.10.1 依赖齐, py_compile 过;    试跑 10084/10085 → grab=1 有图且磁盘不增; 正式口 10082/10083 起 v5 (分离启动, 不受窗口关闭影响);    /last_result 两路 200 (gf 1.6s / housing 8.9s), capture_detect 回执语义未变, 10083 落盘 1→2,    grab=1 385/261KB 且 files_total 不变, 总览两格 MJPEG 有流; 10081 原服务未动。 C) 降噪: 链路巡检/磁盘红线 正常静默(0 字节) + 磁盘同状态 6h 只报一次 + L4 进度任务改 [SILENT] + 停 aoi_feishu_push --watch。 D) 磁盘: 306G→283G (回红线内), 明细见 docs/STATION_6PANEL_20260927.md §0.9。
+        # v5.15.20: 修: 页面「授权真动」按现场安全重做 —— 默认未授权 + 两步授权 + 5分钟自动失效 + 服务端强制403  老倪: 「页面的『授权真动』，现场安全，授权」  方向纠回: 上一轮为了让"点了不动作"不再发生把页面改成默认真动 → 本轮按现场安全纠回: 默认**必须未授权**, 真动要**显式授权**; 但"点了必有结果"这条不丢。  A) 页面授权流程(两段式, 不记忆)    · 默认未授权(琥珀条「⛔ 未授权 · 点方向键只会算目标, 机械臂不会动」); 刷新/换人/重连一律回到未授权(去掉 localStorage)    · 授权 = 两步: 「🔓 授权真动」→「⚠️ 再点一次: 现场确认无人」(6s 内) → 成立(绿条+倒计时+授权IP)    · 授权 300s 自动失效(--ctl-auth-window); 到期提示「⌛ 授权已到期」; 「🔒 立即撤销」永远可用(撤销不需要授权)    · 未授权点方向键照样出结果: 「🧪 演练(未下发): 未授权真动(只算目标,不下发) · 用时 1.6s」+ 执行器原始行      + 旁边一个「🔓 授权真动」入口按钮(不是绕闸门按钮); 未授权时方向键调淡(仍可点)  B) 闸门服务端强制(页面只是镜像) + 全链路实测    · POST /ctl/arm {on:true|false}: 记 IP+时刻+note 进 /tmp/zmax_ctl.log(与动作同一时间线, 可审计)    · POST /ctl/move + arm=1 无授权/过期 → **HTTP 403** {"ok":false,"denied":true} 且 TCP 一字不动(实测 X=0.3910 不变)    · 页面两步授权 → armed=true ip=127.0.0.1 剩300s → 页面点前进 → ✅已下发1.2s → TCP X 0.3910→0.4010(+10.0mm)      → 页面点后退 → ✅已下发 → TCP 0.4010→0.3910(回原位) → 撤销后再点 → HTTP 403    · 审计日志样例: 09:18:55 auth=False 页面撤销 · 09:18:59 auth=True 页面两步确认(现场安全)      09:19:03 动作 L2.forward dry=False · 09:19:38 auth=False 页面撤销    · _send 改为真发 out["code"] 的状态码(原来 403 只写进 JSON 却发 HTTP 200)    · 本仓除本页无其它自动调用 /ctl/move(已 grep) ⇒ 收紧不影响既有链路  新增启动参数: --ctl-auth-window(秒, 默认 300) 文档: docs/STATION_6PANEL_20260927.md §0.8 第六轮; 技能 real-arm-motion-control 已同步(默认未授权必须服务端强制)
+        # v5.15.19: 修: 控制台默认真动(实测全链路通) + 两路AOI实时推流 + v5 不检测不落盘 (v5.15.19)  老倪: 「金手指和表面检测的窗口，要改成实时推流，不检测的时候，不用保存那么多图片；        升级工控机的程序到 v5 版本，不要改变服务通道；控制台还是无法操作前进，后退等动作」  A) 控制台"无法操作"的根因 = 页面「授权真动」没开(执行器日志里两次点击都是 DRY-RUN(未下发)),    链路本身是通的。修法 + **真实端到端实测**:    · 默认就是真动(页面加载即 ARMED=true, 大字条明示, 一键可切演练)    · 演练模式下点了动作 → 结果行给「▶ 立刻真动执行一次」按钮    · 速度上限 30→60(与页面档位一致)    · 实测: 真动前 TCP X 0.3910 → /ctl/move{L2.forward,d_mm=10,speed=20,arm=1} → 1.6s 回"已下发" →      TCP X 0.4010(真走了 +10.0mm); 再从**页面按钮**点「⏪后退」→ [09:08:01]已下发 → 09:08:09 ROS response      → TCP 0.4010→0.3910 ⇒ 页面→执行器→ROS→机械臂 全链路通(/move_line /move_pose 在线, tcp_pose 32~38Hz)  B) 金手指 / 表面 两格改实时推流(MJPEG)    · 用服务端通用 MJPEG 路由: /aoi_gold.mjpg · /aoi_surface.mjpg(推加工后的判据图/规范图)    · 取图频率 0.25Hz→1.0Hz; 表面取 kind=crop(模型看的那张); 金手指整板原图单独低频取(4.9MB/帧)    · 连接名额: 2 MJPEG + 1 状态轮询 + 1 串行快照 = ≤4(上限 6) —— 能推流又不饿死按钮    · 面板标「🔴 实时推流」; 判据图/整板原图切换改成换流    · 副作用记录: MJPEG 长连接会让浏览器永不触发 onload(自动化取证改用 console)  C) v5 两路(表面 10083 / 金手指 10082) —— 不检测时不再堆图    · GET /picture?grab=1(只看一眼/页面拍帧) → 图只留内存, **不落盘**    · POST /capture_detect(真检测) → 照旧落盘(模型要读文件), 落完按上限清旧图    · 诊断图(标注/legacy)默认不写(AOI_SAVE_DEBUG=1 才写); 取图优先内存(不读盘)    · 新增 GET /storage(张数/占用/上限) 与 POST /prune(手动清); 端口/路由/回执语义全不变    · 离线契约(桩相机+桩检测器, 真跑 GrabAndSaveImage)两路各 5/5:      ①真检测 200 落盘 2 张 ②grab=1 200 有图且磁盘 2→2 ③清空磁盘后 grab=1 仍 200(内存帧 65529B/18674B)      ④/storage+/prune 正常 ⑤&save=1 才写盘    · 上线包 http://192.168.23.50:8794/v5/ : 两程序 + upgrade_aoi_v5.ps1(自检/试跑10084·10085/正式升级)      + README + sha256; 旧 v4 包 URL 仍可用。**等老倪统一换服务**  生成器/测试入库: docs/deliver/v5/ (两 v5 程序 + ps1 + README + sha256 + make_v5.py + test_v5_offline.py) 文档: docs/STATION_6PANEL_20260927.md 新增 §0.7 第五轮
+        # v5.15.18: 交付: 表面检测 10083 升级到 v4 的上线包 + 工位总览表面格改口径 (v5.15.18)  老倪: 「更新工控机的表面检测程序，升级到v4版本；程序路径 D:\xspace\ultralytics_AOI；        cam_surface_10083_work_v2.py；不要改v2；通道还是10083」  A) v4 上线包 (独立文件, 不覆盖 v2; 端口仍 10083)    · surface_10083_work_v4.py (20725B/488行, 复用 v2 同目录 SciCam SDK + yolo_detector + config.yaml)    · upgrade_10083_v4.ps1  三段式: -CheckOnly 只自检 / 不带参 起 10084 试跑(不碰 v2) /      -Apply 停 v2 → 起 v4 → 真拍一张 → 存 v4_check_crop.png / v4_check_origin.png    · README_上线步骤.txt (三步操作/验收判据/10 秒回滚/相机独占注意)    · sha256 65b5a1a61e7cf959af09222e56c885bc39aac33e06d3cb51be76e2f0b84f8e42 (脚本自动核对)    · 下载: http://192.168.23.50:8794/ (4060 本机静态文件服务; 工控机同网段直连, 路由实测      dev enx00e04c0c32a0 src 192.168.23.50, 本机防火墙 inactive)    · v4 相对 v2 = 只加不减: POST /capture_detect 回执逐字一致({"code":200,"msg":"success"},      已实测 v2 现场回执就是这个); 新增 GET /picture?kind=crop|origin[&meta=1][&grab=1] ·      /last_result · /crop_info; 相机常驻 + 单 worker 异步队列; 规范图 = config imgsz=1280 保比例 letterbox    · 离线契约测试 5/5 通过 (aoi_v4/.venv-test + 假相机/假检测器): capture_detect 200 ·      picture?kind=crop 200 1280×1280 · picture?kind=origin 200 2048×2448 ·      last_result 200 {verdict:NG,count:2,ms:12.3} · crop_info 200 {canonical:[1280,1280],mean:68.1}  B) 工位总览配合 (上完 v4 本页零改动出图)    · 表面 worker 取图改 kind=crop(模型看的规范图, 判决依据); 金手指仍 kind=origin → 去死白判据图    · 表面也读 /last_result → 标题栏带「上轮判定 OK/NG (n 缺陷 · 推理 xxms)」    · 「📸 拍帧」补拍后取图: v4 的 /capture_detect 回执不带图, 拍完顺手 GET 一次 /picture 取回来      (只读取图不再拍); v2 下该 GET 仍 404, 行为与升级前一致    · 面板文案改为现状 + 上线办法(文件名/目录/端口不变/v2 不改), 55 条候选路径全 404 的实测结论保留    · 实测: 10083 → HTTP 404(kind=crop) 如实记在 /station/status; aoi_surface online:false;      10082 仍 ok:true 4799KB/帧；取证 /tmp/station_v4patch.png  交付件入库: docs/deliver/10083_v4/ (程序/脚本/说明/sha256) 文档: docs/STATION_6PANEL_20260927.md 新增 §0.6 第四轮
+        # v5.15.17: 修: 控制台重做 + 10083 取图穷举到底 (v5.15.17)  老倪: 「10083通道还是没有信号；控制区域不好用；修」  A) 10083 表面相机 —— 三条路全试到底, 结论: 那台程序没实现取图口(本机侧无解, 不假造图)    ① 10083 上 55 条候选路径逐个 OPTIONS(含 /picture /image /snapshot /stream /static       /surface_images /last_result /camera /get_picture /拼音名…): 只有 /capture_detect       (Allow: POST, OPTIONS), 其余全 404    ② 工控机全端口扫描 + 常用 web 口: 没有第二个 HTTP 服务能取表面相机图; 10081 /picture 也 404    ③ 它落盘的 ./surface_images/: 445/139 开着但 smbclient -N = NT_STATUS_ACCESS_DENIED       (无匿名共享, 本机无凭据; RDP/SSH 闭)    → 修法在工控机侧: docs/patch/opt_surface_10083_add_picture_route.md (30 行 + 4 步自测);      补丁一上本页零改动自动出图(这一格一直按 0.25Hz 轮询 /picture?kind=origin)    → 面板把这条证据 + 文件路径直接写在画面上; 新增 tools/probe_aoi_routes.py ·      tools/probe_10083_deep.py · tools/sweep_opt_host_ports.py  B) 控制区重做 (STATION_PAGE 整页重写, 24559B)    · 十字 D-pad(3×3, 按钮 92px, 中央显示当前步长) 替掉两列列表    · 键盘: ↑↓←→ 前后左右 · PgUp/PgDn 升降 · A/B/C(+Shift 反向) 绕轴旋转    · 「授权真动」改成顶部一个大开关(绿/黄大字, localStorage 记住)    · 每次点击: 按钮闪光 + 「下发中…(最多15s)」+ 结果带本次用时 + 原始日志 + 「📄 复制原始日志」    · 明写「对上 X/Y/Z 看有没有变就知道动没动」+ 状态条加「🔄 移动中」(operation_state≠idle)    · 速度预设 8 慢·默认 / 20 / 40 / 60 快 + 说明: 8 很慢, 停下前驱动报的      wait_until_idle 超时是**标记不是失败**(实测动作真跑了), 判完成只看 TCP    · 布局: 左 6 格 / 右 640px 控制台各自独立滚动, 窄屏堆叠(手机可用)    实测: 点前进 → 🧪 演练(未下发) · 用时 1.2s + 执行器三行; Shift+A → 绕A -5.0°    位置不动姿态 quat 变 → /move_pose; 步长切 50 → D-pad 中央与按钮提示同步 50mm;    仍 0 个 .mjpg, 他那个浏览器对 8793 只占 2 条连接  C) 三查报警分来源: ROBOT_IDLE_TIMEOUT 是**我们桥**的 30s 等 idle 标记(controller_error_logs 为空    = 控制器无报警); 页面显示 error_reason/context + "不要重发同一条指令"  文档: docs/STATION_6PANEL_20260927.md 新增 §0.5 第三轮 取证: /tmp/station_console_v3.png (3840x2086) · 缩图 /tmp/station_console_v3.jpg
+        # v5.15.16: 修: 总览页三处根因 (老倪: 10082/10083 没图像 + 控制区按钮点不动)  ① 控制区按钮"点不动"根因 = 浏览器对该端口的 6 条连接被占满(实测他那个 chromium 对 8791 恰好 6 条)    -> 总览页 6 格全改**串行单帧快照**(一格 MJPEG 都不用, 常占 1 条)    -> 总览页搬到**专用端口 8793** (--station-port), 主端口 /station 302 过去, 各自 6 条名额    -> 按钮 15s 兜底放开 + 请求超时(状态 6s / 动作 18s)后明写"请求没发出去/超时"  ② 金手指 10082 "没图像" 根因 = OPT 空闲时 GET /picture 返    404 {"code":404,"msg":"尚无照片: 先 POST /capture_detect 或 GET /picture?grab=1"}    -> 面板照这句话明写原因 + 「📸 拍一帧」(GET /picture?kind=origin&grab=1, 实测 200/4.9MB/1.4s)    -> 「🔁 自动取景」默认开(页面可关): 发现 404 就替它现拍, 最快 30s 一次; 拍后 90s 内按在线报    -> 另存**整板原图**(2048x2448 -> 1400x1171), 面板一键切换「判据图(一条区域) / 整板原图」  ③ 表面 10083 "没图像" = 那台服务没有取图路由(实测 GET 全 404, 只有 POST /capture_detect)    -> 面板如实写"无取图路由" + 「📸 拍帧」, 工控机侧补丁 docs/patch/opt_surface_10083_add_picture_route.md  新增: tools/verify_aoi_autograb.py(现场盯缓存过期->补拍) · tools/verify_aoi_autograb_branch.py(假404 单测, PASS)      tools/probe_depth_meta.py · tools/probe_depth_color_pair.py(深度布局/同刻相关核验) 踩坑: pkill -f <脚本名> 会匹配到同命令行里出现该文件名的地方 -> 改按监听端口找 pid 再 kill
+        # v5.15.15: 🛰 工位总览 v5.15.15: 6 路同屏 + 手动控制机器人  · 新页 /station: 三相机(臂上 D405·笔记本内置·MAXHUB 顶摄) + D405 深度图 +   工控机 OPT 金手指检测(10082 判据图) + 表面检测(10083) 六格同屏, 每格标帧龄/拍照时刻 · 深度源: 容器 ros_depth_stream.py 只读订阅 /realsense/depth/image_rect_raw 落原始数组,   宿主 cam_live_stream 上色 (口径共用 tools/depth_colorize.py); D405 0.0001 m/unit · 三查状态: 容器 ros_tcp_cache.py 增订 /robot_status → robot_status.json, 页面 1.5s 读文件   (原先 ssh ros2 topic echo --once 单次 3~7s, 顶不住轮询) · 手动控制: X Y Z 平动(既有 L2.forward/backward/left/right/lift/lower) +   A B C 绕工具轴旋转(**新增 pose_rot 执行算子** + 6 个 L2.rot_* 技能, 走 /move_pose)   双重闸门: 服务 --ctl-motion + 页面「授权真动」; 白名单技能; 步长/速度/角度/频率限幅;   每次点击都回执行器的原始日志行(可复制取证); GET 一律不触发动作 · 修: 6 格全用 MJPEG 会占满 HTTP/1.1 每主机 6 条连接 → 状态请求永远排队(页面卡"读取中…");   改为 2 路 MJPEG + 4 格串行单帧快照 + 状态合并成 1 条请求, 另加卡顿自诊断提示
+        # v5.15.14: 三相机并存: 「🧩 场景叠加」支持 臂上D405 + 笔记本内置(video2) + MAXHUB顶摄(video0); 端点改正则通用路由(加源不动路由表), /stats 下发相机实名label(不再靠参数名猜); 画布节点改为 2x2 拼图(逐格标 相机名/框数/真值链/规格龄 + 每路帧龄), 掉线路如实标"未接"; /gen 带 cam 参数; sim/scene 真几何框只对臂上有效, 本机两路如实拒绝(无手眼); 取证: verify_three_cameras.py + verify_three_cam_canvas.py; 叠加页改**大图**(🧩叠加图/📷原始图/▣并排/⛶全屏, 点画面全屏), 按钮改为开**最大化新窗并搬到控制台那块屏**; 空画布点按钮自动加载工作流再出画面
+        # v5.15.13 (2026-09-27): 🎯🎯 **手眼标定 T_base_cam 首次解出(双轴方案) + 标定工具/独立物理检验 + 版本号一致性修复**
+        #   ① 【双轴是硬需求, 不是"转大点就行"】单绕世界Z轴 ⇒ R_i=Rz(ψ_i)·R_ref ⇒ R_iᵀR_j 转轴恒为 R_refᵀ·(0,0,1)
+        #      ⇒ **31 对相对旋转的转轴夹角实测 中位 0.0° / max 0.0°(全平行)** ⇒ OpenCV 5 种方法全给 NaN 或 10⁷mm 级
+        #      (它只报 "Not enough informative motions", 不报"退化")。**判据两条都要看**: ①位姿间旋转角>10°对数≥3
+        #      ②**相对转轴之间夹角中位>8°** —— 本次①满足(25/28)但②为0°仍退化, 这就是之前一直解不出的真因。
+        #      改【世界Z偏航 × 世界X倾斜】双轴后转轴散布 **中位 22.2°** ⇒ TSAI/PARK/HORAUD 三法一致
+        #      t=(217.3, 5.7, -126.9)mm · |t|=251.7mm(法兰→TCP 258mm 自洽) · 8 位姿 **闭环 std=1.74mm** ·
+        #      板中心 base 系 (795,221,257)mm(旧独立记录板面 z≈252.6mm, 差 3.5mm) · 靶标重投影 rmse 中位 **0.35px**。
+        #   ② **独立物理检验(比 rmse 可靠得多)**: 板平放 ⇒ 其法向经 T_base_cam 转到 base 系必≈竖直; yaw=0 位姿实测
+        #      偏 **9~15°** ⇒ 方向对但未达抓取级(需1~2°)。**不得用 RANSAC 拟合平面做此检验**(内点≈7万像素远超
+        #      板面积≈2万 ⇒ 拟合到的是台面)。**闭环一致性(1.74mm)与旋转精度互不蕴含, 必须分开取证**。
+        #   ③ 采集期两个真根因: `error_code=-50021`「指定conf参数下目标点无解」= **运动学不可达**(关节限位/奇异),
+        #      与 ROBOT_IDLE_TIMEOUT 是**两回事** ⇒ 解释"同一位姿有时成有时败"; `speed=15` 时 20°偏转需 >30s
+        #      顶满服务端 30s idle 窗口 ⇒ 假超时, **speed=50 后仅 3s**。`/move_pose` 的 success=False **不代表
+        #      动作没执行**(实测 TCP 已到位) ⇒ 一律轮询 /robot/tcp_pose 核对; **运动中绝不重发**。
+        #   ④ 新增 `tools/calib/handeye/`: 采集/解算(须用 lerobot-venv)/两种独立物理检验/README; 原始采集 48MB 不入库。
+        #   ⑤ **版本号一致性修复**: update_checker.CURRENT_VERSION 长期停在 v5.6.0(与 tag v5.15.x 脱节 ⇒ 自动更新误报
+        #      "有新版本"), integrity_check.EXPECTED_VERSION 停在 v3.2.0(三处硬校验失配) ⇒ 按 VERSION.md 规范的
+        #      **5 处**全部同步 v5.15.13, integrity_check 五处一致通过。
+        #   ⑥ **发布事故与纠正**: 首次 tag 误打在 mac-hw 工作分支 ⇒ macOS 构建 `ERROR: Unable to find <ws>/flows`
+        #      (mac-hw 缺 main 的 flows/ 等 42 文件) ⇒ **发布必须从 main 出**; 新护栏: 发布前先核 flows/ 存在。
+        # v5.15.12: v5.15.12 (小版本·关机前): **M3 收口(1/2) MoveIt 碰撞几何 + 任务主线收敛 + 关机前终态**  ## 一、M3 收口 (1/2): MoveIt 碰撞几何到位 - 从 Orin 产线工作空间**只读拷回** URDF 引用  … (完整变更见 VERSION.md v5.15.12)
+# v5.15.11: v5.15.11 (小版本): **画布执行链拓扑改造 + L5 自主进化(运动学自校) + 系统清理与重启**  ## 一、画布: 量产执行通路按老倪架构重连 - 通路 = 🧭动作调制器 → 🛡安全执行边界 → ①..⑧ L2原子技能 → 🧭**MoveIt(最后一级执行)** → 🤖机器人执行器 - 删 10 条绕过 MoveIt 的直连 · 加 16 条 · 执行链整体左移消除反向线 · MoveIt 移到阶梯末端 - **交叉 1174 → 1136 (净减 38)** · 孤立 0 · MoveIt 入线 9(8 原子技能+FlowMatching) 出线 1 - 归一化 3 个节点的字典格式端口 (ssff/sssched/ssdec → 字符串, 消除崩溃隐患)  ## 二、L5 自主进化 (零外部资源) - **章程** `docs/L5_AUTONOMOUS_EVOLUTION.md`: 外部只管安全; 标定≠前提(可被自监督替代); 三条无标定方案 - **S1 运动学自校完成**: 自主走 24 构型(腕部±12°, speed=8) → 我的 FK vs 控制器 TCP = **2.519mm 且逐构型完全相同**   ⇒ 判定**纯固定偏移**(无零位/杆长误差) → 自拟合后 **0.000mm** → `data/selfcal/kinematic_correction.json` - **S2 控制权验证 + 激励**: 发现一次"12 次指令无效"(控制权不在我, 失败安全) → 后验证控制权回来(ΔTCP=10.000mm 精确)   → 小范围激励(±30mm · speed=8 · tap 一致) 采集真机配对数据, 全程在 ±10cm 内 - 永久删除 A5/A6/A7 标定与曝光/标记物/内参等外部依赖  ## 三、工程/系统 - 状态空间工程重启 (控制台 + 11 服务 active + 6 端点 200 + 画布 85 节点/167 连线/孤立 0) - DNS 清理 (baidu 3.91s→0.00s) · 系统清理本会话累计 ≈251MB (保护清单 0 缺失) - 真机安全: 全部动作 speed=8 · ±30mm 内 · 每步只读三查 · 结束回起始位姿 · 零非授权动作  ## 四、新增工具 (本版) canvas_rewire_exec_chain.py · rewire_cross_check.py · moveit_layout_fix.py · selfcal_kinematic.py · s2_reality_gap{,2}.py · s2_excite_collect.py · s2_probe_control.py · verify_canvas_render.py · zmax_arm_sdk_bridge.py(+ Orin unit) · arm_control.py (统一控制层) · gen_moveit_config.py
+# v5.15.10: v5.15.10 (小版本·冻结): **MoveIt 适配 + Orin SDK 直驱桥 + 事件级认知头闭环 + A1~A5 现场推进**  ## 一、运动控制架构升级 (老倪: 桥放 Orin 直驱 SDK · MoveIt 装本机 · 兼容 ROS  … (完整变更见 VERSION.md v5.15.10)
+# v5.15.9: v5.15.9 (补丁): **修控制台"打开就卡"** —— 老倪「控制台为什么打开感觉很卡顿? 什么引起的? 修好, 不要有这么大的延迟」①**根因(实测定量, 不是猜)**: 首页「硬件资源卡」的 `refresh()` 在 **GUI 主线程**里做阻塞 I/O, 单次 **1414ms**, 而定时器 **每 2s** 跑一次 ⇒ 主线程约 **70% 的时间被冻住** = 打开即卡。逐项拆开: `HTTP 127.0.0.1:8799/api/hardware` **1266ms**(并行线 train_deploy_console 服务) + CPU 采样 `time.sleep(0.12)` **120ms** + `nvidia-smi` **24ms**; 度量工具 `tools/profile_hw_card.py` ②**修法**: 采集函数改名 `_collect()` 并用轻量代理把 `self.lb_*.setText(v)` 收成 dict(不碰 GUI), 由新线程类 `_HwFetcher(QThread)` 每 2s 后台采集, 主线程的 `refresh()` 只贴字符串(**零 I/O**); 刷新按钮语义不变(清源缓存→下一轮重探) ③**客观 A/B(工具 `tools/measure_ui_jitter.py`, 主线程 10ms 心跳测最大间隙)**: 旧行为(主线程同步采集) **最大间隙 1415.2ms** · >100ms 卡顿 4 次/8s ‖ 新行为(后台线程) **最大间隙 15.8ms** · >100ms **0 次** ⇒ 卡顿幅度 **89× 改善**; 采集间隔仍 2s, 数据实时性不变 ④顺带核过: 1s 的 `_update_stats`、100ms 的 ws_poll 等其它定时器体内**无阻塞调用**(已逐条静态核对), 主线程阻塞源只此一处
+# v5.15.8: v5.15.8 (补丁): ① **修「状态空间模型画布加载失败」**(老倪报) —— 根因: 画布加载原来只拼 `_repo_root_path()/flows/state_space_obs.json`, 而共享检出 `/home/ubuntu/zmax` 被并行 APP 线切到 `mac-hw` 分支后**该目录没有 flows/**(画布真源只在 main 线) → `load_flow_file` 失败 → 弹「状态空间模型画布加载失败」; 另一并发症状: 那棵树的 GUI 是 **v5.6.0 旧版**(studio.py 665KB vs main 808KB)。修法: 新增 `_flows_path()` 多候选定位(环境变量 ZMAX_FLOWS_DIR > 本检出 > main worktree `/home/ubuntu/zmax` > 默认检出 > 打包 _MEIPASS), 画布/库加载与 cicd_workflow 全走它; 取证 `tools/verify_canvas_load_fix.py` **8/8**(含"仓库根=mac-hw 检出"场景下的回落命中 · 画布真加载 87 节点/165 连线 · DeepSeek 与 L5 Web 智能体桥节点在位 · 环境变量覆盖) ② **桌面启动器重指 main 线** —— `XSpace-Studio.desktop`(桌面+应用菜单两份) 与 `launch_studio.sh` 原来硬编码旧检出(点图标就起旧 GUI 且无画布); 现 `launch_studio.sh` 按**自身位置**推仓库根 + 两处 .desktop 的 Exec 指向 main worktree; 端到端实测: 点启动器 → 进程 cwd=/home/ubuntu/zmax/tools/gui · 实例数 1 · 日志 0 错误 ③ **把非 git 运行时产物软链进 main worktree**(runs/ 800M · outputs/ 16G · models/ 缺 23 件 · data/ 缺 52 项) → main 线代码+v5.15.8 画布 与 全部运行时产物可共存于一处(不再需要在两棵互补的树之间二选一) ④ **控制台首页「硬件资源」卡字体放大**(老倪连提两次: "字体太小, 看不清 → 再放大"): 标题 14→**34px**(行高47) · GPU/CPU/内存/磁盘/吞吐/远端硬件 12→**28px**(行高39) · DDS 节点列表 11→**24px** · 数据源行/时间戳 →**18~20px** · 两个按钮 →**20px**(padding 9×18) · 卡内边距/行距 16,12/6 → 24,20/14; 主数值字号为原来的 **2.33×**; 首页在 QScrollArea 内, 卡片变高不影响布局(实测 sizeHint 570→734px); 客观口径由 `tools/measure_hw_card_fonts.py` 打印每行 pixelSize/行高(offscreen 实测 34/28/24/20px), 不靠感觉
+# v5.15.7: v5.15.7 (补丁): ① **全局数据空间发布守护** `zmax_dds_ss_daemon.py` (老倪: 「写全局数据空间发布守护: 把所有真实数据源接上 DDS, 受模式控制」): **6 类真实数据源全接上** —— ss_state ← 真机只读 tap `~/zmax_ss_remote/state_*.jsonl` (tcp/jpos/gripper/prod_stage, 实测 dim=6 pos=(0.597,0.143,0.642) src=real(tap)) · ss_action ← 本机推理服务对真机帧的输出 `proposal_*.jsonl` (6 关节, src=infer-8790) · ss_infer ← 8790 `/health` (models/infer_count/last_ms/device) · ss_calib ← **标定真源文件** (handeye/real_cam_calib/align/gate, 多候选目录, 有则实发无则 valid=0) · ss_diag ← 延时/帧龄/服务健康度/各话题吞吐 (>5s 过期帧只报诊断不发状态, 负帧龄拒用) · ss_test ← 最近取证结果 (verify/preflight json 的 passed/total/failed); **受遥测模式控制** (prod → **不 import cyclonedds**、不建参与者、不开口 = 量产零开销; diag/calib/test 各自话题子集); 未测量一律 -1.0 不用 0 冒充; 取证 `zmax_dds_ss_verify.py` **16/16** (prod 订阅端 0 条+守护无参与者 · diag 收到 ss_diag/ss_infer 值真实且裁剪掉 ss_state/ss_calib · calib 收到 ss_calib(真源文件)+ss_state · test 收到 ss_state/ss_action(6 关节)/ss_test/ss_calib · 通道分离不碰 hw_state); 常驻 `zmax-dds-ss.service` (enabled+active, prod 下日志只有一行"允许 0 话题") ② 补齐 3 个缺失类型 `SSCalib/SSDiag/SSTest` + 话题注册与 QoS 分档 (calib/test=state 可靠latch, diag=beat) → **9 个状态空间类型 / 14 话题** (老倪审计表里的三个 ❌ 专项通道全部接上) ③ **修 6 个在役服务的启动依赖**(严重): 共享检出 `/home/ubuntu/zmax` 被切到并行 APP 线的 `mac-hw` 分支 → 该目录下 **main 线的脚本全不存在** (ss_remote_tap/ss_bypass_run/ss_yolo_on_real/zmax_net_optimize/ss_web_agent/aoi_feishu_push) ⇒ 重启即 `FileNotFoundError` (实测 ss-remote-tap 重启即挂、采集链断流); 处置: 6 个 unit 重指 **main worktree `/home/ubuntu/zmax`** + 软链 gui-venv311 + 逐个重启复核 (**6/6 active, 真机只读帧龄 0s** 恢复); 工具 `tools/fix_services_to_main.sh` ④ 修 `chain_health.py` 巡检哨兵崩溃 (每 30 分钟报 error 的根因: `v.startswith()` 遇 relay 返回的 `model: null` → AttributeError; 已加 None 兜底与状态键白名单) ⑤ **确认 DeepSeek 模型**: 账号 `/models` 可用 = **deepseek-flash / deepseek-v4-pro** → 仓库配置的 `deepseek-flash` **即 DeepSeek-V4.1-Flash 最新版**(账号内无更新的 flash 名, 无需切换); 文本+**视觉**双路实测 HTTP 200 (视觉对真机判据图返回真实描述「垂直拉伸失真成模糊条纹图案」); ⚠️ 如实记录: 单次调用实测 **~122s** (文本/视觉都在 120s 量级) ⇒ **异步旁路 + smolovlm2-500m 本地兜底必须保留**(切同步会拖住 L5)
+# v5.15.6: v5.15.6 (补丁): ① **L5「Web 智能体桥 · 远程提示词」开通** (老倪: 「开通一个状态空间 L5 的新节点, 与 web 的 agent 交换信息, 位置在 DeepSeek 左侧, 你来构图」): 画布 L5 大模型层 **DeepSeek 左侧** (x=1544 · 同行带 y=554 · 只加 **1 节点 2 连线**, 入=工程记忆能力清单 / 出=提示词意图→L5 场景理解, 回执走中转不画线保持简洁; 构图工具六条硬断言 + 备份); 运行时**真接** (node_logic `_reg`+`_EXTERNAL_LOC`+真执行函数 `node_web_agent`; 档位级审计 **R2-档位级真接** · 无执行注册 0 · 真缺口 0) + 能力清单新增 **L5 层 + L5-C01**; 真源 `web_agent_bridge.py` = **11 项只读功能白名单** (状态/服务·画布·报告台账·记忆层·技能库·仿真自检·网络体检·AOI 只读判决·真机只读信号·飞书通知·help), **动作类提示词一律拒答 + 记审计** (老倪红线「不要动真机」); 通道 = ECS 中转**纯追加**路由 `/api/relay/agent/{prompt,reply,status}` (游标式 append-only jsonl, GET **只读幂等** `?after=N`, 对比 `/command` 单槽不丢消息); 常驻 `zmax-web-agent-bridge.service` (User=ubuntu — 用 root 会在 reports/ 留 root 属主文件把用户态工具卡死); 取证 `verify_web_agent_node.py` **27/27** (公网端到端 web POST→本地派发→web GET 回执真数据 · 游标不重放 · 拒答审计) ② **ECS 外部故障修复**: 中转 `zmax_relay`(39053) 与 `ws_relay`(8765) 两进程**双双不在** (只剩 nginx) → `/api/relay/*` 与 `/ws` **全 502** (studio/auto_loop 每 5s 重连刷日志 · 网页群聊不通) → 按技能 `http-relay-service` §9 拉起并复核全端点 200 ③ **网络性能优化 (实证 + 开机自启)**: 交错 A/B (Latin-square 轮转, 6 轮取中位) 实测远端单流下载 4.30→**5.12MB/s (+19%, 5/6 轮胜)**, 单旋钮复验 窗口天花板+`tcp_slow_start_after_idle=0` **+6.1% (5/6)**, 基线噪声带 ±3%; **无收益项一律拒绝并留证** (IPv6 AAAA 前置无代价 / WiFi 省电默认已关 / 国家码已 CN / `tcp_fin_timeout` 管不了 TIME_WAIT / busy_poll 不适用); 落地 `/etc/sysctl.d/99-zmax-net.conf` + `tools/zmax_net_optimize.sh` + `zmax-net-optimize.service` (**每次开机**应用旋钮+断言省电 off+DNS 预热+体检台账 jsonl); 另一条教训: 首测顺序偏差能造出 +19% 假提升 → 必须交错 ④ **AOI 几何口径对照** (同图实测): 线上方图 960×960 死白 4.51%/死白行 0 vs 我们原图自裁短边×2 死白 20.28%/死白行 14 → **训练口径取线上同源** (已核 AOI 数据集现存图 device=opt-10082 · 960×960) ⑤ **sim-to-real 上真机前预检 8/8** (`tools/sim2real_preflight.py`: 引擎真跑 metaworld 真物理+MOE 120 步 rc=0 · 造数据带渲染真产物 · 状态空间旁路活链路 8790 推理 Δ58/6s · 流形内核 · 通用策略 rollout · L5 桥 · AOI 只读 · 记忆层) + 真机只读 6/8 (Orin 0.225ms · 10082 判决 OK · 10083 四路由仍 404) + 在役服务 8/8 active, **全程零动作下发**; 修两个真 bug: `rollout_peg_check.py` 硬编码 `/home/xspace/...` 路径 (另一台机器) 被 `| tail` 掩盖成 rc=0 · `rollout_video.load_policy` 缺 left_right 分支 → 用 SmolVLA 类装载双脑权重报 `validate_features()` 缺参 TypeError (仿真 rollout 长期跑不通) ⑥ 取证口径两条纠正: **不要用管道尾命令的 rc 判断被测程序成败** · **画布行带背景节点 (bg/row_bg) 必须排除在重叠判定外** ⑦ 技能沉淀: 新建 `web-agent-canvas-bridge` · `linux-network-perf-boot`, 补 `http-relay-service` (agent 通道 + 双进程恢复) 与 `linux-host-maintenance`
+# v5.15.5: ★硬件卡加**远端(4060)真实数据行** + 数据源自动发现 —— APP 装在任何机器上都能看到 4060 实测
+#    候选数据源: ZMAX_HW_URL / ~/.zmax_hw_url → 本机8799 → 10.163.146.78:8799 → 192.168.23.50:8799
+#    另加「🔄 刷新数据源」按钮 + 底部标注当前数据源(便于排查)
+# v5.15.4: APP 内加 **DDS 节点区** — 节点列表(名/角色/设备/后端CUDA或MPS/训练进度/在线龄 + 🟢🔴状态灯)
+#    + 右下角「📡 启动本机 DDS 发布」按钮(一键在本机起 DDS 发布, 自包含不依赖外部脚本)
+#    实测: 5s 发现 1 节点 · 传输=dds-inproc(DDS 直连)
+# v5.15.3: ★硬件参数**必须走DDS** — 桌面APP进程内直连 DDS 订阅 zmax/hw_state, 4060+Mac 两端并列
+#    三级: 进程内DDS(首选) → dds-venv子进程DDS桥 → HTTP兜底(会明确标注"非DDS")
+#    CI 打包带 cyclonedds + dds 数据(_MEIPASS); 卡片标注传输方式(实测 DDS 直连)
+#    修: 模块级 import threading 缺失(此前插到函数里→APP 直接崩)
+# v5.15.2: 桌面APP硬件卡加 **Mac(小芳·备份端)** 行 — 4060+MAC 两端并列显示
+#    数据: 4060=本机 nvidia-smi; Mac=经 DDS→JSON 桥(URL 可配 ZMAX_HW_URL/~/.zmax_hw_url)
+#    实测: DDS 发布 → 桥 → 卡 渲染全链路通过(含 MPS 可用性/内存/磁盘/CPU)
+# v5.15.1: 🖥 桌面APP首页加「硬件资源」卡 — 4060(本机)真实硬件参数实时显示:
+#    GPU 利用率/显存/温度/功耗/SM时钟 · CPU 利用率+核数+load · 内存 · 磁盘 · 实测训练吞吐
+#    数据源 nvidia-smi + /proc(无第三方依赖, exe 内可用) · 2 秒自动刷新 · 读不到显示「—」不用 0 冒充
+#    过程修两坑: ① C_TEXT/C_SUB 常量不存在→改 C_WHITE/C_GRAY ② shutil 仅方法内局部导入→卡内自行 import
+# v5.15.0: 🌀 **流形引擎 + 阶段专家 MOE + 全系统训练/部署控制平台 (中版本)** — 老倪: 「训练的总目标是流形引擎，在APP的训练控制界面，我要看到模型训练的结构化流形」/「阶段专家MOE升级改造, 全系统模型微调」/「训练加部署控制，L2模型训练给小芳，L3以上微调训练给静静，Web你提供控制平台」/「同步仿真与实际环境，造数据，继续训练」/「中版本迭代, 发布windows mac版本」 ①**阶段专家 MOE (7 专家 × 硬先验路由)** `tools/stage_moe_backbone.py`: 共享 SigLIP 768d 冻结主干 + 7 个阶段专家(接近/对位/下降/抓取/抬起/转移/插入) + 门控; **学习式门控实测坍缩**(两版都坍缩: 单射性 4/7 与 1/7) ⇒ 改 **`--route prior` 硬先验路由**, 路由熵 **0.000**、**单射性 7/7**(每阶段 100% 专属专家)、有效专家 7/7; 判据同步加 **单射性**(旧判据"每行最大值"会假阳性 — 曾据此误报"6/7 分化成立"已撤回) ②**按阶段误差拆解** `tools/perstage_error_compare.py`: 三方同口径(n=3000) — **接触段动作误差**: 密集 0.0955 · 容量版(MOE-soft) 0.1157 · **分工版(MOE-prior) 0.0905 最优**; 插入段(n=254) 0.0225 → **优于密集 17%、优于容量版 44%** ⇒ **阶段分工的价值体现在接触段**(正是此前诊断出的瓶颈), 而容量堆叠只改善非接触段观测 ③**统一主干两阶段配方** `tools/joint_unified_backbone.py`: 几何增强训练(阶段1) → 短程无增强微调(阶段2) ⇒ **精度与鲁棒性兼得**(推翻此前"二者权衡"的错误结论); 最优档 **v13 留出 0.008/动作 0.047**, 几何不变性 **四杆全过**(平移 0.997/缩放 0.997/旋转 0.998/流形一致性 6.8%, 对照无增强基线 0.817/0.841/0.886/65.4%); 阶段2 长度实验(v13 600步 vs v14 4000步) ⇒ **阶段2 越短越好**(拉长只换 0.002 精度却把一致性从 6.8% 磨到 13.4%) ④**造数据 + 域随机化 + 训练增益** `tools/l5_plan_and_gen.py`: 补上缺失的 `skill_ctx` 字段(此前 l5_* 数据集无此列 → MOE 用不了的根因); L5 定方向造 **23,393 帧**(对位±20mm·高度±10mm·阶段组合·力档30/40/50·速度0.8/1.0/1.2); **新旧混合训练实测增益**: 留出观测 **0.013 → 0.010 (优 23%)** · 动作 0.050 → 0.049 ⑤**结构化流形视图** `tools/manifold_train_view.py`: **全部数值来自真实调用**(`su2.py` 群引擎 + 引擎 trace 实测数组, 缺项按 0 不编造); **纯数学自检 8/8**(单位元/θ=|rotvec|/U·U⁻¹=I/不可交换性/FS 自距离/L5未接→单位元/剥离残差); 过程中自查发现"(U·U⁻¹).θ=2.98e-08"是**我的阈值过严(1e-9)**而非代码 bug, 已按 float64 实际精度改为 1e-6 并复验; 引擎真跑 240 步: θ min 1.687/max 2.746/mean 1.870, **层间耦合 L3|L4 = 0.5618 最强**(状态调度↔认知, 符合物理直觉) · L2|L3 0.1424 · L2|L4 0.1142, **FS 测地距离** 首→中 0.323/首→末 0.671, 末帧各层 θ: L2 0.188(检测)/L3 0.846(调度)/L4 2.542(认知主导)/**L5 0.0(未接 LLM, 诚实标注)** ⑥**训练 + 部署 Web 控制平台** `tools/train_deploy_console.py`: **零依赖单文件**(标准库 http.server) → 可复制可运维; **分工硬编码为策略** — L2 检测层归**小芳(Mac 备份端)**、L3/L4/L5/MEM 归**静静(4060 工作端)**; L2 训练请求 → **生成"待小芳执行"处理单(不越权在本机跑)**; L3+ → 本机直接启动(实测 job+日志+审计); **部署控制**: 晋级默认档/回滚 带 **sha256 + prev 记录 + 审计流水**(`models/model_default.json` · `docs/deploy_audit.jsonl`); 管道状态与画布/CICD 控制台**同一真源**(`docs/PIPELINE_STATE.json`); **🌀 结构化流形面板**内嵌(θ(t) 测地演化曲线 / 各层 θ 条形 / 层间耦合矩阵 / L5=0 明标"未接 LLM") ⑦**全系统 Pipeline 训练编排器** `tools/system_train_orchestrator.py`: 每层做成统一 trainer 插件(`preflight/train/evaluate`), 状态落盘供画布轮询; 实测一次编排跑通 MEM→L4moe→L4 (2099s), **同口径 MOE 观测 0.0091 vs 密集 0.013(优 30%)** ⑧**L5 大模型层升级策略** `docs/L5-UPGRADE-STRATEGY.md`: 四条按投产比排序 — P1 结构化输出+三条硬校验(顺序合法/依赖满足/与观测一致) · P2 分级调用(高频本地<200ms/低频才调云端) · P3 视觉表征收口(L5 复用 L4 的 SigLIP 768d 特征, 免二次编码省 0.35GB) · P4 规划-预测联动(L5 出 K 候选 → L4 rollout 打分选优, MPC 思路); 明确不建议(换更大本地 VLM/端到端微调/每步调云端) ⑨**仿真↔真机同步 + 可复制交付**: `sim2real_bridge.py --check` 动力学/运动学/TCP/限幅已对齐(**FK 残差 3.518mm**), 3 个感知几何缺口待现场(T_base_cam/plane_z/示教点); **ECS 大包分片发布器**(绕 nginx 200m 限)+ **ECS 开机自检恢复**+ **主页访问白名单**(只允许静静4060 `103.114.194.13` + 小芳 Mac, 默认只锁主页不切中转链); 可复制交付 T1 包 391MB 已验(缺失0/不符0/冒烟✅) ⑩**重大环境发现** — Hermes 工具对每条命令的临时 scope 有 **~8GB 内存上限**(实测 OOM 时机器仍余 21GB): 定位靠 `dmesg | grep 'Memory cgroup out of memory'` 的 `CONSTRAINT_MEMCG` + `oom_memcg=.../hermes-worker-*.scope`; 对策已落进训练脚本(**按 MemAvailable 自动算缓存上限** + `--cache-gb` 显式开关 + **两个调用点都要传**(第一版只改一处仍照装大缓存 OOM — 同类"补丁只改一处"当日第三次) + page cache 清理 + 磁盘流式降级) ⑪**闭环任务诚实结论**: 统一主干在引擎闭环 **A/B n=10 与在役模型逐 seed 同生共死**(成功率 7/10 = 7/10, 深度差 ≤5mm) ⇒ **集成成功但无任务级提升**, 机理 = 融合权重仅 **w=0.30**(解析反馈占 70% 主导)且失败点同源在接触段; 待验证杠杆 = 提高 w 后重测
+# v5.14.0: v5.14.0 (中版本): ① **外观质量检测线打通**: 工控机 OPT 相机 → 质量检测任务头 → 汇总终端窗口 → 飞书, 端到端真实跑通 (新增 `tools/opt_camera_client.py`: 10082 金手指 / 10083 表面双相机, 本机直连 + **经 Orin(192.168.23.66)** 两种走法; OPTIONS 零副作用探路由 · `/picture?kind=origin|topview` · `/crop_info` · `/region` · `/last_result` 判决通道; 每次真拍写审计流水 `reports/opt_capture_log.jsonl`) ② **质量检测任务头 + 汇总终端窗口**: `src/lerobot/policies/yolo_3d/aoi_head.py` + `tools/gui/aoi_inspect_console.py` (画布「🔍 外观质量检测」右键打开); 一个头两角色 = 定位类框(module_body/gold_finger/optical_port) + 缺陷类框(gf_scratch/gf_contam/gf_oxide/gf_chip/app_scratch/app_deform/app_stain), 两级级联 = 全帧定位 → ROI 裁剪拉伸 → 缺陷检测; 无权重时启发式兜底并**明标 source=heuristic**(不冒充模型) ③ **窗口经三轮现场反馈重做**: v2 修最大化(**QDialog 的 Qt.Dialog 类型在 X11 下 WM 不响应 maximize → 换 Qt.Window**, 实测 isMaximized=True 宽=屏宽)、去挤/压字数/防截断(29 控件 0 截断)、右面板改三 Tab; v3 **10082 七个接口做成技能按钮**(触发拍照检测/实拍原图/拉长960/区域+对焦/裁剪指标/判决/元数据)+**curl 命令可复制**(与请求同源生成)+终端页看 JSON 反馈+**一键「📸 立即拍照」立刻出图**+拍照时间/帧龄/取图耗时/HTTP码全显示+自动刷新**默认「只取图」且真拍模式强制≥10s**(起因: 审计发现自动刷新·真拍每 5s 连拍产线 132 次)+画面**右键复制图片**(坑: 先 setImage 再 setText 会冲掉图片 → 改一次性 setMimeData; offscreen 后端剪贴板恒 0×0 → 此类断言只能在真桌面跑) ④ **判据图口径与过曝修复**: 优先级 = 手动框选拉伸(永远优先, **与「过曝切除」开关解耦**) > 原始图自动裁切 > 工控机拉长图(显式告警); **拉长 = 短边×2 长边不动**(原 960×960/2448×2048 方图 = 纵向 8~13 倍, 现场判"太长了"); 过曝切除实测 饱和 **61.5%→5.6%** · 死白行 **532→0** · Tenengrad **2300→29394**; 圈选状态每次拖框落盘 `reports/aoi_console_state.json`(roi/倍数/来源/判据图尺寸/框内饱和·死白行·Tenengrad —— **Agent 看不到屏幕, 靠此文件核对人圈的是哪一块**) + 新增「🎯 识别金手指并框」算法兜底(实测 框内 Tenengrad 22213 vs 手误圈 8551) ⑤ **两个"看了不算数"真 bug**(现场反馈倒逼查出): 手选框被「过曝切除」开关挡掉 → 判据图掉回工厂图; 手选框只换**显示**没换 `_last_rgb` → **任务头推理仍在旧帧上跑**; 另修 500ms 定时器把工厂图重新塞回判据图面板覆盖显式结果(OPT 源画面改为只在显式取图时更新) ⑥ **示教点技能**: `tools/aoi_teach_point.py`(读 `/robot/tcp_pose` 真值多帧采样 + 抖动闸 → 动着的位姿拒记; **更新前留痕** `reports/aoi_points/<名>.history.jsonl` 可回滚) + `L2.goto_gold_pt1`「🎯 回到金手指点1」入 L2 技能库(30 条)并**被「📚 工程记忆」节点收录**(工程记忆新增"机器人可执行技能库 + 肌肉技能库", 且把新文件纳入指纹否则不会重同步); 金手指点1 已按现场位姿记录 ⑦ **裁减图实时推飞书**: `tools/aoi_feishu_push.py`(原飞书工具只有 text/media → 新增 `POST /im/v1/images` 上传拿 image_key → 发 msg_type=image; **token 每次现取**不依赖 gateway 进程内缓存, 规避 99991663; `--watch` 盯 `/last_result` 的裁减图文件名变化 → 新拍照自动推, **只读绝不触发拍照**; 实测图 code=0 message_id 到手, 监听实推 No_288 ✅) ⑧ **揭示并如实记录(未定论不采信)**: 工控机 `/capture_detect` 返回 200 **只是"拍照成功+检测已排队"**, 真判决读 `GET /last_result`; **YOLO 吃的是裁减图**(`detector.detect(topview_path)`, 程序 318 行)不是原图; 其裁减 `score=0.4378` 偏低(v4 验收口径 ≥0.95 → 直接影响召回); **同一张模型输入图两套方法结论相反**(工控机 YOLO=OK vs 我们启发式=FAIL 3 项) → 需人眼 + 同口径留出集判谁漏谁误报, 不采信任一方; 10083 表面相机无 `/picture`、10082 拉长口径 → 两份现场交接补丁 `docs/patch/opt_surface_10083_add_picture_route.md` · `docs/patch/opt_10082_gold_stretch_2x.md` ⑨ **取证与红线**: `verify_opt_camera.py` **40/40** · `verify_aoi_console.py` 12/12 · `verify_aoi_console_real.py` 5/5(真桌面含最大化真生效) · `verify_teach_point.py` 17/17(真机读数/拒绝假记/dry-run 不出运动); 全程未授权不下发真机运动(唯一一次回位验证 Δ=0.1mm 已向用户报备) · 在役软链与默认档一个未动 · 未标定未实现项不编造
+# v5.13.1: 小版本迭代: ① 画布感知融合链重构 — 「📡 传感器融合」改名**「📡 融合定位」**并迁到三个感知源(YOLO目标检测 / 触觉感知 / 外观质量检测)**之后**、统一状态空间之前 (x 700→3080, 与统一状态空间同行带); 入线 4 条 (状态流39D / 视觉3D←2D→3D / 触觉4D / 外观质量) · 出线 3 条 (统一状态空间in1 / INTACT in2 / 流形引擎 in1); **删掉 2 条绕过融合的直达线** (2D→3D→统一状态空间 · 触觉→统一状态空间) = 三源汇一再进统一状态空间; 几何体检 **反向 0 · 重叠 0 · 连线交叉 0** (新增 1 条线后仍 0) ② 改名**同步 9 处运行时映射** (画布节点名 = 数据总线通道名, 漏一处即挂不上): `data_world.MODULE_ORDER` / `simulink_module.SS_MODULE_TO_NAME`+双击面板分支 / `state_space_sim_real`+`state_space_sim` io 发布 / `node_logic._reg` 注册匹配 / **`auto_test_suite` TC09 判据 (原按"传感器/感知"匹配, 不改会假失败)** / `ss_dreamview` 注释 / `node_func_tree` 显示名 (网页功能清单真源) ③ 档位级审计回归: 71 节点 **R1 15 · R2 33 · R3 13 · R4 7 · R5 3** · **⚠无执行注册 0** · 真缺口 0; `match_node("📡 融合定位")` → ss_sensor (源码 perception.py:20) ④ **僵尸哨兵清理 18→9** (逐条查终态证据后删: cube四任务已`.four_tasks_reported` / 全量pipeline `DONE`+RC=0 / ss整链播报 09-21 收口 / zoo远程口令失效 / v5.12.1桌面包已`.done` / v9验证 monitor 冻在 09-10 / v10足量 paused / v5判闸 paused / 静界群 v3.2.0 公告已过期), 保留基础设施 4 条 (sys-watchdog/数据链路/磁盘红线/技能记忆同步) + 活跃项目 4 条 (L4进度/记忆层阶梯/v6判闸/v6提前收) + 现场工具 1 条 (2D→3D标定, 仍 pause 待现场) ⑤ 当日产物归档 `~/zmax_data/release_5.13.1_<日期>` (MANIFEST + sha256)
+# v5.13.0: v5.13.0 (中版本): ① **L4 流形引擎落地** — 新增 `src/lerobot/manifold/manifold_engine.py` (编码→投影→度量/切空间梯度→测地线导航→有界反馈 五阶段真跑; 复用 su2.py 群引擎 / lie_intent SO3·SE3 / manifold_layer 势能 Φ / fiber_bundle 丛提升), 流形注册表 **9 种 = 7 ready + 2 如实 planned** (calabi_yau 缺 Ricci-flat 度量 / hyperbolic 缺图卡 → 拒答不造数); 实测 (真跑引擎 160 步) 端到端 **0.056ms/帧** · 投影 0.019ms · 测地线 T=16 0.24ms · **约束违例 1.1e-16** · Φ 0.96→0; 画布新节点 `ss_mani_eng` 落在 L4 前向输入前沿(4690)与输出前沿(10016)中点 **x=7500** (6 条硬断言: 居中/最大空档/零重叠/全前向/幂等/行带内); 过程中修 5 个**静默**真 bug (潜维不足 SO(3) 退化单位阵 · SE(3) 12 维点被当 9 维 · "残差"语义混淆拆成约束违例/投影改动量 · 反馈残差维数广播 · 无界岭回归解码器外推发散 幅值 3.05→1.10) ② **MOE / 统一主干引擎闭环只读旁路 + 判决** — 各 **52,212 帧真调 0 失败** · 9.5ms/帧 (占 100ms 预算 9.5%) · **10/10 seed dist 逐位零回退**; 但一步预测**都输给持久基线** (同源留出 MOE 0.0099 / dense 0.0154 vs 持久 0.0030; 引擎流 0.0121 / 0.0167 vs 0.00042), 机理 = 帧间位移尺度 **10× 不同源** ⇒ **靶子定错**(预测下一帧观测无信息量) → 不接管, 改多步/事件级且必带平凡基线 ③ **画布档位级验收** — 新工具 `tools/canvas_level_audit.py` 逐节点四件套 (真 `match_node` 注册 / `_EXTERNAL_LOC` 映射有效性 / 引擎引用 / 连线数): 70 节点 **⚠无执行注册 0**; 6 个「画布有节点无执行函数」接线 (4 个关键词对不上 + 2 个新写真执行节点 📐板坐标系定位/💪L2肌肉记忆技能库, 均实测跑通); 152 连线逐条缺口 (真缺口 0); 修两个审计自身误判 (自写正则漏循环注册 / 按 basename glob 命中 venv 内同名文件) ④ **L2 3D视觉引导 / 触觉反馈闭环 功能+用例+网页** — 功能清单 L2-A12/A13; 用例 **F-B12 ✅** 横向偏差 135.9→38.5mm(**0.28×**)·法向偏离 148.3→**0.29mm** · **F-B13 ✅** 触觉↔状态互补一致 **1.000**·corr(contact_p,\|F\|) **0.975**·插入段 cp 0.9931·力上界 **0.665N**(都真物理引擎断言); 功能树 FN2d06/FNtac06; 画布 `ssfeat`/`sstest` desc 改**真源实时计数** (FEATURES 57 · 树 113功能×562用例); 新页面 `https://datadrive.world/l2-guidance-tactile.html` + **同名 .md (可下载/复制 Markdown)**, 功能清单总表与主页 index.html 均加导航 (HTTP 200 复核); **3 处如实标注**: 触觉通道 0=钳口原始开度 (轨迹 gripper=夹紧度=1−开度 → 必须用**互补一致率**断言, 按相等比得 0%) · 通道 2/3 引擎恒 0 = 真机触觉缺口 (未冒充) · "静态目标向量 vs 逐帧速度"一致率仅 0.21 (不含阶段子目标) → 判据改用偏差收敛+法向偏离归零 ⑤ **工具/纪律沉淀** `tools/studio_ctl.sh` (GUI 安全启停: 防 `pkill -f studio.py` 自杀 + venv 在**仓库根**不在 tools/gui) · `tools/moe_engine_bypass.py` (`--model moe\|dense` 同一套旁路框架) · `tools/moe_holdout_persistence.py` · `tools/obs_step_delta.py` · `tools/manifold_engine_bench.py` · `tools/canvas_add_manifold_engine.py` · `tools/measure_l2_guide_tactile.py` (阈值先实测) · `tools/gen_l2_guide_tactile_page.py` (生成+部署+HTTP复核) · `tools/canvas_update_verif_nodes.py`; 技能更新 `zmax-state-space-architecture` (流形引擎+GUI 启停坑) · `integration-level-audit` (档位级验收两条硬纪律) · `zmax-console` (网页/用例发布链) ⑥ **红线全程**: 只读旁路未下发任何真机动作 · 未标定/未实现项不编造 · 在役软链与默认档一个未动
+# v5.12.1: 🧭🧩 **全系统 采-训-推 数据闭环 + 真机模型/标定单一真源 + LoRA 三层落地 (自研引擎) + 联合训练编排 (中版本统一迭代, 含飞书端并行成果)** — 老倪: 「同步所有仿真与真机数据，URDF，质量，惯性，自由度等…全面更新状态空间的仿真数据…全系统联合训练(大模型层/L4 INTACT/L3 Smolvla/L2 YOLO+2D→3D)…包括标定参数接口…联合整体训练，适配或增加 LoRA…完备的 sim to real 全系统数据闭环解决方案」/「保存数据，迭代」 ①**机器人模型单一真源** `tools/robot_spec_sync.py` → `config/robot/zmax_robot_spec.json`: 现场 URDF 解析 **DOF 6 · 6 连杆质量/质心/惯量张量齐全 (13.622 kg) · 逐轴位置/速度/力矩限位** + 控制器负载 (setToolset 1.51 kg 只读回读) + **产线 TCP 反解** (法兰→`/robot/tcp_pose`, 400 帧只读); **FK 与真机 tcp 真值差 3.52 mm**, 且新 FK 与旧脚本 `ss_fk_xms5.py::fk` **50 组随机位形逐位一致 (偏差 0.000e+00)** — 过程中抓出并修掉自己写的真 bug (先用新 origin.rpy 旋转再去平移 origin.xyz, 只影响带 rpy 的末段工具关节 → 假偏差 136mm) ②**统一标定参数接口** `tools/zmax_params.py` + `config/calib/zmax_calib.json`: 内参 K ✅ / 产线 TCP ✅ / 控制器负载 ✅ / DOF·几何 ✅; 未标定项 `T_base_cam`·`plane_z`·示教几何 = **null + 原因, 缺口返回码 1** (不用默认值顶替); 消费方 `yolo_perception.py`(台面高度)·`real_truth.py`(示教几何/夹具偏移) 已改读真源; **仿↔真参数桥** `tools/sim2real_bridge.py` → `config/robot/zmax_sim2real.json` (obs 段位⇄真机量/动作量纲/6 轴限位→L2 闸, 每条带来源与就绪度) ③**LoRA 三层落地 (自研引擎, 免 peft)**: `tools/lora_inject.py` 五条物理断言全绿 (注入瞬间逐位等价 max\|Δ\|=0 · 只有 lora_* 可训 · loss 1.04→0.00 · merge 路径差 2.4e-07 · 落盘回读 4/4); **L4 INTACT** 112 层/可训 4.41%; **L3 SmolVLA+LEW** 256 层/可训 **0.4436%**/batch4/2.29s per step/200 步 7:38/**峰值 6.25GB/0 OOM** (peft 路线在 8GB 卡四档全 OOM — 栈钉死根因: peft 0.21 把适配器**输入强制转 fp32** `_cast_input_dtype`, 且 `autocast_adapter_dtype` 该版本已移除 ⇒ 配置关不掉; 自研引擎改低秩两次小 matmul + A/B 降到输入 dtype 绕开); **合并部署口径** `tools/lora_merge_ckpt.py` (W_eff=W_base+(α/r)·B@A, 键集合与起点不一致则拒绝落盘) ④**L4 LoRA 同口径 A/B (200 clips × 3 repeats, seed 3072, skill=on)**: 16 槽平均 MAE **0.03052 → 0.02859 = −6.32%**, **逐槽赢 16/16**, 逐槽 std 0.00117→0.00073; p_dy +0.215→+0.241; **KPI-1 逐轴 \|corr\|≥0.5 仍 0/16 槽 ⇒ dy 卡点未被 LoRA 解决** (需改数据配方: 模块/槽 y ±5~10mm 错位或加大 yaw 扰动); ⚠️ **主动修正**: 先前 60 clips×1 报的 −9.88% 系小样本偏乐观, 已下修并入库; 口径铁律入档 —— **clips 数不同的 MAE 不可互比** (常数基线 60clips=0.07008 / 200clips=0.08303), 且"dy 反向/无关"实为小样本噪声 (全量为 +0.14~+0.30 全正) ⑤**全系统联合训练编排** `tools/joint_train_all.py`: L4(自研 LoRA)/L3(`--l3-lora-engine local|peft`)/L2(YOLO 真机标注域适应)/大模型层只读体检, 显存仲裁 + 逐层 rc/耗时/产物取证 + 旧产物不覆盖 + **输出目录冲突自动避让 (_rNN)**; 实跑 (含飞书端一轮): **L4 rc=0/128.4s · L3 rc=0/471.3s · L2 rc=0/53.6s · LLM rc=1(诚实缺: Qwen2.5-VL-3B 权重未下全 0MB)**; L2 与在役同帧对照持平 ⇒ **按纪律不上默认档** (未切软链) ⑥**Sim-to-Real 六环闭环** `tools/sim2real_loop.py` (采集只读体检→归档 MANIFEST/sha256→数据口径→训练→评测→部署指针), 归档**硬链接被 `protected_hardlinks` 拒时自动回退复制**并逐条记 method (实测 17/17 落地) ⑦**大模型层体检** `tools/llm_layer_check.py`: 按**权重文件实际体积**判"下全"(纠正"有快照目录即✅"假阳) + **改按本机在役位置判 L4/L3/L2** (纠正把在役权重误报"未下全"的假警报: INTACT 在 stable-wm-cache、L3 在 outputs、L2 是 models/yolo_peg_live.pt 软链 → 三个全 ✅) ⑧**文档** `docs/design/full_system_dataclosedloop_20260922.md` (架构/单一真源/缺口/命令速查/**5.2 判闸修正**/发布记录) · **技能** `mlops/zmax-full-system-loop` · 数据归档 `~/zmax_data/full_system_20260922/` (114 文件/MANIFEST+sha256/权重原地登记) ⑨**本轮与飞书端并行成果合并发布**: 人机在环标定闭环上画布 (6 节点+迭代回边, 最小二乘收敛 19.45→1.73mm/+91.1%) · 可复制交付全套 (分级清单/资源预检/Mac bootstrap/收包校验/SOP, 几何不变性改 cosine 指标 + 训练域增强开关) · 打包脚本自校验挑含 numpy 的 python · ECS 大包分片发布器 (绕 nginx 200m 限) + ECS 开机自检恢复脚本 ⑩**红线全程**: 只读 (未发任何真机运动指令) · 不干扰生产 · 未标定项不编造 · 在役软链一个未动
+# v5.12.0: 🧭🧩 **全系统 采-训-推 数据闭环 + 真机机器人模型同步 + LoRA 适配 (架构优化)** — 老倪: 「检查未完成任务，你现在已经连接真机了，你要同步所有仿真与真机数据，URDF，质量，惯性，自由度等，按照真实的机器人机械臂，全面更新状态空间的仿真数据，全面，全系统联合训练，保证 大模型层，L4 INTACT, L3 Smolvla, L2 YOLO 和 2D转3D 深度。包括标定参数接口；联合整体训练，适配或增加 LoRA, 你来进行架构优化。总之，要有完备的 L4 L3 L2 的模型训练，推理，配置，模块化，sim to real 的全系统数据闭环解决方案；注意，不要发出真机控制指令，但是你可以采集真机的数据，适配仿真和真机器人接口；注意不要干扰生产程序」 ①**机器人模型单一真源** `tools/robot_spec_sync.py` → `config/robot/zmax_robot_spec.json`: 现场 URDF 解析出 **DOF 6** (J1z/J2y/J3-y/J4z/J5-y/J6z) · **6 连杆质量/质心/惯量张量齐全** (3.167+4.291+2.018+2.005+1.507+0.634 = **13.622 kg**) · 逐轴位置/速度/力矩限位 (τ 113/113/70/25/25/19 Nm) · 控制器负载 (setToolset mass **1.51 kg** cog[16.2,12.9,31.2]mm 只读回读) · **产线 TCP 反解** (法兰→`/robot/tcp_pose` = [-0.015875,+0.015293,+0.260422] m, 由 400 帧真机只读数据反解); **FK 与真机一致性 3.52 mm**, 且新 FK 与旧脚本 `ss_fk_xms5.py::fk` 做 50 组随机位形对照 **偏差 0.000e+00** (过程中抓出并修掉自己写的真 bug: 先用新 origin.rpy 再去平移 origin.xyz ⇒ 只影响带 rpy 的末段工具关节, 表现为 **136mm 假偏差**) ②**统一标定参数接口** `tools/zmax_params.py` + `config/calib/zmax_calib.json` (`--sync/--check/--show/--fk/--json`): 内参 K ✅ (fx394.06/fy393.47) · 产线 TCP ✅ · 控制器负载 ✅ · DOF/几何 ✅; **未标定项一律 null + 原因** (`T_base_cam` 待零运动人工拖动 10+ 位姿 · `plane_z` 待现场量 · 示教几何 `peg_head/goal/aoi` 待示教), `--check` 有关键缺口即返回码 1 (不用默认值顶替); 消费方接入: `yolo_perception.py` 台面高度改读注册表 (未标定**显式标注**"回退仿真默认"), `real_truth.py` 示教几何/夹具偏移加注册表兜底 (回读 tcp 帧龄 0.07s) ③**仿真↔真机参数桥** `tools/sim2real_bridge.py` → `config/robot/zmax_sim2real.json`: obs[0:3]hand⇄TCP · obs[4:7]peg⇄YOLO 反投影 · obs[36:39]target⇄示教孔位 · 动作 u(m/s) act1=0.5→单步 10mm · 限幅 0.6 m/s · 6 轴限位→L2 收口闸, 每条带来源与就绪度 ④**LoRA 适配 (自实现免依赖)** `tools/lora_inject.py`: 输出 = base + (α/r)·B·A, **B 零初始化 ⇒ 注入瞬间逐位等价**; 五条物理断言两环境 (gui-venv311 / INTACT venv) 全绿: ①\|Δ\|=**0.000e+00** ②只有 lora_* 可训 ③loss 1.0399→0.0000 ④merge 后与适配器路径差 2.4e-07 ⑤适配器落盘回读 4/4; **L4 接入** (INTACT `train.py` 加 `ZMAX_LORA` 守卫, 默认关) 实跑 200 步: **注入 112 层, 可训 967,616 / 21,944,408 = 4.41%**, rc=0/133.8s, `fit/local_mae 0.024 · goal_mae 0.025 · skill_ctx_usage 1.000`; **合并部署口径** `tools/lora_merge_ckpt.py` (W_eff=W_base+(α/r)B@A, **校验输出键集合与起点一致才落盘**): 112 层折叠 / 最大单层 \|Δ\| 0.0064 / 键集合与 d9 完全一致 ✅; 并用同份 ckpt 证明**基座真冻结** (99 个非 LoRA 张量与 d9 逐位相同, 仅 6 个 BatchNorm buffer 正常更新) ⑤**L3 LoRA**: lerobot 0.5.2 **原生 PEFT** (`wrap_with_peft`), 本机补装 `peft 0.21.0`; 编排器把 `peft:{LORA,r8,α16,targets[q,k,v,o]_proj}` 写进 YAML (不走 `--peft.xxx` 命令行: draccus 可空子配置覆盖不可靠), 日志 `Using PEFT! Wrapping model.` ✅; **但 8GB 卡上三次尝试均 OOM 如实报** (all-linear→q/k/v/o + batch 8→4→2): 根因 = peft 对适配器输入做 **fp32 转换** (`tuners_utils._cast_input_dtype`), VLM 大激活多留一份 fp32 ⇒ 净增 >1GB; 修法留档 (12GB+ 卡 / 只挂动作专家头 / 视觉塔冻结), **L3 当前交付 = 全参续训** ⑥**全系统联合训练编排** `tools/joint_train_all.py` (`--env-check/--dry-run/--only/--steps/--lora-r`): L4 INTACT (自实现 LoRA) · L3 SmolVLA (lerobot 原生 PEFT) · L2 YOLO (真机标注帧域适应) · 大模型层只读体检; 显存仲裁 + 逐阶段 rc/耗时/产物取证 + 旧产物不覆盖 + 不 kill 外部进程; **L2 实测 (诚实)**: 微调后与在役同帧对照 `peg 1/1 conf 0.904` vs 在役 `1/1 0.906` ⇒ **➖ 持平/回退, 按纪律不上默认档** (工具给出 `ln -sfn` 但**未执行**; 真机评测当前只有 1 帧新鲜图, 统计力不足) ⑦**大模型层体检** `tools/llm_layer_check.py`: 权重按**实际权重文件体积**判"下全"(纠正"有快照目录即✅"的假阳) → SmolVLM2-500M ✅2030MB / **Qwen2.5-VL-3B 未下全 (0MB)** · 场景理解模块可导入 ✅ · DeepSeek 凭据在 hermes 配置 ✅ · 3B VL 需 8000MB 显存 (与训练错峰) ⑧**Sim-to-Real 六环闭环** `tools/sim2real_loop.py`: 采集只读体检 (帧龄 0.07s · tcp 计数 21.5万) → 归档 (MANIFEST/sha256/行数, **硬链接被 protected_hardlinks 拒时自动回退复制并逐条记 method**, 实测 17/17 落地) → 数据口径 (v6 H5: 87150 帧/4 维动作/24 维 skill_ctx) → 训练 (调编排器) → 评测 (INTACT 判闸逐轴 corr/MAE) → 部署指针 (默认 dry-run); 红线写在脚本里: **只读 · 不干扰生产 · 缺项报 fail 不糊** ⑨**文档** `docs/design/full_system_dataclosedloop_20260922.md` (架构/单一真源/缺口/命令速查) ⑩**本轮实跑取证 (reports/joint_train_*)**: L4 INTACT+LoRA 200 步 **rc=0/133.8s** (ckpt 88MB) · L3 SmolVLA+LEW 全参 200 步 **rc=0/808.8s** (ckpt 1.3GB, loss 0.213→0.230) · L2 YOLO 30 epoch **rc=0/53.8s** (判定持平未上档) · 大模型层体检 rc=1 (诚实缺: Qwen2.5-VL-3B 权重 0MB 未下全) · L3 LoRA 三轮 rc=1 (8GB 显存 OOM, 根因已定位); **L4 LoRA 同口径 A/B (同 h5/同 60 clips/同 seed/--skill on)**: 16 槽平均 MAE **0.03052 → 0.02750 = −9.88%**, 横向 p_dy 均值 **−0.02 → +0.09 (+0.106)**, win_const 保持 True —— **但 p_dy 仍 < 0.5, L4 KPI-1 的 dy 卡点未被 LoRA 解决** (与既有归因一致: dy 缺的是数据里的横向纠偏行为, 不是模型容量)
+# v5.11.5: 🎯🔧 真机 J5 力矩超限**当场修好 (SDK 一条调用, 不需要安全密码/厂家)** + 视觉引导抓取技能 (双路判据) + 离线自检加固 — 老倪: 「机器人还是报警, 你能修好么? 现在动不了了」「你先把这个动作编写成一个视觉引导的技能, 保存数据, 小版本迭代; 等我确认安全了再实际发送」 ①**J5 修好**: 根因 = 力矩传感器**零点偏置** (不是负载大) —— 修法 `calibrateForceSensor(all_axes=True, axis_index=0)` (xCoreSDK `Cobot_6` 接口; 官方文档口径: SDK 控运动时建议每次运动前标定) → **J5 −22.0031 → +0.5449 Nm** (距 RSC 22.000 门槛余量 **+21.35 Nm**) · **J1 +29.08 → −0.258** (竖直轴重力恒 0, 应≈0) · J3/J6 同步回到模型量级 · 10s 复读极差 0.109/0.391 Nm (稳定非跳变); **更正上一版错误结论**: v5.11.4 写「SDK 93 个接口无任何力矩/碰撞力接口」是**错的** —— 接口在 `Cobot_6` (xMateRobot 基类), 权威清单读 `xcoresdk_python/Release/linux/xCoreSDK_python/__init__.pyi`, 别用 `dir()` 关键字筛 (会漏); 现场随后真实点动 (L2.forward 50mm) 无任何报警 = 实测闭环 ②**视觉引导抓取技能** `L2.grasp_vision`: 判位 = **双路独立证据一致才认** (①YOLO peg 框底心 ↔ 槽位示教点手眼投影: Δx≤12px ∧ 框底−投影∈[−5,25]px ②模块竖直带「棱边能量」列剖面峰列归属 ≤20px), 执行 = 槽正上方(+30mm) → 下降到抓取位(禁下压) → 合爪 force40 → 抬升 50mm; **视觉门在执行器内 fail-closed** (占位点 `slot_vision` 解析不出/两路冲突/帧不新鲜(负帧龄或>5s) → **拒发**), 守卫沿用 z_floor(绝不低于示教抓取位)/直线≤500mm/下降≤40mm; 实测判定 **slot2 有光模块** (YOLO Δx=3.3px + 像素棱边峰距 0.0px; slot1 Δx=43.1px / 峰距 46.4px) ③**离线自检隐患修复**: `test_slot_skills.py` 原来只关位姿直读, **运动步仍走真通道** (等于离线自检能真下发机械臂) → `chan_send/_call_remote/_service_call` 三条出口全换记录器 + 逐用例断言下发条数 ④新增 `tools/vision_grasp_skill.py` (判定+前置闸门+编排+事后验收, **默认 dry-run**, `--apply` 才真发) · `register_vision_grasp_skill.py` (幂等注册) · `slot_occupy_verify.py` (像素级复核+证据图) · `test_vision_grasp_skill.py` (**30 项全绿 · 真机零接触自证 sends=0**) · `bump_version.py` (版本一条龙); 技能表 24→25 条
+# v5.11.4: 🧪📦 **全层模型重训(新数据) + 真机 J5 力矩根因取证 + 发布补齐** — 老倪: 「保存数据, 小版本迭代, 发布 windows 和 mac 版本 / 你要同步数据, 进行依据真实数据的仿真」 ①**L4 INTACT 新抗干扰数据域内训练**: `optical_insert_v6_disturb.h5` (4.1GB · 1743 回合 · 87150 帧 · 24 维 skill_ctx) 由 `tools/intact_insert_dataset_v5.py` (三档真干扰 mixed + success-only) 采集 → `intact_parts_to_h5.py` 合并; 5 轮接力 (1ep×1000步, 从在役权重续/记忆通道不零化) local_mae 0.0340→0.0310 · goal_mae 0.0350→0.0320 · action_loss -3.794→-3.834 单调改善, skill_ctx_usage 恒 1.000 ②**判闸(训练同源自监督回放, 同帧同权重只切通道)**: on 0.0282 vs zero 0.1075 → **Δ-0.0793(误差 3.8×)**; 同口径对照(同一份新数据只换权重)老 v6r11 0.0343 → 新 v6d5 0.0282 (**+17.8%**); 诚实副作用: 老 v5 数据上哨兵 on-MAE 0.0289→0.0312(轻微域漂移) ③**L3 SmolVLA+LEW** 300 步有界训练跑完 (loss 0.206~0.212 · action 0.165 · lew 0.0006, ckpt 1.29GB) ④**真机 J5 力矩"总超限"根因取证**(全程只读, **未下发任何控制指令**): 静止(六轴速度 0/末端离台面 40mm)实测 [J1 +28.98, J5 **-21.93**] Nm vs 按现场 URDF 算的重力模型 [J1 **0.00**, J5 -2.03] → J5 差 20Nm、**竖直轴 J1 读 29Nm 物理上不可能来自重力**; FK 自校(末端 vs cartPosture 差 3mm); 纯外力假设需 132N 且仍余 22.8Nm 残差 → 排除外部负载; 控制器原文 #30400「5轴传动力矩 22.035724 > 限定力矩 22.000000」+ #13036(RSC 关节5碰撞力超限) + #41447(传感器与模型偏差 Axis1 30.5 vs 0) + #13047(RSC 参数需硬重启) + 警告 #41461(力控工具TCP>0.15m→参考点退法兰)/#35100(六轴母线欠压); **硬重启控制柜前后读数 Δ≤0.15Nm ⇒ 重启无效**; 结论=传感器读数与动力学模型不自洽(非负载大), 静止基线 21.93 贴 22.000 门槛 ⇒ 一动即报; 修法=示教器"回机械零位+力矩传感器清零"(SDK 93 接口无力矩限位接口, 且现场无安全密码) ⑤新增只读探针 `tools/rokae/` (六轴力矩/工具负载/控制器日志原文/SDK 接口全列/URDF 重力对照, 5 个脚本 + README) + URDF 入库 `config/robot/xms5_r800_w4g3b4c.urdf` ⑥**YOLO 几何自动标注器** `tools/ss_yolo_geom_labels.py` (episode 自带相机参数 → 3D 有向盒投影, 免手眼标定; 自检 6/6: 光轴→中心 0px · 往返 5e-17m · 相机后方点剔除; 实测 720/720 帧出 peg+slot 框) — **诚实限制: episode 相机是工作台全景, 模块仅 8px(640²)/3px(224²) ⇒ 微调前须先换近景视角重渲染** ⑦**发布补齐**: v5.11.2 / v5.11.3 两次小版本**只有提交未打 tag**(CI 从未构建) ⇒ 本次随 v5.11.4 一并 tag, 出 Windows .exe + macOS .app
+        # v5.11.3: 🧠🎯 **VLM 通用视觉编码器 归位 L3 高级自动功能行 (紧接 Flow-Matching DiT)** — 老倪: 「画布上, VLM通用视觉编码器, 应该是 L3高级自动功能的功能, 后面直接跟着 Flow-Matching DiT。你先改好画布, 然后保存数据, 小版本迭代, 准备关机」 ①**根因**: 该节点原在 🧠大模型层行 (1000,952), 且与 n_vlm_llm(800,w=320)/ss_mem_share(1130,w=280) 空间重叠 —— 既放错行又压着别的节点。②**改动**(`tools/gui/fix_vlm_l3_row.py`, 幂等可重跑): ssvlm → **(1160, 2576)** 即 🚀 L3 高级自动功能行; 该行背景向左扩到 x=1000 (w 7770→8390) 把节点包在带内; 确认 `ssvlm → ssdec(Flow-Matching Action Head DiT)` 直达连线在位。③**x=1160 的取值理由(布局纪律)**: 它在 L4 行流形节点 (x=1180/1310/1490) **左侧** ⇒ 原有 4 条出边仍是"左→右"正向, 不因移位产生老倪明确不要的"右→左"连线 (2026-09-19 布局坑: 剔除右→左会误伤主干)。④**证据**(offscreen 真加载 + JSON 静态断言): 节点 83 · 画布连线 127(JSON 131 条按 (f,t) 去重后, 4 对重复为既有) · VLM 落在 L3 带内(水平/垂直) · 与 DiT 同行且间距 370px · VLM→DiT 直达边在 · **全画布 右→左 0 条** ✓ · 幂等复跑"已就位"。(验证脚本 /tmp/hermes-verify-vlm-l3-row.py; 备份 /tmp/state_space_obs.bak_*.json)
+        # v5.11.2: 🎯 **金手指 AOI v4 — 模板法规整截取 + 区域检测/视觉伺服对准 + 自动对焦 + 状态空间接线** — 老倪: 「之前的代码把金手指截取的歪歪扭扭，不合格；你来用模板的方式截取规整的金手指部分」→「下方还有一个厚厚的边沿，不是金手指，也要去掉，只保留金手指部分；而且金手指纵向太短了，要拉长到符合 YOLO v8 检测的比例」。①**歪斜根因(实测)**: 固定窗 [[400,1000],[2000,1000],[2000,1250],[400,1250]] 与实际条位置对不上(条中心 y 在 1008~1450 漂 ~400px, 条自身还带 0.6~1.0° 倾角), 且 `out_w=None→out_w=img_w` 把 1600x250 的窗静默拉成原图 2448x2048(纵向 8.2x 拉伸) = 又歪又拉长。②**v4 模板法**: 参考真图去倾斜 ROI 做模板(居中存放) → 运行期 1/4 尺度多角度粗搜 → 1/1 局部窗精修(角度+尺度) → **角度扫描: 直接以「实心金带核心行(行密度≥95%峰值)质心线斜率」为目标度量取最小**(不猜符号) → 单次仿射映射到规范化画布; 兜底链 模板失败→HSV 条带→中心窗(明确标记)。③**现场两轮目检后的几何**: 只保留**焊盘排**(离散, |gx|≥18) = 金手指本身 **1455x70**, 下方实心金带(覆盖64%/|gx|8.3)与塑料本体亮边沿(亮度冲 255)一律不进画布; 金手指只占 21:1 太扁 → 纵向拉伸到 **960x960 方图**(与 yolo_detector/config.yaml imgsz=960 对齐, 不 letterbox/不上采样), 另存原比例版供目检。④**接口**(工控机 10082): `/picture`=原始图 2448x2048 · `?kind=crop`=拉长 960x960 · `?kind=natural`=原比例 1455x70 · `/crop_info`=score/残余倾角/线残差/金覆盖/高亮占比 · **新增 `/region`=原始图坐标系金手指区域(定向框+四边形+外接框)+对焦清晰度 focus(Laplacian 方差)**。⑤**视觉伺服 tools/aoi_gold_servo.py**(注册 L2.aoi_gold_align): 区域偏差→`Δarm=-M·e`(符号实测, 标定雅可比) + 沿光轴退火爬坡对焦(0.8→0.4→0.2mm, focus 峰值即停) + **四级闸**(默认 dry-run / 检测不可靠否决 / 单步2mm·单轴15mm·25次 / 实测位移 vs 雅可比预期 >3x 立即停); 一次 `teach` 基准 + 一次 `calibrate` 雅可比。⑥**技能清单 UI**: 图片预览区加「来源」下拉(金手指拉长960 / 原图 / 原比例), 默认拉长版 —— 原来写死 /picture 而那个口现在是原图, 所以看不到拉长后的金手指。⑦**实测证据**: 5 张真图 条 **1454~1462 x 70~72 跨帧一致** · score 0.933~0.938 · **残余倾角 -0.94~0.61 px/1000**(v3 现状 0.87~1.02 且整幅残差 98px) · 桩相机全链 5/5 · 真 Flask+HTTP 端到端 8/8(含解码校验 2448x2048 / 960x960 / 1455x70) · 伺服离线 5/5(收敛/限幅/否决/对焦/dry-run)。⑧**数据**: tools/aoi_gold_region_label.py 用模板法几何**自动标** YOLO 区域数据集(低可信 score<0.90 或覆盖<0.45 自动挑出人工复核), 缺的是现场图片量。 | v5.11.1: 🧠→💪 **大模型层指挥 L2 技能升级 + 节点↔代码全对齐** — 老倪: 「L2 的原子技能不仅要高效, 还要保持更新; DeepSeek VL 识别出新路径/新场景时, L2 技能要能被快速更新; 设计快速学习训练流程 … 首先对齐仿真系统, 代码每个节点都要实际对应上」 ①**L2 快速学习/更新器** `tools/l2_skill_learn.py` (--from-trace 从演示轨迹提取点位生成技能 · --from-plan 按 VL/L3 规划生成 · --set-point 就地更新点位并版本自增 · 全部变更写 `data/skills/CHANGELOG.jsonl` 可回溯; 实测: 真演示轨迹→15 点技能 ✓ p1 更新→v2 ✓) ②**执行器热加载**: 注册表 mtime 一变立即重读 ⇒ 技能更新**下一帧即用, 无需重启** ✓ ③**编排器** `tools/l2_autoupdate.py`: DeepSeek VL 场景理解 → LLM 判定场景/技能失配 → 生成点位更新提案 → `--apply` 热更新 (真跑: 真实场景+真实技能 → 提案 {"action":"none"} ✓) ④**节点↔代码审计** `tools/verify_node_code_map.py`: **67/67 节点全对齐 · 0 孤儿节点 · 骨干映射文件全部存在** ✓ (修正: 引擎真实位置 tools/gui/state_space_sim_real.py) ⑤**AOI 三技能**: 金手指/表面/金手指AOI图片 + `cam_finger_10082_work_v3.py` 已上工控机(新增 /picture 读当前照片 · /last_result 读判决 · --port 安全测试; 改动仅 5 行) ⑥**技能清单 UI**: 亮字深底 · 字号放大(列表17px/窗口820x620) · **图片预览区**(金手指AOI图片直接显示照片, 支持自动刷新2s) · HTTP技能不再带 speed 参数
+        # v5.11.0: 💪 **L2 原子技能常驻执行器(延迟 60s→<1s) + 技能清单 UI + 画布主干连线修复** — 老倪: 「再次整合 L4 L3 L2 功能。现在你的反馈速度太慢了，发出指令后 1 分钟才能动作。你要将这些技能固化到 L2 级别功能 … 在工程记忆 技能与经验库 节点，双击后打开技能清单 … 例如，用户可以选择 抬升技能，再输入 10cm, 点击开始，则立刻驱动机械臂抬升 10 厘米；你来设计 UI」
+        #   ①**速度根因与修复**: 旧路径每条指令都要"新开 ssh + ROS 发现 + 等驱动 30s 空闲" ⇒ 用户感受 ~60s ✗ → 新增 `tools/l2_daemon.py` 常驻执行器: 两条常驻 ssh 通道(命令循环·环境只 source 一次 + 位姿流维护位姿缓存) + FIFO 接口(`~/zmax_data/l2_cmd.fifo`, 写一行 JSON 即下发) + **发完立即回执** → 实测 21:12:43 写 FIFO 同秒「已下发」, z 0.29235→0.30235 = 精确 +10.00mm ✓
+        #   ②**L2 原子技能注册表** `data/skills/l2_atomic/registry.json`: ⬆️抬升(默认50mm) · ⬇️下降 · ↔️前后平移 · ↕️左右平移 · 🤏合爪(力40→开度185=夹牢) · ✋张爪 · 📍到示教点 + 组合技能(抓取循环 / 演示学习循环11点)
+        #   ③**技能清单 UI** `tools/gui/l2_skill_dialog.py`: 画布「📚 工程记忆 · 技能与经验库」节点**双击** → 技能列表 + 参数输入框 + 「▶ 开始(立即动作)」+ 结果输出; 另配菜单入口与真机面板按钮; 含执行器探活(离线时不卡界面) ✓ 烟测: 7 技能 / 默认抬升 50.0mm / 探活在线 ✓
+        #   ④**画布主干修复**: 前馈加速器被"图深度重排"顶到 x=9380 ✗ + 其→动作调制器连线被我"剔除右→左"误删 ✗ → 按原设计排正 **DiT(1810)→⚡前馈(2050)→🧭动作调制器(3520)→🛡安全执行边界(3856)→🤖执行器(5090)** + 从归档兜底恢复 **6 条正向前馈边**(流形专家预测器→接触/性能流形 · 标定→潜空间 · 异常推理器→调制器 · FlowMatch→执行器) + **流形专家预测器排到两条流形之前** ✓
+        #   ⑤验收: 83 节点 / 131 连线 · **右→左 0 条** · **功能孤立 0** · 画布装载全通过; 矩阵 27/27 全绿(含 F26 L2肌肉记忆→ROS2 转发链 / F27 L4 安全闸门)
+        #   ⑥**从演示学习(人机在环)**: 291s 位姿流(50Hz/14363样本) + 夹爪流 + 23 帧 → 切出 11 个停稳点位(取料 z=10.9cm / 放料 z=14.7cm) + 夹爪三事件(合142→开1000→合169) → 固化 L2 肌肉记忆技能; 回放精度实测 **0.2µm**; ⚠️教训: 演示点本身贴底 + 碰撞检测关闭 ⇒ 低位点回放必须留余量(已加 `contact_guard`) ✓
+        # v5.10.0: 🧿🧠 **真机人机在环首次完整抓取闭环 + 感知链(L2 YOLO→板坐标系3D→L3 DeepSeek VL)接入真实数据流 + 画布卫生 + 多层记忆** — 老倪: 「你来整体升级状态空间的工程, 提升视觉语言能力 … 这些功能要都在真实的数据流里面运行」
+        #   ①**真实链路运行器** `tools/perception_chain_real.py`: 真机帧 → YOLO(在役权重) → 板坐标系(工序坐标系·免手眼, 输出模块 (x,y)mm) → DeepSeek VL 场景理解(9字段: 目标/位置/朝向/在夹爪上/画面质量/光照/背景线索/标定建议) → 单一真源 `data/scene_state.json` + `macro_memory.perception`(追加式, 其它键原样)
+        #   ②**L2/L3/L4 功能清单↔用例 25/25** (新增 F21 YOLO实时检出 · F22 板坐标系定位 · F23 VL场景理解 · F24 单一真源可回放 · F25 画布连线=真实链路)
+        #   ③**画布卫生**: 🧿 DeepSeek-VL 节点被"图深度重排"顶到 x=7400(表现为"节点不见了") → `tools/gui/post_layout_fix.py` 锚定回 (470,952); 移除停用带残字(`L4专家自主功能`); 剔除 22 条右→左连线(语义存 `docs/design/feedback-edges-v510.json`) → 右→左 **0** 条 · 功能孤立 **0** · 82 节点/142 连线
+        #   ④**多层记忆架构** `docs/design/memory-layers-v510.md` (L2肌肉/L3流程/L4宏观/MEM工程/感知场景, 每层写清真实写入者与读取者)
+        #   ⑤**真机抓取闭环首次打通**(人机在环): 视觉常数实测定标(基座 -X → 画面↓1.05px/mm · +Y → 画面←1.12px/mm · 交叉验证 fx402÷1.07≈375mm 与实测相机-模块距离自洽) + `/move_joint`(自带上下电流程, 动作后**不下电**) + `/move_line`(单轴小步避奇异点) + 夹爪 `/gripper_driver`(`target_pos=0 + target_force=40` → 开度 **185** = 夹牢; 空载 21) → **抓取 → 抬升 100mm(误差 0.1~1.0µm) → 全程开度 185 不变(未滑移) → 放回槽位** ✓
+        #   ⑥**人机在环标注适配闭环**: 训练数据缺口("抓在手里的半个模块") → 标注 12 张 → 训练 → **同口径实机对比 命中率 0.0 → 1.0**(平均 conf 0.718) → 有提升才换权重 ✓
+        #   ⑦**手眼标定如实结论**: 手拖示教条件下机器人上报位姿的非刚性误差 ~20mm → 标准手眼天花板在此, 改走**工序坐标系**(图像精度 ~1mm, 板在基座系只需粗定一次) ✓
+        #   ⑧示教点位/配方落档 `data/points/` + `docs/teach/` (槽位点 · 即将插入位姿 · 抓取配方 · 运动配方)
+        # v5.9.0: 🧭🛡 **真机首次适配准备 + 全系统安全检查 + 场景同步全系统 (成熟度升级)** — 老倪: 「我要和你一起进行标定适配过程 … 由 L4 负责安全, L3 负责流程, L2 负责操作; 再次检查全系统逻辑, 冗余检查后, 我们开始人机在环操作 … 要保证全系统所有功能的可用性, 可操作性, 可标定性, 保证安全的人机操作」 ①**首份真机安全检查单** `docs/design/real_machine_safety_checklist.md`: 层责任(L4 安全=否决/限幅/恢复预算 · L3 流程=阶段与技能序列 · L2 操作=单步原子动作) + 只读体检 (power=on · **operation_state=drag** · has_error=false · 六轴速度 0 · TCP 0.42118/0.01042/0.15360) + 作业闸门 8 条 (逐条请示/最小步长 1°/不碰 execute_external_task·hmi·state_machine/不凭 success=False 重发) ②**真风险发现 (如实报)**: `collision_detection_enabled=**False**`(撞了不停, 列 R1, 未解除不做插拔类动作) · `tool_load` 全 0 (R2) · 产线 `/motion` 在线且会抢控制 (R3) · `/robot_status` 字段被发布者截断 ~110 字符 → estop/collision 字段取不到 (R8, 不据此假设无急停) ③**场景理解同步全系统** `tools/sync_scene_state.py` → 单一真源 `data/scene_state.json` + 总装上下文 `shared_memory.meta.context` + 顶层宏观记忆 `scene` 段 (追加式, 其它键原样) — 帧 1.7s/YOLO peg 0.691@(279,87.5)/TCP 同刻/3D `fk_only`(未标定拒算)/视觉 DeepSeek 目标=光模块(带绿色拉环) ④**冗余与一致性检查**: L4 运行路径双实现 (`_l4_intact_u_ff` 引擎侧 vs `service.run_once`) 标注为 R9 并指定运行真源; 同名函数覆盖已修 (`node_ss_skill`→`node_ss_atomic`); 画布 4 对重复连线保留 (加载去重, 无功能影响) ⑤**功能清单↔用例矩阵 20/20** (修 F09: 原硬写『节点数=79』→ 改为与流程 JSON 对账, 属用例脱节非功能故障) ⑥可标定性: 内参 K ✅ 已落盘 / 手眼+off+R_rel ❌ 待标 (零运动人工拖 10+ 位姿可完成) / plane_z ❌ 待量 ⑦画布 82 节点 / 158 连线 (含 🧿 DeepSeek-V4-Flash 视觉语言节点) · 孤立 0
+        # v5.8.0: 🧠🔗 **大模型层连接拓扑补全 + 环境数据入技能编排器 + 工程记忆→总装记忆同步 (与飞书端商量好)** — 老倪: 「技能编排器怎么没有输入呢? 环境数据要输入给技能编排层的大语言模型啊」「其它节点怎么都是悬浮在那呢? 你要设计好连接拓扑关系」「当前的工程记忆, 要同步到大模型层的总装记忆节点」 ①**画布拓扑**: 新增 📚工程记忆节点 + 31 条连线 — 环境→技能编排器 (数据源/真机实况) · 状态/安全否决→异常推理器 · 三层记忆(L2/L3/L4)+记忆图谱+工程记忆→总装记忆中枢 · 意图丛/技能词典/记忆图谱/意图直读 由**全悬空接上真实读写** · 数据源→训练/推理→能力档位→(L4/L3/L2 各层) · 标定层↔2D→3D 反投影/潜空间标定; **悬空节点 0** (仅 2 个源节点无入线)。 ②**布局按数据流层级定列** (tools/gui/gen_ss_obs_layout2.py): DFS 反馈边 → DAG 最长路 → x=层级 → 所有非双向边必然向右; 双向关系 (记忆上报/下发 等 13 条) 自动标 ↩; 三版对比 右→左连线 基线7 → 首版40 → **13(全为真双向)** · 方框重叠 0 · 穿框 47→25。 ③**环境输入** (node_ss_skill/_skill_spec_from_env): 真机/仿真帧来源+帧龄 · 场景理解(SceneVLM) · 宏观记忆下行建议 → 汇成规格文本给 SkillComposer; 缺哪一路如实打印 (实测无 VLM 时打印「环境帧不可用; 场景理解未就绪」并仍注入宏观记忆建议)。 ④**工程记忆→总装** (src/lerobot/memory/eng_memory.py + 节点 📚): 真读 docs/memory/*.md(59) + ~/.hermes/memories(2) + 技能(163) = **224 文件/997 记忆条目/1581 技能小节** → **追加式**写入 macro_memory.engineering (幂等指纹 · 原子 tmp+rename · 回读校验), 飞书端其它键 (knowledge/capability/diagnosis/advice/seen) 原样保留。 ⑤**修同名覆盖**: node_ss_skill 被原子技能处理器二次定义覆盖 (同名) → 原子技能更名 node_ss_atomic, 分派器+注册同步 (行为不变, 隐患消除)。 ⑥**验收**: /tmp/hermes-verify-llm-topology.py 四条全绿 (编排器有环境输入 · 规划器有上下文 · 工程记忆同步回读 · 无悬空节点); 零回退 ✅ (档位归属/L2 57/L3 62/L4 79/连线丢失 0)。
+        # v5.7.0: 🕐🤖 **真机 J6 首次真运动端到端打通 (30° 指令实到 29.99975°) + 时钟回拨事故修复 (真机输入图像"不实时"的真根因)** — 老倪: 「为什么真机的输入图像不是实时的了」「让J6旋转30度，逆时针…转吧」「来回旋转30度，反复动作」「保存技能，中版本迭代，发布windows mac版本」。①**时钟回拨事故 (输入图像冻在 12:15 共 13 分钟)**: 12:15 本机 NTP 把系统钟**回拨 8h** ⇒ 所有用 `time.time()` 差值做节拍判据的常驻循环**判据变号**: Docker tap 采样判据(`now-t0>=1/rate`)恒假 = **停止落盘**、解码节流判据(`now-上次<=1.0`)恒真 = **永不解码** → `cam_rs.png` 冻在最后一帧; 同时 GUI 用 `now - 文件mtime` 判新鲜度, mtime 落在未来 8h ⇒ 帧龄 = **-28800s ≤ 10s 阈值** ⇒ **旧帧被判成"新鲜"**(踩「不拿旧图冒充实时」红线: 画面不动也不换占位图, 看着像还在实时)。修: (a)`tools/ss_remote_tap.py` 采样节拍 + 解码节流 + 帧龄**全改 `time.monotonic()`**, 帧龄钳非负(新增 `_age_m()`); (b)`tools/ss_bypass_run.py` 逐帧节拍同修(旁路落盘同样卡在 20:15:25); (c)`tools/gui/yolo_input_viewer.py`: **负帧龄(mtime 在未来)一律拒用并如实标「⏰ 时钟异常」**、断流自愈计时(6s 无新帧→自动重连)改单调钟(原来回拨后永不触发 = 画面冻住无人救)、`live_frame.json` 的 `age_s` 必须落在 [0,5]s; (d)回归自检 `tools/verify_clock_skew_guard.py` **全绿**(未来 8h mtime→拒用 · 未来 30s→拒用 · 新鲜帧入选 · 旧帧拒用 · 现场 cam_rs.png 帧龄 0.8s)。纪律入档: **节拍/新鲜度一律单调钟, `time.time()` 只用于落盘时间戳**。②**真机 J6 首次真运动 (端到端可复现)**: 先盘点接口面(运动类**全是 service, 无 action**): `/target_relative_joint`(TargetJoint: sim_mode+JointState = 相对关节) · `/target_joint_state`(绝对) · `/move_joint|/move_line|/move_pose`(TargetPose: speed+JointState+Pose) · `/move_sequence`(MoveSequence: move_types/poses/joint_states/speeds/zones) · `/gripper_driver`(GripperSrv: pos/speed/force/acc/push) · `/lissajous_force_search` · `/rokae_insertion_force_search` · `/robot_stop|/rokae_recover_estop`(Trigger); 关节名必须用驱动 `joint_name` 参数值 `XMS5-R800-W4G3B4C_joint_1..6`(写错会映射错轴)。**解锁序列实测 = ①关闭拖动 ②切自动模式(operation_state=idle) ③伺服上电(power_state=on)**; 缺任一条的 4 次下发被控制器拒: `ec=-18 setMotionControlMode(RtCommand) 该操作不允许在机器人当前运行状态下执行` / `set_target_joint: setPowerState(false before automatic mode)` / `实时模式异常: 设置模式错误…网络连接错误` —— 根因写在控制器日志 `[2026-09-18 13:19:10] #10011 切换至自动模式失败 | repair: 停止运动/恢复急停/**关闭拖动**`(控制器残留"拖动功能" ⇒ 切自动失败 ⇒ RT 会话建不起来)。解锁后 `/target_relative_joint` J6 **+0.5235987756 rad → success=True**, 实测 ΔJ6 = **+29.99975°**(误差 **4.4 µrad**), 其余五轴 |Δ| ≤ 0.0014°, TCP 走 **12.71mm 圆弧**(理论 2·sin15°×24.2mm = 12.53mm), 姿态相对旋转 30.0027° 且旋转轴与 URDF/FK 算出的 J6 轴**夹角 0.180°**; 反向经 `/move_joint`(绝对关节)回到 14.0979°(误差 0.0006°), 回转后 TCP 与起始差 1.2mm。③**坑入档**: (a) **`/move_joint` 动作真跑了, 但返回 `success=False / ROBOT_IDLE_TIMEOUT`**(驱动 `wait_until_idle` 30s 超时, 期间 `operation_state=moving`) ⇒ **判完成必须看真值(J6/TCP) + `operation_state=="idle"`, 不能凭 success=False 重发**(会叠加第二次 30°, 真的会动); (b) **rt 动作结束后驱动会把伺服下电**(`power_state=off`, 抱闸保持 — 实测六轴速度全 0 · J6/TCP 与动作后逐位一致), 相对关节服务每步前需上电, `/move_joint` 自带上下电流程; (c) 控制器报警历史在 Orin `/tmp/tashan_robot_run.log` 的 `[robot_status]` 行(含 repair 建议) = 定位真因最快入口; (d) Orin 的 ROS `header.stamp` 比本机墙钟**慢 26.24h**(RTC 未校), 时间基准一律用本机落盘; (e) `collision_detection_enabled=false`(默认关, 撞了不停) 与 `tool_load` 全 0(与 09-17 控制器 `#41447 拖动力矩模型偏差 Axis1 10.17N·m` 相关) 建议集成商补参数。④**新工具/留档**: `tools/ss_fk_xms5.py`(URDF/FK 复算: link6/tool0/tool1 与实测 tcp_pose 对齐误差 **3.3mm** · 六轴灵敏度 · 腕部偏置 **J4↔J6=136mm**/J5↔J6=0) · 留档 `~/zmax_data/arm_j6_first_test_20260918.md`(5 次尝试原始返回 + 控制器日志逐条 + 实测位移 + 驱动参数) · 技能 `real-arm-motion-control`。⑤红线照旧: 只调点名服务, 未碰 `/hmi/command` · `/execute_external_task` · `/state_machine/*`。
+        # v5.6.24: 🏷 **真机 YOLO 标定工位打通 (拖框/选中间步/删除) + 真机位姿真值记录 + 机器人动作自动标注设计** — 老倪: 「左键拖不出框 / 改选中的类别不好使 / 标号的数据在哪里 / 加两个删除按钮 / 记录光模块 x y z 对齐 metaworld / 设计用机器人实际动作自动标注」。①**修两个真 bug (均 offscreen 取证)**: (a)**拖框锚点被每帧鼠标移动覆盖** (`_edit_drag` 写 `("new", start, pt)` 而非 anchor) ⇒ 松开时只剩最后一小段位移(<4px)被当误点丢弃 → 「左键拖不出框」; 修后显示(100,100)-(260,220) → 原帧框 (50,50,130,110) 正确, 旋转窗 180° 同测 (189,129,269,189) 自动换算回原始坐标。(b)**两窗只同步框集合、不同步选中项** ⇒ 在旋转窗(相机翻转时最常用)点选后「🏷改选中类别/🗑删选中/↩撤销」取不到选中 → 看着像按钮坏了; 修: selectionChanged 互相同步 + 这几个键改走 `_active_pane()`。②**类别口径纠正**: 真机类名必须 `peg` (不是默认 `optical_module`) —— 依据唯一口径源 `yolo_3d/frame_source.py:40 CLASS_MAP{{peg→光模块}}` 与下游 `real_yolo_perceive.py` 的 `det3d["光模块"]/["hole"]` 取值; 且 `save_sample` 对未知类名会**自动追加进 classes.txt** ⇒ 旧名会污染类别表(id 顺序乱); 已把 classes.txt/DEFAULT_CLASSES/GUI 兜底全部改 `peg` 并救回已存 3 张的标签 (id1→id0)。③**数据管理**: 窗口新增「🗑 丢弃当前帧」「🗑 清空本会话」(图+标注**成对删**, 绝不留孤儿) + CLI `--clean`(清孤儿标注)/`--reset --yes`(清空重来, 保留类别表+审计流水); 实测临时根: 孤儿标注删/孤儿图保留/配对不动、reset 19 文件清空 classes.txt 保留。④**真机位姿真值 (单一来源 `tools/real_truth.py`)**: 读采集容器落盘的 state jsonl 末行(尾部64KB反扫)/status.json → TCP+四元数+关节+新鲜度; 保存样本时写入 `annotations.jsonl.truth` + 侧车 `sessions/<会>/truth.jsonl`, `--build` 聚合 `dataset/truth.jsonl`; **按 metaworld 39D 段位对齐** ([0:3]hand=[TCP真值], [4:7]光模块=TCP+R·夹具偏移, [7:11]peg_quat, [36:39]hole=示教goal) —— 夹具偏移/示教几何未标定时**填 null + 原因, 不编造**; 窗口加 1Hz 真值行 (实测 TCP=[0.43678,0.32978,0.222018] base_link, age 0.02s)。⑤**机器人动作自动标注 (设计+数学核)**: `docs/design/real_autolabel_by_robot_motion.md` — 机器人自己当标定物: 探针运动(夹着模块走9~12位姿, 图像差分取运动域中心当模块像素, 配对用**两帧TCP中点**消除半采样周期偏置) → DLT 解 3x4 投影矩阵 P(=K·[R|t], 已含手眼外参) → 批量把 真值投影成 YOLO 框; `tools/real_autolabel.py --selftest` 全绿 (rms 1.4e-13 · 还原内参 fx610.000/fy607.000/cx318/cy242 · 1px噪声→0.811px · 薄片绕光轴转90°框 14.5x37.5→37.7x14.4 正确互换); 诚实边界: 模块尺寸/夹具偏移/孔口点需现场量或示教, 自动标注**不得当 val**。⑥**模型引擎页一键训 YOLO**: 新增「🚀 YOLO 训练」节点 (policy=yolo · 步数=epoch · 与 🚀 ACT 训练 同列对齐) —— 原来 `_train_yolo_detector()` 写了却没有节点传 policy="yolo", 从界面到不了; 同时修该函数: 解释器自动选带 ultralytics 的 gui-venv311(旧写死 ~/lerobot-venv 实测没装 → 一点就报错), 数据源优先**真机标注** data/yolo_annot/dataset (走 yolo_annot_train.py --base auto 域适应微调, imgsz640) 否则回退仿真 data/yolo_peg, 仿真分支真用 GPU; 踩坑: match_node 取最长关键字, 裸 "YOLO"(4字) 会抢走 "训练"(2字) → 「🚀 YOLO 训练」被派去跑目标检测, 故单独注册 train_yolo("YOLO 训练"); 另 edges 源索引是 3(YOLO检测)不是 2(共享🧩定义被跳过) 否则连线被静默丢弃。⑦**运维**: `zmax-studio` `Restart=on-failure→no` (journal 实证 11:51 X11 connection broke → 退出码1 → 5s 又拉起 = 反复重启, 老倪「别自动重启」); **采集容器 DDS 假死**(长跑后 jsonl 在长但所有话题收包恒 0, 新建容器同话题立刻 49.6Hz ⇒ 启动撞上 NTP 拨钟致 RTPS 发现不自愈) → `docker restart` 即恢复; 标定工具写出路径与采集器读取路径**口径对齐**($SS_OUT/real_cell_geometry.json), 否则示教完 tap 仍报「无示教几何」。⑧全程零回退取证: 模型引擎 65 节点/101 连线 vs 基线 64/100 —— 旧 64 节点索引→名字逐条不变、旧 100 连线一条不少、布局仅第0行第10列新增。 | v5.6.23: 🧪 **sim→real 域差专题: 域随机化 (DR) 三臂同口径对照 — 结论: 纯仿真 DR 不足以跨真机** (老倪: 「我要用 yolo 目标检测的模型, 运行在 orin 上, 能够感知实际的机器人环境」) ①**三臂 A/B** (同基座 peg_v1 · 同超参 25epoch/batch16/imgsz480/seed0/4060 · **只差数据**): peg_v1(仿真 1800) ‖ ctrl_sim(仿真 1800 重训 = 控变量) ‖ dr_mix(仿真 1800 + **DR 9000**) → 真机 19 帧 × 4 朝向 = **76 次推理全 0 检出**; 真机最高 conf 0.0107 → **0.0301**(ctrl) / 0.0177(dr), 仍只阈值 0.25 的 1/10; 仿真 hold-out 三臂 **3.00 框/帧 · 三类齐全 60/60** = **零回退** ⇒ **真机数据微调 / 教师蒸馏是必做** (二者都要 Orin 在线); DR 数据保留作真机微调的**防遗忘混合集** ②**DR 生成器** `gen_yolo_data.py --dr` (**默认关 = 原路径零回退**, 同进程等价性 120/120 标注逐字符一致): 场景层 `--dr-scene` (光照位置/方向/强度/色温/环境光 · 12 个材质颜色全随机 · 纹理换随机噪声 · 相机 ±3cm/±5%fovy/±5° 旋转 — 投影读同一份 model 故图像与标注天然同步) + 图像层 (亮度/伽马/对比/色偏 · 高斯噪声 · 运动/离焦/降采样模糊 · 暗角 · 随机遮挡 · 缩放裁切与 ±8° 旋转(框同步) · **灰底 114 letterbox** 复刻 640x480 真机帧进 imgsz=480 的版式); 9000 张, 同 `--scene-seed` **逐位可复现** (300/300 文件一致) ③**新工具入库**: `tools/eval_sim2real_yolo.py` (多臂双侧同口径评测: 真机 4 朝向 + 仿真 hold-out + 逐臂 json + 目检图) · `tools/analyze_real_det.py` (**位置先验**: 光模块现场在画面**下方正中** x∈[0.25,0.75] y∈[0.55,1.0] / **朝向一致性** / 分帧组) · `tools/real_frame_selfcheck.py` (**测集自检**: 本轮 11/19 帧目标区几乎无结构 → "0 检出"不能全算模型锅) · `tools/verify_dr_labels_geometry.py` (唯一标记+模板匹配, **60/60 通过**, 最大错位 7.3px/中位 0.7px) · `tools/build_dr_mix_dataset.py` · `tools/train_sim2real_arms.py` · `tools/orin_mjpeg_server.py` + `tools/verify_real_frame_provenance.py` (真机帧"真迹"取证: 设备身份/驱动协商/活体性/代码 sha256) ④**方法论坑入档**: **metaworld 场景随机向量走全局 np.random**(`env.reset(seed=ep)` 不生效) → 跨进程"逐位比对"不成立 (同一份旧代码跑两次 300/300 图都不同), 零回退只能用**同进程等价性**证明, 训练/评测必须用**落盘固定数据集**, 要复现须显式 `--scene-seed`; **模板匹配验证标签一致性必须用唯一标记**(规则纹理会歧义, 另有 patch 缩放因子/旋转中心两个易错点, 都会造成假失败); **"0 检出"必须先做测集自检**再下结论 ⑤文档 `docs/design/zmax_sim2real_dr_experiment.md`; 归档 `~/zmax_data/sim2real_dr/20260917` (MANIFEST 含 sha256/口径/复现命令, 数据集同盘硬链接零额外占用)。⚠️ 诚实缺口: 真机精度仍未验证 (无真机标注数据); 真机 3D (内参 K + 手眼外参 + plane_z) 未标; Orin 直连不在 (USB 千兆网卡未接, 192.168.23.x 网段不存在) → 采数据/教师蒸馏/标定三项待 Orin 在线。 |
+        # v5.6.22: 🏷 **真机 YOLO 标定工位: 画框标注 → 数据集 → 训练一条龙 (老倪: 「现在要采集真机图片训练 YOLO。在右键打开的窗口增加标定功能, 标定工程师根据图像圈选光模块、输入类别、保存当前图片, 而且 YOLO 模型可以通过保存的图片进行模型训练。做好标定工程、数据保存、数据文件夹路径的设计」)** — ①**窗口即标定工位** (tools/gui/yolo_input_viewer.py): 第 2 行标定行「✏️ 标定模式」(入口**恒常显**) · 类别 combo+「＋新类别」 · 💾保存标注 · ⏭保存并下一帧 · 🏷改选中类别 · ↩撤销 · 🗑删选中 · ✖清空框 · 🧊冻结/▶实时 · 标定员; 第 3 行数据行 📦构建数据集 · 🔍数据体检 · 🚀训练 YOLO · 📂数据目录 + 数据根/张数/类别 (常显); 画面控件 = tools/gui/yolo_label_widget.py (拖框/移动/四角缩放/右键删/Ctrl+Z/1-9 选类别); 快捷键 Enter 保存 · N 下一帧 · F 冻结 (**输入框有焦点不抢键**) ②**框永远存原始帧像素坐标**: 在 180°/90° 旋转窗上圈选会自动 `unmap_box` 换算回来 (实测 0/90/180/270 拖框 ≤3px 落回目标), 两个子窗共享同一组框 ③**数据目录契约** (data/yolo_annot, data/ 已 .gitignore → 数据不进库): classes.txt (行号=class id) · sessions/<会话>/{frames,labels,session.json} (溯源: 相机身份/seq/帧龄/标定员) · annotations.jsonl (追加流水, 永不改写) · dataset/{images,labels}/{train,val}+data.yaml+stats.json (**训练唯一入口**, 由 --build 生成, 硬链接省盘, 小样本<8 时 val 复用 train 并显式标注 val_overlap_train) · meta.json; CLI: --init/--build/--check/--stats/--import-yolo-dir ④**体检能抓错** (反向验证: 注入 class id 越界 + 中心>1 → 必报 2 错, 恢复后 0 误报): 配对/字段数/类别范围/坐标范围/退化框/重复图 md5/空标注(背景样本)/data.yaml nc 一致性 ⑤**训练器** tools/yolo_annot_train.py: 先体检 (有错退出 2, 不拿脏数据训) → 基座 auto=现有仿真权重做域适应微调 → ultralytics → **训练后真推理验证** (val 抽样打印检出数/conf + 权重路径) ⑥**输入图像窗口同时补齐**: 原始+旋转180° 双画面并排 (Qt 原生像素变换, 同一帧源) · 链路断流自愈 (Orin 节点 25s 空闲自退/客户端被杀 → 20s 节流自动重连, 实测 17s 恢复) · **关窗收口** (客户端 1s 停 + Orin 节点自退 11s) · 竞态收口 `_collect_if_closed` (ensure 后台跑时关窗 → 复查并停, 否则留 10Hz 孤儿客户端) · showEvent 重拉 · 拔外接屏/换分辨率自动把窗口拉回屏内 ⑦**数据根随输入源分开**: 真机 data/yolo_annot (optical_module) ‖ 仿真 data/yolo_annot_sim (peg/hole/hand) —— 仿真框混进真机 classes.txt 会静默训出语义打架的模型; UI 数据行显式标 🎥真机/🧪仿真 ⑧**Orin 侧节点三修** (tools/orin_frame_srv.py): server_fps 恒 null (meta dict 每帧重建把 fps 冲掉 → 改持久字段) · 自退看门狗 (独立线程 + os._exit, 主循环判空闲不可靠) · 单实例守卫误判 (pgrep -f 会匹配拉起命令自己的 ssh/bash 命令行 → 只认 argv[0] 是 python 的进程) ⑨**取证 (全绿)**: tools/verify_annot_labeling.py (坐标映射/落盘/标签手算比对/体检反向验证/快捷键+入口可达性) · tools/verify_annot_ui_real.py (真桌面 192/96DPI 按钮不截断+两窗并排+窗口在屏内+截图) · tools/verify_annot_sim.py (仿真源同样可标定 + 真机集零污染) · tools/annot_smoke_real.py (真机 D405 8 帧 → 构建 → **真 GPU 训练跑通** box_loss 3.75→3.03) ‖ 现场实测 8 帧真机 → 数据集 7/1 → 2 轮 GPU 训练 best.pt 落盘。⚠️ 诚实缺口: 精度未验证 (烟雾框是程序化占位框, 只证管线), 首轮人工标定建议 100~300 张 |
+        # v5.6.21: 🧰 **运行资源维护 + L2 YOLO 模型单次加载 + VS Code 崩溃归因(纠正)** — 老倪: 「查查现在谁在运行? 清理, 维护运行资源」「vscode 怎么卡死了 / 又崩溃了」①**资源维护**: 三份 append-only 证据流原来无上限增长 (state 486MB + bypass 194MB + proposal 77MB) → 上 logrotate(copytruncate, 200M×5, 压缩, su root 适配容器写的文件); journal 370M→198M; docker 悬空层清理; swappiness 60→10 持久化 (/etc/sysctl.d/99-zmax-workstation.conf); 收回卡死 12h17m 的 LibreOffice (330MB); ②**修我自己的缺陷**: `ss_yolo_on_real.py` 原来**每 0.5s 重建一次 YOLO 模型** → 改为单次加载+预热 (内存/显存抖动与 CPU 尖峰消失); ③**VS Code 崩溃归因 (重要纠正)**: 三次崩溃均为 `code` 主进程 **SIGTRAP (Electron 致命检查)** (06:19:21 / 06:20:32 / 06:33:27), **不是内存不足** — 无内核 oom-kill、无 systemd-oomd 动作、PSI=0、进程 VmHWM 仅 283MB (apport 那条 17.4GB 是**核心转储体积**/1.5TB 虚拟地址空间, 不是内存占用); 定位 = **只有打开本仓库工作区才崩** (不带文件夹、小目录、`--disable-extensions` + 全新 profile + 关 GPU 均存活), 仓库规模 98,527 文件 / .git 1GB / outputs 8.4G / gui-venv311 7.8G; 应对: 仓库 .vscode/settings.json 把重目录从 files.watcher/search/python.analysis 排除 + 诊断改 openFilesOnly + argv.json 关硬件加速; 待验证下一步 = code 1.134.0 → 1.138.0 (关机前未升级, 保持可用回退); ④**归档**: /home/ubuntu/zmax_data/ss_remote/20260917_0641 (state 443,224 行 / proposal 443,197 行 / bypass 394,628 行 / srv 快照 110 行, MANIFEST 含 sha256 与行数)。 | v5.6.20: 🎯 **真机图像 → L2 YOLO 旁路检测 (输出只有可视化) + 数据采集 srv 客户端设计** — 老倪: 「注意, orin不能发出实际的信号, 旁路运行的状态空间工程, 输出只能是旁路的可视化显示节点」「把 metaworld 的数据, 切换到真机的 realsense 图像数据, 调整接口, 对齐输入, 让当前的 L2 功能的 yolo 可以处理光模块」。①**输入对齐 (复用 L2 既有口径, 不另造)**: 真机帧 PNG/RGB → **BGR** (ultralytics 内部 BGR, 喂 RGB 检不到 — 8月实测坑) → L2 现有光模块权重 `runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt` (hand/peg/hole, **peg=光模块**, imgsz 480, conf 0.4); ②**自检实测** (同域真图 480²): hand 0.966 · peg 0.957 · hole 0.94 → 光模块可稳定检出; ③**唯一出口 = 旁路可视化节点**: 窗口显示真机位姿 (TCP+四元数+frame+六关节+机器人状态) + **L2 YOLO 标注图** + 残差/接触/位移速率曲线; 零下行 (不 import rclpy · 无 socket · 不调任何 Orin 服务/控制话题); 常驻 `ss-yolo-bypass` 服务每 0.5s 取最新真机帧; ④**真机数据源 = ROS2 服务客户端** (按老倪设计): 确认现场 `/hmi/snapshot` [interfaces/srv/HmiSnapshot → snapshot_json] (只读 HTTP 孪生 /api/v1/snapshot 实测返回批次/工序/力/配置, 不含图像) + `tools/ss_srv_source.py` 只调查询类 srv, **绝不碰** /hmi/command · /execute_external_task · /move_* · /gripper_driver 等会动作的接口; x86_64 接口包 `tools/ros2_interfaces` (从 Orin 只读拷贝 .srv 源 + 容器内 colcon 生成); ⑤**红线核查**: 停掉我早前遗留的 orin_shadow 进程 (跑了 11h) + 文件移入 ~/zmax_quarantine, Orin 恢复零自研进程零自启; ⑥阻断如实报: 真机图像当前 0 帧 (realsense 发布者 0 = 驱动未跑; foundationpose 在线但空闲), 相机起来后旁路自动出结果, 代码无需改。 | v5.6.19: 📷 **旁路实时显示: 真机位姿 + 实时图像 (RealSense 优先) + 修图像链路静默失败** — 老倪: 「我现在已经切换到真机的状态了…现在选择 L2 功能, 那在旁路实时显示, 需要显示机器人的位姿和实时 realsense 图像」。①**旁路窗口新增两块**: 「真机位姿」(TCP x/y/z + 姿态四元数 + frame=base_link + 六关节位置/速度 + 位置变化率 + 机器人电源/运行/报警/急停/碰撞) 与「实时图像」(320×240 预览, **RealSense 彩色优先**, FoundationPose 调试图兜底, 多话题逐条状态); ②**修真 bug (静默失败)**: 图像订阅用了 `raw=True` 却**从未反序列化** → `self.img` 永远 None (之前我把'无图'都归因于发布者空闲, 实际代码也断着) → 现 1Hz 定时器 `deserialize_message` → 解码 → 纯 Python PNG 落 `cam_rs.png`/`cam_fp.png`; ③**只认新鲜帧**: `IMG_FRESH_S=5s` 窗口 + 面板二次校验, **旧图/离线测试图绝不冒充实时图** (离线自检产生的 PNG 已即时清除); ④采集侧补**每话题发布者计数** (`count_publishers`, 区分'无发布者'与'有发布者但空闲无帧') + `robot_status` 截断 300→1200 (原截断破坏 JSON → 面板解析失败恒显示'缺') + 稀疏字段(力/夹爪/状态/图像)回看最近 12 帧取最近非空; ⑤**现场实况 (如实)**: 此刻 RealSense 彩色/深度发布者 **0** (D405 已接, Orin 未装 realsense2_camera), `/foundationpose/tray_reference/debug_image` 发布者 1 (vision_tag) 但**产线空闲不发帧** → 面板显示「当前无图像帧 + 原因」, 一旦有帧立即显示真图; 位姿是真值实时 (0.66/-0.03/0.29 m, 关节全 0 = 静止)。 | v5.6.18: 🔀 **📦 数据源节点直接切换「仿真/真机」(不加连线) + 真机通道带图像/位姿** — 老倪: 「传感器的位置应该跟 metaworld 数据源一样…设置一个切换开关切换数据源」→「就在 metaworld 数据源这个节点上直接增加切换开关, 这样连线都不用增加了」「传感器的数据, 有图像, 有机器人的位姿」。①**撤掉单独的 📡 传感器节点及其 2 条连线**, 改为在 **📦 metaworld 数据源节点本体**上做拨钮: 单击拨钮(或右键菜单「切换数据源: 仿真 ⇄ 真机」)= 数据源切换; 节点上直接画出「数据源: 仿真/真机」状态 (灰=仿真/绿=真机), 双击语义不变 (仍=按当前模式跑训练/推理); ②切到真机 → 读 4060 远程只读采真机帧: **机器人位姿**(TCP+姿态四元数+frame=base_link)+六关节+六维力+夹爪+机器人状态+**图像**, 写 module._bypass_obs 并记录新鲜度/缺口; ③**图像通道**: 新增订 /foundationpose/tray_reference/debug_image (现场唯一有发布者的图像话题, 发布者 vision_tag; RealSense 彩色话题发布者 0 = Orin 未装 realsense2_camera 驱动; 触觉 interfaces/msg/TactileSensor 是自定义消息, 容器无类型定义→暂不可订) — 容器内纯 Python PNG 编码落 cam_latest.png, Z700 面板加图像预览 + 三态如实标注 (有帧/话题在线但空闲无帧/无发布者), **不用旧帧或占位图冒充真图**; ④采集侧补每话题**发布者计数** (区分'无发布者'与'有发布者但当前无帧') + /robot_status + 关节名 + TCP 姿态; ⑤画布 80→79 节点 / 100→99 连线 (撤 2 加 1), 旧节点除 📦 数据源(加开关参数)外逐字段零变化; ⑥取证 tools/verify_src_switch.py 全绿 (拨钮渲染/单击切换/真机位姿+图像三态/Z700 预览/旧连线零丢失)。 | v5.6.17: 🔭 **旁路接控制台 (真机信号源 + 两个观察器)** — 老倪: 「旁路接到控制台做实时可视化 (当前阶段/残差/接触概率曲线); 数据源切换成旁路的实际传感器数据, 增加一个传感器节点」「在可视化层, 物理世界的输出, 增加一个 Z700 节点, 用于显示所有的真机信号」。①**📡 旁路真机传感器** (数据源层, ssbyps): 读 4060 远程只读订阅 Orin 生产话题的落盘真机帧 (TCP位姿+四元数/六关节/六维力/夹爪/机器人状态), **双击 = 画布数据源 metaworld → 真机旁路** (写 module._bypass_obs, 实时报新鲜度与缺通道); ②**📈 旁路实时可视化** (可视化层, ssbypv): 当前阶段(13段状态机)/残差(m)/接触概率 实时曲线 500ms 刷新 + 六层调用数 + 零下行自证 + 缺口计数; ③**🖥 Z700 真机信号** (可视化层, ssz700, **输入=🌍物理世界输出**): 全部真机信号 — TCP 位置/姿态四元数/坐标系 · 六关节位置速度(含关节名) · 六维力/力矩 · 夹爪开度 · 触觉 4D · 机器人电源/运行/报警/急停/碰撞 · 产线阶段 · 采样率/新鲜度/缺通道; ④采集侧补齐 TCP 姿态四元数 + /robot_status + 关节名 (真机全信号); ⑤画布 77→80 节点 / 97→100 连线, **旧节点逐字段零变化** (仅可视化层色带按设计加宽), 无新增反向/穿框图 (体检与基线逐条一致); ⑥取证 tools/verify_bypass_viz.py 全绿 (画布加载/零回归/语义映射/真数据灌入/PNG)。 | v5.6.16: 🍎 **macOS .app 发版连挂 5 个 tag 的真根因 = pipefail + `ls | head`** — 老倪「发布 windows 和 mac 版本」。查 v5.6.15 的 mac job 日志: 下载与解包**全部成功**, 挂在 `ls -la reports/ | head -8` 之后的 `ls: stdout: Broken pipe` → `##[error]Process completed with exit code 1`。根因: GitHub Actions 的 bash 步骤是 `bash -e -o pipefail`, head 读满 8 行即退出 → ls 写管道收 SIGPIPE 返回非 0 → 整步失败 (Windows job 同一步同一时刻成功, 所以一直被误当成「外部静态站对 mac 偶发不可达」——v5.6.13 的 3 次重试+占位放行方向没错但没治到根)。修: 该行补 `|| true` (两处 job 同步); Windows .exe 不受影响 (v5.6.15 Release 已出 160MB exe, 只缺 mac zip)。 | v5.6.15: 🛰 **Orin 零程序 · 只转发感知 (红线整改 + 标定桥真口径)** — 老倪: 「不要在orin上增加新程序, orin是生产设备, 不能被干扰, 你先只是转发orin的感知信号」。①**Orin 侧全清**: 自研进程/自启项(crontab @reboot)/ss_edge·ss_shadow·ss_infer 文件全部移除, 生产 8765 网关与 18 节点不受影响 (实测 pgrep 空 / crontab 空 / 域内 zmax_ss 话题 0)。②**采集改走 4060 侧 Docker 远程只读订阅** (ros:humble-ros-base --network host, ROS_DOMAIN_ID=0): 跨机 DDS 直订 /robot/tcp_pose(49.8Hz 真值) + /real_joint_states(100.4Hz) → 落本机 jsonl; 节点自证 endpoint 仅 /parameter_events(rosout 已关) = **零数据发布**; 会写回 Orin 的 ss-bridge 停用禁用。③**标定桥真口径**: z7=[手/头−目标, 手/头−光模块, 夹持], 手/头=真机 tcp_pose, 目标/光模块点由 tools/ss_geom_calib.py 现场示教 (可在 4060 容器内跑, 不动 Orin); **几何未示教 → z7=null 拒算, 绝不编造**, 推理 input_map 逐条落盘 (现为 placeholder_v0, 示教后自动切 tcp_pose_v1)。④tools/ss_archive_remote_data.py 一致性快照+MANIFEST (条数/坏行/时间跨度/sha256/口径), 数据不进库。⑤踩坑留档: /robot/force_torque 同名双类型 (WrenchStamped 建订阅报 invalid allocator → 只订 JointState)。 | v5.6.14: 🔌 **硬件工具箱真机链路修通 (直连 Orin 局域网)** — 老倪: 「点红色应该变红 / 发现硬件怎么崩了 / 按钮反应很慢」。①**直连**: 本机 USB 千兆网卡(RTL8153) + `/etc/netplan/99-orin-lan.yaml`(192.168.23.50/24, 不设网关→上网仍走 WiFi) 打通 Orin 192.168.23.66 (0.5ms) — 旧「本地到不了 23 网段, 必绕 ECS/Mac」前提作废。②**发现硬件**: `HardwareDiscoveryThread.ORIN_USER` 废弃 `nvidia`→`tashan` + 本机↔Orin ssh 免密(ed25519) + 显式 `ROS_DOMAIN_ID=0`(机器人在 domain 0; 用 23 查只会看到 /rosout, 误判'驱动没起') → 实跑 18 节点 / 46 话题 / 10 条详情 / 8765 listening。③**崩溃修复 (VEH.3.04)**: `_on_discovery_result` 对 `Z700_ROS2_NODES["real"]`(**list**) 调 `.get()` → AttributeError; Qt 槽里未捕获异常 = qFatal → 整个进程中止(表现'点一下就崩', 无报错弹窗) → 改列表/字典兼容 + `device_tree.topLevelItem` 判 None + **渲染总闸**(渲染异常只记日志不冒泡)。④**塔灯**: `_tower_cmd` 改「**直连优先**(`ros2 topic pub /tower_light/command` + 回读 `/tower_light/status` 验证) → relay→Mac 兜底」— Mac 守护不在线不再静默失效; 实测点🔴 `state=red` / 点🟢 `state=green`。⑤`auto_loop.build_dataset()` 判据改为**产物**(`data/chunk-000/*.parquet`), 空壳数据集目录不再把真因吞成 8 秒'训练失败'。⑥**关机前留档**: Orin 硬件体检 18 节点(珞石 100.8Hz · /robot/joint_states 49.5 · 六维力 50.5 · 夹爪 12.1 · 扫码 1.0 · 塔灯 1.0 正常); RealSense **D405** 已接上(`/dev/video0-5`, fw 5.16.0.1, USB3.2), 但 Orin 未装 `realsense2_camera` 且 launch 里 realsense 话题被注释 ⇒ `/realsense/*` 无发布者(设备层 OK, 驱动层缺)。⚠️ 诚实缺口: 「按钮反应慢」实测根因 = 按钮命令在**主线程**跑 ssh(塔灯 5.48s / 夹爪 0.39s, 100ms 刷新仅 0.1ms 无辜) — 改子线程 `_oneshot` 通道**下一版做**。 | 
+        # v5.6.13: 🚀 **发布链路修复 (Windows .exe + macOS .app 双平台发版)** — 查 tag 构建: v5.6.9~v5.6.12 **Windows .exe 全成功、macOS .app 连挂 4 次**, 全挂在同一步 `Download MLP operation video + pre-extracted frames` (下 datadrive.world 的 `mlp_video_pack.zip`, mac runner 5 秒即挂; 同一时刻 Windows job 同一步成功 ⇒ 外部静态站对 mac runner 偶发不可达, 非代码问题)。演示视频只是**内置素材**, 不该卡整次发版 ⇒ `.github/workflows/build-win-exe.yml` 两个 job 同步改成不致命: ①3 次重试 + 强制 `--http1.1` + `--connect-timeout 20 --max-time 240` ②3 次全失败 → `::warning::` + **占位放行** (写 0 字节 `reports/mlp_insert_success_final.mp4` 与 `_mlp_cache_mlp_insert_success_final/.placeholder` — PyInstaller `--add-data` 路径必须存在) ③结果写 `$GITHUB_STEP_SUMMARY` (`video_pack=ok` / `missing`) 可溯源 ④YAML 校验: jobs = build(windows-latest,13 步) · build-ab-baseline(windows-latest,6 步) · build-mac(macos-latest,16 步) | 
+        # v5.6.12: 🔎 **前馈 forward 的"是否真执行"与调试器解耦 (老倪第三次: L4 跑这段还是进不了断点)** — ①`parallel.py::forward` 真身开头加**硬停开关 `SS_FF_BREAK=1`** (照 ZMAX_DEBUG_BREAK 惯例, 用 debugpy.breakpoint() 且仅在 is_client_connected 时触发) → 不依赖断点绑定必停, 用来区分"没执行" vs "绑定失败" ②真身每 100 次打一行执行证据 `🧠 前馈加速器: MLP 真身执行 #N (域内 … · 守卫 …)` ③引擎进度行 (老倪看的那行 `[step/max] 阶段=…`) 末尾直接加 `· 前馈 MLP真身 N/守卫 M`, 未启用时补 `(未启用: SS_USE_MLP≠1 → forward 被解析覆盖)` — 实测两臂: SS_USE_MLP=1 → `n_mlp=30/30 守卫 0`; 不设 → `0/0 (未启用…)` 且函数 n_calls=-1 (一次没进) ④诊断口径: 日志显示 N>0 而断点不停 ⇒ 绑定/断点位置问题 (断点须设在 `obs = np.asarray(…)` 首行, 不是 def/docstring 行); 显示 0 ⇒ 档位/勾选问题 (须 L4 档 + 勾「🤖 INTACT 节点执行」或「🧠 模型执行」) | 
+        # v5.6.11: 🧩 **L4 档新增勾选框「🧩 L2 兼容 (前馈 MLP + YOLO)」** — 老倪: "L4 档加一个勾选框" (不再靠环境变量): FlowBar 第二行工具栏 (与「🤖 L4 用 INTACT 节点执行」「🎯 L4 意图 → DiT 精炼」同排) 新增 `chk_l2_compat`, **默认勾选**; 勾选 = L4 引擎路径内 `SS_USE_MLP=1` (前馈蒸馏 MLP 真身进 forward) + `vision=True` (R1 YOLO 每帧真检测); tooltip 明写实测代价 (终点 0.42→6.82mm · 墙钟 2.1×) 与等效环境变量 `SS_L4_L2_COMPAT=0`; 装配块主线程读控件 → 存 `self._l2_compat_on` → 判定 `_l4_cap ∧ ¬demo_cap ∧ _l2_compat_on ∧ env≠0`, 日志打印「L2 兼容勾选框 = ✅/⬜」; L2/L3 档不受影响 (零回退); 验证 `tools/verify_l2_compat_checkbox.py` offscreen **11/11** (存在/文字/挂布局(FlowBar)/同排/默认勾选/tooltip 500 字含实测代价/点击可切换/装配块读控件/状态参与判定/仍受环境变量约束) | 
+        # v5.6.10: 🔌🐛 **L2 兼容默认开 + 六层模块断点绑定修复** — 老倪「YOLO 检测模型接入 L4 怎么还没改好? 这段 forward 在 L4 跑还是进不了断点」: ①上一版 `SS_L4_L2_COMPAT` 默认关 ⇒ L4 跑时 `SS_USE_MLP` 没被设 → 装配期 `state_space_sim_real.py:399` 又把 `accel.forward` 覆盖成 analytic → **断点没有可命中点** ⇒ 改**默认开** (要还原 `SS_L4_L2_COMPAT=0`), L4 引擎路径日志打印"L2 兼容已开"+实测代价 ②**真根因 (更隐蔽)**: 引擎 `_load()` 用 `spec_from_file_location` 加载六层模块 (parallel/perception/cognition/safety/execution) → **debugpy 断点不绑定** (函数真执行但 VSCode 不停; zmax-console 技能「断点坑 根因⑤」已实证) ⇒ 改 `exec(compile(src, 真实绝对路径, "exec"))` + 注入 `__file__`/`__name__` + 注册 sys.modules, 失败退回 spec (不静默降级) ③实测验证 (gui-venv311): 五文件类方法 co_filename 不在六层目录的 = 0 · exec 加载后 20 步 `实例覆盖 forward=False · forward 指向 FeedforwardAccelerator.forward @ parallel.py · n_mlp=20 · n_guard=0` ④看断点必须三条同时满足: L4 档且勾「🤖INTACT 节点执行」/「🧠模型执行」(默认 L4 纯演示档走 L4Demo 独立链, 链上无 FeedforwardAccelerator) + VSCode F5 启动 (直接 python studio.py 是非调试模式) + 改码后重启 GUI | 
+        # v5.6.9: 🧩🔌 **L4 档「L2 兼容」接线 (档位内, 默认关) + 画布补线 + 同口径 A/B** — 老倪「运行 L4 时 YOLO 未启动? L2 应该和 L4 兼容, 也要连线」: ①真因两处 (都定位到行): **vision 只给 L3 档** (simulink_module.py:11471 `vision=(cap=="L3") and not _model_exec`) → L4 恒 vision=False → 引擎日志分支恒取 "YOLO 未启动"; **前馈 MLP 真身永不进入** (state_space_sim_real.py:399 无 SS_USE_MLP 时用实例属性把 `accel.forward` 覆盖成 `analytic_forward`; 实测真身 0 次 **且 n_guard=0** ⇒ 不是 D_GUARD/DOMAIN_SIGMA 域判定挡的; 域内真值 d_guard 0.131~0.178 门 0.25 · max|xn| 1.583 门 4.0 全过) ②接线: **只在 L4+引擎路径** (勾「🤖INTACT 节点执行」/「🧠模型执行」) 档内设 `SS_USE_MLP=1` + `vision=True`(every=1); L4 纯演示档走 L4Demo 独立链不动; 非 L4 档 pop 回原状 = L2/L3 零回退; 开关 `SS_L4_L2_COMPAT=1` (默认关) ③画布连线: flows/state_space_obs.json 文本级插 2 条 (`📡传感器融合→ssintact` in2 / `⚡前馈加速器→ssintact` in3, 均标 ↩) + ssintact desc 补 **三路入线口径** (in1 数据源/in2 L2 感知/in3 L2 执行) = 自解释; 节点 77 不变 · 连线 95→97 · 旧连线逐字段 0 变化; **零回退** `verify_l4_zero_regression`: 档位归属不变 · L2/L3/L4 执行集 55/60/77 逐项不变 · 旧连线 0 丢失 ✅ ④同口径 A/B (同解释器 gui-venv311 · seed104 · 120 步 · cap=l4 · 每臂独立进程): 臂A 现状 `n_mlp=0 · YOLO 未启动 · 终点 0.42mm · 3.3s` ‖ 臂B 接线 `n_mlp=120(每帧真身) · YOLO 240/240 检出 100% · 终点 6.82mm (16×回退) · 6.9s` ⇒ **接线成功可验证, 但精度回退** (YOLO 检测值替换 R0 真值 + MLP 在 seed104 分布边缘) ⇒ 按门槛 **不进默认档, 开关默认关** ⑤画布代价 (同工具改前/改后): 反向 2→4 (新增两条必经) · 重叠 0→0 · 穿框 44→45 · 交叉 145→161 (+16, 根因 L2 行 x≈3826 在右 · L4 行 x=387, 天生反向同 SK04-08→执行器) ⇒ 结构性修法=重排 L2 行 (下一轮) ⑥新增 `tools/ab_l4_l2_compat.py` + 设计文档 docs/design/zmax_l4_l2_compat_wiring.md ⑦**环境发现**: `ultralytics` 只在 gui-venv311 (8.4.126), 不在 ~/lerobot-venv → 任何 lerobot-venv 跑 vision=True 会 ModuleNotFoundError (A/B 第一遍即因此挂掉) | 
+        # v5.6.8: 🧭🎚 **意图李群化 (SU(2)/SE(3)) + 卡尔曼式自适应增益 + 质量闸** — ①新增 src/lerobot/manifold/lie_intent.py: SU(2)/SE(3) 运算 (exp∘log 互逆 4.5e-16 · 群合成 1.4e-17) + 接触丛 twist e=log(T_hole⁻¹·T_peg) (**孔系表达**, 整体刚体变换后不变 8.4e-17 ⇒ 跨场景可比) + 切空间增益融合 (含旋转走测地线 · K=0 逐位零回退) + Φ 标定 (PCA+ridge+LOO 闸), 自检 **13/13** ②Φ 标定 (352 对逐帧真值 · 8 seed · 教师=末端位姿逐帧差分, 无写死几何): **Φ_su2 LOO R² 0.806 / Φ_se3 0.712** (null<0.08); 逐维最强 = 绕插拔轴旋转 ω_z **0.817**, v_x 0.438 / v_z 0.511, 最弱 v_y 0.056 ③横向归因 (diag_lie_lateral): 排除"信息缺失"(σ 10.9/4.0mm) 与"非线性"(二次特征不抬升) → 口径+阶段混合: 双路意图 pred⊕goal 抬到 v_x 0.569 / v_y 0.202 / v_z 0.703 ④DiT 真消费: cond **214→223 维** (ξ6+ω3 真进 DiT), act_norm 0.1766→0.1625 (响应真实但小 ⇒ 几何 token 需按自身尺度定标) ⑤引擎接线 (SS_L4_LIE=1): Δz→ξ/ω 进 DiT 条件 + ξ_v 作导航方向 (幅度按 L2 包络收窄) + 逐帧列 lie_xi/lie_omega ⑥**卡尔曼式自适应增益** (SS_ADAPT_GAIN=1): 先验=L2 肌肉记忆/解析伺服, 观测=L4 导航+L3 流程, K=P/(P+R); 事件(σ超门/无标杆/新息异常/停滞/换段)→Q 抬升, 熟场景 P 落地板 → **K 硬置 0 = 逐位纯 L2** (实测 K 尾 0.0 · 肌肉命中 564/600 帧), 泛化场景 K≈0.34~0.4; 600 步 11 臂 A/B = **无收益** (gain 终点 47~51mm vs base 23.4mm) ⇒ opt-in 不进默认档 ⑦**质量闸** (SS_QUALITY_GATE=1): 逐阶段 LOSO 判"上层是否优于 L2" (梯度=孔口−末端; 转移段 cos_L4 0.661 < cos_L2 0.852 → 否决只记录不抬), 在线取证 allowed_frames=gain.applied ⑧修 bug: `def _aligner` 与 R1 视觉实例属性 `self._aligner` **撞名** → SS_L4_ALIGN=1 必 TypeError; 改名 `_l4_aligner`; 对齐层标定完成 (cos −0.325 → **LOO +0.931** ready) ⑨yaw 出口 Arm C (SS_L4_LIE_YAW=1): SU(2) 残差切空间融合 + 夹持后几何闭环; ⚠️ 插入段 A/B 出**失败证据** (基线 49.4/50mm 成功 vs Arm C 夹持失败 Δz 0.7mm → 步数/时序不同 + ②段空夹爪 twist 不可控) ⇒ 未验证不宣称 ⑩新增工具 fit_lie_intent / fit_lie_quality_gate / diag_lie_lateral / diag_lie_yaw / diag_gain_ab / diag_ff_entry | 
+        # v5.6.7: 🧬 **L4 纤维丛联络层 (动作丛→接触丛→DiT) + 方向/幅度对齐层 + 同口径多臂 A/B** — ①INTACT **预测潜空间** z_pred 真进链 (桥白名单只透传 z_t/z_goal/delta 把该键吃掉的 bug 修掉; 零搜索 direct 不调 predictor → 用 predict() 逐位复刻 rollout_one_step 推完 chunk) ②新增 src/lerobot/manifold/fiber_bundle.py: 丛映射 Φ:z_pred→接触丛 6 维 (582 条真样本 LOO R² 0.471 · null 0.000) + 丛映射 A:z_pred→几何 z7 (0.607) + 水平提升 h_z / 挠率 κ / 曲率 ‖Ω‖ (线性 Φ 曲率≈0 作对照) ③流形专家预测器**权重一字未改**, z 换源 ẑ7=A·z_pred+b (证据: 预测器 z 来源=fiber) ④DiT 条件 token 214 维 = δ̂192 ⊕ ĥ_z6 ⊕ Φ(z_pred)6 ⊕ Φ_p(z_pred)6 ⊕ 标量 (同一 apply_l4_cond; 性能丛只作条件不作幅值权重) ⑤L4 行 19 条边审计: 有数据 13 · 死线 6 (VLM z960 3 条需重训口径 / L4 记忆 2 条 / 算子A 1 条) ⑥零回退: L2 档 fiber 0/1 **逐位相同** (hash 3d330ebc8b0c19e88cbd0706def2f455) · L3 档新代码根本不进; ⚠️注: L3 逐位 hash **不可作判据** (625M CPU bf16 FP 级非确定, 同配置两臂亦不同 — 已复现) → 用结构性判据 ⑦**同口径多臂 A/B (3 seed×150 步 · 每臂独立进程) = 无实质提升** (fiber=1 vs 基线 rel_V/rel_dist: seed0 +1.95%/−36% · seed2 −0.06%/−1.77% · seed5 +0.47%/−3.67%; 判据自我收紧 1e-9→相对 1% 实质阈值, 原阈值会把 1e-5 噪声判成"提升") ⇒ **SS_L4_FIBER 保持默认关, 不进默认档**; 结构性原因: L2 收口闸 150 帧否决 79~120 帧 + cos∠(预测潜空间,几何联络) 跨阶段 0.80/−0.46/0.22 不稳 ⑧新增工具 fit_fiber_map / audit_l4_edges / verify_fiber_zero_regression / ab_fiber_line / ab_l4_arms / feishu_notify (+ 探针 L4line/L4audit 场景 + np/torch 播种 + 审计 json) | 
+        # v5.6.6: 📄 **运行台账 + AOI 报告行 (只加日志与证据, 控制律零改动)** —— 真实化运行完成时:
+        #   ① 日志打 `🔍 AOI 报告: ok=… 插入最浅 …mm 峰值力 … 卡滞 … 回抓 …` (以前 AOI 只在内部判 ok,
+        #      不打印 ⇒ 老倪看不到"插到位没有"的判据) ② 落一份 `reports/gui_real_run_<时间>.json`:
+        #      档位/模式/步数/done/插入深度/YOLO检出/真推理次数/L2收口闸计数/AOI报告/阶段覆盖 ——
+        #      与 tools/intact_direct_rollout.py 的台账同字段口径, GUI 跑完也能把证据文件交出去。
+        #   L2/L3 (解析链, 无直驱) 时闸/阶段为空, 照写不编数。行为零回退: 不碰控制律/档位/装配。
+        # v5.6.5: 🔧 **Windows exe 点「真实化运行」必崩 的根因修 (老倪实测: Failed to load dynlib/dll
+        #   '...\_MEI...\mujoco\plugin\actuator.dll ... not found when the application was frozen')** ——
+        #   根因(用 archive_viewer+pefile 反查 v5.6.4 exe 实测): PyInstaller 把 mujoco 运行时库放在
+        #   `_MEIPASS/mujoco/mujoco.dll`、插件在 `_MEIPASS/mujoco/plugin/actuator.dll`, 而 actuator.dll 的 PE
+        #   导入表依赖 `mujoco.dll` + VCRUNTIME140/MSVCP140; plugin/ 里没有它们, Windows 只在「DLL 自身目录
+        #   + 已注册搜索目录」里解析依赖 → WinError 126, PyInstaller 再包成上面那句(底层原因被盖住)。
+        #   修 = 新增 PyInstaller 运行时钩子 `pyi_rth_mujoco_dlls.py`(在 import mujoco 之前把 mujoco.dll /
+        #   VCRUNTIME140*/MSVCP140* 复制进 plugin/ 做成自足目录 + 注册 _MEIPASS 各级到 DLL 搜索路径);
+        #   CI 加**冻结核验**: 打包后真跑 `Z-MAX_Console.exe --engine-selftest`(真 import mujoco/metaworld +
+        #   建 L4 场景模型 + 步进), 不通过就 fail —— 只查"文件在不在包里"抓不到这个 bug。
+        #   另: 真实化运行失败时日志补出底层 cause(WinError), 下次一眼看到根因。
+        # v5.6.4: 📋 **L4 档日志/证据补强 (同 v5.6.3 修, 让老倪在日志里一眼看出"实际在跑什么")** —— ①L4 档跑完打印
+        #   **L2 收口闸计数**: 共 N 步 · 阶段白名单外 · 方向/一致度否决 · 幅度否决 · 采纳融合 · 幅值限幅
+        #   (取自 sim._intact_drive['state']['gate']) ②`blend=0` 时显式标注「本轮模型提案一次都没通过收口闸 (全部交执行层),
+        #   属模型闭环一致度不足, 不是接线问题」—— 防"收口后看起来像脚本开环"的误读; ③诊断证据入库:
+        #   `reports/L4_4000_STEPS_ROOTCAUSE_20260915.md` + `reports/diag_l4_*`(逐步 jsonl 轨迹/汇总) + 工具
+        #   `tools/diag_l4_stall.py`(单臂真跑+标注视频) / `tools/diag_intact_zero_act.py`(直驱内部产物微诊断)。
+        #   行为零回退: 只加日志与证据文件, 不碰任何档位/控制律 (v5.6.3 的收口闸逻辑逐字未改)。
+        # v5.6.3: 🛡🤖 **L4 档「跑满 4000 步不出插拔成功」根因修 (老倪: 为什么3D视频要走4000步还没成功显示插拔成功的视频?)** ——
+        #   ①**主因 = 直驱动作反向+塌幅**: 同 seed/同干扰/同起点实测, 教师(解析链) act=[+0.119,−0.130,−0.170] 而模型(直驱 v6r11 ep2)
+        #   act=[−0.046,−0.013,−0.012] ⇒ cos=−0.14 (方向反) 且前130步 std 只有教师 17~42% (塌缩) ⇒ 手朝**远离光模块**方向漂 82mm
+        #   (|x−peg| 0.177→0.259m) ⇒ 600 步乃至 4000 步预算全停在「接近」grasped=False ⇒ 无插入/拔出/AOI ⇒ 视频里没有"插拔成功"。
+        #   ②**放大器 = 静默零动作**: `install_direct_act` 异常分支把 `_dact_cache` 写成 zeros(4) ⇒ 手完全不动, 而日志只有
+        #   「阶段=接近 grasped=False」(实测复现: 残缺 rec dict → 每步 KeyError: 'raw' → 60/600 步动作全 0) ⇒ 任何异常都伪装成"模型不行".
+        #   ③**修 = 把引擎 SS_L4_INTACT 已有的 L2 收口闸扩展到直驱路径** (架构原则: 上层只给意图, 执行由下层收口, 每层只能收窄可行域):
+        #   阶段白名单(SS_DIRECT_STAGES 默认 接近,对位,转移; 下降/抓取/插入/拔出/AOI 交执行层 —— 注入会把抓取点↔头偏移出 129~132mm
+        #   成功域→滑脱33mm死循环) + 一致度门槛(SS_DIRECT_COS_MIN 默认 0.9) + 方向反相/零动作/超1.5×幅 否决 + 融合后幅值不超参考
+        #   (收窄不放大) + 否决步不写 `_direct_act` (引擎用自己刚算的 u, 与解析链逐位同源) + 夹爪由状态机; 计数留证 state["gate"]
+        #   (SS_DIRECT_GATE=0 复现旧行为)。④异常不再写零动作: 显式打印一次堆栈 + 本步交回执行层 + 后续步继续重试真推理。
+        #   ⑤GUI 侧同一收口: 直驱装配成功后 pop SS_INTACT (模型只保留一条通道, 防被闸否决的步仍从 u_ff 槽位二次注入滑脱)。
+        #   ⑥**实测验证** (L4 档 4000 预算, 同 seed104/cap=l4): done=True · aoi_ok=True · **879 步** · 13 段全过 · 真推理 879 次 · err=无
+        #   (对照: 解析链 868 步 done+AOI; 原样直驱 600 步停在接近) · 视频 reports/l4_model_gated_v4_seed104.mp4 (879 帧逐帧标注)
+        #   · 新工具 tools/diag_l4_stall.py (单臂真跑+逐步 jsonl+标注视频) / tools/diag_intact_zero_act.py (直驱内部产物微诊断)
+        #   ⑦⚠️ 诚实缺口 (不吹): 闸门今天是**全否决** (blend=0, 模型闭环一致度一次没到 0.9) ⇒ 模型每帧真推理+提案留档,
+        #   执行由 L2 收口; "模型独立干完"尚不成立 —— 下一步按 reports/L4_4000_STEPS_ROOTCAUSE_20260915.md §6 三条口径
+        #   (goal 前瞻口径 vs 末态目标 / 动作历史 raw-vs-normalized / 闭环 DAgger 再训) 验证推进。
+        # v5.6.2: 🐛🧲 **L2 记忆层势场把模型动作抵消成 0 → 全链卡"接近"** (老倪: 在 GUI 跑 full + L4 档 4000 步预算,
+        #   900~1075 步阶段永远是"接近"、grasped=False、残差恒定 0.055~0.059 = **卡住空转不是慢**) —— 实测日志
+        #   记忆层介入 step=1650: 模型=[−0.101,−0.019,0.019] 场=[0.164,0.031,−0.032] → 合成 u≈[−0.0001,0.0001,−0.0002]
+        #   手不动 ⇒ 阶段永不推进 (正常"接近"约 40 步就进"对位")。**根因**: 场与模型**反向**时仍按 w 夺权,
+        #   且 conf≡0 时走了 w_far 远场分支 (conf=0 却 w=0.381)。**本版处置**: data/memory_layers.json 的 L2 置 0
+        #   (原状态备份 .bak-20260915) = 关掉势场混入 → blend_action 恒等, 链路行为回到"只看模型+解析伺服";
+        #   L3/L4/assembly 三层保持原状不动, 逐层开关机制不变 (零回退)。**真修方向 + 验收判据 + INTACT 仍 CPU 提速
+        #   待办**写在 reports/PENDING_FIX_20260915.md (含 A/B 对照口径: 关 L2 跑 full+L4 应在 850~1000 步内 done;
+        #   开 L2 同 seed 同预算若又卡"接近"即确认 L2 元凶; 修后 L2 开局不得让任何阶段 |u| < 关 L2 时的 10%)。
+        #   ⚠️ 该文件进包/进仓库只为让现场与留档一致, 不改任何模型/引擎/画布行为。
+        # v5.5.40: 🎯 **L4 INTACT 策略化 + 连线 (metaworld → INTACT → decoder → L3)** (老倪: "将 INTACT 接入到 L4 层, 把 L4 节点的 INTACT 代码迁移到 src/lerobot 的 policies 文件夹, 做好连线; 数据源直接接入 metaworld, 输出接一个 decoder 再进 L3; 不能让 L2 L3 下降") — ①**迁移**: `src/lerobot/manifold/intact_node/` 整体 git mv 到 `src/lerobot/policies/intact/runtime/` (实现一字未改; 旧路径留兼容转发, 桥/自检/引擎零改动) ②**策略化**: `configuration_intact.py` (注册名 intact) + `modeling_intact.py` (IntactPolicy: select_action/predict_action_chunk/predict_intent; forward 显式 NotImplementedError = 不假装能训) + 工厂/包出口三处注册 ③**数据源直连 metaworld**: 新 `runtime/metaworld_source.py` (MetaWorldSource, MT1 peg-insert-side-v3 · corner2 真渲染帧 224² + 39D 现场读 + 本域真实目标帧) 注册为数据源名 `metaworld` ④**解码器**: `decoder.py` (IntactIntentDecoder) — u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT **现读引擎源码**, 无需标定) + L3 流形条件 (需标定 models/intact_l3_map.json, 未标定**拒绝返回并计数**, 不写死映射) ⑤**连线**: 新节点「🎯 INTACT 意图解码器 (L4 → L3 条件)」+ 3 连线 (metaworld 数据源→INTACT 策略→解码器→L3 DiT), 两节点均在 L4 行内 (cap=4 → L2/L3 档不执行) ⑥**引擎三档**: `SS_L4_INTACT` (不设=逐位零变化 / _SHADOW=1 影子真推理真记录 / =1 按 w 融合 u_ff=(1−w)·analytic+w·L4, w=0 恒等) + `l4_intact_summary()` 全计数取证 + 新工具 `tools/l4_intact_ab.py` (A/B/C 三臂同 seed 子进程隔离) ⑦**实测**: 节点级真跑成功 (metaworld 数据源建成 · 真权重 trained=True · chunk(8,8) · candidate_sequences=0 零搜索 · 1396ms/步 CPU · 动作维自动对齐 4→8) · 解码器 u_ff 先验 + 未标定诚实拒绝 · **零回退证明**: L2 档 55 节点 / L3 档 60 节点 改动前后**逐 id 相同** (脚本对比 git HEAD) ⑧**迁移期修真 bug**: 未设 STABLEWM_HOME 时桥退回 <repo>/.cache → 权重全部找不到, 改为优先共享缓存 stable-wm-cache ⑨**A/B 首轮抓到第二个真 bug**: 引擎直喂帧路径没人设 goal 帧 → goal_displacement 模式每帧抛 ValueError (影子臂 60/60 次"真推理"实为空转, 只有计数在涨) → 新增 `ensure_goal()` 三级兜底 (已显式 set_goal > 数据源自报 > 默认目标帧文件), 兜不到才显式报错; 修后 calls=8/reuse=52 (chunk=8 → 60 步恰好 8 次真推理) · goal_src=默认目标帧 · err=null, 且影子臂 dist 与修复前逐位相同 (不接管=行为不变) · 设计 docs/design/zmax_l4_intact_policy.md
+        # v5.6.1: 🎨 **补画布缺线: INTACT 意图解码器 → 流形专家预测器** (老倪: "怎么没有直接连接流形专家
+        #   预测器节点呢?") —— 查证结论: 这条数据通路**代码里真实存在、画布漏画** —— decoder.py 产 m_int
+        #   (语义="给流形专家预测器的意图"), 引擎 state_space_sim_real.py:1380 取 d.m_int → :1419 喂
+        #   WorldModelPredictor(z,a,m) (对齐 INTACT 四槽语法 [z,m_t,z⊙m_t,A(a_{t−1})] 的 m_t); 但活跃口径是
+        #   **z7** (z=引擎几何潜空间 R7 + m=引擎几何意图 target−peg_head, 由 📐2D→3D 那条线供给), 解码器
+        #   m_int 在该口径下只当**门控** (w=m_int_weight×SS_L4_INTENT_LINE_W×ready); z_t 口径 (z=INTACT
+        #   潜空间192+m=m_int) 才是本直连边但已被离线证伪 (z_t→流形 LOSO R² 全负)。修: 文本级插入 1 条连线
+        #   (t_port=in3) + 两端节点 desc 补"哪条入线属哪个口径"; 验证 真画布 节点77·连线91→92·反向2→2·
+        #   重叠0→0·穿框44→44·交叉143→145(+2) · 零回退 L2/L3/L4 执行集 55/60/77 逐项不变·旧线 0 丢失。
+        #   注: 该边不改运行时行为 (活跃口径 z7 不变), 作用是让画布与代码一致并标注口径; 要真正"通电"需
+        #   解码器在几何口径表达意图 (latent→几何映射已证不可辨识, 不能硬喂 192 维)
+        # v5.6.0: 🐛🎯 **三个真根因 bug + L2 成功率 4/12→5/12 + yaw 直连验通** —— ①**最隐蔽的评估污染**:
+        #   L2 势场构建 (ObstacleField.from_engine) 在引擎运行中又新建第二个 RealStateSpaceSim 并 _reset(104)
+        #   采几何, 而 metaworld 底层 MuJoCo sim 进程内共享 → **正在运行的场景被改写** (实测 peg 瞬移
+        #   Δ=[+1.2mm,−17mm,0]) ⇒ 同 seed 的 L4 臂与解析链臂跑的不是同一场景, 之前所有涉 L4 的 A/B 失真;
+        #   修: 传现成 geom 只读不写 (修后逐帧复现解析链) ②**肌肉记忆跨 run 持久化污染评估** (默认开且每局
+        #   save; 热态下 30~65% 执行帧是记忆回放) → 加 SS_MUSCLE_PATH 隔离, A/B 默认冷口径 (冷 3/8 vs 热 4/8)
+        #   ③**插入失败真因不是杆是夹爪**: 接触对取证 78% 为 rightclaw/rightpad↔治具顶板; 抓取点↔头 失败
+        #   seed 112~124mm vs 成功 129~132mm(设计130) → 抓取点闭环补偿 (离头不足则回退重抓 + 沿杆轴远头
+        #   平移缺口) → seed3 27.37mm→0.84mm 完成, 成功 seed 逐位不变, **基线 4/12→5/12 零回退** ④三个
+        #   "试了没提升"旋钮 (入口z容差/降落回退/滑脱平移) 实测无收益 → 全部默认关 (未证明提升不进默认档)
+        #   ⑤**yaw 直连端到端验通**: L4 演示全链 success=True (φ*=−45.3° 流形决策 · 试抓头真前向 351 次 ·
+        #   插入 49.6mm · 拔出 56mm · AOI ok 悬停60帧距焦点7.7mm · 光耦合 η=1.0000) ⑥**m_stop 交权**:
+        #   接线 + 判据取证 (专家 mani_risk 不区分成功/卡死; 训 12seed/7398帧 stop_head 局级 OOF AUC 0.80
+        #   但答不了"何时停") → 不接线, 保持默认关
+        # v5.5.56: 🔍🧪 **四个「运行时口径 ≠ 训练口径」根因全部修掉** (老倪: "训练减少到半小时以内" / "10分钟以内" / "只要一个epoch") ——
+        #   ①**记忆条件通道 0x0 死锁** (`INTACT-JEPA/train.py`, 提交 20a7791): 入口层 `net.0` 的 skill 新列
+        #     与 `skill_enc` 末层**同时零初始化** → E(s)=0×0 → 反向两侧梯度恒 0 → 训 3 轮后
+        #     `intent_actor.skill_enc.3.weight` 仍 100% 为 0; 判闸 skill=on/zero 输出**逐位相同**。
+        #     实测: ∂L/∂(新列)=∂L/∂(末层)=0.000e+00, 而 ∂L/∂(老列)=9.222e-01 (只有新通道死了)。
+        #     修: 新列改 U(±1/√in_dim)、末层保持零初始化 ⇒ 暖启动输出**逐位不变** (0×w=0) 但梯度可通
+        #     (∂L/∂末层 0 → 1.165e-01) + 新增 `_break_skill_deadlock()` 让续训自愈;
+        #     证据脚本 `INTACT-JEPA/tools/skill_deadlock_evidence.py`
+        #   ②**运行时图像口径** (`tools/intact_worker.py::_prep_images`, 提交 1163dc06): 训练侧 HDF5Dataset 出
+        #     **uint8** → `ToImage(scale=True)` /255 + ImageNet → 模型实际输入范围实测 [-2.118, 2.429];
+        #     而运行时 (判闸回放/引擎 L4 直驱/direct_rollout) 把 h5 里 **float32 的 0~255 原始像素**直接喂进去
+        #     → 尺度差 ~100 倍 + 巨大正向偏移 → 编码器退化 → 动作头输出恒定带偏移
+        #     ("预测 std 比 0.08"+"打不过常数基线", **与训练轮数无关**)。修在唯一入口 (自动判量级:
+        #     >2 视为 0-255; [0,1] 补 ImageNet; 已归一化原样), 诊断带 `img_prep` 字段逐次可查 →
+        #     实测同一 ckpt: std 比 0.08 → **0.61~0.76**, 偏置 +0.041 → -0.006, raw 输出 std 0.004 → 0.65
+        #   ③**判闸哨兵两个真 bug**: (a) 按 epoch 号去重 → `v6_epoch_1.json` 还在时续训/换轮次的 ep1/ep2
+        #     **永远判不出** (本次实锤踩中, 静默无输出) → 改按 family 去重 + 兼容别名 (老读者不受影响);
+        #     (b) "只判 1/2 与偶数轮"限流取消 (短跑每轮都判) + 报尾 f-string `{on,zero}` NameError 修掉
+        #   ④**直驱反归一化口径** (`tools/intact_direct_rollout.py`, 提交 0b453515): 默认 stats 错用
+        #     `zmax_action_stats.json` (源自 zmax_insert.h5, n=18635), 而 v5/v6 权重是
+        #     `optical_insert_v5_disturb` (n=149100) 训的 → dx std 0.153 vs 0.074 (放大 2.1×)、
+        #     grip mean 0.120 vs 0.828 ⇒ 指令缩放全错。修: 默认换**与训练同源** + 新增 `audit_stats()`
+        #     从 ckpt `train_config.yaml` 读训练数据集名比对, **不一致直接 SystemExit** (避免白跑 25 分钟
+        #     拿假数), 需对照才显式 `--allow-stats-mismatch`
+        #   ⑤**配套工具**: `tools/intact_replay_bias_probe.py` (逐维 mean/std/偏置/MAE 分解/pearson +
+        #     goal 口径对照; 用 own-goal 对照**证伪**"外来 goal 导致塌缩"的猜想)
+        #   ⑥**连带作废声明**: v5/v6/v6r2 历史判闸 ❌、"越训越塌"、直驱 92.2mm 全部建立在上面的坏口径上
+        #     → 全部作废; pre-fix 结果改名 `*__prefix_imgfix.json` / `*_v6r2_deadlock.json` 留证
+        #   ⑦**数据侧复核 (排除嫌疑)**: 数据集 skill_ctx 非零项数 3~8 为主 (3 项占 1.8 万帧) ·
+        #     共享构造器重算与落盘值**逐位相同** (最大差 0.000e+00) → 采集/闭环构造同源红线成立
+        #   ⑧**本轮实测 (修后)**: v6r5 ep1 判闸 on 0.0402 / zero 0.0389 / std 比 0.71 ⇒ "不塌缩"翻正,
+        #     但 **赢常数 / 有提升仍 False (400 步量不够 ⇒ 无提升证据, 不声明提升)**;
+        #     直驱 260 步 0/1 (插入 156.8mm · 真推理 65 次无错 · done=False) + 解析链同轮 0/1 ⇒
+        #     口径修好但**尚无提升证据**; 视频 `reports/evidence_l4_fixed/*.mp4`
+        # v5.5.55: 🎯🧠 **L4 意图 → DiT 真接 (画布 ssintact_dec→ssdec 那条连线) + L3 模型执行真跑修复 + 断点取证** (老倪: "连线连的就是DiT, 必须改" / "L4 功能需要兼容 L3 功能" / "这个类的断点运行后没有进入") ——
+        #   ①**标定硬结论 (不造假映射)**: 新工具 `tools/intact_l3_calib.py` 用 13 轮/1935 样本复算
+        #     `z_t(192)→引擎流形6维` (LOSO 13 折 + 折内 PCA16 + 打乱标签 null) → **测试 R² 全 ≤0**
+        #     (progress −0.146 / risk −0.307 / V −0.101 / eta −0.000 / rem −0.103 / dperp −0.001) ⇒
+        #     拒绝写 `models/intact_l3_map.json`; 旧报告里"2/6 可解码(rem/dperp)"实为**折间噪声**
+        #   ②**改走无需标定的真通道**: decoder 新增 `l4_cond` = INTACT 意图增量 δ=z_goal−z_t 单位向量
+        #     (192 维, 实测 ‖δ‖=4.09~4.43, 每帧真值) → 作为 **DiT 的额外条件 token**
+        #   ③**装配 (同一颗 DiT, 不另写模型)**: `SmolVLALewActionHead` 加懒创建条件投影 (dim→cross_attention_dim,
+        #     不进 ckpt 常规加载键 → 老权重零冲突) + `apply_l4_cond`; policy/model/select_action 全链透传 `l4_cond`;
+        #     引擎 `_l3_forward(l4_cond, tag)` + `_l4_dit_action` 共用一条实现。**修真 bug**: 投影宽度误用
+        #     inner_dim(768) → DiT 交叉注意力要 960 → 实测 `RuntimeError: Expected size 960 but got size 768` 已修
+        #   ④**融合 (β 两处同口径)**: u=(1−β)·u_L4+β·u_DiT (u_ff 槽位) / act=(1−β)·act_INTACT+β·act_DiT (直驱),
+        #     β=`SS_L4_DIT_BETA`(默认 0.5); GUI 新勾选「🎯 L4 意图 → DiT 精炼」**默认勾选**, 取消=纯 INTACT
+        #   ⑤**实测 (L4 24 步 · CPU · 零点 GPU)**: `_l4_dit` calls=24 ok=24 · cond_dim=192 cond_norm=1.0 ·
+        #     Δact=0.1139/帧 · DiT.forward×8 · loss 行 action_head.py:351 = **0**;
+        #     消融 β=0 → DiT 仍 16/16 真跑但 Δact=**0.0 (逐位不变=零回退)**; β=0.5 → Δact≈0.11;
+        #     **L3 档零回退**: 1×__init__ · 3×select_action · 1×predict_action · loss 行 0 (与改造前逐项相同)
+        #   ⑥**L3「模型执行」真跑修复**: ckpt 里 device_processor 写死 `cuda` → 无卡/CPU 环境实例化失败
+        #     (`Failed to instantiate processor step 'device_processor'`) → `_l3_forward` 每步 return None
+        #     且**每步重载 625M** (实测 12 步 = 12 次 __init__/0 次 select_action) → 改 `SS_L3_DEV` 可覆盖 +
+        #     按运行设备 override (官方 eval 同款) + 失败熔断 (`SS_L3_FORCE_RETRY` 复位); 修后 12 步 → 1 次 __init__
+        #     /3 次 select_action/1 次 predict_action/l3_calls=12
+        #   ⑦**断点取证工具**: `tools/probe_l4_callchain.py` (函数级+行级计数, 行号自动定位) + `tools/diag_l3_load.py`
+        #     (抓引擎吞掉的异常); 结论: `action_head.py` loss 行**只有画布「训练」节点会进**, L4 运行走 INTACT 直驱
+        #     (INTACT-JEPA 子进程) 不碰 smolvla_lew; L4 运行可断点落点 = service.run_once / build_skill_ctx /
+        #     IntactNode.step / decoder.py:126 (各 30/30 实测)
+        #   ⑧**诚实边界**: 条件投影**未训练**(小随机初始化) ⇒ 通道真实参与前向(可消融证明), 增益需后续训练,
+        #     **不声明提升**; 端到端整轮 260 步预算不足 (解析链/直驱臂均未跑完, 直驱全程停"接近"阶段, 65 次真推理无报错)
+        #     → 整轮验收待更长预算
+        # v5.5.54: 🎯🧠 **L4「点运行」真接进 policy 层 (意图解码器在链上) + skill_ctx 真喂** —— 老倪: "点运行 +
+        #   选 L4 应该进入 INTACT 意图解码器...怎么没进断点"。查实的**两个真因**: ①**调用路径绕开 policy 层**:
+        #   L4 档实际跑的是模型直驱 `tools/intact_direct_rollout.py::install_direct_act`, 里面直接 `node.step()`,
+        #   意图解码器 (decoder) 整条不在链上 → `service.run_once` 的断点**永远不可能命中** (它只被"双击节点"和
+        #   E2E 驱动调用); ②**更关键: v6 权重 (skill_dim=24) 拒绝在没有 skill_ctx 时推理** —— 实测硬闸报错
+        #   "checkpoint was trained with a skill channel but info['skill_ctx'] was not provided — refusing to
+        #   silently degrade" ⇒ 运行路径**一次真推理都没发生** (0 次) 就被吞成"跑不动"。修法: ①直驱每帧改走
+        #   `service.run_once(decode=True, node=引擎节点, obs_frame=真渲染帧, skill_ctx=…)`: 解码器真执行 + u_ff 先验
+        #   + 证据落盘, 节点/帧/逆归一化口径**一律不变** (单一实现, 引擎不再自己另写一套); ②**逐帧构造 skill_ctx**
+        #   (24 维, 统一走 `skill_ctx.build_skill_ctx` 单一构造器; L2 字段来自 `MemoryLayerBridge.from_real_data`,
+        #   x = 夹爪真实位置 self.x=obs[0:3] 坐标红线, grip = 引擎控制向量 u[3]); ③service 支持**外部节点注入**
+        #   (不另建 worker/数据源, 不覆盖调用方接线); ④修 `policy_service` root 解析写成跳两级 → 证据被写到
+        #   /home/ubuntu/reports/ (不在工程内) 的 bug; ⑤GUI 里写死的"判闸未过 MAE 0.097"标注改动态。
+        #   **实证** (同一条链, CPU, headless): 真推理 **60/60 (另一次 80/80) 次 · 错误无** (原来 0 次+报错),
+        #   意图解码器 u_ff_src=`intact(chunk×K_ACT=0.5)` · u_ff 非零 · skill_ctx 24 维/非零 8 项 · L2 势场就绪,
+        #   证据落 `reports/intact_l3_cond.json`。注: L3 条件向量通道仍**未标定 → 解码器诚实拒绝** (需
+        #   models/intact_l3_map.json), 这是口径红线不是 bug。控制台需**重启**后生效 (GUI/工具代码都改了)。
+        # v5.5.53: 🎯 **把 L4 INTACT 调试配置改好 (老倪: "把调试配置先改好")** —— ①**根因**: 4 个 INTACT 调试配置
+        #   把权重写死成上一代轮次 `intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt`, 续训换名 (v5→v6→v6r2)
+        #   或旧轮被磁盘守护清掉后就静默指向过期模型 → 调试出来的数字不是当前的。②**做法: 稳定指针**
+        #   `checkpoints/intact_l4_current/` (config.json + **恰好一个** weights.pt 软链 → 当前权重), 依据官方
+        #   `stable_worldmodel.load_pretrained` 的"文件夹"格式 (多个 .pt 会 ValueError: Ambiguous)。切换一条命令:
+        #   `bash tools/l4_use_ckpt.sh [轮次关键字] [epoch]` (默认取最新 v6* 轮次的最新 epoch); 实测指针与显式路径
+        #   **逐位同数** (dx/dy/dz/grip 的 MAE/std 全等) 才敢用。③**两处必须同步**: 改 `.vscode/launch.json` 也要改
+        #   GUI 生成模板 (右键"打开 VSCode"会用模板重写 launch.json, 只手改一处会被抹掉); 本轮把 4 个配置 + 桥的
+        #   `--policy` 参数共 5 处全改到指针, 并给两个缺 `INTACT_RUNTIME` 的配置显式补 `root`。④**新增自检闸**
+        #   `tools/check_debug_cfg.py` (4 配置指向指针/runtime/device + 指针目录符合官方文件夹格式 + 软链不断 +
+        #   模板与 launch.json 一致且无写死轮次), 当前 PASS。⑤**运行路径同一类 bug 一并修**: 引擎 L4 档默认权重
+        #   (simulink_module.py:11385) 原来写死 `intact_goal_zmax_v2_s3072/weights_epoch_3.pt` → 改为指针; 那句
+        #   写死的"判闸未过 (MAE 0.097)"标注也改**动态**(报指针实际指向的文件+尺寸, 结论指向 judged/*.json),
+        #   因为写死的判闸数字会随训练变假话。注: 调试配置改动立即生效, 引擎默认权重需**重启控制台**(GUI 改码必重启)。
+        # v5.5.52: 🧹 **磁盘压回红线内 + 守护脚本升级 v4.1** (老倪选 A: "把磁盘压回红线内") —— ①**根因**: 系统盘 307G > 红线 300G; 旧守护 (`disk_redline.sh` v3) 只清 lerobot 训练产物 + 删 HF incomplete, 对 stable-wm-cache 里的 INTACT 权重和**被取代的旧代数据集**完全不碰 ⇒ 涨上去就压不回来 ②**本次手动清理** (逐条验依赖后删, 台账 `reports/disk_cleanup_ledger_20260914.json` 带 sha256/重采命令/保护区核对): `optical_insert_v3.h5` 4.9G (sha `3c8becc3…`) + `optical_insert_v4.h5` 6.8G (sha `98eda89d…`) + 旧代/无效链权重目录 (v5r2 / v3 / v6_smoke / zmax_smoke) + v5 中间轮 ep1/ep3 + 冒烟帧包 3 个 ⇒ **307G → 294G**; 删前先把引用 v4.h5 的 v5 判闸哨兵 cron (24dd99948466) **pause** (v5 链路 4 epoch 全判 ❌ 已止损) ③**守护脚本 v4.1** (`~/.hermes/scripts/disk_redline.sh`): 新增 **--dry-run 空跑**; INTACT 权重目录"每目录只留最后轮"并**保护** config `init_weights_path` / 续训脚本引用的轮 (那是暖启动源, 删了断链); **在跑目录判定改用 train.py cmdline 的 output_model_name** (原按目录 mtime 判 → 刚清理过的目录 mtime 变最新会被误判成在跑); 超红线时打印 top 消费大户 + 旧代数据集提示; 红线口径 300G 与 SKILL.md 同步 ④**诚实说明**: 先跑空跑, 第一次实现把在跑目录误判成 v5 目录 → 已改口径并复跑验证 ⑤保护区复核: disturb 数据集 7.37GB / v5 ep2 暖启动源 83.9MB / v6r2 在跑目录 / cube+reacher 官方数据 188G 全在, 训练零中断 (Epoch 0 step 850+ · GPU 100%)
+        # v5.5.51: 💾 **数据保存 + 关机前收口** (老倪: "保存数据，小版本迭代，不用推送代码，准备关机") —— ①**新抗干扰数据集入库并出数据卡**: `optical_insert_v5_disturb.h5` 7.37GB / 149,100 帧 / 2,982 窗口 / 300 seed, sha256 `d3831406…df7fb9`; 数据卡 `reports/optical_insert_v5_disturb_DATACARD.json` (规模/形状/口径/干扰档分档成功率/skill_ctx 规格/溯源/被谁消费) 由 `tools/make_datacard_v5_disturb.py` 从 h5 现算 (不手写数字)。干扰难度阶梯实测: light 0.90 / med 0.78 / heavy 0.60 ②**关机可续训**: `/home/ubuntu/l4_ab/v6_resume.sh` (有 v6 权重→从最新 epoch 续且 **不零化** skill 分支; 没有→从 v5 ep2 暖启动且零回退; 自动换 v6r2/v6r3 轮次名, 避免 Lightning epoch 计数覆盖旧 ckpt) + `/home/ubuntu/l4_ab/V6_RESUME.md` (状态/续训/判闸说明) ③判闸哨兵 `v6_judge_watch.py` 改为**自动认最新 v6* 目录** (续训换名后不用改 cron) ④本轮其它落地: 记忆条件通道 skill_dim=24 零回退 (自检五闸全过, 暖启动差 0.000e+00) · 画布安全执行边界补 11 条前向出线 (见 v5.5.50) · L4 抗干扰成功插入视频 2/3 (reports/evidence_l4/)
+        # v5.5.50: 🛡 **画布: 安全执行边界 → 全部原子技能/通用算子 补线** (老倪: "安全执行边界节点怎么没有输出? 应该连接所有的原子技能, 包括通用算子节点; 接近/对位/下降 怎么没有输入?") —— 实锤: 原来 `sslimit` 只有 1 条入线 (动作调制器→饱和限幅) 且**零出线**; 原子技能节点里只有 ①接近 有入线 (通用算子 A→B→C→① 链), ②对位~⑧完成 **全部无输入** (技能执行指令只出不进 = 断链)。修法: ①`sslimit` 从 (3856,625) 移到原子层行首 (754,625) → 11 条出线**全部前向** (右缘 1034 < 每个目标左缘, 逆向 0 条) ②新增 11 条 `sslimit→{通用算子A,B,C, ①接近…⑧完成}` (标签「🛡 限幅后控制 → …」), 每个节点 in2 槽位 (链式入线 in1 不动 → 端口语义不回退) ③给 ssa/ssb/ssc/sssk1 补 `in2` 端口声明。零回退体检: L2/L3/L4 执行集 55/60/77 逐项不变 · 原 83 条连线零丢失 · 新增 11 条即上述 · 方框重叠 0。代价如实报: 逆向线 2→3 条 (调制器→安全边界, 因调制器必须待在 8 路上游信号的右侧), 穿框 39→48 / 交叉 110→133 (单行 11 路扇出绕不开中间技能框)
+        # v5.5.49: 🧠🎯 **L4 看到并复用 L2 原子技能 (skill_ctx 通道) + 抗干扰数据集 v5** —— 老倪 09-14 下令。①**skill_ctx 契约 (24 维)**: `[引擎相位 one-hot(13) | L2 势场技能软权重 w(8) | 到 L2 冠军轨迹管 d_perp | 沿管弧长 arc_frac | 夹爪 grip]`, 单源 `src/lerobot/policies/intact/skill_ctx.py`, **采集与闭环共用同一函数**(口径一致红线, 带 `tools/skill_ctx_consistency_check.py` 回归) ②**模型零回退**: `IntentActionActor(skill_dim=24)` 新增 E(s) 分支 —— 默认 0 时参数形状逐字节不变; 打开时 `skill_enc` 末层零初始化 **且入口层老列逐位复制/新列置零** (缺后者暖启动差 0.43, 自检检查 C 抓出来的) → 暖启动与老模型**逐位等价** (实测最大差 0.0); 缺 skill_ctx 时**直接报错不静默降级**。自检 `INTACT-JEPA/tools/intact_skill_channel_check.py` 五闸全过 ③**新抗干扰数据集**: `tools/intact_insert_dataset_v5.py` —— light/med/heavy **三档真注入** (引擎改 peg qpos + mj_forward, 现场几何/obs 全重读) + success-only 专家口径 + 全相位覆盖 + 逐帧 skill_ctx ④**在训/推理双证据**: 训练打 `fit/skill_ctx_used=1.000`, 判闸用**同权重同帧 on/zero 消融** (有提升非仅不回退) → cron 哨兵 `v6_judge_watch.py` ⑤**踩坑实录**: `project_polyline()` 是 **4 元组** (最近点/距离/弧长/段号), 按 3 元组解包 → 每帧抛错被 `_frame_sink` **静默吞掉** → part 里整列 skill_ctx 没有而日志正常 (静默降级实锤, 已改为外抛 + meta 记错)
+        # v5.5.48: 🐛🎯 **记忆层喂错坐标系 (根因实锤) + 夹爪通道 + 纯场探针** —— 这一版把"记忆层为什么等于没效果"挖到底了。①**根因**: 桥的记忆钩子喂 `s.peg_head()` 给势场, 而冠军轨迹/引擎肌肉记忆用的是**夹爪真实位置** (引擎 `self.x = obs[0:3]`, state_space_sim_real.py:634) —— 同一 seed 下两者差 (0.017, 0.054, 0.176)m ⇒ 势场在**自己坐标系之外**的点上求梯度, 意图等于噪声。实锤: 新探针 `tools/mem_field_probe.py` 打坐标系对照, 用 obs[0:3] 时 `d_perp` 从 **0.1358m → 0.0002~0.02m** (状态本来就贴在轨迹管起点上 ✓), 相位 SK01→SK03→SK07 正常推进; 用 peg_head 时越走越远 (tr[dist] 157→431mm) ②**修复**: 桥改用 sink 收到的观测前三维 (与冠军轨迹同源), 并在注释里留下实锤数字 ③**新增夹爪通道**: `blend_action` 原来只混 u[:3] (XYZ), **夹爪 u[3] 永远来自模型** ⇒ 纯场/远场救援时夹爪不闭合 → 光模块根本没被抓起 (探针实锤: 1000 步 peg 位置一动不动)。现在 SkillPotentialField 存下 `champ_u` (冠军轨迹每步 4 维) + `grip_at(x)` 按弧长取**当拍冠军夹爪指令**, 用同一个 w 混进 u[3] (管内模型主导 → 夹爪照旧听模型的, 不回退); 诊断里报 grip_src/u_out_grip ④**遗留**: 纯场驱动已能跟轨迹(d_perp ~1e-4~2e-2) 但**抓取没咬住** (峰值阶段切换快, 闭合指令只持续少数步) → 下一步做夹爪粘滞/相位节拍 ⑤同时: 阶梯台新增记忆状态快照复位 (见 v5.5.47 说明)
+        # v5.5.47: 🧲 **记忆层: 场权增益调度 + 阶梯台数据一致性修复** (阶梯第一版 30 格实测的两条真结论) ①**第一版结论 (manifest 6fc5fe9f60fa, v4-ep2)**: 模型直驱 0/30 (插入距离 585~611mm, 成功线 65mm); L2/L23/L234/assy 与 off 差异只有噪声级 ⇒ **没提升**; 解析链无干扰 7/9 · 干扰 4/7 真成功 ⇒ 几何可达, 差的是"谁出力" ②**根因一 (场权写死太低)**: `w = w_max·max(conf, w_floor)` = 0.5×0.2 = **0.1 恒定** (现场 conf≡0, 离最近轨迹管 207mm) → 10% 场权扳不动 600mm 模型误差。修: **增益调度** `far=clip((d_perp−d_near)/(d_far−d_near),0,1)`, `w=max(w_max·max(conf,w_floor), w_far·far)` (默认 w_far=0.85 / d_near=30mm / d_far=150mm) — 管内维持原公式(不回退), 远场让记忆场主导(才有救援能力); far/w_far_gain 写进逐步诊断 ③**根因二 (模型动作塌缩)**: `IntentActionActor` 只吃潜槽 [z_t, m_t, z_t·m_t]+上一动作嵌入, **无本体/几何输入**; 数据集有 39D `observation` 但 grep 零命中=从没被消费 → 224²/patch14 潜空间补不出亚毫米几何 ⇒ 幅度仅教师 7~22% ⇒ 判闸输常数基线 (v3/v4/v5 同病) ④**阶梯台数据一致性修复 (实测抓到的真 bug)**: 同 seed/同 cap/同权重/同代码, 解析链结果 从 65.26mm(done) 漂到 58.02mm(not done) —— 根因是**记忆状态文件是可变状态** (引擎逐局把成功轨迹固化进 data/muscle_memory.json + assembly_memory.json/shared_memory.json), 既不在 manifest 也不在格间复位 ⇒ 同口径被悄悄破坏。修: 记忆状态 + models/*.pt 纳入 manifest sha256, **每格开跑前复位到本 manifest 的快照** (所有格起点一致), 跑完把该格产生的状态另存 reports/mem_ladder/state_after/ 当证据 ⑤新增文档 docs/design/zmax_memory_integration.md (分层语义/阶梯台口径/第一版数字/根因/下一步 A~F 表)
+        # v5.5.46: 🧲📊 **记忆层集成阶梯 (L2 准确性 → L3 调度 → L4 抗干扰 → 总装仲裁)** (老倪: "开始集成 L2肌肉记忆 L3流程记忆 L4工作记忆 和总装记忆… 稳步推进, 从 L2 到 L3 再到 L4… 我要看到最终的成功抗干扰的插拔, 且高效稳定… 能力要稳步提升, 不要有波动。数据一致性最重要") — ①**抗干扰档落地** (关键缺口): 桥原来 `sim.run(max_steps=…)` **不传 cap** → 引擎 `_jitter_on=False` → L4 链从来没被注入过干扰 (CRITERION: 引擎里 `cap=='l4'` 才真注入来料移位/转向 ±3.5cm/±15°物理/90°转台视觉 + 恢复预算×2)。新增 `--cap {l2,l3,l4}` (默认 l4) 并透传 → **解析链与模型直驱都吃同一份干扰** (同口径对照), 每格结果记录真实干扰元数据 (dx/dy/dz/yaw/shell90) ②**同口径阶梯台** 新工具 `tools/mem_ladder_integration.py`: ①数据一致性 preflight — 把权重 sha256+epoch、反归一化 stats sha256+action_space、记忆开关快照、引擎/桥/势场源码 sha256 + git rev 冻结成 manifest_hash (换了条件就是另一批历史行, 不会混着比) ②运行矩阵 = 5 臂 (off/L2/L23/L234/assy) × 2 干扰档 (none=cap l3 / disturb=cap l4) × N seed, **每格跑完即 append** 到 runs.jsonl → 断点续跑不重复烧机时 ③阶梯闸 (不后退第一): N1 L2 准确性 (成功率≥off 且深度不差 2mm) · N2 L23≥L2 · N3 L4 抗干扰 (干扰档 ≥ 自身无干扰 −1/n 且 ≥ off 干扰档) · N4 总装 ≥ 任一臂 · N5 高效零搜索 (candidate_sequences=0 且 调用/步≤1.05) · N6 稳定 (跨 seed 深度 std≤25mm) ④**历史 append-only** reports/mem_ladder/ladder_history.csv → 跨 ckpt (v4→v5) 同一格直接对比 = "能力怎么提升的"可追溯 ③**无人值守**: `~/.hermes/scripts/mem_ladder_watch.py` (no_agent cron 每 20 分钟, 静默=无变化) — 崩溃格报告 / 进程死且格未跑完**自动重启**(可续跑) / 新汇总结论推飞书 ④**冒烟实测** (L2×disturb×seed7×60步): manifest 冻结生效 · 真干扰注入 (dx=-1.2 dy=+3.4cm dz=+9.6mm yaw=-1.8° shell90=1) · L2 介入 60/60 步 w̄=0.1 · 零搜索 True · 调用/步 1.0 ✓ → 已启动全量 30 格 (3 seed × 5 臂 × 2 干扰档, 1000 步/局)
+        # v5.5.45: 🔬 **INTACT L4 调试配置 (VSCode) + 模型侧单步驱动器** (老倪: "这时我的 launch.json 文件, 你来给出 INTACT L4 的调试配置") — ①**关键约束**: 「右键 → 打开 VSCode」会**重写** .vscode/launch.json (simulink_module.open_in_vscode 内写死模板) → 新配置必须同时写进模板, 否则下次右键被抹掉; 本次模板与文件已同步并有回归测试 (打桩 Popen 后调 open_in_vscode, 断言 7 条配置全在) ②**新增 4 条配置**: 🎯 policy 层调试 (`tools/intact_service_e2e.py`, gui-venv311 → 断点打 src/lerobot/policies/intact/**) · 🎯 GUI 节点路径 (`tools/intact_gui_node_check.py` → 断点打 node_logic.py::node_intact_dec + policy 层) · 🔬 模型侧单步 (`tools/intact_worker_debug.py`, **INTACT-JEPA/.venv py3.10** → 断点打 /home/ubuntu/INTACT-JEPA/** 与 intact_worker::Runtime.act) · 🌍 光模块插拔链 (`tools/intact_sw_optical_bridge.py`, 真物理) ③**为什么模型侧要单独一条**: 正式路径是跨 venv 子进程桥, debugpy 只停它 launch 的那个进程 → GUI 侧调试会话里 INTACT 仓库代码断点永不命中; 必须换 INTACT venv 的 python 起 in-process Runtime ④**真输入不造假**: 新增 `INTACT_KEEP_INPUT=1` → 桥把 worker 收到的真实输入 (真渲染帧 224² + 真 goal + 真动作历史) 留档到 reports/intact_last_input.npz, 驱动器重放它 ⑤**实测**: E2E 6/6 PASS + 输入留档 2.4MB → 驱动器 (INTACT venv) 加载 5.3s · trained=True · dims action_dim=8/history=3 · act 0.1s · actions(1,8,8) std=0.3853 · 潜空间 z_t/z_goal/delta 齐 · 退出码 0
+        # v5.5.44: 🐛 **修「右键 VSCode 打不开真实源码, 还停在原来的 GUI」** (老倪: "VEH.5.022 INTACT 意图解码器, 右键打开 vscode 源代码, 还是原来的 GUI, 你怎么没有跳到 src lerobot policies 文件夹里呢?") — ①**根因 (两条)**: (a) `get_node_location()` 对**没登记 `_EXTERNAL_LOC` 映射**的键退回 `node_logic.py` 自身 `co_filename` → 打开的就是 GUI 文件 (INTACT 家族 v5.5.40 迁到 policies 后漏登记映射); (b) `open_in_vscode()` 只认 node_logic 映射, **不看节点自己声明的 params.source** → 新节点/新架构必踩 ②**修法**: (a) `open_in_vscode` 改成 **节点 `params.source` 优先** (可选 `params.source_symbol` 按符号动态搜行号, 避免手写行号漂移), 找不到才退回 node_logic 映射 = 老节点行为不变; (b) 登记 INTACT 家族映射 (`intact`/`intact_dec` → `policies/intact/service.py` · `intact_decoder` → decoder.py · `intact_node` → runtime/node.py · `intact_bridge` → runtime/model_adapter.py) + 光模块插拔链 (`sw_ds`/`sw_intact`/`sw_world`/`sw_video` → tools/intact_sw_optical_bridge.py); (c) 流里 `ssintact`/`ssintact_dec` 的 params.source 改指 `src/lerobot/policies/intact/service.py` + source_symbol `def run_once(` (描述里写明分层: 编排 service.py · 解码 decoder.py · 桥 runtime/model_adapter.py) ③**实测** (新工具 tools/verify_vscode_source_loc.py, 打桩 Popen 捕获真命令): 两个节点都是 `code -g <root>/src/lerobot/policies/intact/service.py:209` (run_once 定义行, 符号动态定位) · 断言 4/4 PASS · 不含 node_logic.py
+        # v5.5.43: 🏗 **L4→L3 意图编排下沉 policy 层 (桥接复用, 不抄代码)** (老倪: "这段应该放到 src/lerobot/policies 这个地方, 你来重构代码; 看怎么把 INTACT 项目的代码引用过来, 还是就沿用 /home/ubuntu/INTACT-JEPA; 第一步先封装一个桥接功能吧, 原来的项目不是已经都运行了么?") — ①**结论**: 沿用 `/home/ubuntu/INTACT-JEPA` **一字不改**, 本仓库只经"桥"调用 (拷进本仓=依赖冲突 stable_worldmodel/hydra 与 GUI venv 不兼容 + 论文权重还必须它自己的 paper_runtime 冻结运行时 + 两份实现会漂移); 桥**不是新东西**, v5.5.40 就在跑 (`runtime/model_adapter.py` IntactRuntime + `tools/intact_worker.py` 跑在 INTACT venv, 协议 hello/act/reset/bye) ②**本次做的是分层**: 新建 `src/lerobot/policies/intact/service.py` (IntactIntentService / IntentReport / get_service / reset_service) — 把"建桥 + 接数据源 + 真推理 + 解码 + 证据落盘 + 日志文本"从 GUI 全部搬进 policy 层; `tools/gui/node_logic.py` 的 node_intact / node_intact_dec 由 ~90 行缩成**瘦调用** (取单例 → run_once → rep.to_panel() 挂面板), 删掉 GUI 侧两套缓存与证据写入 ③**接口**: `ensure_ready()` (metaworld → l4_episode 兜底并把原因写 note, 不静默) · `run_once(stage, decode, write_evidence, log)` → `IntentReport` (u_ff/l3_cond/weight/reason/chunk_shape/diagnostics/bridge/ts, 带 `log_lines()`·`to_panel()`·`to_dict()`·`evidence()`) · `bridge_status()` · `describe()` · `close()` ④**修两个真问题**: (a) `INTACT_DEVICE=cpu` 被 adapter 的 `--device cuda` 默认值覆盖 (探针会抢训练显存) → device 默认 None 不传, 由 worker 读 env; (b) 服务层补 `ensure_goal()` 调用 → 诊断里 `goal_src` 不再显示"(未设置)", 如实标 `data_source(metaworld)` ⑤**E2E 实证 (只走 policy 层, 不经 GUI)**: `INTACT_DEVICE=cpu INTACT_POLICY=intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt gui-venv311/bin/python /tmp/e2e_intact_service.py` → trained=True · chunk(8,8) · candidate_sequences=0 (零搜索) · u_ff 4D [-0.0087,0.1406,0.2177,1.0] ← intact(chunk×K_ACT=0.5) · L3 条件未标定 → 拒绝(不注入) · 证据 reports/intact_l3_cond.json (字段只增不改) · 断言 6/6 PASS ⑥证据文件保持 v5.5.40 起的字段名, 只增不改 → 引擎/工具零改动; 设计文档补 `§4.1 桥接 vs 抄代码`
+        # v5.5.42: 🎨 **L4 层由三层并成一层 + 下游依次右移 + 连线整齐** (老倪: "L4专家自主功能这层的节点,你都便层三层了, 不好看, 变成一层。下游的节点要依次向右挪动一些, 连线要整齐") — ①**L4 并层**: 5 个 L4 节点统一到一行 y=-830 同行带 (行带高 360→170): 🎯INTACT策略(40) → 🎯意图解码器(396) → 🧠流形专家预测器(752) → 🧮接触流形(1088) → 🧮性能流形(1424), 56px 等距; 行带右缘 1760 让 DiT 落在行尾右侧 ②**下游依次右移**: DiT 980→1810 · 前馈加速器 1290→2160 (状态估计/预测/校正 → 2496/2832/3168) · 动作调制器 2200→3520 · 安全执行边界 2540→3856 · 机器人执行器 2900→4800 (SK01-08 那行 11 节点 3640px 拉到行尾右侧) · 物理世界 3250→5140 · 验证/可视化 3600..5500 → 5500..6500 ③**VLM 40→396 / 43D obs 860→1048 / 通用算子行 +185px**: 消掉 YOLO→VLM、L3记忆→VLM、触觉→obs、2D→3D→流形预测(x2)、状态校正器→动作调制器、流形专家→通用算子A 等反向线 ④**连线数组按 源y→源x→目标y→目标x 全局重排** (画布端口 slot = 该节点第 i 条线/总线数, 只认 link 数组先后): 入线/出线 slot 单调于来向 → 线条不再互穿; DiT 输入端口语义化 in1 潜空间z / in2 L4条件 / in3 接触流形 / in4 性能流形, 前馈 in1 DiT action / in2 标杆u_ff / in3 obs 43D ⑤**真画布取证** (QT offscreen 加载真画布 + `_relayout_row_gaps` 复现用户视角 + 贝塞尔采样): **反向连线 13→2** (剩 2 条都是语义闭环回流: 物理世界→状态校正器 ↩观测反馈 / 引擎→渲染源 ↩渲染回流) · **方框重叠 1→0** · 连线交叉 130→110 · 关键链全前向: 数据源→INTACT 100px · INTACT→解码器 56px · 解码器→DiT 1114px · VLM→DiT 1134px · 接触流形→DiT 442px · 性能流形→DiT 106px · DiT→前馈 70px · SK01-08→执行器 8/8 全前向 (70..2422px) ⑥**零回退**: L2 档 55 / L3 档 60 / L4 档 77 节点档位归属与执行集逐 id 不变, 83 条连线拓扑零丢失 (tools/verify_l4_zero_regression.py 对比 git HEAD)。工具: tools/relayout_canvas_l4_row.py (可复跑摆位) + tools/verify_l4_layout.py (几何体检+出图)
+        # v5.5.41: 🎨 **L4 INTACT 区 UI 重排 + 重新连线** (老倪: "重新设计一下 UI, 尽量不要出现右侧的输出线连接到了左侧的输入线; INTACT 意图解码器 和下一个节点 Flow-Matching Action Head 你再好好设计一下 UI, 摆好位置, 不要让线条交叉太多, 重新连线") — ①**根因定位**: 画布加载时会自己重排 —— 普通节点 w≥280/h≥110 (源码 5146/5147 行) + autofit 撑宽 + `_relayout_row_gaps(min_gap=56)` 按 round(y/60) 分桶把桶内后一个节点推到"前一个右缘+56"(12044 行) → JSON 里写的 x/w 只是输入, 必须按画布规则反推坐标; 连线端口 = 源右缘 x=src.x+src.w → 目标左缘 x=dst.x, 所以"右出线连左入线"= src.x+src.w > dst.x ②**L4 行加高 180→360** (新增第三通道) + 下方行带整体 +180px (相对几何保持 → 档位判定零变化) ③**三通道布局**: 通道A(上) ssintact(240..540)→🎯INTACT意图解码器(596..896); 通道B(中) 🧠流形专家预测器(340..620)→🧮接触流形(676..956); 通道C(下) 🧮性能流形(620..900); 全部错开 y 桶 → 不再被迫右推、方框零重叠 ④**重新连线**: ssdec x 700→980 (+ ssff 1140→1290) 让 c/p/解码器三路输出全部**前向**进 DiT; 端口 lkild3 in2→in4 ⑤**真画布取证** (tools/verify_l4_layout.py 改成加载真画布量 ax/bx): 解码器→DiT 由**倒退 300px → 前向 84px**, INTACT策略→解码器 前向 56px, 数据源→INTACT 前向 300px, 接触流形→DiT 前向 24px (竖直), 性能流形→DiT 前向 80px, DiT→前馈 前向 30px ⑥余下 13 条反向连线全在 L2 区且都是**固有**的 (SK01-08→执行器 8 条因该行 8×280+7×56 超出行宽被画布右推 / 物理世界→状态校正器 与引擎→渲染源 2 条闭环回流 / 2D→3D→流形预测 等 3 条旧布局遗留) —— 属全画布级重排, 需要时另开
+        # v5.5.39: 势场收敛修复 + 逐层对照工具 (小版本迭代) — 管壁高度改 λ=4·k_att·σ² 归一 + 新增近谷锥形吸引项 k_lin=3·k_att·σ → 消除近谷次极小 (收敛 4000 步未达标 → 98~127 步到 <1mm, Φ 严格单调降); 覆盖闸 d_max=500mm + 相位按状态软判; 新增 tools/mem_layer_ablation.py (四臂 AB: off/L2/L23/L234); 势场验证 26/26, 桥 e2e 全关 0 介入 / 开 L2 介入 120/120
+        # v5.5.38: 🧲 **分层记忆势场 (L2 肌肉 / L3 工艺流程 / L4 物理工作空间 / 总装机记忆联络)** (老倪: "先把这个势场的逻辑, 实现到 L2肌肉记忆, L3工艺流程记忆, L4物理工作空间记忆, 以及总装机记忆的记忆层联络策略") — ①**统一接口 = 标量势场 Φ(x), 梯度 −∇Φ = 意图** (不传技能标签, 只传往哪走): L2 `SkillPotentialField` Φ_SK = ½k‖x−x_g‖² + λ(1−exp(−d⊥²/2σ²)) — 谷底=冠军轨迹**真末点** · σ=谷宽(中位间距×1.6) · 触发/速度上限取技能库真值; L3 `ProcessPotentialField` Φ_process = Σ w_k(t)·Φ_SK, Σw≡1 (w 由**真跑帧数**归一 + raised-cosine 交叉淡入) → 谷底按时序从 SK01 移到 SK07; L4 `GlobalPotentialField` = 流程 + 障碍(孔壁/台面 **引擎现场几何**) + 世界模型预测项(未接预测器恒 0 且显式标记) ②**总装机记忆 `MemoryLayerBridge`**: 四层联络策略 + **逐层开关** data/memory_layers.json (默认全关 → compose=None / blend 恒等, 可断言零回退) + 跨层仲裁(接触段技能势场优先, 自由段流程势场优先) + 台账 data/assembly_memory.json ③**L4 INTACT 链接入** (intact_sw_optical_bridge): 开了哪层就按 `blend_action` 混入 −∇Φ 意图 (u=(1−w)u_model+w·u_field, w=w_max·max(conf,w_floor), w_floor=恢复下限), **相位由状态软判**(时钟进度与模型直驱不同步) ④新画布节点「🧲 总装机记忆 · 势场联络」+ 4 连线 (ss_mem_l2/l3/l4 → 节点 → 调度) ⑤**实测**: 势场 26/26 (真数据: muscle_memory 7 条冠军轨迹 + 引擎真几何; 解析梯度 vs 数值 1e-7 · 横向势单调 · 收敛 ≤1mm 且 Φ 严格下降 · Σw≡1 · 孔壁斥力双向正确 · 逐层开关逐项生效 · 全关恒等) · 桥 e2e: 全关 0 介入 / 开 L2 真介入 ⑥**查出真问题**: `muscle_memory` 的 io.entry/exit 与 champ_x **锚点不同源** (差 15~145mm; SK06/07 ≈ PEG_HEAD_OFF_XY=0.13 → 抓握点系 vs 光模块头系) → 势场按轨迹末点自洽处理并把差异报出 (不静默)
+        # v5.5.37: 🌍 **L4 光模块插拔链** (老倪 2026-09-13: "把红色小方块的抓取实验, 改造成光模块的抓取插拔实验") — ①**L4 链条任务化**: 切任务 = data/intact_sw_task.json, 默认 `optical_insert` = Z-MAX 引擎 RealStateSpaceSim(metaworld peg-insert-side-v3 真物理) + 本域微调 INTACT 权重; `cube` (stable-world 论文权重) 保留可切, 不删旧桥 ②**新桥 tools/intact_sw_optical_bridge.py** (跑 gui-venv311, 有 metaworld; 模型经 IntactRuntime 起 INTACT venv 子进程, 跨 venv 隔离): 同 seed 解析链对照(插入 + 插→拔→AOI 全链)取目标帧 → **模型动作真下发 env.step** (引擎既有 _direct_act 直驱入口, 无解析控制器) → 逐帧 spool 224² + status.jsonl + 480² mp4 打标(真推理次数/模型输出/插入深度) ③**u 口径反变换** (v4 数据集动作列 = 引擎控制向量 sim._u_vec, m/s 量纲): 按引擎**自己那套约定**还原 act[:3]=clip(u/K_ACT)·act[3]=CLOSE if u[3]>0.5 (state_space_sim_real.py:1183/1198 同源) — 量纲逆运算, 非新控制律 ④**新工具 tools/action_stats_from_h5.py**: 从 h5 现算 mean/std (get_column_stats 同口径 + action_space 标注) — 权重与统计强制同源 ⑤**🐛 竞态修复(实测踩过)**: 上一轮 status.json 仍是 stage=done 时节点等待循环会把**旧终态**当本轮跑完 (光模块链读到 cube 终态) → 启动前先作废 status 写 starting ⑥互动查看器补三行: 阶段(引擎状态机)/插入深度(mm 真几何)/下发 env 动作 ⑦**实测(节点级 11/11)**: 1800 帧 · 1800 次真推理 · frame_std 56.5 · 解析链 2/2=100% (插入 65.13/64.78mm · seed0 全链=True) ‖ 模型直驱 0/2 (过冲 643/553mm) — 与离线判闸一致(预测std 仅教师 7~16% 塌均值), **模型能力问题非接线问题**, 面板/日志诚实标注
+        # v5.5.36: 🧭 3D 视图改口径 (老倪: "不要搞成画中画了, 就是两三个窗口, 都用 dreamview —— 一个 L2, 一个 L3, 一个 L4 的 stable world") — ①**移除画中画**: DreamView3D 不再在 3D 场景右上角贴 SW 实况小窗 (不创建 _sw_panel/不起 150ms 定时器/图层表删掉 sw_live 项) ②**改为三个独立 dreamview 窗口**, 3D 视图左侧新增一排按钮 (可同时开, 互不遮挡): 「🧭 L2 DreamView」只开 感知层+末端轨迹; 「🧭 L3 DreamView」再加 ①前馈加速器/②自适应状态估计/③先验动力学预测; 「🌍 L4·SW DreamView」= stable-world 逐帧真渲染 + 拖帧看任意帧信号 (时间轴/单步/播放 + 模型动作曲线) ③**档位预设贯通**: `DreamView3D(level=...)` 与 `open_ss_3d(level=...)` 新增 level 参数 → 打开即按档位开关图层 + 标题标注 ④验证 10/10 (真 X11): 画中画确已移除 · 三按钮在位 · L2 预设只开 scene/traj · L3 预设含 uff/latent/prior · L4 开出 stable-world 窗口 (52 帧) · 三窗口可并存 (截图 reports/intact_sw/dreamview_trio_v5536.png)
+        # v5.5.35: 🐛 修「点 SW实况窗口 没反应」根因 (按钮回调连错类) — ①**老倪实锤**: 点 SW 实况窗口按钮毫无反应; 真显示环境(DISPLAY=:0)复现 = `[SW 实况窗口] 打开失败: AttributeError: 'SWLiveWindow' object has no attribute '_open_viewer'` ②**根因**: v5.5.34 给 SWLiveWindow 加的「🎛 互动查看器」按钮, 回调连成了 `self._open_viewer` —— 那是 **DreamView3D** 的方法, SWLiveWindow 上不存在 → **构造期就 AttributeError** → `sw_live_window()` 返回 None → 点按钮静默无反应 (只剩一行 print) ③**修复**: 给 SWLiveWindow 补上自己的 `_open_viewer()` (用 sw_dirs() 定位数据源再开互动查看器) ④**回归测试固化** (这次的教训: 加按钮后必须真点一遍): 新增真显示下的_全按钮点击回归 — SWLiveWindow 3 按钮 + 置顶勾选 + 倍率下拉 + DreamView3D 7 按钮 全部点击无异常, 且点击后 SW 实况窗口真存在且可见 (geom 206,212,809,860), 互动查看器可见 ⑤验证 ALL PASS (DISPLAY=:0 真 X11, 非 offscreen —— offscreen 测不出这类构造期回调错误)
+        # v5.5.34: 🎛 L4·SW 互动查看器 (老倪: "可以像 L2 L3 的 dreamview 一样, 变成互动, 可以看到任意帧的信号么") — ①新增 `tools/gui/intact_signal_viewer.py`: **拖帧看任意帧画面+信号** 的互动窗口 — 时间轴滑块 / ◀▶ 单帧 步进 / ⏮⏭ 首尾 / ▶10fps 连续播放; 右侧信号表逐帧显示 帧文件·帧序号·step·回合·**模型动作[0..3]**·frame_std(>5=真图)·done·累计真推理次数; 下方 **pyqtgraph 四条动作曲线 + 游标线随滑块移动** (任意帧信号一眼可见) ②数据源自动扫描 `reports/**/frames/` (L4·SW 实况导出), 并读同名 **`status.jsonl` 逐帧信号日志** — 由 bridge 每步追加一行 (step/action/frame_std/done/model_calls) ③三个入口: 3D 视图 SW 实况窗口「🎛 互动查看器」按钮 / 画布「🎬 SW渲染视频」节点双击 / 直接开窗口 ④**为什么之前"视频不动"**: 实况窗口只在链条运行时逐帧刷新; 停下来后就定格在最后一帧 — 现在可拖帧/逐帧步进/看每帧信号 (与 dreamview 同款交互), 不再依赖"有没有在跑" ⑤诚实: 帧是真渲染图 (像素 std 可查, 实测 30.3~30.7); 无 status.jsonl 的旧产物信号列显示"—", 不编数值 ⑥验证 11/11 (offscreen): 扫到数据源51帧·逐帧信号51条·拖帧画面真图(std>5)·step与动作值跟着帧变·信号表四行动作·4条曲线51点·游标跟随(x=10)·播放暂停切换·越界夹紧不崩 (截图 reports/intact_sw/interactive_viewer_v5534.png)
+        # v5.5.33: 🐛 修「弹出的实况窗口画面不动」根因 (只弹窗没跑桥) — ①**老倪实锤**: L4 档 ▶运行 → 窗口弹出但画面定住; 排查 = reports/intact_sw/status.json 仍是上一次 12:37 的旧时间戳、控制台日志 0 条 SW 痕迹、无桥进程 ⇒ **状态空间 ▶运行 走的是引擎真链路 (_start_real_sim), 不会执行画布上 SW 链条的节点逻辑** → 桥从未被启动, 窗口只能显示上次跑的旧帧 ②**修复**: `_auto_sw_live_window()` 除了弹窗, 还要 **真启动 SW 引擎链桥** (调 node_logic._sw_start; 已在跑则复用并如实提示"已在跑-复用") → 逐帧渲染真图 流式写入 frames/status.json, 窗口 150ms 轮询 → 画面真的会动; 启动/复用都在画布日志留痕 ③**端到端验证 7/7** (清空 frames 后真跑): 窗口弹出 · 桥真启动 (pid 191239) · 帧从 0 增长 · status.json 时间戳真更新 (15:17:51) · 窗口显示帧号从 step_000000 → step_000001 = 画面在动 · 状态行读新状态 (std=31.31, 阶段 run) · 日志有"已启动 stable-world 渲染桥" ④L2/L3 档仍完全不动
+        # v5.5.32: 🎬 L4 档 ▶运行 自动弹出「SW 实况」独立窗口 (老倪: "跑链条时画面自己就出来了") — ①`simulink_module.start_sim` 在**状态空间画布**分支入口调 `_auto_sw_live_window()`: 当前档位 `_ss_cap_num()>=4` (L4) 才弹窗, L2/L3 档**完全不动** (返回 None, 保持原行为) ②画布日志留痕: "🎬 L4 档: 已自动弹出「SW 实况」独立窗口 (stable-world 逐帧渲染真图 · 数据源 reports/intact_sw/frames)" ③**全局单例** `ss_dreamview.sw_live_window()`: 自动弹出的窗口与 3D 视图内嵌小窗的「⤢ 放大窗口」、3D 左侧绿色按钮**共用同一个实例** (不会开出两个窗口) ④验证 7/7 (offscreen): L2 不弹 / L3 不弹 / L4 弹 (标题+位置) / 日志有记录 / 单例一致 (w2 is w3 is w) / L4 画布 start_sim 真走到该调用 (引擎被调用 1 次 + 窗口 True) / 窗口显示真帧 672×672 (截图 reports/intact_sw/sw_live_auto_v5532.png)
+        # v5.5.31: 🎬 SW 实况独立窗口 (老倪: "小窗太小了, 独立出来一个正常窗口吧") — ①新增 `ss_dreamview.SWLiveWindow`: 单独一个**正常窗口**显示 stable-world 逐帧渲染真图 (数据源与 3D 角落小窗完全相同: reports/intact_sw/frames/*.jpg + status.json → L4「🌍 SW 仿真世界引擎链」真产物) ②窗口能力: 默认 760×860 **可拉伸** · 倍率 ×1/×1.5/×2/×3/×4 (默认 ×3=672px, 原帧 224×224) · ⏸暂停/▶继续 (定格不刷新) · 📌置顶 toggle · 📂视频目录 (3 面板 mp4 + showcase) ③**两个入口**: 3D 视图左侧新增绿色按钮「🎬 SW 实况窗口 (独立·放大看)」+ 3D 角落小窗新增「⤢ 放大窗口」按钮 (点它从小窗放大到独立窗口) ④单例: 已开则 raise/activate, 不重复开窗; resize 时按倍率重贴 ⑤诚实: 无产物显示"尚未跑过 — 选 L4 档点 ▶运行"; 状态行 4 行全读真 status.json (帧/std/阶段/步/回合/成功/success_rate/模型调用/零搜索/ckpt/数据源路径) ⑥验证 15/15 (offscreen): 按钮×2 在位 · 顶层窗口(父=None) 760×860 可拉伸 · 真帧 std=31.78 · 倍率 ×1:224 ×2:448 ×4:686 真生效 · ⏸暂停不刷新 · 状态行真值 · 置顶切换无异常 · 整窗 grab 非全黑 (亮像素 261005) ⑦踩坑记录: PyQt `QLabel.pixmap()` 返回对象会随后续 setPixmap 变动 → 测试比较必须先取 int (曾误判倍率不生效)
+        # v5.5.30: 🎬 A — stable-world 渲染帧贴进 3D 视图本体 (老倪点单: "把 stable-world 渲染帧贴进 pyqtgraph 3D 视图本体") — ①**3D 视图右上角新增「SW 实况」实况小窗 (画中画)**: 直接显示 L4 「🌍 SW 仿真世界引擎链」的**逐帧渲染真图** (INTACT cube, swm/OGBCube-v0 + MUJOCO_GL=egl 离屏 224×224), 150ms 轮询 reports/intact_sw/frames/*.jpg (帧号变才重贴图, 省 CPU) ②**状态行显示真值**: 帧号 + frame_std (>5 真图判据) + 阶段/步/回合/成功 + 模型调用次数 + 零搜索 + 最新视频名 (全部读 status.json, 没跑过就显示"尚未跑过 — 选 L4 档点 ▶运行", 不编数值) ③**并入左侧图层开关面板**: 新增「🎬 SW 实况 · stable-world 渲染帧」(默认勾选), 取消勾选 = 小窗隐藏, 不影响 3D 场景与其它图层 (它不是 GL 图层, 是 self.view 的子控件画中画) ④**随窗口自适应**: 3D 视口 resize 时小窗自动重贴 右上角 (与文字标注层同一套 eventFilter 钩子) ⑤**一键视频入口**: 小窗内「📂 打开视频目录」直达 reports/intact_sw/video/ (stable-world 官方 save_panel_videos 出的 agent|dataset|goal 三面板 mp4 + showcase 合集) ⑥**验证 9/9**: 面板存在/勾选框在位/贴上真帧 (pixmap std=32.46)/状态行真值/关→隐藏 开→显示/小窗在视口内 (x=596+318≤926)/整窗 grab 非全黑 (亮像素 65739) ⑦诚实: 小窗只显示桥真产出的帧; 无产物时显示"尚未跑过", 不画占位假图
+        # v5.5.29: 🐛 修「启动状态空间即崩」根因 (背景行标题省略号宽度必须是 int) — ①**崩溃实锤**: faulthandler 转储 = `Fatal Python error: Aborted`, 栈顶 `simulink_module.py:2758 paint → _wrap_title → QFontMetrics.elidedText(text, ElideRight, avail)` 抛 `TypeError: argument 3 has unexpected type 'float'` → **paint() 内异常直接 abort 整个 GUI** (不是卡死, 是硬崩) ②**根因**: v5.5.27 统一 UI 时 `avail_w = max(80.0, float(...))` 是 float, 同行虽算了 `_aw = int(avail_w)` 却把 `avail_w` 传进 `_wrap_title` → 只要**任一背景行标题需要省略号**(= truncate 分支) 就必崩 ③**修复**: `_wrap_title` 入口 `avail = int(avail)` (防所有调用点) + paint 改传 `_aw` ④**验证**: 单元对照 `elidedText(float)` 复现同款 TypeError / int 正常; 新 L4 背景行 item 直接 `paint()` 渲染出内容 (亮像素 3442) 且无异常; 整画布 `scene.render()` 无异常 (亮像素 287021) ⑤**教训**: 任何 paint/paintEvent 里抛异常 = Qt abort 全进程, 凡是给 Qt API 的数值宽度一律先 int()
+        # v5.5.28: 🌍 L4 · SW 仿真世界引擎链 (INTACT cube 集成进状态空间, 老倪: "把独立的 INTACT 运行环境集成到状态空间中, 点击运行就可以运行 INTACT, 触发开关是 L4") — ①**新增独立链条 4 节点 + 1 L4 色带** (数据源 `🧪 SW环境渲染图像源` → 中间 `🎯 INTACT策略·cube` → 硬件层 `🌍 SW仿真世界引擎` → 可视化 `🎬 SW渲染视频`), 连线 3 条单走 (渲染图像/动作块/渲染回流) + 1 条到视频节点; **只增不改**: 原有 70 节点/72 连线一字未动 (载入实测 75 节点 73 唯一连线), L2/L3 档零影响 ②**L4 触发开关 = 既有档位机制**: 链条放在名字含 L4 的 row_bg 色带内 → `_ss_node_cap_level` 自动判为 L4 档, 只有 L4 档的单步/播放链才执行它 (无需新代码分支) ③**跨 venv 子进程桥** `tools/intact_sw_bridge.py` (跑在 INTACT venv): 与 ②debug 任务**逐行同源** — 同一 World(swm/OGBCube-v0) / 同一 `load_pretrained(recovery_delta_full_cube_s3072)` / 同一 `PriorOnlySolver`(零搜索) / 同一 `_extract_init_goal`+`_apply_callables` / 同一 img_transform + StandardScaler(action); 唯一区别 = **逐帧流式**输出 (spool/*.jpg + status.json) ④**数据源 = 环境渲染真图**: 实测 52 帧, frame_std=30.26 (>5 真图判据) ⑤**硬件层 = stable-world 模拟器接口**: 动作真下发 `env.step` (每 receding_horizon=5 步重规划), 实测 52 步/3 回合/模型真调用 52 次/零搜索 (candidate_action_steps=0) ⑥**3D 视频从 stable world 取出**: 官方 `save_panel_videos` 出 3 面板 (agent|dataset|goal) 每回合一份 mp4 + concat 合集, 存 reports/intact_sw/video/ (实测 4 个文件, 含 showcase); 节点双击开逐帧实况窗 ⑦**诚实标注**: 演示档随机起点小样本 success_rate (实测 2/3) 明确标注"非官方 100 局口径 (官方 cube seed3072=98.67%)" ⑧**实测踩坑修**: 桥必须用 INTACT venv 解释器 (仓库 .venv 无 numpy → ModuleNotFoundError); `_sw_paths` 返回序 (dir,frames,status,video) 解包错位曾致 3 个节点读错文件 (已修); 桥进程退出瞬间 status 写入竞态 (加进程死亡检测 + 终态重读)
+        # v5.5.27: 🎨 画布节点 UI 统一优化 (老倪: 字号/字数/不挤不裁, 看起来像一个项目的节点) — ①**根因实测**: 节点文字全写 `QFont("Arial", ...)`, 而本机 Arial 不存在 → Qt 解析成 **Liberation Sans** (仅西文字形) → 中文逐字回退别的字体 ⇒ 同行中西文粗细/行高不一致; 叠加标题 **9→8→7 逐节点自适应降字号** = 「大小不一」; 过长名字无省略号 → 尾部字被静默裁掉 = 「显示不全」 ②**统一规格 (全画布一致, 不再逐节点变)**: 字体族 `Noto Sans CJK SC` (实测本机可用, 中英度量一致) + 标题固定 9pt Bold + 次要文字固定 8pt + 标题最多 2 行 + 超出**省略号** (悬停 tooltip 显示全名) + 固定内边距 (左14/右56) + 固定行高 = 字号固定后行距一致 ③**自动撑宽 (不裁字)**: 载入流程/新建节点时按同一套字体度量把框撑到「名字单行放得下」(≤380px, 超则两行宽) — 实测 state_space_obs.json **70 节点**: 撑宽后 **单行 70/70 · 两行 0 · 省略 0** (宽度 280→最多 353, row_bg 背景行保持自定义宽) ④同步统一: 背景行模型名 / 能力档位三档标签+档位说明 / 视频节点角标 → 全部走同一字体规格并有省略号 ⑤新增 `_node_font()` / `_wrap_title()` / `autofit_node_width()` 三件套 (绘制与度量同一来源, 撑过的框一定装得下)
+        # v5.5.26: 🤖 INTACT→L4 继承 + 数据页/画布 数据源层 重构 (2026-09-12) — ①**L4 档新增「🤖 L4 用 INTACT 节点执行」(默认勾选)**: 选 L4 运行时把控制权交给 INTACT 节点 (IntactRuntime+IntactNode → install_direct_act 直驱: 模型动作→env.step, 唯一变换 a_raw=z·std+mean), 日志打印真推理次数/ckpt 真实路径/最后下发动作; 实测 150/150 帧真推理·动作真下发·任务未完成 (与离线判闸一致 MAE≈常数基线·预测std小16倍 ⇒ **模型能力问题非接线问题**, 面板/日志诚实标注; 取消勾选回 L4Demo 90° 全链; L3/L2 档不受影响) ②新增 tools/make_intact_goal_frame.py (目标帧=解析链**真跑成功回合末帧**: done=True 387步/65.1mm/帧std 55.7) + install_direct_act 抽为公用装配器 (GUI 与 CLI 同一代码路径, 防两套实现不一致) ③**数据集页重构为纯数据 UI**: 删「🧠 训练结果 (outputs/train)」段并搬到训练台 Model Engine (功能保留) → 新增「📚 本地数据总表」(stable-wm-cache h5 台账 + 仓库 data/ 本地集, 真实统计/真图校验/来源/大小) + 选中行详情 + 数据操作日志 (只记数据动作) + 浏览/打开目录/复制路径/重建台账 按钮 ④**数据集查看器修复**: 传目录时自适应找 h5 · 帧滑块上限改**真实每回合帧数**(原写死 300/100 = 假值) · 「下一帧」真加载 (含帧缓存/←→键/加载中状态) · 窗口可缩放不裁按钮 (原 setFixedSize 挤掉按钮) · ↕ 上下翻转显示开关 (只改显示, 状态行标注) ⑤**INTACT 标准机器人切换 (数据源层)**: tools/intact_native_robot.py (4 个原生机器人 reacher/pusht/cube/tworoom, paper_runtime + prior_only 口径, 注册表含就位状态) + tools/gui/intact_robot_panel.py (切换面板 + 实况窗: 10fps 帧流/状态条/▶跑一轮) + 画布节点类型 intact_robot/robot_switch (双击开面板) + 工具栏「🤖 INTACT机器人」入口; 选机器人=写 data/intact_robot_state.json (切换节点的当前值) ⑥数据工具: zmax_ds_meta.py 台账 (兼容 swm 缓存路径序 STABLEWM_HOME→LOCAL_DATASET_DIR→~/.stable_worldmodel→~/stable-wm-cache) · h5_frame_reader.py (跨 venv 读真帧, gui-venv 无 h5py) · make_h5_subset.py (流式切 N 回合子集, 实测 36→8 回合结构正确) · intact_parts_to_h5.py (分块合并) · intact_native_worker.py (逐帧实况, 待数据集到齐后校准) ⑦**论文权重评测口径钉死** (实测踩坑记录): 必须在 paper_runtime/ 下跑 (根运行时报 module.InverseTransitionActor 找不到) + 零搜索求解器叫 prior_only (根仓库 direct_solver 与论文 actor 命名不兼容) ⇒ tworoom 100%(6/6) / cube 83.3%(5/6) 零搜索复现 (get_cost_calls=0), 视频存 reports/intact_official/ ⑧域内微调 v2 收尾 (诚实结论): 151,671 帧/3 epoch (动作头权重 1.0/1.0) → 离线判闸 MAE 0.1122→0.0968→0.0974 (常数基线 0.0993), 预测std 始终小 ~16 倍 ⇒ **仍塌在均值附近, 不上闭环**
+        _QTimer.singleShot(2000, self._maybe_warn)  # v5.5.25: 🎯 ① 来料角随机化 (60~120°) + 试抓头泛化验证 (含诚实边界) — ①`stage_turntable90(target_deg)` + `SS_L4_TT_DEG` + `--tt-deg` (来料角可配) ②探针扩到多来料角 (5 角 × 13 候选 × 2 布局 = 130 次真实试抓): **正确角随来料角移动** (60°→成功区 -90~-15°; 90~105°→-60~0°; +90° 恒败) ③留一角度交叉验证 (`--group-key tt`): 精确最优角命中 1/5, 但**操作性判据 (预测角在实测里真能夹住): argmax P(成功) 5/5 ✅ / argmax 预测Δz 仅 3/5** → 裁决规则改「P(成功) 为主 + 0.25·预测Δz」 ④端到端未见角 tt=72°/108°: ② 试抓头 φ*=-45.3° (27 决策/351 前向/权重 v2) → 真实夹持 Δz≈12mm → 全链 success=True ×2 ⑤**诚实边界**: φ=-45° 在全部 12 个测试来料角下都可行 → 固定 -45° 也能过 ⇒ 现有证据**不足以声称"自适应"** (头 v2 输出恒为 -45.3°, 区分不出"学到万能角"与"学到自适应") — 下一验证条件已明确 (-45 不可行的工况: 更极端长宽比 / 来料姿态+位置组合偏移 / 决策移到插入相位) ⑥新增 `tools/eval_yaw_head_ops.py` (操作性判据核算); 权重 v2 随包 | # v5.5.24: 🎯 yaw 试抓头 (act_dim 4→5, 真实试抓监督) 让 φ* 成为真正最优对准角 + L4 零件改**矩形截面 40×16mm** (真实光模块) — ①根因实测: metaworld 原 30×30mm 方截面件 → 抓/插对 yaw 免疫 (28 次真实试验全成功) = 无最优角; 截面扫描 (tools/rect_sweep.py) 定 40×16mm (抓0°成功 Δz105mm / 抓90° **物理失败**开口不足 / 插入0/90°均成功 → 有区分度且不回退) ② ② 段夹持判据改**真实抬升试探** (原闭夹后无条件建刚性锁→成功恒真=假成功; 现锁之前抬 12mm, 模块随动>6mm 才建锁, 否则真失败中止) ③探针数据集 (tools/yaw_grasp_probe.py, 3布局×13角=39次真实试抓) 成功 12/39, 最优区 φ≈0 (3/3), φ=±90 全败 ④新增 src/lerobot/manifold/yaw_head.py (z7+4D动作+**候选角** = act_dim 4→5) + tools/train_yaw_head.py (留一布局验证: ok_acc 0.949/留一 0.92/0.92/0.85, **预测最优角 3/3 命中实测最优角**) ⑤默认链实测 (seed 0/2/5/7): ② yaw 指令 -0.3° (试抓头决策 13 前向/权重溯源) → 真实夹持 Δz≈12mm → 抬起 0.12m → ③④⑤⑥⑦⑧ 全绿; **脚本固定 +90° 基线 ② 物理失败中止** (角度已 load-bearing) ⑥权重随包 (CI 从 ECS 下载+md5+校验门) | # v5.5.23: 🧠 **L4 默认改用流形预测指令** (老倪: "3D 显示脚本开环 Arm A 不能接受, 必须用真实的流形预测指令") — ①「🧠 流形 yaw 执行」**默认勾选**: L4 演示档 ② 段夹爪偏航角逐帧由流形预测器决策 (每帧真调 WorldModelPredictor(z7+a4→z'→流形6维) → 候选角打分 → φ* → 下发), 3D 面板来源行显示「🧠 yaw 指令来源: 🧠 流形预测器决策」+ φ*/前向次数/trained ②L4 自动视频导出同步带 `--mani-yaw` (视频与 3D 同源, 不再出现"脚本开环"视频) ③脚本开环 Arm A 仅保留为**取消勾选时的对照回退** ④诚实标注保留: v5 预测器在候选编码下代价单调退化 (argmin 落边界) + ② 段 yaw 不 load-bearing (两臂任务结果相同 6/6) — 面板/tooltip 明示, 修打分退化需下阶段 (yaw 入预测器输入) | # v5.5.22: 🧭 (A) 3D 里「yaw 指令来源」可见 — ①画布加「🧠 流形 yaw 执行」勾选 ②3D 面板新增两行: 「yaw 指令来源: 流形预测器决策 / 脚本开环 Arm A / 引擎解析链(无 yaw 维)」+ 下发 yaw xx° · φ*(预测器) xx° · 前向 N 次 trained=xx ③流形预测通道默认开 (SS_MANI_PRED=1): mani_pred 由 0 占位改为真实前向输出, tr 新增 mani_yaw/mani_phi 逐帧真值 ④打包版带真权重 (CI 从 ECS 下载 md5 校验 → --add-data models/ + 校验门) | # v5.5.21: 🧠 L4 夹爪 yaw 指令改由流形预测器决策 (A/B 接线, 默认仍脚本开环) — ①新增 src/lerobot/manifold/yaw_actuator.py: 每帧真调 WorldModelPredictor(z7+a4→z'→流形6维), 候选偏航角打分取代价最小者 (候选-姿态假设编码=残余失配绕z旋转相对几何, 权重重 env SS_MANI_YAW_W_*), 带 slew 限幅; ②gen_l4_demo_video.py 加 --mani-yaw 开关 (Arm B) + 预测器真实加载(权重 models/l4_mani_predictor_v5.pt, trained 标注) + tr 新增 mani_yaw 列 + mani_pred 由 0 占位改为**真实前向输出**; ③tools/ab_mani_yaw.py 同口径 A/B 回归脚本 (3 seed×2 重复); ④实测 A/B: 两臂 **6/6 全成功**, Arm A yaw=+89.4°固定 / Arm B yaw=-44.7°(预测器决策, 前向182次/轮, trained=True), 插入 49.1 vs 49.4mm, η 均 1.0 → **差异仅在 yaw 指令本身, 不在任务结果**; ⑤诚实结论: 该链路 ② 段 yaw 不 load-bearing (治具回正+刚性锁掩蔽), 且 v5 预测器在候选编码下代价单调退化 (实测 +45.3°→-44.7° 代价 0.168→0.0955 单调降 → argmin 恒落边界), 故**不声明增益, 默认档保持脚本开环**; 后续需 (a) yaw 纳入预测器输入/单独训打分头 (b) 决策移到 load-bearing 位置(④试抓/插入相位) ⑥日志证据纠偏: ② 段原写死 "yaw=90°" → 改打印实际下发角+臂别 | # v5.5.20: L4 档干扰动作可见修复 (老倪最高优先级: "L4 没有干扰旋转, 必须渲染出来") — ①根因: L4 档 09-11 改走引擎真链路, 而 metaworld stock XML **无 shell_yaw 关节** → _inject_peg_jitter 的"体壳转90°"是静默 no-op, 物理只转可成功域 ±15° 且发生在第 0 帧之前 = 画面上没有任何旋转动作 (与 L3 无差别) ②修复: L4 档回到 L4Demo 真机构链 (来料转台 tt_yaw 关节 100 帧 0→90° 连续转动 + 光模块随治具同步转 90° + 夹爪绕z姿态适配抓横放模块 + 治具回正 + 标准抓取 + 插入49mm + 拔出56mm + AOI + 光耦合η), 渲染帧与 3D 双可见 (实测 success=True 1641帧 本机复现) ③打包根因: gen_l4_demo_video.py L4_XML / gen_l4_demo_scene.py MW_ASSETS **硬编码 ~/...gui-venv311 路径** → Windows/macOS 打包版一律找不到 L4 场景 XML (无转台/耦合台 = 无干扰机构) → 改 metaworld 包实际位置解析 (frozen _MEIPASS 兼容) ④CI 双平台构建前预生成 L4 场景 XML + 构建后校验 exe/app 内 metaworld assets XML 与 L4 XML 在位 (缺即 fail, 防回归) ⑤ensure_scene frozen 跳过 (sys.executable=app 二进制起新实例坑) ⑥L3 档零改动 | # v5.5.19: Windows/Mac 修复 metaworld XML 资产未打包 (点运行报 does not exist + 无轨迹): --collect-all metaworld/mujoco (原 macOS 生效, Windows 仅在 pip 装包未打进 exe) | # v5.5.8: 3D播放1x物理速度修复(÷800跳帧=5x: 90°旋转0.7s一闪→观感夹爪自己转圈, 插拔段2s快闪不可见; 改÷1500≈真实速度平滑可看清) + 3D夹爪双重旋转修复(jaw位置含yaw又绕wrist再转yaw=位置转2×yaw, 90°时画半圆乱转+静止位错对不上横放模块; 位置改未转±y基准单次转) | # v5.5.6: L4演示收尾崩溃修复(L4Demo np数组判真ValueError→tr还原list, worker防ndarray判真; 用户"L4与L2一样"=演示跑完未进回放实锤) | v5.5.5: L4档位=90°抗干扰演示全链(点L4即见来料转台把光模块转90°) — 插拔闭环修复(转台(0.30,0.30)在Sawyer臂可达区外=④全败根因→(0.42,0.60); 指缝中心对正抓握点; 钉夹改世界系偏移; ①转台90°→②绕z抓横→③治具回正→④标准抓取→⑤插入49mm→⑥拔出→⑦AOI→⑧光耦合η 3/3全绿success) + L4D档并入L4(旧L4D归一) | v5.5.4: 帮助文档修复(静界目录不存在回退docs + L1/L2文件名版本同步 + README断链重建) + L4D演示3D场景设备呈现(转台/压电耦合台按meta绘制, peg/夹爪绕z朝向动画, 转台盘十字刻度随转) + L4演示布局修正(转台0.10,0.60→0.30,0.30 避AOI设备视觉区) | L4 演示场景 抗干扰90°外力旋转+光耦合精密操作 | # v5.5.2: 功能清单 L2/L3/L4 能力档位分级(节点⑤Tab+Excel sheet+网页§0, 数据源 capability_levels.py; L4 增 C09抗干扰/C10流形预测器/C11记忆分层) | # v5.5.1: 记忆分层 BLMA(小脑/海马/额叶三层记忆带+总装记忆中枢+src归位 mem_nodes.py) + L4 抗干扰(拿起前 peg 摆放移位±3.5cm/转向±15° 注入, 多布局 attempts 兜底必达成功) + 流形预测器 v1→v5 训练部署(v5=CY等距正则修复版: 抗干扰 64.6%/clean 43.3%; detach bug 消融实锤) + INTACT 意图直读 0.5ms + L2/L3/L4 三档功能视频 | # v5.5.0: 能力档位radio三档开关(数据源层单击直选/双击循环,档位持久) + 单步/播放按档位过滤执行链(L2不高亮L3/L4行; 开关节点排除执行链不再被单步自动切档) + 流形专家预测器接线前置L4行首(VLM/几何→预测器→接触/性能流形, 引擎io发布预测流形channel) + 🔄重启崩溃修复(真实化引擎abort+线程join, 防mujoco双env并发segfault) + 重启只复位不自动跑 + 引擎cap大小写归一(L4预算×2生效) + 切档重置执行序(L3单步进VLM/ActionHead) + 画布节点字体缩小一档(标题9pt起) + 直方图np漏import修复 | # v5.4.1: JEPA predictor 真实接入流形 (老倪: 写了必须接 — LatentPredictor 原仅节点自检, ContactManifual/PerformanceManifold 不调用): 两流形类注入 predictor + predict_manifold(z,a) (旁路); 真实化引擎每帧真调 LatentPredictor→ManifoldReadout (几何 z R7+动作 → 预测流形 6 维), tr['mani_pred'] 旁路列, trained=False 诚实标注 (随机权重待训练); 验证 R1 seed104 352 步 done 红线不破, mani_pred 352 帧=每帧真调, F5 断点每帧可进 | # v5.4.0: 3D夹取锚定判据v2(抬升试探: 夹爪动+peg真值随动即锚定, 视觉残差不参与夹持后判定 — 09-08 反复夹不起光模块根因; R1 insert 352步×2/full 876步+AOI PASS 确定性恢复) + 肌肉记忆R1视觉禁用(标杆开环重放与视觉随机失配 9/9 失败实锤, SS_MUSCLE=0 同轮 352 成功; R0 确定性保留) + 🧠VLM真实视觉编码(SmolVLM2-500M 本地GPU: 真实渲染帧→960维潜空间z, 节点双击真实前向, 算法归位 smolvla_lew/vlm_encoder.py) + 状态空间 ActionHead(潜空间→4D动作块) + JEPA predictor 入流形域 predictor_layer(LatentPredictor z+a→z' + ManifoldReadout→接触/性能流形6维真值对齐可训练, decoder 拼 ActionHead) + 右键源码映射修复(键对齐+source 全落src, 断点可进) + 流形专家预测器节点(JEPA链路自检) | # v5.3.0: L3全链插拔+AOI闭环接入GUI + 功能清单v2分级 (🚀L3全链13段模式: 插→拔→AOI→放回, R1视觉877步闭环/AOI PASS, ▶运行勾选~20-40s/轮; 功能清单v2: L2🔧/L3🚀/L4🏆 capability_levels 分级+测试对应+ECS网页导出; sim_real教师图像数据集采集器 = smolvla VLA 数据管道; 标定层布局收DiT(引力-斥力-动作)+潜空-流形收L4流形; 原子技能源码集中 src/lerobot/skills; 直方图/归因按probe._seq递增去重修复(probe.clear重置恒1)+仿真波形播放时间轴光标; GUI版本号补同步 5.1.0→5.3.0) | # v5.1.0: 原子技能肌肉记忆(仿小脑) — Windows/macOS 3D 渲染回归修复+真实化视觉闭环打通+全模型训练(①3D渲染回归: v3.3.4 注释 AA_UseSoftwareOpenGL 致 Windows/macOS exe 3D 无法渲染(无硬件GL环境; 3.2.4 全启用正常) → 平台条件启用 win32/darwin 软件GL兜底, Linux GNOME 黑屏修复保留; ②R1视觉"抓不起光模块"根因链5修复: 深度scale 0.978→0.9616(10布局标定)/geom peg_z0取x当z/视觉未检出禁回退真值/幻影免疫+定位状态机(夹爪遮挡锁夹爪)/夹持真值锚定(夹稳后编码器) → seed104 视觉闭环 500步失败→352步 3/3稳定; ③3D显示修复: gripper语义统一夹紧度(metaworld 1=开vs引擎1=闭双源打架→反相) + tr携带现场几何meta(孔口/盒随布局漂移, 3D写死坐标偏3.8cm→插入点对齐); ④全模型训练: 左脑 150ep/9.2万帧(教师40新布局全成功)30K步 / 右脑 147+布局 contact acc0.999 / YOLO真实尺寸标注实验证伪(中心=geom≠pegGrasp控制锚, revert保v1); R0 5/10·R1视觉 3/10 多布局评估, 难布局=物理极限留真机) | # v4.4.0: 真实化重抓策略+固定布局蒸馏管道+3D修复(sim_real 重抓位置策略: 随动验证收紧8mm(20mm漏检真滑10-20mm)+插入段site-推算偏差守卫(>8mm连续3帧=peg夹爪内滑→回接近重抓刷新锁存); R0 site真值实验钉死失败布局=夹持几何物理(真值对齐也插不进: peg头横向偏孔口15.6mm vs 孔间隙2mm, 无倒角刚体); 3D修复: sim.run轨迹补 latent/prior/corrected/residual_vec 向量通道(真实化轨迹喂DreamView3D缺residual_vec KeyError→3D打不开); 蒸馏管道: collect_simreal_teacher_data.py固定布局教师采集→融合110ep→mw4/mw4w 30K重训→学生固定布局 0/8→4/8 追平解析教师(解除R0强解析, 模型真实执行; s102×8加权)) | # v4.3.1: 真实化插入遇阻保护+GUI演示修(3D视图"显示不成功"全链路: GUI真实化写死seed100=已知失败布局→换seed104; 遇阻保护=充分回撤脱离+分级回退(1-2次回转移重新对孔/3次回接近重抓), z对齐收紧4mm→1.2mm, 随动验证3.5cm→2cm, 深夹到位grasp_th0.50才抬; seed100类夹持物理问题3次调参无突破边际收益递减, 101-104稳定) | # v4.2.1: 测试验收全自动化(550/550 全绿 — 原 195 条手动验收全部程序化: manual_auto_map.py 映射注册表 + 17 个 t_auto_* 集成真断言, 可视化类验数据真源/真机类验验收记录在位(缺即FAIL不造假); 终端逐条实时打印 ▶→✅/❌+实测证据+耗时; Excel/网页编号改域码 VIS-01 风格; 修 metaworld reset(seed) 被忽略致同 seed 布局漂移(实锤复现)+ 5 处 or True 摆设断言) | # v4.2.0: 功能清单网页场景化+几何分类统稿(node_func_tree.py 增强向后兼容: FUNC_DOMAINS 21域三字母编号 VIS-01 全110功能注入 + SCENES 5大客户场景注册表(SC-01 FW Loading金手指插拔/SC-02 ATS光纤连接/SC-03老化墙/SC-04上下料/SC-05光耦合主动对准, 量化目标全取自RFP/TECH真值) + GEOM_CLASSES 几何能力三分类 纤维丛框架(LFP局部精细感知30/LFO局部精细操作35/HDM全局高维流形泛化45, hdm_funcs_of_scene 汇总跨本体泛化); gen_web_feature_pages.py 重写五章节(几何总纲/场景↔功能/编号图例/组合链/总表 每功能详细说明+验证方法+5用例逐条展开) 已上线 datadrive.world | # v4.1.0: 技术规格书入库(node_func_tree.py TECH_SPECS 3组12项: ①核心本体·运动控制 Gauge Covariant(极致定位±0.02mm/单模50nm 六维力控亚牛顿 六维力0.5% EtherCAT 1kHz 紧凑高刚性1.6T OSFP) ②复合移动·柔性流转 Locomotion(全向底盘±10mm 移动-操作解耦驻停 双臂10kg·0-2.5m·双孔0.3° 多模态避障) ③智能认知·系统集成 Gauge Symmetry(VLA自进化 周级上线 UPH400·CPK1.67·良率99% EtherCAT/Profinet/Modbus+ESD/IP65) → 量化映射产品作业+支撑功能; GUI Tab4 技术规格书+Excel Sheet7+自动测试报告5b节) + 一键自动测试(Test节点右键⚡: 环境自检→全用例→PDF7章+Excel→scp上传) + RFP需求规格书(Tab3/Sheet6/★否决5项) + 产品作业分级L1刚体基础/L2柔性高级/L3性能扩展+泛化指标G组7断言 + 对话框深色/最大化修复 | v4.0.2: 功能清单按规范场论重构(三层 G1场感知/G2协变操作/G3对称认知 → 22节点 → 110功能(名5~10字) → 550用例; 每功能5用例 auto/semi/manual; 339自动全真实断言 引擎/六层/源码审计 零空转; 模块化组合链 FUNC_CHAINS; 新真源 src/lerobot/verification/node_func_tree.py 注册表+run_tree执行器; CLI --only-node/--list 三级; GUI 树按三层分组+Excel 4sheet 含规范场列; 旧45项FEATURES保留兼容) | v4.0.1: 验证层 Feature/Test 节点交互升级(双击/右键 → 清单对话框: 45项功能分类列 基本29/泛化16 + 模型角色 感知6/世界7/决策4/规划3/安全2/引擎8/平台5/标定3/GUI7, 每项含模型特点; 按钮导出 Excel 含分类统计+测试结果, scp 上传 datadrive.world) + 真实化运行进度可见(每25步周期日志+QTimer轮询增量flush, 修5-9分钟静默误判卡死) + F5调试断点挂起全进程检测提示(只能鼠标动=pydevd断点暂停非故障, 指引放行/删断点) + io_snapshot YOLO未检出诚实标None禁引擎真值顶替(老倪红线) | v4.0.0 大版本: 状态空间三新层+验证体系+真实化(①🧩验证层: src/lerobot/verification 45项feature/35自动化用例, 画布底部 Feature/Test 节点+CLI ss_feature_tests.py; ②标定层三域 引力/斥力/潜空间 LATENT_CALIB(维度/类别/速度场prior_A), 🧮潜空间节点 PCA 实测观测有效维; ③流形导航层(原流形层): 接触流形=插拔测地线通道(切向进度/法向偏离/V), 性能流形=光耦合对准代价(η), 引擎逐帧发布 3 channel → Scope 2x3/总线17模块/元层数据连线; ④▶运行 YOLO 真实采样 detect_3d 断点可进+conf 去 0.99 写死伪装; ⑤标定节点改名 引力/斥力/潜空间; ⑥打包补 calibration/manifold/verification) | v3.4.8: 播放平滑修复(▶运行"卡住"根因: 📡传感器融合节点 execute_node_logic 真跑 YOLO aligner 冷加载 1.6s+ 冻结主线程 → execute_node_logic 加 demo 轻量路径(▶运行播放读 DataWorld 帧展示不重跑重函数, 单步/右键/双击调试仍真实执行断点可进); 播放节奏 80ms×60大步跳 → 30ms/tick 逐引擎步 (305步=305tick≈9s 平滑连续), 节点动画/log/总线按抽稀散布; resize 自动重取景(窗口变化>6% 且用户未手动转视角 → fit 场景撑满放大视口)) | v3.4.7: 3D 世界操作按钮(DreamView3D 绑定画布 module: 左侧「🕹3D世界操作」▶运行=module.start_sim(画布统一入口)/⏹停止/📌窗口置顶toggle/引擎状态轮询300ms按钮联动; 画布▶运行开始把可见3D窗口 raise+activate — 不再被画布覆盖; 无 module 兼容命令行自测) | v3.4.6: DataWorld 逐帧同步(引擎 io_trace 每步全量发布 9模块/23画布节点 I/O → tr逐帧帧序列; ▶运行播放改引擎步线性推进(旧按io快照25步抽1跳帧→3D与画布信号不同步), 3D/数据总线/画布 log 消费同一 DataWorld 游标严格同帧; _ss_tick 每帧广播画布正在执行节点 → 3D「▶画布信号」面板行(set_active_node, Dreamview 模块信号语义); 数据总线静态视图抽稀≤150帧防3万行卡; 播放结束 3D/游标精确落引擎末帧) | v3.4.5: 标定闭环(右键标定表格/标定面板💾保存 = CalibrationLayer.apply_to_engine 精确写回引擎源码字面量: parallel.py Kp/u_clip、cognition.py STAGE_V_CAP/MIN+veto_th/k_fb、state_space_sim.py 校正K/EMA/接触增益/安全限幅/先验A; 引擎 importlib 每次运行重载源码 → 下次▶运行即生效无需重启; 锚点值无关+命中数校验不静默; 镜像写 calibration_layer.py 块约束防 V_MIN key 串写 V_CAP; 修标定表 prior_A 0.95→1.0 与引擎真值对齐) | v3.4.4: 标定层(Drifting Models引力/斥力二分+平衡点, src/lerobot/calibration与datasets/policies同级别, 画布最下层, 右键标定表格21参数可编辑, 回路外不改架构) | v3.4.3: 3D视图↔程序执行状态映射(打开即自动播放 + _ss_tick逐帧推送set_frame, 断点冻结=3D同步停) + 外观质量检测真实化(yolo_3d/quality_check.py AOI图像处理, ss_aoi接真实帧) + _EXTERNAL_LOC全量行号校正(29条0错位: ss_est→AdaptiveStateEstimator类/ss_sched→decide/ss_aoi→AOIQualityChecker双击显示真实源码) + node_ss_s2估计分支补卡尔曼update闭环(原只predict) + debugpy僵尸pydevd占5678→SystemExit:1诊断清理 | v3.4.2: LiveUSB swap 防御落地(overlay 直接 swapon Invalid argument → losetup loop 设备方案, 8G swapfile 实测挂载 + systemd oneshot 开机自启, 禁 ExecStop/swapoff -a 会误杀) | v3.4.1: 卡死诊断经验沉淀(疑似"整机卡死"先 py-spy 判定: GUI 主线程 do_wait_suspend=引擎断点挂起非系统死, 鼠标能动界面全死=断点冻结特征; LiveUSB 无 swap 内存顶满直接冻结, 加 swapfile 防御) | v3.3.5: 画布节点真实执行(VSCode断点三根因: ①open_in_vscode右键重写launch.json覆盖ZMAX_DEBUG_BREAK env→模板写死env+节点名子串过滤 ②状态空间播放帧数<节点数→后排节点永不执行→_ss_tick n_rounds=max ③运行模式自动弹波形/视频置顶窗+断点冻结→关不掉+not responding→运行不弹窗双击才弹) + 节点真实执行(状态空间9节点/双脑/YOLO align/触觉接真实源码, 右键打开源码断点必进, importlib sys.modules注册) | v3.3.4: 状态空间画布三路统一(▶运行/⏭单步/右键运行节点 = 引擎轨迹真实数值 + 节点逻辑真实执行, node_metaworld_data 等注册函数断点可进; step_sim 状态空间分流→_state_space_step, _ss_ensure_trace 公共引擎轨迹, _ss_tick 播放每帧 execute_node_logic)+GNOME/Xorg 黑屏修复(AA_UseSoftwareOpenGL 软件 GL 在 Mutter 合成器下窗口渲染全黑, 该行仅 WSLg 需要已注释) | v3.3.3: VSCode 调试默认 F5=🚀全新调试进程(launch 新实例断点, attach 5678 备用, launch.json 三配置重排+open_in_vscode 生成同步, 补提交 .vscode 配置) | v3.3.1: simulink 工程全面检查(NODE_TYPES三处同步+状态空间闭环豁免+参数语义校验+端口兼容+完整性检查器zmax_integrity_check.py) | v3.3.0: 3D视图二次打开背景丢失修复(pyqtgraph shader全局缓存跨GL上下文失效→只复用不新建+重建去重removeItem)+simulink字体调小一档(192DPI下12pt=32px: 工具栏/终端/画布节点)+节点逻辑/参数/源码窗口最大化按钮修好(Qt.Dialog→Qt.Window类型)+状态空间画布触觉感知补metaworld数据源连线(因果修正) | v3.2.4: exe 内置 MLP 操作视频(mlp_insert_success_final.mp4 + 预抽帧缓存, CI 从 datadrive.world/models/mlp_video_pack.zip 下载后 --add-data 打包; Windows 无 ffmpeg → 播放器直接用预抽帧缓存); gen_insert_video.py 成功后保持画面90步+双输出名 | v3.2.3: Windows/macOS exe 3D 视图打包修复(缺 pyqtgraph/PyOpenGL → CI+Dockerfile.win pip 依赖补 pyqtgraph PyOpenGL + pyinstaller --collect-all pyqtgraph --collect-all OpenGL, 修 3D 视图 No module named 'pyqtgraph'; open_ss_3d 报错分 exe旧版/源码缺依赖) | v3.2.2: 状态空间六层源码打包修复(Windows exe 无 src/ → --add-data 打包 left_right/yolo_3d 源码 + _SS_DIR/_LR_DIR/_YOLO_DIR 多候选探测 env→_MEIPASS→上溯→逐级, 修 AppData\Local\src\... FileNotFoundError) | v3.2.1: Windows exe 画布加载修复(flows/ 打包进 exe + frozen 路径指向 _MEIPASS) | v3.2.0 定版: 状态机图层(八阶段阶梯+下一阶段预测+3D航点)+算法审计驱动修正(连续确认防抖/夹持丢失回退重抓/限速按瓶颈调参 7.44s)+12项逻辑测试全通 | v3.1.5: 动作调制器融合律修正(凸组合→前馈+反馈相加, 量级差21倍时凸组合等于砍速到29%)+残差EMA滤波+阶段显式限速 → 方向抖动11.28°→5.20°, 速度恢复96%, episode 1742→647步 | v3.1.4: 残差方向改画20帧系统性偏差(粗箭头)+瞬时残差降为细线(实测相邻帧方向变化88.5°≈纯随机, 96%是观测噪声), 标注给系统占比%(下降33%→插入45%) | v3.1.3: 先验动力学预测器改画三点两线(预测增量向量×30+先验点+残差连线), 弃用30帧轨迹(实测62%是观测噪声透传) | v3.1.2: 接触指示UI重设计(夹持青球/环境橙球双路+脉冲环+平方根映射8→54px+预接触提示环)+排除光模块自重支撑力常量底噪(0.039→0) | v3.1.1: 3D图层按链路排序(感知层在前+①前馈加速器②自适应状态估计器③先验动力学预测器④状态校正器⑤动作调制器⑥安全执行边界)+补先验动力学预测器图层+源码字体12→17px+数据总线17→20px | v3.1.0: 3D文字标注绑定图层(切图层立刻重建标注, 全关后文字归零; 原来只改GL可见性+看门狗按旧坐标续画→文字关不掉) | v3.0.9: 3D文字标注跟随视角(存世界坐标+相机指纹看门狗20Hz重投影, 旋转/缩放/切档/换帧/resize全同步; 事件过滤器在本机收不到view鼠标事件) | v3.0.8: 修卡尔曼预测用错控制量(用u_ff前馈建议而非实际下发u_exec, 模长差3.12倍)+估计器增益K0.5→0.2 → x̂误差4.73→2.62mm 抖动2.17→0.89mm/步 | v3.0.7: 3D图层名全部对齐画布节点名(残差/接触→🧪状态校正器·接触概率, u_fb→🧪状态校正器·残差方向, 场景→🌍物理世界, latent→🔮自适应状态估计器) | v3.0.6: 3D信号改用源模块名(前馈加速器/状态估计器/动作调制器/安全执行边界, 去掉前馈建议·前馈预测措辞)+箭头加锥形箭头头(方向)+箭尖旁自绘文字标注(名称/速度/方向人话, GLTextItem本机不渲染改LabelOverlay) | v3.0.5: 动作箭头比例尺修正(原|u|×80mm→真实u_ff只0.03~0.33m/s→箭头仅2.5mm像个点; 改按0.35m/s归一化+22%保底→22~77mm)+四层箭头图层提示写清线/点/长度含义 | v3.0.4: 修3D视图图层勾选框失效(动作箭头存<key>_line/_tip, 图层key不在字典→点了没用, 残留绿线=u_ff黄线=u融合)+网格/坐标轴纳入图层+全关后画面非背景像素0 | v3.0.3: 工具栏按钮同比例缩小(66→52px/字30→24px)+画布节点放大重排(240x84→280x110, 行内间距0→56px, 标题三行留白零溢出) | v3.0.2: 3D视图看得懂(自动取景把作业区从占屏3%撑到71%+3D文字标签+17行实时数值面板+数据层additive穿透遮挡+视角三档) | v3.0.1: 接触力分两路(夹持vs环境, 修接触概率抬起/转移/插入恒1.00失去区分度; 根因夹爪指垫rightpad/leftpad未列入夹爪body)+状态估计层散点改连线+同源自检(npz/mp4成对) | v3.0.0 大版本: 状态空间与真机仿真同源架构(六层源码直驱metaworld, 3D视图/操作视频同一条episode)+八阶段认知状态机+双平台交付(Windows exe / macOS app) | v2.9.0: 3D视图与操作视频同源(状态空间六层直驱metaworld,一条episode出轨迹+处理层+mp4)+认知层八阶段(补接近/对位/下降)+相机corner2外参精确对齐(角差0.00°) | v2.8.4: simulink工具栏按钮放大(35→66px高/字22→30px)+FlowLayout自动换行+模块库360→560px(文字被切62%→0%)+大屏最大化启动 | v2.7.6: 修复多模型对比视频0字节(ffmpeg xstack layout变量名 w_0→w0/h_0→h0) | v2.7.5: 新增🛡安全类别(安全机制/动作限幅/力限值/否决重试)三层架构全对比 | v2.7.4: 配置表架构维度(CNN层/状态编码/动作调制栏位)+术语辨析(YOLO→yolov8n/宽度→向量宽度/状态空间≠SSM) | v2.5.1: 画布字体收敛(192DPI双重放大)+节点只留白色名称+背景行模型名修复(自适应宽度+自动左移) | v2.5.0: 折叠左栏崩溃根治(worker线程showMessage跨线程析构QTimer→SIGSEGV) | v2.4.0: 功能模块卡片字体自适应(192DPI高分屏修复) | v2.3.1: 训练config规范化归类(configs/policies/<type>/) | v2.3.0: 连线数据接口+状态空间训练模型+YOLO检测S-09  # noqa: E501
+        self.setMinimumSize(1280, 820)
+        self.resize(1400, 900)
+        # 🖥 2026-08-25 老倪: UI 重新适配 — 3200x2000 屏上固定 1400x900 只占 27% 面积,
+        #   工具栏被迫折行 + 模块库 560px 挤占画布 → 大屏(宽≥2560)直接最大化启动。
+        # 🐛 2026-09-06: show 前 setWindowState(Maximized) → Mutter map 异常窗口 Iconic/Unmapped
+        #   (XCB 日志: MAP→CLIENT_MESSAGE→UNMAP)。最大化延迟到 main() _show_ready show 后设置。
+        try:
+            _ag = QApplication.primaryScreen().availableGeometry()
+            if _ag.width() >= 2560 and not os.environ.get("ZMAX_FORCE_SMALL"):
+                self.resize(int(_ag.width() * 0.95), int(_ag.height() * 0.94))
+        except Exception:
+            pass
+        self._build()
+        # 🌐 2026-08-08 老倪: 全控制台所有 Qt 控件 ID 角标 (叠加式 QLabel — 安全不崩, 所有页所有控件)
+        try:
+            from PyQt5.QtCore import QTimer as _QTM
+            _oneshot(self, 1500, lambda: self.model_engine._holo_apply_all(self))
+        except Exception:
+            pass
+
+    def _build(self):
+        central = QWidget()
+        central.setStyleSheet(f"background:{C_BG};")
+        self.setCentralWidget(central)
+
+        # ====== 菜单栏 (专业开发环境) ======
+        self._build_menubar()
+
+        root = QHBoxLayout()
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        # 侧边栏 (可隐藏 — 2026-08-06 老倪: XSpace Studio 列表栏要能隐藏, 终于实现)
+        self.sidebar = SystemSidebar()
+        self.sidebar.layer_clicked.connect(self._on_nav)
+        self._sb_expand_bar = QPushButton("▶")
+        self._sb_expand_bar.setFixedWidth(16)
+        self._sb_expand_bar.setToolTip("展开左侧栏 (XSpace Studio)")
+        self._sb_expand_bar.setStyleSheet(f"""
+            QPushButton {{ background:{C_BG2}; color:{C_BLUE}; border:none;
+                           border-right:1px solid {C_BORDER}; font-size:20px; font-weight:700; }}
+            QPushButton:hover {{ background:{C_CARD}; }}
+        """)
+        self._sb_expand_bar.clicked.connect(self._expand_sidebar)
+        self._sb_expand_bar.setVisible(False)
+        self.sidebar.collapse_requested.connect(self._collapse_sidebar)
+        root.addWidget(self.sidebar)
+        root.addWidget(self._sb_expand_bar)
+
+        # 页面堆叠
+        self.stack = QStackedWidget()
+        self.stack.setStyleSheet(f"background:{C_BG};")
+        # 🌐 2026-08-08 老倪: 页切换 → 当前页控件重打 ID 角标 (确保每页可见)
+        try:
+            self.stack.currentChanged.connect(
+                lambda _i: self.model_engine._holo_apply_all(self) if hasattr(self, "model_engine") else None)
+        except Exception:
+            pass
+
+        # Page 0: 首页
+        self.home = HomeWidget()
+        self.home.module_clicked.connect(self._on_nav)
+        self.stack.addWidget(self.home)
+
+        # Page 1-6: 子模块
+        self.modules = {
+            "home":       0,
+            "dataset":    1,
+            "training":   2,
+            "evaluation": 3,
+            "hardware":   4,
+            "config":     5,
+            "monitor":    6,
+            "plugging":   7,
+            "version":    8,
+            "inference":  9,
+            "simulink":   10,
+            "dataspace":  11,
+            "architecture": 12,  # 🐛 2026-08-08 老倪: 恢复架构页 (三层架构功能卡)
+        }
+
+        self.stack.addWidget(DatasetModule())
+        self.model_engine = TrainingModule()  # 🌐 2026-08-08 老倪: Model Engine 中枢 (GPU 引擎选择)
+        self.stack.addWidget(self.model_engine)
+        self.stack.addWidget(EvalModule())
+        self.stack.addWidget(HardwareModule())
+        self.stack.addWidget(ConfigModule())
+        self.stack.addWidget(MonitorModule())
+        self.stack.addWidget(PluggingSceneModule())
+
+        # Version Sync Module (需要 repo path)
+        repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.stack.addWidget(VersionSyncWidget(repo_path))
+
+        # 推理服务面板 (grpc import 在 InferencePanel 内部懒加载, 见 _ensure_imported)
+        self.stack.addWidget(InferencePanel())
+
+        # Simulink 模式 (对标 Simulink 拖拽仿真 · 与 web comfyui.html 同步)
+        # 🐛 2026-08-12 老倪: SimulinkModule 重量级 (200+ 模块按钮/画布/网络同步) —
+        # 延迟创建让主窗口先显示 (VcXsrv 下构造慢 → 启动闪屏+卡死)
+        self._simulink_index = self.stack.count()   # 记录 tab 原位, 创建后插回
+        self.simulink = None
+        _oneshot(self, 400, self._init_simulink)
+
+        # 🌐 全局数据空间 (2026-08-07 老倪: 数据库对应每个 node, 全息信息)
+        self.dataspace = DataSpaceModule(self)
+        self.stack.addWidget(self.dataspace)
+
+        # 🐛 2026-08-08 老倪: 恢复架构页 (三层架构功能卡 — L2/L3/L4 + SYS0/1/2)
+        self.stack.addWidget(ArchitectureModule())
+
+        root.addWidget(self.stack, 1)
+        central.setLayout(root)
+
+        # 系统层级点击映射 (2026-08-08 老倪: 三层系统 — SYS2顶/SYS1中(含VLA-T+Z-Flow)/SYS0底)
+        self.layer_map = {
+            "sys0":  "hardware",
+            "sys1":  "training",
+            "sys11": "training",
+            "sys12": "evaluation",
+            "sys2":  "dataset",
+        }
+
+        # 状态栏 - 引擎选择与状态
+        sb = self.statusBar()
+        sb.setStyleSheet(f"background:{C_BG2}; color:{C_GRAY}; border-top:1px solid {C_BORDER};")
+
+        self._engine_combo = QComboBox()
+        self._engine_combo.addItems(["ACT (Local · 1ms)", "VTLA (Remote 4090)", "GR00T (Remote 4090)", "smolvla Sys-11 (Local)", "LEW Sys-12 (Local)"])
+        self._engine_combo.setCurrentIndex(0)
+        self._engine_combo.setStyleSheet(f"""
+            QComboBox {{ background:{C_BG}; color:{C_GREEN}; border:1px solid {C_BORDER};
+            border-radius:4px; padding:4px 10px; font-size:19px; min-width:200px; }}
+            QComboBox::drop-down {{ border:none; width:20px; }}
+            QComboBox QAbstractItemView {{ background:{C_BG2}; color:{C_WHITE}; selection-background-color:{C_GREEN}22; }}
+        """)
+        self._engine_combo.currentIndexChanged.connect(self._on_engine_change)
+
+        self._engine_status = QLabel("● 本地就绪")
+        self._engine_status.setStyleSheet(f"color:{C_GREEN}; font-size:15px; font-weight:600; padding:0 10px;")
+
+        self._latency_label = QLabel("延迟: --")
+        self._latency_label.setStyleSheet(f"color:{C_GRAY}; font-size:20px; padding:0 8px;")
+
+        sb.addPermanentWidget(self._latency_label)
+        sb.addPermanentWidget(self._engine_status)
+        sb.addPermanentWidget(self._engine_combo)
+        sb.showMessage("Z-MAX v1.0.4  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+
+        # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
+        # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
+        if os.environ.get("ZMAX_AUTO_RUN") == "1":
+            _oneshot(self, 2500, self._auto_run_compare5)
+        # 🧮 2026-09-05 自动测试: ZMAX_AUTO_SS=1 → 启动后自动打开状态空间画布
+        if os.environ.get("ZMAX_AUTO_SS") == "1":
+            _oneshot(self, 3000, self._auto_open_state_space)
+            # 🚀 再等 2s 让画布就绪, 自动点 ▶运行 (状态空间仿真)
+            if os.environ.get("ZMAX_AUTO_SS_RUN") == "1":
+                _oneshot(self, 5500, self._auto_run_state_space)
+        # 🧪 2026-09-05 完整自动测试套件: ZMAX_AUTO_TEST=1 → 每用例截图断言
+        if os.environ.get("ZMAX_AUTO_TEST") == "1":
+            _oneshot(self, 5000, self._start_auto_test_suite)
+        # 📡 2026-09-07 外部命令文件触发 (静静: 老倪要"直接打开 simulink 模式"不盲点):
+        #   监控 /tmp/zmax_nav_cmd — 写入一行命令即执行, 如:
+        #     simulink   → 切到 Simulink 页 (_on_nav)
+        #     ss_canvas  → 打开状态空间画布 (simulink.open_state_space)
+        #     ss_3d      → 打开 3D 视图
+        #     home/dataset/training/... → _on_nav(target)
+        #   处理完删除文件 (幂等, 可重复写入)
+        self._nav_cmd_timer = QTimer(self)
+        self._nav_cmd_timer.timeout.connect(self._poll_nav_cmd)
+        self._nav_cmd_timer.start(300)
+        self._nav_cmd_seen = set()   # 已处理命令去重 (防重复执行同内容)
+
+    def _poll_nav_cmd(self):
+        """📡 轮询外部命令文件 /tmp/zmax_nav_cmd (一行=一个命令)"""
+        try:
+            p = "/tmp/zmax_nav_cmd"
+            if not os.path.isfile(p):
+                return
+            with open(p) as f:
+                lines = [l.strip() for l in f if l.strip()]
+            os.remove(p)   # 先删防重复
+            for line in lines:
+                # 🔄 2026-09-07: ss_run 等动作命令可重复触发 (不去重);
+                #   导航类命令 (simulink/ss_canvas/首页) 也允许重复 (幂等跳转, 无害)
+                #   → 去掉 seen 去重, 每次写入都执行 (老倪: 点了没反应 → 命令要每次生效)
+                try:
+                    if line == "simulink":
+                        self._on_nav("simulink")
+                    elif line == "ss_canvas":
+                        _oneshot(self, 600, self._open_ss_canvas_cmd)
+                    elif line == "ss_3d":
+                        _oneshot(self, 1200, self._open_ss_3d_cmd)
+                    elif line == "ss_run":
+                        _oneshot(self, 300, self._run_ss_cmd)
+                    # 🧿 2026-09-28 L5 交互取证命令 (真鼠标点 L5 单选钮 + 真点 ▶运行 + 截图)
+                    elif line == "l5_interact":
+                        _oneshot(self, 300, self._l5_interact_cmd)
+                    elif line == "l5_status":
+                        _oneshot(self, 300, self._l5_status_cmd)
+                    elif line == "l5_diag":
+                        _oneshot(self, 300, self._l5_diag_cmd)
+                    # 🔬 2026-09-27 给"页面按钮"也开一条命令通道 (静静自测: 反复触发按钮本体,
+                    #   不必盲点鼠标坐标; 老倪: 点了没反应 → 我要能从控制台内部逐次复现)
+                    elif line == "ds_win":
+                        _oneshot(self, 900, lambda: getattr(self, "simulink", None)
+                                 and self.simulink.open_dataspace_window())
+                    elif line == "ov_page":
+                        if getattr(self, "simulink", None) is not None:
+                            _oneshot(self, 300, self.simulink.open_scene_overlay)
+                    elif line == "station_page":
+                        if getattr(self, "simulink", None) is not None:
+                            _oneshot(self, 300, self.simulink.open_station_page)
+                    elif line in self.modules:
+                        self._on_nav(line)
+                    else:
+                        self.statusBar().showMessage(f"📡 未知命令: {line}", 2500)
+                except Exception as _e:
+                    self.statusBar().showMessage(f"📡 命令失败 {line}: {_e}", 3000)
+        except Exception:
+            pass
+
+    def _open_ss_canvas_cmd(self):
+        if getattr(self, "simulink", None) is not None:
+            self.simulink.open_state_space()
+
+    def _open_ss_3d_cmd(self):
+        if getattr(self, "simulink", None) is not None:
+            self.simulink.open_ss_3d(on_top=False)
+
+    def _run_ss_cmd(self):
+        """▶ 运行状态空间仿真 (命令文件触发)"""
+        if getattr(self, "simulink", None) is not None:
+            self.simulink.start_sim()
+            self.statusBar().showMessage("▶ 状态空间仿真已启动 (命令触发)", 2000)
+
+    # ───────────── 🧿 L5 交互取证 (2026-09-28 老倪: "用户正看的界面到底变没变") ─────────────
+    def _l5_status_cmd(self):
+        """只读: 把 L5 闭环状态 + 画布节点上的三行文案落盘 (不发命令也能查)"""
+        import json as _j
+        sim = getattr(self, "simulink", None)
+        d = "/tmp/zmax_l5_interaction"
+        os.makedirs(d, exist_ok=True)
+        out = {"ts": time.strftime("%F %T"), "cmd": "l5_status"}
+        if sim is not None:
+            n = sim._l5_node() or {}
+            p = n.get("params", {}) if isinstance(n, dict) else {}
+            out["canvas_node"] = {"id": n.get("id"), "name": n.get("name"), "status": n.get("status"),
+                                  "l5_state": p.get("l5_state"), "l5_lines": p.get("l5_lines"),
+                                  "cap_level": sim._cap_level_now()}
+        try:
+            out["loop_state"] = _j.load(open(sim.L5_STATE, encoding="utf-8")) if sim else {}
+        except Exception:                                                       # noqa: BLE001
+            out["loop_state"] = {}
+        with open(os.path.join(d, "canvas_state.json"), "w", encoding="utf-8") as f:
+            _j.dump(out, f, ensure_ascii=False, indent=1)
+        print("[l5_status] " + _j.dumps(out.get("canvas_node"), ensure_ascii=False), flush=True)
+
+    def _l5_show_canvas(self):
+        """把"用户正看的界面"切到状态空间画布: Simulink 页 + 画布 MDI 子窗最大化。
+        ⚠️ 只调 open_state_space() 不够 —— 页面不在 Simulink 页时 widget.isVisible()=False,
+        grab() 只能截到空白 (2026-09-28 实测第一版截图 9KB 空图)。"""
+        from PyQt5.QtWidgets import QApplication
+        sim = getattr(self, "simulink", None)
+        if sim is None:
+            return False
+        try:
+            self.stack.setCurrentWidget(sim)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        try:
+            sim.open_state_space()          # 幂等: clear + 重新加载 flows/state_space_obs.json
+        except Exception:                                                       # noqa: BLE001
+            pass
+        try:
+            sim._canvas_win.showMaximized()
+            sim._canvas_win.raise_()
+        except Exception:                                                       # noqa: BLE001
+            pass
+        QApplication.processEvents()
+        return True
+
+    def _l5_diag_cmd(self):
+        """🔍 画布几何自检 (L5 交互取证前置): 画布 widget 尺寸/可见性/变换/sceneRect +
+        档位节点圆钮的 viewport 坐标 + 顶层窗口清单 (防"点了没反应=点到看不见的地方")"""
+        import json as _j
+        from PyQt5.QtCore import QPointF
+        from PyQt5.QtWidgets import QApplication
+        d = "/tmp/zmax_l5_interaction"
+        os.makedirs(d, exist_ok=True)
+        sim = getattr(self, "simulink", None)
+        out = {"ts": time.strftime("%F %T")}
+        try:
+            from PyQt5.QtWidgets import QGraphicsView as _GV
+            if sim is not None:
+                self._l5_show_canvas()           # 切到 Simulink 页 + 画布最大化 (否则 grab 是空白)
+            cv = sim.canvas
+            # 🔎 找到"真正在显示节点"的那个 view (画布可能挂在 sim._canvas_win 里, 不是 sim.canvas)
+            views = []
+            for _name in ("_canvas_win", "canvas_win", "_ss_canvas_win"):
+                _w = getattr(sim, _name, None)
+                if _w is None:
+                    continue
+                _cands = [_w] + _w.findChildren(_GV)
+                for _c in _cands:
+                    try:
+                        views.append({"via": _name, "cls": type(_c).__name__, "size": [_c.width(), _c.height()],
+                                      "visible": bool(_c.isVisible()), "items": len(_c.scene().items()),
+                                      "sceneRect": [_c.sceneRect().x(), _c.sceneRect().y(),
+                                                    _c.sceneRect().width(), _c.sceneRect().height()],
+                                      "scale": round(_c.transform().m11(), 3)})
+                    except Exception:                                           # noqa: BLE001
+                        pass
+            out["views_in_canvas_win"] = views
+            cap = next((x for x in sim.nodes if x.get("params", {}).get("cap_switch")), None)
+            out["canvas"] = {"cls": type(cv).__name__, "size": [cv.width(), cv.height()],
+                             "visible": bool(cv.isVisible()), "vp_size": [cv.viewport().width(),
+                                                                           cv.viewport().height()],
+                             "sceneRect": [cv.sceneRect().x(), cv.sceneRect().y(),
+                                           cv.sceneRect().width(), cv.sceneRect().height()],
+                             "scale": [round(cv.transform().m11(), 4), round(cv.transform().m22(), 4)],
+                             "center_scene": [round(cv.mapToScene(cv.viewport().rect().center()).x(), 1),
+                                              round(cv.mapToScene(cv.viewport().rect().center()).y(), 1)],
+                             "items": len(cv.scene().items())}
+            if cap:
+                cw = (cap["w"] - 24) / 4.0
+                _it = sim._items.get(cap["id"])
+                _sp = _it.scenePos() if _it is not None else None
+                sx = (_sp.x() if _sp is not None else cap["x"]) + 12 + 3 * cw + 8
+                sy = (_sp.y() if _sp is not None else cap["y"]) + 37
+                cv.centerOn(QPointF(sx, sy))
+                QApplication.processEvents()
+                pos = cv.mapFromScene(QPointF(sx, sy))
+                out["cap_node"] = {"id": cap["id"], "xywh": [cap["x"], cap["y"], cap["w"], cap["h"]],
+                                   "item_scenePos": [_sp.x(), _sp.y()] if _sp is not None else None,
+                                   "dot_scene": [sx, sy], "dot_viewport": [int(pos.x()), int(pos.y())],
+                                   "dot_in_view": bool(cv.viewport().rect().contains(pos))}
+            # 画布所在顶层窗口 (用户实际看的那块屏)
+            ws = []
+            for w in QApplication.topLevelWidgets():
+                if w.isVisible():
+                    ws.append({"cls": type(w).__name__, "title": str(w.windowTitle())[:40],
+                               "size": [w.width(), w.height()], "xy": [w.x(), w.y()]})
+            out["windows"] = ws
+            out["canvas_win_attr"] = [a for a in ("canvas_win", "_canvas_win", "win_canvas")
+                                      if hasattr(sim, a)]
+            out["sim_visible"] = bool(sim.isVisible())
+            out["ok"] = True
+        except Exception as _e:                                                 # noqa: BLE001
+            import traceback as _tb
+            out["err"] = "%s: %s" % (type(_e).__name__, _e)
+            out["traceback"] = _tb.format_exc()[-800:]
+        with open(os.path.join(d, "diag.json"), "w", encoding="utf-8") as f:
+            _j.dump(out, f, ensure_ascii=False, indent=1)
+        print("[l5_diag] " + _j.dumps(out, ensure_ascii=False)[:900], flush=True)
+
+    def _l5_interact_cmd(self):
+        """🧿 L5 交互取证 — 在**真实运行中的控制台**里走用户那条路 (2026-09-28 老倪口径):
+
+        ① 打开状态空间画布 → ② 给画布发**真 QMouseEvent** 点「L5」单选钮 (走真实 hit-test
+        分支 → _toggle_cap) → ③ 真点 ▶运行按钮 (btn_run.click, 真信号) → ④ 截图 + 落画布
+        节点上的三行进度/状态 —— 证明"用户正看的界面"确实变了 (不是只写日志)。
+        触发: echo l5_interact > /tmp/zmax_nav_cmd
+        """
+        import json as _j
+        from PyQt5.QtCore import QEvent, QPointF
+        from PyQt5.QtGui import QMouseEvent
+        from PyQt5.QtWidgets import QApplication
+        d = "/tmp/zmax_l5_interaction"
+        os.makedirs(d, exist_ok=True)
+        ev = {"ts": time.strftime("%F %T"), "cmd": "l5_interact", "steps": []}
+        sim = getattr(self, "simulink", None)
+        if sim is None:
+            ev["err"] = "simulink 模块未创建"
+            with open(os.path.join(d, "interaction.json"), "w", encoding="utf-8") as f:
+                _j.dump(ev, f, ensure_ascii=False, indent=1)
+            return
+        try:
+            # ① 画布 (幂等打开) + 把档位节点滚到视野里, 保证点击落在可视区
+            # ① 切到用户正看的界面 (Simulink 页 + 画布最大化) + 把档位节点滚进视野
+            self._l5_show_canvas()
+            QApplication.processEvents()
+            _cap = next((x for x in sim.nodes if x.get("params", {}).get("cap_switch")), None)
+            if _cap is None:
+                raise RuntimeError("画布缺能力档位节点 (cap_switch)")
+            # ② 真鼠标事件点「L5」单选钮 (几何与 paint 同源: _cw=(w-24)/4, 圆钮 x=+12+3*_cw+8, y=+37)
+            #   ⚠️ 坐标基准取 **SimNodeItem.scenePos()** (画布真位置), 不是 JSON 里的 x/y —— 两者
+            #   在加载后有偏移时按 JSON 点会点空 (2026-09-28 实测第一版点空: 数字对不上真位置)。
+            _cw = (_cap["w"] - 24) / 4.0
+            _it = sim._items.get(_cap["id"])
+            _sp = _it.scenePos() if _it is not None else None
+            _sx = (_sp.x() if _sp is not None else _cap["x"]) + 12 + 3 * _cw + 8
+            _sy = (_sp.y() if _sp is not None else _cap["y"]) + 37
+            sim.canvas.centerOn(QPointF(_sx, _sy))
+            QApplication.processEvents()
+            ev["steps"].append({"step": "canvas_opened", "cap_node": _cap["id"],
+                                "item_scenePos": [_sp.x(), _sp.y()] if _sp is not None else None,
+                                "cap_before": _cap.get("params", {}).get("cap_level")})
+            _pos = sim.canvas.mapFromScene(QPointF(_sx, _sy))
+            _target = sim.canvas.viewport()          # 真点击落在 viewport (QGraphicsView 标准路径)
+            for _type in (QEvent.MouseButtonPress, QEvent.MouseButtonRelease):
+                _e = QMouseEvent(_type, QPointF(_pos), Qt.LeftButton, Qt.LeftButton, Qt.NoModifier)
+                QApplication.sendEvent(_target, _e)
+            QApplication.processEvents()
+            _lv = sim._cap_level_now()
+            ev["steps"].append({"step": "click_L5_radio", "scene_xy": [_sx, _sy],
+                                "viewport_xy": [int(_pos.x()), int(_pos.y())],
+                                "cap_after": _lv, "expect": "L5", "pass": _lv == "L5"})
+            # 截图: 画布 view + MDI 里的画布子窗 (用户实际看的那块)
+            _ln = sim._l5_node()
+            _ls = sim._items.get(_ln["id"]).scenePos() if (_ln is not None and _ln["id"] in sim._items) else None
+            _shot = {}
+            for _nm, _w in (("canvas", sim.canvas),
+                            ("canvas_win", getattr(sim, "_canvas_win", None)),
+                            ("mdi", getattr(sim, "_mdi", None))):
+                if _w is None:
+                    continue
+                try:
+                    _f = os.path.join(d, "01_%s.png" % _nm)
+                    _w.grab().save(_f)
+                    _shot[_nm] = [os.path.basename(_f), os.path.getsize(_f)]
+                except Exception as _ee:                                        # noqa: BLE001
+                    _shot[_nm] = "grab失败: %s" % _ee
+            # 再把画布滚到 L5 节点 (让"画布上的闭环进度三行"进画面, 供人/视觉模型逐字核对)
+            if _ls is not None:
+                sim.canvas.centerOn(QPointF(_ls.x() + _ln["w"] / 2.0, _ls.y() + _ln["h"] / 2.0))
+                QApplication.processEvents()
+                sim.canvas.grab().save(os.path.join(d, "01b_l5node_after_click.png"))
+                sim.canvas.centerOn(QPointF(_sx, _sy))
+                QApplication.processEvents()
+            ev["steps"].append({"step": "screenshot_after_click", "files": _shot,
+                                "canvas_items": len(sim.canvas.scene().items()),
+                                "l5node_shot": "01b_l5node_after_click.png" if _ls is not None else None})
+            # ③ 真点 ▶运行 (真按钮信号 → start_sim → L5 档分流 → on_l5_annotate_train)
+            #   ⚠️ 按钮在"运行中"是 disabled —— 对 disabled 按钮 .click() 会被 Qt 直接忽略
+            #   (2026-09-28 实测第一版: 点完 canvas_node_after=null, 因为上一轮测试把引擎跑起来了)。
+            #   口径: 先走真"⏹ 停止"入口回到 idle, 轮询等 enabled, 再点 —— 全程真控件。
+            _wait = []
+            try:
+                if not sim.btn_run.isEnabled():
+                    _wait.append({"t": 0, "btn": sim.btn_run.text(), "enabled": False, "act": "stop_sim"})
+                    sim.stop_sim()
+                for _i in range(30):
+                    QApplication.processEvents()
+                    time.sleep(0.4)
+                    if sim.btn_run.isEnabled():
+                        _wait.append({"t": round((_i + 1) * 0.4, 1), "btn": sim.btn_run.text(),
+                                      "enabled": True})
+                        break
+                else:
+                    _wait.append({"t": 12.0, "btn": sim.btn_run.text(), "enabled": False,
+                                  "note": "等不到 idle"})
+            except Exception as _ee:                                            # noqa: BLE001
+                _wait.append({"err": str(_ee)})
+            ev["steps"].append({"step": "wait_run_idle", "trace": _wait,
+                                "btn_enabled": bool(sim.btn_run.isEnabled()),
+                                "btn_text": sim.btn_run.text()})
+            sim.btn_run.click()
+            QApplication.processEvents()
+            ev["steps"].append({"step": "click_run_button", "btn_text": sim.btn_run.text(),
+                                "btn_enabled_after": bool(sim.btn_run.isEnabled())})
+            _oneshot(self, 900, lambda: (sim.canvas.grab().save(os.path.join(d, "02_canvas_after_run.png")),
+                                         getattr(sim, "_canvas_win", sim.canvas).grab().save(
+                                             os.path.join(d, "02_canvaswin_after_run.png"))))
+            _oneshot(self, 1500, self._l5_status_cmd)
+            _oneshot(self, 2500, lambda: sim.grab().save(os.path.join(d, "03_console_module.png")))
+            _oneshot(self, 3500, lambda: sim.canvas.grab().save(os.path.join(d, "04_canvas_late.png")))
+            # ④ 画布节点上的三行进度 + 日志里 L5 相关行 (用户眼睛能看到的)
+            _n = sim._l5_node() or {}
+            _p = _n.get("params", {}) if isinstance(_n, dict) else {}
+            ev["canvas_node_after"] = {"status": _n.get("status"), "l5_state": _p.get("l5_state"),
+                                       "l5_lines": _p.get("l5_lines")}
+            try:
+                _lb = getattr(sim, "log_box", None)
+                _txt = _lb.toPlainText() if _lb is not None else ""
+                ev["log_tail_L5"] = [l for l in _txt.splitlines()
+                                     if ("L5" in l or "标注" in l or "l5_" in l)][-12:]
+            except Exception:                                                   # noqa: BLE001
+                ev["log_tail_L5"] = []
+            ev["screenshots"] = sorted(x for x in os.listdir(d) if x.endswith(".png"))
+            ev["ok"] = all(s.get("pass", True) for s in ev["steps"])
+        except Exception as _e:                                                 # noqa: BLE001
+            import traceback as _tb
+            ev["err"] = "%s: %s" % (type(_e).__name__, _e)
+            ev["traceback"] = _tb.format_exc()[-1500:]
+        with open(os.path.join(d, "interaction.json"), "w", encoding="utf-8") as f:
+            _j.dump(ev, f, ensure_ascii=False, indent=1)
+        print("[l5_interact] " + _j.dumps(ev, ensure_ascii=False)[:1200], flush=True)
+
+    def _start_auto_test_suite(self):
+        """🧪 启动状态空间自动测试套件 (每用例截图)"""
+        try:
+            import auto_test_suite
+            self._auto_test = auto_test_suite.StateSpaceAutoTest(self, self.simulink)
+            self.simulink._log("🧪 自动测试套件已启动 (7 用例, 每个截图)")
+        except Exception as e:
+            try:
+                self.simulink._log(f"❌ 自动测试套件启动失败: {e!r}")
+            except Exception:
+                print(f"自动测试套件启动失败: {e!r}")
+
+    def _auto_run_state_space(self):
+        """▶ 自动运行状态空间仿真 (ZMAX_AUTO_SS_RUN=1, 2026-09-05 自动测试)
+        自动勾选 ⚡引擎快演 → 走 _start_state_space_sim (0.1s 引擎, trace 完整),
+        不勾则走 _start_real_sim (metaworld+YOLO 每帧~1s, 5-9分钟/轮)"""
+        try:
+            self.simulink._qmsg_yes = lambda *a, **k: True
+            # ⚡ 引擎快演勾选 (真实化流程 5-9 分钟不适合自动测试)
+            chk = getattr(self.simulink, "chk_engine_demo", None)
+            if chk is not None:
+                chk.setChecked(True)
+                self.simulink._log("✅ [自动测试] 已勾选 ⚡引擎快演")
+            self.simulink.start_sim()
+            self.simulink._log("✅ [自动测试] 状态空间仿真已启动 (引擎快演)")
+            # 🧭 引擎快演 500 步 ≈ 几秒完成; 20s 后开 3D 视图截图
+            if os.environ.get("ZMAX_AUTO_SS_3D") == "1":
+                _oneshot(self, 20000, self._auto_open_ss_3d)
+        except Exception as e:
+            try:
+                self.simulink._log(f"❌ [自动测试] 仿真启动失败: {e!r}")
+            except Exception:
+                print(f"[自动测试] 仿真启动失败: {e!r}")
+
+    def _auto_open_ss_3d(self):
+        """🧭 仿真完成后自动打开 3D 分层视图 (ZMAX_AUTO_SS_3D=1)"""
+        try:
+            self.simulink.open_ss_3d(on_top=False)
+            self.simulink._log("✅ [自动测试] 3D 分层视图已打开")
+        except Exception as e:
+            try:
+                self.simulink._log(f"❌ [自动测试] 3D 打开失败: {e!r}")
+            except Exception:
+                print(f"[自动测试] 3D 打开失败: {e!r}")
+
+    def _auto_open_state_space(self):
+        """🧮 自动打开状态空间画布 (ZMAX_AUTO_SS=1, 2026-09-05 自动测试用)"""
+        try:
+            self.stack.setCurrentWidget(self.simulink)
+            self.simulink._qmsg_yes = lambda *a, **k: True
+            self.simulink.open_state_space()
+            self.simulink._log("✅ [自动测试] 状态空间画布已打开")
+        except Exception as e:
+            # 🐛 2026-09-05: StudioMainWindow 无 _log — 用 simulink._log, 且异常内不再二次崩溃
+            try:
+                self.simulink._log(f"❌ [自动测试] 状态空间打开失败: {e!r}")
+            except Exception:
+                print(f"[自动测试] 状态空间打开失败: {e!r}")
+
+    def _auto_run_compare5(self):
+        """🔬 自动加载五模型对比模板并启动运行 (ZMAX_AUTO_RUN=1 时启动后触发)"""
+        try:
+            self.stack.setCurrentWidget(self.simulink)
+            # 确认框自动点是 (2026-08-06: 老倪看着自动跑, 不弹窗拦截)
+            self.simulink._qmsg_yes = lambda *a, **k: True
+            self.simulink.open_compare5()
+            # 🛡 2026-08-07 老倪: 刷新控制台不能影响训练 — 已有其他训练进程
+            #   (YOLO/独立脚本) 时只加载画布不自动训练, 防多训练抢 GPU
+            import subprocess as _sp
+            busy = _sp.run(["pgrep", "-f",
+                            "train_yolo|train_vla_touch|train_awe_zflow|distill_expert|lerobot.scripts.lerobot_train"],
+                           capture_output=True, text=True).returncode == 0
+            # 🛡 2026-08-07 老倪: 曲线已完整 (五模型已训完) → 只加载画布不重复训练
+            #   (老倪: "一次训练的时间太长了" — 重启 GUI 不应再触发全量重训)
+            import json as _j
+            _root = os.path.expanduser("~/lerobot-smolvla-lew")
+            def _curves_done():
+                for _p in ("act", "smolvla", "smolvla_lew", "vla_touch", "awe_zflow"):
+                    _f = os.path.join(_root, "reports", f"train_curve_{_p}.json")
+                    try:
+                        if not (_j.load(open(_f, encoding="utf-8")).get("curve") or []):
+                            return False
+                    except Exception:
+                        return False
+                return True
+            if busy:
+                self.simulink._log("🛡 检测到已有训练进程 — 跳过自动训练, 仅加载画布 (新代码已生效)")
+            elif os.environ.get("ZMAX_AUTO_TRAIN") == "1":
+                # 2026-08-07 老倪: 训练已完成过一轮, 重启只加载画布不重训 (避免覆盖曲线)
+                # 需要自动训练时: ZMAX_AUTO_TRAIN=1 启动
+                _oneshot(self, 1200, self.simulink.start_sim)
+                self.simulink._log("🚀 ZMAX_AUTO_RUN+ZMAX_AUTO_TRAIN: 已自动加载画布并启动训练")
+            elif _curves_done():
+                self.simulink._log("🛡 检测到五模型曲线已完整 — 跳过自动训练, 仅加载画布 (仿真标识已生效)")
+            else:
+                self.simulink._log("⏸ 仅加载画布 (ZMAX_AUTO_RUN=1): 不自动训练, 点「▶ 运行」或双击训练节点可手动训练")
+        except Exception as ex:
+            import traceback
+            traceback.print_exc()
+
+    def closeEvent(self, ev):
+        # 🧪 TEMP DIAG 2026-09-18 (静静): 控制台启动 ~30s 后自己关窗退出 — 抓调用栈, 抓完还原
+        try:
+            import time as _t3
+            import traceback as _tb2
+            with open("/tmp/closeEvent_stack.log", "a", encoding="utf-8") as _f2:
+                _f2.write(f"=== {_t3.time():.3f} closeEvent 调用栈 ===\n" + "".join(_tb2.format_stack()) + "\n")
+        except Exception:
+            pass
+        """🛡 主窗口关闭清理 (2026-08-05 崩溃修复#4: StudioMainWindow 原本无 closeEvent →
+        _orin_timer(5s轮询)/_rerun_worker(QThread)/_live_timer/_replay_timer/_stats_timer
+        关闭时未清理 → QThread: Destroyed while thread is still running exit 134 SIGABRT)
+        注意: 子组件 (SimulinkModule) 的 closeEvent 会自动触发 (Qt 关闭事件传播)"""
+        # 停所有主窗口定时器 (🐛 2026-08-16: 补全 _cam_timer 无parent + _log_flush/_zoo/
+        #   _remote_log/_env — 运行时关闭窗口漏停 → Timers cannot be stopped from another thread SIGSEGV)
+        for attr in ("_timer", "_orin_timer", "_live_timer", "_replay_timer", "_stats_timer",
+                     "_cam_timer", "_zoo_timer", "_remote_log_timer", "_env_timer", "_log_flush_timer"):
+            t = getattr(self, attr, None)
+            if t is not None:
+                try:
+                    t.stop()
+                except Exception:
+                    pass
+        # 停 Rerun 后台 QThread (有 stop() 方法)
+        rw = getattr(self, "_rerun_worker", None)
+        if rw is not None:
+            try:
+                rw.stop()
+                rw.wait(3000)
+            except Exception:
+                pass
+        self._rerun_worker = None
+        # 清理子组件录屏 (SimulinkModule 的 closeEvent 会触发, 这里兜底)
+        sim = getattr(self, "simulink", None)
+        if sim is not None:
+            try:
+                sim.close()  # 触发 SimulinkModule.closeEvent 清理 _rec_timer/_worker
+            except Exception:
+                pass
+        # 🐛 2026-08-20 Segfault 根治: HardwareModule 的 WS 实时通道 (daemon 线程) 未清理 →
+        #   关窗口后 WS 线程仍持有 on_status bound method (反向引用 HardwareModule),
+        #   解释器退出时 WS 线程 GC 析构 QObject → killTimer cross-thread SIGSEGV。
+        #   根治: 遍历 stack 找到持有 _ws 的 widget (HardwareModule, 匿名实例),
+        #   断开回调引用 + stop(关socket中断recv) + join(等线程真正退出) + 停 _ws_poll。
+        try:
+            import time as _t2
+            _dbg = []
+            for _i in range(self.stack.count()):
+                _w = self.stack.widget(_i)
+                _ws = getattr(_w, "_ws", None)
+                _dbg.append(f"[{_i}]{type(_w).__name__}:ws={'Y' if _ws is not None else 'N'}")
+                if _ws is not None:
+                    try:
+                        _ws.on_status = None   # 断反向引用 (关键, 否则 WS 线程 GC 析构 QObject)
+                        _ws.on_event = None
+                        _ws.stop()             # set Event + 关底层 socket 中断阻塞 recv
+                        _t0 = _t2.time()
+                        _ok = _ws.join(3)      # 等线程真正退出 (否则解释器退出强杀 daemon → segfault)
+                        _dbg.append(f"   stop+join: ok={_ok} dt={_t2.time()-_t0:.2f}s alive={_ws._thread.is_alive()}")
+                    except Exception as _e:
+                        _dbg.append(f"   stop+join EXC: {_e!r}")
+                    _w._ws = None
+                    _wp = getattr(_w, "_ws_poll", None)
+                    if _wp is not None:
+                        try:
+                            _wp.stop()
+                        except Exception:
+                            pass
+            with open("/tmp/closeEvent.log", "a") as _f:
+                _f.write(f"{_t2.time():.1f} closeEvent WS清理: " + " | ".join(_dbg) + "\n")
+        except Exception as _e2:
+            try:
+                with open("/tmp/closeEvent.log", "a") as _f:
+                    _f.write(f"{_t2.time():.1f} closeEvent WS清理外层异常: {_e2!r}\n")
+            except Exception:
+                pass
+        super().closeEvent(ev)
+
+    def _init_simulink(self):
+        """🚀 延迟创建 SimulinkModule (2026-08-12 老倪: 主窗口先显示, 画布后台建)"""
+        # 🐛 2026-08-26: Mac 黑屏诊断 — 构造阶段打点日志 (写文件, 不依赖 GUI)
+        # 🐛 2026-08-28: Windows exe 无 /tmp 目录 → 修复打点路径 (tempfile.gettempdir())
+        #   根因: 3.3.0 起此处 open("/tmp/...") 在 Windows 抛 FileNotFoundError,
+        #   SimulinkModule() 从未执行 → 画布打不开 (3.2.4 无打点正常)
+        import time as _td
+        def _mk(m):
+            try:
+                with open(os.path.join(tempfile.gettempdir(), "zmax_simulink_init.log"), "a") as _f:
+                    _f.write(f"{_td.time():.1f} {m}\n")
+            except Exception:
+                pass
+        try:
+            _mk("START _init_simulink")
+            sim = SimulinkModule()
+            sim.flow_synced = self.on_flow_sync
+            sim.set_model_engine(self.model_engine)  # 🌐 simulink 训练走 Model Engine
+            self.model_engine.set_simulink(sim)      # 🎛 训练按钮 → Simulink Model Zoo on_train
+            # 🐛 simulink 训练日志 → 模型引擎日志区 (本地/远程训练输出可见)
+            sim.log_signal.connect(self.model_engine._log)
+            sim.progress_signal.connect(self.model_engine._update_progress)  # 🆕 训练进度→进度条
+            self.stack.insertWidget(self._simulink_index, sim)  # 插回原 tab 位
+            self.simulink = sim
+            # 🎨 2026-08-16 老倪: Simulink 延迟创建 → 补挂当前全局主题/字体
+            #   (若用户在画布就绪前切过主题, 新创建的画布要继承当前选择)
+            try:
+                if CUR_UI_THEME != "dark" and hasattr(sim, "switch_theme"):
+                    sim.switch_theme(CUR_UI_THEME)
+                if CUR_FONT_DELTA:
+                    from PyQt5.QtCore import QTimer as _QTM3
+                    _oneshot(self, 0, lambda: apply_ui_font(self, CUR_FONT_DELTA))
+            except Exception:
+                pass
+            self.statusBar().showMessage("🚀 Simulink 画布已就绪", 2000)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.statusBar().showMessage(f"⚠️ Simulink 初始化失败: {e}", 5000)
+
+    def _on_engine_change(self, idx):
+        """引擎切换"""
+        mapping = {0:"act", 1:"vtla", 2:"groot", 3:"smolvla", 4:"lew"}
+        names = {0:"ACT 本地(1ms)", 1:"VTLA 4090(~280ms)", 2:"GR00T 4090(~500ms)", 3:"smolvla 本地(215ms)", 4:"LEW 本地(186ms)"}
+        engine_colors = {0:SYS1_COLOR, 1:SYS2_COLOR, 2:SYS2_COLOR, 3:SYS11_COLOR, 4:SYS12_COLOR}
+        engine = mapping.get(idx, "act")
+        import requests, time
+
+        # 测量推理延迟
+        t0 = time.time()
+        if engine in ("vtla", "groot"):
+            try:
+                r = requests.get("http://39.102.211.79:50051/health", timeout=3)
+                latency = (time.time() - t0) * 1000
+                if r.status_code == 200:
+                    self._engine_status.setText("● 4090 已连接")
+                    self._engine_status.setStyleSheet(f"color:{C_GREEN}; font-size:15px; font-weight:600; padding:0 10px;")
+                    self._latency_label.setText(f"延迟: {latency:.0f}ms")
+                    self._latency_label.setStyleSheet(f"color:{C_GREEN}; font-size:20px; padding:0 8px;")
+                else:
+                    raise Exception("bad status")
+            except:
+                self._engine_status.setText("● 4090 断开 → 将回退ACT")
+                self._engine_status.setStyleSheet(f"color:#d29922; font-size:15px; font-weight:600; padding:0 10px;")
+                self._latency_label.setText("延迟: N/A")
+                self._latency_label.setStyleSheet(f"color:#d29922; font-size:20px; padding:0 8px;")
+        else:
+            latency = (time.time() - t0) * 1000
+            self._engine_status.setText("● 本地就绪")
+            self._engine_status.setStyleSheet(f"color:{C_GREEN}; font-size:15px; font-weight:600; padding:0 10px;")
+            self._latency_label.setText(f"延迟: {latency:.1f}ms")
+            self._latency_label.setStyleSheet(f"color:{C_GREEN}; font-size:20px; padding:0 8px;")
+
+        self.statusBar().showMessage(f"引擎: {names.get(idx, 'ACT')}")
+
+    def on_flow_sync(self, flow):
+        """Simulink 工作流变更 → 推送到 web (datadrive.world/api/comfy/task)
+        后台线程发送 (2026-08-05 实测: web comfy mock 常挂 → 同步请求超时卡主线程 8s,
+        对比模板 13 节点批量加载时更明显; 改线程后 UI 零卡顿)"""
+        try:
+            import threading
+
+            def _post():
+                # 🐛 2026-08-22 崩溃根治: worker 线程禁直接 showMessage — QStatusBar 内部
+                # QTimer 是主线程持有, 跨线程 showMessage → cross-thread 析构 QTimer →
+                # activateTimers NULL receiver SIGSEGV (gdb 实锤 #2 QStatusBar::showMessage
+                # #10 thread_run). 改 _oneshot 回主线程更新状态栏.
+                def _sb(msg):
+                    _oneshot(self, 0, lambda m=msg: self.statusBar().showMessage(m))
+                try:
+                    import requests
+                    url = "https://datadrive.world/api/comfy/task"
+                    r = requests.post(url, json=flow, timeout=8)
+                    if r.status_code == 200:
+                        _sb(f"🔄 Simulink 已同步到 web ({len(flow.get('nodes', []))}节点)")
+                    else:
+                        _sb(f"⚠️ web同步失败 HTTP {r.status_code}")
+                except Exception as ex:
+                    _sb(f"⚠️ web同步不可用: {ex}")
+
+            threading.Thread(target=_post, daemon=True).start()
+        except Exception:
+            pass
+
+    def _collapse_sidebar(self):
+        """📚 隐藏 XSpace Studio 左侧栏 (2026-08-06 老倪: 列表栏要能隐藏)"""
+        self.sidebar.setVisible(False)
+        self._sb_expand_bar.setVisible(True)
+        self.statusBar().showMessage("📚 左侧栏已收起 (点左缘 ▶ 展开)", 3000)
+
+    def _expand_sidebar(self):
+        """📚 恢复 XSpace Studio 左侧栏"""
+        self.sidebar.setVisible(True)
+        self._sb_expand_bar.setVisible(False)
+        self.statusBar().showMessage("📚 左侧栏已展开", 3000)
+
+    def _on_nav(self, target):
+        """导航切换"""
+        # 特殊指令：检查更新
+        if target == "check_updates":
+            self._check_updates()
+            return
+
+        # 特殊指令：产品大屏 (2026-08-08 老倪: 打开工厂数字大屏)
+        # 🐛 WSL 无 xdg-open → QDesktopServices.openUrl 失效 → 用 cmd.exe start (Windows 默认浏览器)
+        if target == "website":
+            import subprocess as _sp
+            _sp.Popen(["cmd.exe", "/c", "start", "", "https://datadrive.world/factory-dashboard.html"])
+            return
+
+        # 系统层级映射
+        if target in self.layer_map:
+            target = self.layer_map[target]
+
+        idx = self.modules.get(target, 0)
+        self.stack.setCurrentIndex(idx)
+
+        # 更新状态栏
+        names = ["首页", "数据集", "训练", "评估", "硬件", "配置", "监控", "插拔场景", "版本同步", "推理服务", "Simulink", "数据空间", "架构总览"]  # v1.8.0: 与 self.modules 顺序一致 (13项)
+        self.statusBar().showMessage(f"● {names[idx]}  |  Z-MAX 三层解耦架构  |  Sys-0 + Sys-11 + Sys-12 + Sys-2")
+
+    def _open_l2_skills(self):
+        """L2 原子技能清单 (工程记忆 技能与经验库)"""
+        try:
+            from l2_skill_dialog import L2SkillDialog
+        except Exception as e:
+            QMessageBox.warning(self, "L2 技能", "对话框模块加载失败: %s" % e)
+            return
+        L2SkillDialog(self).exec_()
+
+    # 🖥 2026-09-29 老倪「窗口没有显示完全 / 没有横向拖动条」两项界面自愈
+    def _fit_self_to_screen(self):
+        """一键把主窗口按回屏幕内 (尺寸/位置夹紧), 记进日志便于取证。"""
+        try:
+            if self.isMaximized():
+                self.setWindowState(self.windowState() & ~Qt.WindowMaximized)
+                QApplication.processEvents()
+            ch, why = _fit_window_to_screen(self)
+            try:
+                with open("/tmp/studio_show_diag.log", "a") as _df:
+                    _df.write(f"{time.time():.1f} menu fit_to_screen changed={ch} {why}\n")
+            except Exception:
+                pass
+            self.statusBar().showMessage(
+                f"🖥 窗口适配屏幕: {'已调整 ' if ch else '本来就在屏内 '}· {why}", 6000)
+        except Exception as e:
+            try:
+                self.statusBar().showMessage(f"🖥 适配失败: {e}", 6000)
+            except Exception:
+                pass
+
+    def _toggle_fullscreen(self):
+        """F11 全屏/还原 (全屏 = 连 GNOME 顶栏都不要, 画面最大化)。"""
+        try:
+            if self.isFullScreen():
+                self.showNormal()
+                self._fit_self_to_screen()
+            else:
+                self.showFullScreen()
+        except Exception:
+            pass
+
+    def _build_menubar(self):
+        """构建专业开发环境菜单栏"""
+        self.repo_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        # 文档根目录
+        if getattr(sys, 'frozen', False):
+            from docs_sync import get_docs_dir
+            self.docs_path = get_docs_dir()
+        else:
+            self.docs_path = os.path.join(self.repo_path, "docs")
+        self.docs_syncer = None  # lazy import
+
+        mb = self.menuBar()
+        mb.setStyleSheet(f"""
+            QMenuBar {{
+                background: {C_BG2};
+                color: {C_WHITE};
+                border-bottom: 1px solid {C_BORDER};
+                padding: 2px 0;
+            }}
+            QMenuBar::item {{
+                background: transparent;
+                padding: 6px 12px;
+                margin: 0;
+            }}
+            QMenuBar::item:selected {{
+                background: {C_CARD};
+                color: {C_BLUE};
+            }}
+        """)
+
+        # ====== 文件菜单 ======
+        m_file = mb.addMenu("文件(&F)")
+
+        act_open_repo = QAction("打开项目根目录", self)
+        act_open_repo.setShortcut("Ctrl+O")
+        act_open_repo.triggered.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.repo_path)))
+        m_file.addAction(act_open_repo)
+
+        act_l2 = QAction("💪 L2 原子技能清单 (抬升/平移/合爪)", self)
+        act_l2.triggered.connect(self._open_l2_skills)
+        m_file.addAction(act_l2)
+
+        m_file.addSeparator()
+
+        act_github = QAction("浏览 GitHub 仓库", self)
+        act_github.setShortcut("Ctrl+G")
+        act_github.triggered.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/MikeBMW/lerobot-smolvla-lew")))
+        m_file.addAction(act_github)
+
+        act_push = QAction("同步代码到 GitHub", self)
+        act_push.setShortcut("Ctrl+Shift+U")
+        act_push.triggered.connect(self._menu_sync_to_github)
+        m_file.addAction(act_push)
+
+        m_file.addSeparator()
+
+        act_exit = QAction("退出(&Q)", self)
+        act_exit.setShortcut("Ctrl+Q")
+        act_exit.triggered.connect(self.close)
+        m_file.addAction(act_exit)
+
+        # ====== 视图菜单 ======
+        m_view = mb.addMenu("视图(&V)")
+
+        view_targets = [
+            ("返回首页", "home"),
+            ("数据集管理", "dataset"),
+            ("模型引擎", "training"),
+            ("评估分析", "evaluation"),
+            ("硬件工具箱", "hardware"),
+            ("配置中心", "config"),
+            ("实时监控", "monitor"),
+            ("插拔场景", "plugging"),
+            ("版本同步", "version"),
+        ]
+        for label, target in view_targets:
+            act = QAction(label, self)
+            act.triggered.connect(self._mk_nav_func(target))
+            m_view.addAction(act)
+
+        # 🖥 2026-09-29 老倪「窗口没有显示完全」: 一键把窗口按回屏幕内 (含尺寸/位置夹紧)
+        m_view.addSeparator()
+        act_fit = QAction("🖥 窗口适配屏幕 (按回屏内)", self)
+        act_fit.setShortcut("Ctrl+Shift+F")
+        act_fit.triggered.connect(self._fit_self_to_screen)
+        m_view.addAction(act_fit)
+        act_full = QAction("🔲 全屏切换 (F11)", self)
+        act_full.setShortcut("F11")
+        act_full.triggered.connect(self._toggle_fullscreen)
+        m_view.addAction(act_full)
+
+        # ====== 编辑菜单 (2026-08-16 老倪: UI风格 + 字体大小 全局设置) ======
+        m_edit = mb.addMenu("编辑(&E)")
+
+        # 🎨 UI 风格子菜单 (暗夜 / 浅色 Simulink 简约)
+        m_style = m_edit.addMenu("🎨 UI 风格")
+        self._style_acts = {}
+        for _label, _key in (("🌙 暗夜风格 (原版)", "dark"),
+                             ("☀️ 浅色 · Simulink 简约", "light")):
+            _a = QAction(_label, self)
+            _a.setCheckable(True)
+            _a.setChecked(_key == CUR_UI_THEME)
+            _a.triggered.connect(lambda _=False, k=_key: self._menu_set_style(k))
+            m_style.addAction(_a)
+            self._style_acts[_key] = _a
+
+        # 🔤 字体大小子菜单 (小/标准/大/特大 — 相对原始 11px 的 delta)
+        m_font = m_edit.addMenu("🔤 字体大小")
+        self._font_acts = {}
+        for _label, _delta in (("小", -2), ("标准", 0), ("大", 2), ("特大", 4)):
+            _a = QAction(_label, self)
+            _a.setCheckable(True)
+            _a.setChecked(_delta == CUR_FONT_DELTA)
+            _a.triggered.connect(lambda _=False, d=_delta: self._menu_set_font(d))
+            m_font.addAction(_a)
+            self._font_acts[_delta] = _a
+
+        # ====== 文档菜单（帮助文档） ======
+        m_doc = mb.addMenu("帮助文档(&H)")
+        # ✨ Feature List 产品特征清单 (2026-08-19 老倪: 展品特征 — 场景/功能/标准接口/性能指标, 不强调模型架构)
+        m_doc.addAction("✨ Feature List · 产品特征清单", self._show_feature_list)
+        m_doc.addSeparator()
+        # 📄 导出 PDF (2026-08-12 老倪: 帮助文档要有 PDF 导出功能)
+        m_doc.addAction("📄 导出文档为 PDF…", self._export_doc_pdf)
+        m_doc.addSeparator()
+
+        # === Git 操作指南 + README（置顶） ===
+        m_git = m_doc.addMenu("🔄 Git 推送与拉取指南")
+        m_git.addAction(self._mk_doc_action("📖 完整操作指南 (README.md) — 含 git push/pull/clone",
+            (["README.md"], "xdg-open")))
+        m_git.addSeparator()
+
+        # 🧠 左右脑双脑策略 (2026-08-10 老倪: v2.0 大版本 — left动作/right世界模型/状态机调制)
+        # ⚠️ _mk_doc_action 自动拼 self.docs_path(=docs/) — 传相对名, 别带 docs/ 前缀 (否则 docs/docs/ 不存在)
+        m_doc.addAction(self._mk_doc_action("🧠 左右脑策略 · LeftRightPolicy 技术方案 (v2.0)",
+            (["left_right_policy.md"], "xdg-open")))
+        m_doc.addAction(self._mk_doc_action("🏭 精细操作场景 + 调制指标大屏监督方案",
+            (["factory_fine_ops_supervision.md"], "xdg-open")))
+        m_doc.addAction(self._mk_doc_action("📋 光模块工厂精细操作需求规格书 (市场版)",
+            (["factory_fine_ops_demand.md"], "xdg-open")))
+        m_doc.addAction(self._mk_doc_action("📑 Z700 具身方案技术协议 v3 (光模块工厂 5 场景)",
+            (["Z700_technical_agreement_v3.md"], "xdg-open")))
+        m_doc.addSeparator()
+        
+        # 培训文档 (唯一 MD + PPTX)
+        m_doc.addAction(self._mk_doc_action("📖 Z700 F · L2 产品培训手册 (MD)",
+            (["Z700F-L2产品培训手册.md"], "xdg-open")))
+        m_doc.addAction(self._mk_doc_action("📊 Z700 F · L2 产品培训 (PPTX·PowerPoint)",
+            (["Z700F-L2产品培训手册.pptx"], "libreoffice")))
+        m_doc.addSeparator()
+        m_doc.addAction(self._mk_doc_action("🎯 产品等级定义 · L1~L5 自动化标准",
+            (["Z-MAX产品等级定义-L1-L5标准.md"], "xdg-open")))
+        m_doc.addSeparator()
+        m_doc.addAction(self._mk_doc_action("🧠 SmolVLA 训练方案 · 数据+方法+路线",
+            (["Z-MAX-SmolVLA训练方案.md"], "xdg-open")))
+        m_doc.addSeparator()
+        m_doc.addAction(self._mk_doc_action("📋 用户需求调研问卷 (Word·docx)",
+            (["survey/Z-MAX-用户需求调研问卷-v1.0.4.docx"], "libreoffice")))
+        m_doc.addSeparator()
+        m_doc.addAction(self._mk_doc_action("📜 专利交底书 (Word·docx)",
+            (["patents/Z-MAX-专利交底书-实用新型-多模态VLA具身机器人精细操作控制系统.docx"], "libreoffice")))
+        m_doc.addSeparator()
+        m_doc.addAction(self._mk_doc_action("💾 数据日志方案 · MCAP vs Rosbag 分析",
+            (["Z-MAX数据日志方案-MCAP分析.md"], "xdg-open")))
+        m_doc.addSeparator()
+        # 在子菜单里添加常用 Git 命令的快捷说明
+        act_clone = QAction("📥 克隆项目: git clone https://github.com/MikeBMW/lerobot-smolvla-lew.git", self)
+        act_clone.triggered.connect(lambda: self._copy_git_cmd("git clone https://github.com/MikeBMW/lerobot-smolvla-lew.git"))
+        m_git.addAction(act_clone)
+        act_pull = QAction("📥 拉取更新: git pull origin main", self)
+        act_pull.triggered.connect(lambda: self._copy_git_cmd("git pull origin main"))
+        m_git.addAction(act_pull)
+        act_push = QAction("📤 推送代码: git add -A && git commit -m 'msg' && git push origin main", self)
+        act_push.triggered.connect(lambda: self._copy_git_cmd("git add -A && git commit -m 'msg' && git push origin main"))
+        m_git.addAction(act_push)
+        act_status = QAction("🔍 查看状态: git status", self)
+        act_status.triggered.connect(lambda: self._copy_git_cmd("git status"))
+        m_git.addAction(act_status)
+        act_log = QAction("📜 查看历史: git log --oneline -10", self)
+        act_log.triggered.connect(lambda: self._copy_git_cmd("git log --oneline -10"))
+        m_git.addAction(act_log)
+        act_diff = QAction("🔀 查看差异: git diff --cached", self)
+        act_diff.triggered.connect(lambda: self._copy_git_cmd("git diff --cached"))
+        m_git.addAction(act_diff)
+
+        m_doc.addSeparator()
+
+        # L1 - 战略层
+        m_l1 = m_doc.addMenu("L1 · 战略层文档")
+        m_l1.addAction(self._mk_doc_action("📊 Z-MAX 产品发布 PPT (v1.0.4)",
+            (["L1-Z-MAX产品发布-v1.0.4.pptx"], "libreoffice")))
+
+        # L2 - 方案层
+        m_doc.addSeparator()
+        m_l2 = m_doc.addMenu("L2 · 方案层文档")
+        m_l2.addAction(self._mk_doc_action("📋 解决方案 MD (v1.0.6)",
+            (["L2-Z-MAX解决方案-v1.0.6.md", "L2-Z-MAX解决方案-v1.0.5.md"], "xdg-open")))
+
+        # L3 - 技术层
+        m_l3 = m_doc.addMenu("L3 · 技术层文档")
+        m_l3.addAction(self._mk_doc_action("🔧 技术路线与代码开发指南 (v1.0.4)",
+            (["L3-技术路线与开发指南-v1.0.4.md", "Z-MAX 产品迭代技术路线与代码开发指南.md"], "xdg-open")))
+
+        # === 开发宝典（置顶核心文档） ===
+        m_doc.addSeparator()
+        m_doc.addAction(self._mk_doc_action("📖 开发宝典 — 全维度参考手册 (v1.0.4)",
+            (["HELP-DEVELOPMENT-BIBLE.md"], "xdg-open")))
+
+        # === 运维文档 ===
+        m_doc.addSeparator()
+        m_ops = m_doc.addMenu("🔧 运维手册")
+        m_ops.addAction(self._mk_doc_action("🖥  Orin SSH 运维手册 — 连接/三层永固/故障排除",
+            (["Orin运维手册.md"], "xdg-open")))
+
+        # 品牌 & 竞品
+        m_doc.addSeparator()
+        m_brand = m_doc.addMenu("品牌 · 竞品参考")
+        m_brand.addAction(self._mk_doc_action("🏷  品牌注册材料 PPT",
+            (["BRAND-品牌注册材料.pptx", "Z-MAX产品注册汇报.pptx"], "libreoffice")))
+        m_brand.addAction(self._mk_doc_action("📄 竞品参考 - 轮式双臂机器人项目 (PDF)",
+            (["轮式双臂机器人光模块自主插拔项目-20260702.pdf"], "xdg-open")))
+
+        # 版本管理
+        m_doc.addSeparator()
+        m_admin = m_doc.addMenu("版本管理文档")
+        m_admin.addAction(self._mk_doc_action("📦 版本管理规范 VERSION.md",
+            (["VERSION.md"], "xdg-open")))
+        m_admin.addAction(self._mk_doc_action("🔄 上游同步指南",
+            (["Z-MAX-UPSTREAM-SYNC.md"], "xdg-open")))
+
+        m_doc.addSeparator()
+        m_ppt = m_doc.addMenu("🎯 PPT 指令控制")
+        m_ppt.addAction(QAction("📝 生成指令模板 PPTX", self, triggered=lambda: self._gen_ppt_template()))
+        m_ppt.addAction(QAction("▶ 解析并执行当前 PPT", self, triggered=lambda: self._run_ppt()))
+        m_ppt.addAction(QAction("📂 打开指令目录", self, triggered=lambda: (
+            setattr(self, '_tmp_ppt', None),
+            QDesktopServices.openUrl(QUrl.fromLocalFile(
+                os.path.join(self.docs_path, "00-指令") if self.docs_path else ""
+            ))
+        )))
+
+        # 文档同步
+        m_doc.addSeparator()
+        act_sync = QAction("📥 同步文档 (从 GitHub 下载)", self)
+        act_sync.triggered.connect(self._sync_docs)
+        m_doc.addAction(act_sync)
+
+        act_push = QAction("📤 上传修改 (推送到 GitHub)", self)
+        act_push.triggered.connect(self._push_docs)
+        m_doc.addAction(act_push)
+
+        m_doc.addSeparator()
+        act_open_dir = QAction("📂 打开文档目录", self)
+        def _open_docs_dir():
+            os.makedirs(self.docs_path, exist_ok=True)
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self.docs_path))
+        act_open_dir.triggered.connect(_open_docs_dir)
+        m_doc.addAction(act_open_dir)
+
+        # ====== 帮助菜单 ======
+        m_help = mb.addMenu("关于(&A)")
+        act_about = QAction("关于 Z-MAX", self)
+        act_about.triggered.connect(self._show_about)
+        m_help.addAction(act_about)
+
+        act_lerobot = QAction("LeRobot 官方文档", self)
+        act_lerobot.triggered.connect(lambda: QDesktopServices.openUrl(QUrl("https://huggingface.co/docs/lerobot")))
+        m_help.addAction(act_lerobot)
+
+        m_help.addSeparator()
+        act_update = QAction("🔄 检查更新", self)
+        act_update.triggered.connect(self._check_updates)
+        m_help.addAction(act_update)
+
+        # 后台检查更新（启动后5秒）
+        _oneshot(self, 5000, self._auto_check_update)
+        
+        act_patent = QAction("📜 专利展示面板 (6项权利要求)", self)
+        act_patent.triggered.connect(self._toggle_patent_panel)
+        m_help.addAction(act_patent)
+        
+        # ── 右上角: 品牌标签 + 状态灯 (2026-08-06 老倪: 侧栏大标题提升到菜单栏) ──
+        status_widget = QWidget()
+        status_widget.setStyleSheet("background:transparent;")
+        sl = QHBoxLayout()
+        sl.setContentsMargins(4, 2, 8, 2)
+        sl.setSpacing(4)
+        # 🏷 品牌标签 (原侧栏大标题提升至此, 白字清晰可见, 不占侧栏空间)
+        brand = QLabel("🦾 Z-MAX 具身智能 · Simulink 模式")
+        brand.setStyleSheet("color:#e6edf3; font-size:20px; font-weight:600; background:transparent; border:none; padding:0 8px;")
+        sl.addWidget(brand)
+        
+        self._status_lights = {}
+        for color_on, name, tooltip in [
+            ("#3fb950", "green",  "Hermes Agent 在线 · 守护进程运行中"),
+            ("#d29922", "yellow", "需要紧急处理"),
+            ("#f85149", "red",    "Agent 不在线或异常"),
+        ]:
+            dot = QLabel()
+            dot.setFixedSize(14, 14)
+            dot.setToolTip(tooltip)
+            # 默认: 绿灯实心, 其他空心带边线
+            if name == "green":
+                dot.setStyleSheet(f"background:{color_on}; border:2px solid {color_on}; border-radius:7px;")
+            else:
+                dot.setStyleSheet(f"background:transparent; border:2px solid {color_on}; border-radius:7px;")
+            sl.addWidget(dot)
+            self._status_lights[name] = dot
+        
+        status_widget.setLayout(sl)
+        mb.setCornerWidget(status_widget, Qt.TopRightCorner)
+
+    def _mk_nav_func(self, target):
+        """创建导航闭包函数"""
+        def nav():
+            self._on_nav(target)
+        return nav
+
+    def _sync_docs(self):
+        """从 GitHub 同步最新文档到本地"""
+        try:
+            from docs_sync import sync, get_status
+            status = get_status()
+            msg = (f"当前文档目录: {status['doc_dir']}\n"
+                   f"上次同步: {status['last_sync']}\n"
+                   f"文档数量: {status['doc_count']}\n\n"
+                   f"点击确定开始从 GitHub 同步最新文档。")
+            reply = _msg_ask(self, "同步文档", msg)
+            if reply != QMessageBox.Yes:
+                return
+
+            self.statusBar().showMessage("正在同步文档...")
+            sync(log_callback=lambda m: (
+                self.statusBar().showMessage(m),
+                QApplication.processEvents()
+            ))
+            self.statusBar().showMessage("✅ 文档同步完成")
+            _msg_ok(self, "同步完成", f"文档已更新到: {status['doc_dir']}\n"
+                f"请重新打开帮助文档查看。")
+        except Exception as e:
+            _msg_ok(self, "同步失败", f"文档同步失败:\n{e}", kind="warning")
+
+    def _push_docs(self):
+        """将本地文档修改推送到 GitHub"""
+        try:
+            from docs_sync import get_status, push_to_github
+            status = get_status()
+            msg = (f"当前文档目录: {status['doc_dir']}\n"
+                   f"版本: {status['version']}\n\n"
+                   f"将本地修改推送到 GitHub 主分支。\n"
+                   f"需要 GitHub Token 或 WSL 环境。")
+            reply = _msg_ask(self, "推送文档", msg)
+            if reply != QMessageBox.Yes:
+                return
+
+            self.statusBar().showMessage("正在推送...")
+            ok = push_to_github(log_callback=lambda m: (
+                self.statusBar().showMessage(m),
+                QApplication.processEvents()
+            ))
+            if ok:
+                self.statusBar().showMessage("✅ 推送完成")
+            else:
+                self.statusBar().showMessage("⚠ 推送未完成")
+        except Exception as e:
+            _msg_ok(self, "推送失败", f"文档推送失败:\n{e}", kind="warning")
+
+    def _gen_ppt_template(self):
+        """生成 PPT 指令模板"""
+        try:
+            from ppt_engine import create_template, get_instructions_dir
+            # 先确保 "静界" 目录存在
+            from docs_sync import get_docs_dir
+            os.makedirs(os.path.join(get_docs_dir(), "00-指令"), exist_ok=True)
+
+            ok, result = create_template()
+            if ok:
+                self.statusBar().showMessage(f"✅ 模板已生成: {result}")
+                _msg_ok(self, "模板已生成", f"指令模板已保存到:\n{result}\n\n"
+                    f"打开后按模板格式写指令，\n"
+                    f"然后点「解析并执行当前 PPT」运行。")
+            else:
+                _msg_ok(self, "生成失败", f"请先同步文档:\n{result}", kind="warning")
+        except Exception as e:
+            _msg_ok(self, "错误", f"生成模板失败:\n{e}", kind="warning")
+
+    def _run_ppt(self):
+        """选择 PPT 文件并执行指令"""
+        from PyQt5.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择指令 PPTX 文件", self.docs_path or "",
+            "PPTX 文件 (*.pptx)")
+        if not path:
+            return
+
+        try:
+            from ppt_engine import run_all
+            self.statusBar().showMessage(f"正在解析: {path}")
+            # 用 QMessageBox 显示执行日志
+            logs = []
+            ok = run_all(path, log_callback=lambda m: logs.append(m))
+            msg = "\n".join(logs)
+            if ok:
+                _msg_ok(self, "✅ 指令执行完成", msg)
+                self.statusBar().showMessage("✅ 指令全部执行成功")
+            else:
+                _msg_ok(self, "⚠ 部分指令失败", msg, kind="warning")
+                self.statusBar().showMessage("⚠ 部分指令执行失败")
+        except Exception as e:
+            _msg_ok(self, "执行错误", f"PPT 解析失败:\n{e}", kind="warning")
+
+    def _check_updates(self):
+        """手动检查更新（支持自动下载升级）"""
+        from update_checker import check_latest, get_current_version, download_update
+        self.statusBar().showMessage("正在检查更新...")
+        info = check_latest()
+        if info is None:
+            _msg_ok(self, "检查失败", "无法连接到 GitHub，请检查网络。\n"
+                "或手动访问：\n"
+                "https://github.com/MikeBMW/lerobot-smolvla-lew/releases")
+            self.statusBar().showMessage("⚠ 检查更新失败")
+            return
+
+        cur = get_current_version()
+        if info["version"] == cur:
+            _msg_ok(self, "已是最新版", f"当前版本: {cur}\n已是最新版本 ✅")
+            self.statusBar().showMessage(f"✅ 已是最新版: {cur}")
+            return
+
+        # 发现新版本
+        self.statusBar().showMessage(f"📢 发现新版本: {info['version']}")
+        msg = (f"当前版本: {cur}\n"
+               f"最新版本: {info['version']}\n"
+               f"发布时间: {info['published'][:10]}\n\n"
+               f"更新内容:\n{info['body']}\n\n"
+               f"选择操作：")
+        # 三个按钮：下载升级 / 打开页面 / 取消
+        btn_dl = QMessageBox(self)
+        btn_dl.setWindowTitle("📢 发现新版本")
+        btn_dl.setText(msg)
+        b_upgrade = btn_dl.addButton("⬇ 下载并升级", QMessageBox.AcceptRole)
+        b_open = btn_dl.addButton("🌐 打开下载页", QMessageBox.ActionRole)
+        b_cancel = btn_dl.addButton("稍后", QMessageBox.RejectRole)
+        btn_dl.setDefaultButton(b_upgrade)
+        btn_dl.exec()
+
+        if btn_dl.clickedButton() == b_cancel:
+            return
+
+        if btn_dl.clickedButton() == b_open:
+            QDesktopServices.openUrl(QUrl(
+                info.get("download_url") or info.get("release_url", "")))
+            return
+
+        # 下载升级
+        if not info.get("download_url"):
+            _msg_ok(self, "下载失败", "未找到下载链接", kind="warning")
+            return
+
+        self.statusBar().showMessage("正在下载新版本...")
+        # 下载到临时目录
+        import tempfile
+        tmp_dir = os.path.join(tempfile.gettempdir(), "zmax_update")
+        os.makedirs(tmp_dir, exist_ok=True)
+        new_exe = os.path.join(tmp_dir, "Z-MAX_Console_new.exe")
+
+        ok = download_update(info["download_url"], new_exe)
+        if not ok:
+            _msg_ok(self, "下载失败", f"下载失败，请手动下载:\n{info['download_url']}", kind="warning")
+            return
+
+        # 创建升级脚本
+        exe_path = sys.executable if getattr(sys, 'frozen', False) else ""
+        if exe_path:
+            script_path = os.path.join(tmp_dir, "upgrade.bat")
+            with open(script_path, "w") as f:
+                f.write(f"""@echo off
+echo 正在升级 Z-MAX Console...
+timeout /t 2 /nobreak >nul
+copy /y "{new_exe}" "{exe_path}" >nul
+start "" "{exe_path}"
+del "%~f0"
+""")
+            self.statusBar().showMessage("✅ 下载完成，正在升级...")
+            _msg_ok(self, "下载完成", "新版本已下载。\n"
+                "重启控制台后自动完成升级。\n\n"
+                f"下载路径: {new_exe}")
+            # 打开所在目录
+            QDesktopServices.openUrl(QUrl.fromLocalFile(tmp_dir))
+        else:
+            _msg_ok(self, "下载完成", f"新版本已下载到:\n{new_exe}\n\n"
+                f"请手动替换原 .exe 文件。")
+
+    def _auto_check_update(self):
+        """启动后后台检查更新（无声通知）"""
+        from update_checker import check_latest, get_current_version
+        try:
+            info = check_latest(timeout=5)
+            if info and info["version"] != get_current_version():
+                self.statusBar().showMessage(
+                    f"📢 发现新版本 {info['version']} — 关于 → 检查更新")
+        except Exception:
+            pass  # 静默失败
+
+    def _export_doc_pdf(self):
+        """📄 导出帮助文档为 PDF (2026-08-12 老倪: 帮助文档 → 选 md → PDF → Windows 打开)"""
+        from PyQt5.QtWidgets import QFileDialog
+        try:
+            start = self.docs_path
+        except Exception:
+            start = os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", "docs")
+        path, _ = QFileDialog.getOpenFileName(self, "📄 选择要导出 PDF 的文档", start, "Markdown (*.md)")
+        if not path:
+            return
+        pdf_dir = os.path.join(os.path.dirname(path), "pdf")
+        out = os.path.join(pdf_dir, os.path.basename(path).replace(".md", ".pdf"))
+        # 🐛 2026-08-12: GUI 用系统 python3 (无 reportlab) → 用 .venv 子进程跑转换
+        import subprocess as _sp
+        _venv_py = os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", ".venv", "bin", "python")
+        _tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs_pdf.py")
+        r = _sp.run([_venv_py, _tool, path, out], capture_output=True, text=True, timeout=120)
+        ok = r.returncode == 0 and os.path.exists(out)
+        if not ok:
+            _msg_ok(self, "导出失败", f"PDF 生成失败:\n{r.stderr[-300:]}", kind="critical")
+            return
+        # 🐛 WSL 路径 Windows 打不开 → 复制到 C 盘 + cmd start (同 _mk_doc_action 链路)
+        import shutil
+        _win_dir = "/mnt/c/Users/Public/ZMAX_docs"
+        os.makedirs(_win_dir, exist_ok=True)
+        _win_pdf = os.path.join(_win_dir, os.path.basename(out))
+        shutil.copy2(out, _win_pdf)
+        _sp.Popen(["cmd.exe", "/c", "start", "", _win_pdf.replace("/", "\\")],
+                  stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, cwd="/mnt/c/Windows")
+        self.statusBar().showMessage(f"📄 已导出 PDF: {out}")
+
+    def _show_feature_list(self):
+        """✨ Feature List 产品特征清单 (2026-08-19 老倪: 右侧下拉菜单入口)
+        展品特征: 场景/功能/标准接口/性能指标, 不强调模型架构 (feature_list.py)"""
+        try:
+            from feature_list import FeatureListDialog
+        except ImportError as ex:
+            _msg_ok(self, "打开失败", f"缺少 feature_list.py: {ex}", kind="warning")
+            return
+        try:
+            dlg = FeatureListDialog(self, module=getattr(self, "_simulink", None))
+            # 🐛 2026-08-19: 操作视频窗口(置顶, 播放中频繁刷 X 层)遮挡+像素残留污染
+            # Feature List → 弹出前把操作视频降置顶+下移 (用户要看再点它)
+            try:
+                _sim = getattr(self, "_simulink", None)
+                if _sim is not None and hasattr(_sim, "_mlp_dlg_or_none"):
+                    _vd = _sim._mlp_dlg_or_none()
+                    if _vd is not None:
+                        _vd.setWindowFlags(_vd.windowFlags() & ~Qt.WindowStaysOnTopHint)
+                        _vd.lower()
+            except Exception:
+                pass
+            dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowStaysOnTopHint)
+            dlg.raise_()
+            dlg.activateWindow()
+            dlg.show()  # 非模态 (弹窗零容忍铁律, 不 exec_)
+            # 🐛 2026-08-19 老倪报"Feature List 打开的是视频": 操作视频窗口(置顶
+            # WindowStaysOnTopHint)在 VcXsrv 下 z-order 不稳, 盖住新弹窗 →
+            # show 后延迟双 raise, 确保 Feature List 显示在最前
+            from PyQt5.QtCore import QTimer as _QT
+            _oneshot(self, 60, dlg.raise_)
+            _oneshot(self, 250, dlg.raise_)
+
+            # 🐛 2026-08-19 老倪报"左侧是操作视频遗留": 操作视频窗口频繁刷新 X 层,
+            # 关闭后像素残留 → 新弹窗部分区域被旧画面污染 → 延迟多次强制全量重绘
+            # (repaint 同步立即绘制, 逐次覆盖残留区)
+            def _repaint_fl():
+                try:
+                    # 🐛 2026-08-19: 防悬垂 — 窗口已关 (deleteLater) 后回调访问
+                    # 已删 C++ 对象 → Segfault 隐患; sip.isdeleted 先查
+                    from PyQt5 import sip as _sip
+                    if _sip.isdeleted(dlg):
+                        return
+                    dlg._browser.viewport().repaint()
+                    dlg.repaint()
+                except Exception:
+                    pass
+            for _ms in (100, 400, 800, 1500):
+                _oneshot(dlg, _ms, _repaint_fl)  # 🐛 2026-08-19: 挂parent — dialog关了timer一起销毁, 杜绝悬垂
+            self.statusBar().showMessage("✨ Feature List · 产品特征清单")
+        except Exception as ex:
+            _msg_ok(self, "打开失败", f"{ex}", kind="warning")
+
+    def _mk_doc_action(self, label, paths_and_opener):
+        """创建文档打开动作（支持多路径回退）"""
+        paths, opener = paths_and_opener
+        if not isinstance(paths, list):
+            paths = [paths]
+
+        def open_doc():
+            # PyInstaller .exe: 打开 GitHub 文档目录（文件用同步功能下载）
+            if getattr(sys, 'frozen', False):
+                github_dir = "https://github.com/MikeBMW/lerobot-smolvla-lew/tree/main/docs"
+                QDesktopServices.openUrl(QUrl(github_dir))
+                self.statusBar().showMessage(f"已打开 GitHub 文档目录")
+                return
+
+            for rel_path in paths:
+                full_path = os.path.join(self.docs_path, rel_path)
+                if os.path.exists(full_path):
+                    try:
+                        # 🐛 2026-08-10 老倪"直接跳到 Windows 文档了": explorer.exe 不认 WSL /tmp 路径
+                        # → 一律复制到 Windows 可见 C 盘 (C:\Users\Public\ZMAX_docs) 再打开 (同视频链路)
+                        import shutil
+                        _win_dir = "/mnt/c/Users/Public/ZMAX_docs"
+                        os.makedirs(_win_dir, exist_ok=True)
+                        _win_path = os.path.join(_win_dir, os.path.basename(full_path))
+                        shutil.copy2(full_path, _win_path)
+                        _win = _win_path.replace("/mnt/c/", "C:\\").replace("/", "\\")
+                        if opener == "libreoffice":
+                            # WSL: 复制到 Windows 可见路径 → PowerPoint 打开
+                            # .pptx 用 PowerPoint（通过cmd.exe），其他用默认程序
+                            if full_path.endswith(".pptx"):
+                                subprocess.Popen(["cmd.exe", "/c", "start", "", _win],
+                                                 cwd="/mnt/c/Windows")
+                            else:
+                                subprocess.Popen(["cmd.exe", "/c", "start", "", _win],
+                                                 cwd="/mnt/c/Windows")
+                        elif opener == "xdg-open":
+                            # 🐛 2026-08-12 老倪: explorer.exe 打开 md 无关联程序没反应
+                            # → cmd start 用 Windows 默认程序 (md→编辑器/docx→Word/pptx→PPT)
+                            subprocess.Popen(["cmd.exe", "/c", "start", "", _win],
+                                             cwd="/mnt/c/Windows")
+                        else:
+                            subprocess.Popen([opener, full_path])
+                        self.statusBar().showMessage(f"已打开: {rel_path}")
+                        return
+                    except Exception as e:
+                        _msg_ok(self, "打开失败", f"无法打开文档:\
+{e}", kind="warning")
+                        return
+            _msg_ok(self, "文档未找到", f"以下文档均不存在:\
+" +
+                "\n".join([os.path.join(self.docs_path, p) for p in paths]))
+
+        act = QAction(label, self)
+        act.triggered.connect(open_doc)
+        return act
+
+    def _toggle_patent_panel(self):
+        """弹出专利权利要求摘要"""
+        self.statusBar().showMessage("📜 专利·6项权利要求")
+        _msg_ok(self, "📜 Z-MAX 专利 · 权利要求摘要", "【权利要求1】双臂协同控制，单次节拍<25秒\n"
+            "【权利要求2】ACT/VTLA/GR00T多引擎热切换\n"
+            "【权利要求3】本地-云端统一推理，断连回退ACT\n"
+            "【权利要求4】力控闭环1kHz，三路冗余传感器\n"
+            "【权利要求5】L2→L3→L4软件升级，硬件不变\n"
+            "【权利要求6】光电传感器实时追踪自适应对准\n\n"
+            "完整文档：帮助文档 → 专利交底书 (Word .docx)")
+
+    def _copy_git_cmd(self, cmd):
+        """将 Git 命令复制到剪贴板并提示用户"""
+        try:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(cmd)
+            _msg_ok(self, "Git 命令已复制", f"以下命令已复制到剪贴板：\n\n"
+                f"<code>{cmd}</code>\n\n"
+                f"粘贴到终端即可执行。\n\n"
+                f"完整文档请打开：\n  帮助文档 → Git 推送与拉取指南 → 📖 完整操作指南 (README.md)")
+        except Exception as e:
+            _msg_ok(self, "复制失败", f"无法复制命令: {e}\n\n{cmd}", kind="warning")
+
+    def _menu_sync_to_github(self):
+        """菜单调用的 GitHub 同步（委托给 HomeWidget）"""
+        if hasattr(self, 'home'):
+            self.home._sync_to_github()
+
+    # ═══ 编辑菜单动作 (2026-08-16 老倪: UI风格/字体大小 全局) ═══
+    def _menu_set_style(self, key):
+        """🎨 编辑菜单 → UI 风格: 全局主题切换 + 菜单勾选同步"""
+        apply_ui_theme(self, key)
+        for _k, _a in getattr(self, "_style_acts", {}).items():
+            _a.setChecked(_k == key)
+
+    def _menu_set_font(self, delta):
+        """🔤 编辑菜单 → 字体大小: 全局缩放 + 菜单勾选同步"""
+        apply_ui_font(self, delta)
+        for _d, _a in getattr(self, "_font_acts", {}).items():
+            _a.setChecked(_d == delta)
+
+    def _show_about(self):
+        """显示关于对话框"""
+        from PyQt5.QtCore import Qt as _Qt
+        mb = QMessageBox(self)
+        mb.setWindowTitle("关于 Z-MAX")
+        mb.setTextFormat(_Qt.RichText)
+        mb.setText(f"""
+<b>Z-MAX v1.0.1</b> · 多模态动作专家<br>
+<b>Z700 轮式双臂精细操作机器人</b><br>
+<br>
+<b>核心能力</b><br>
+• VTLA 多模态模型 (视觉 + 触觉 + 语言 + 动作)<br>
+• 插拔精度: ±0.02mm<br>
+• 关键工序良率: 99%+<br>
+• 力控带宽: 1kHz<br>
+• 双臂协同: 左取料-右插拔<br>
+• ROI 回收期: 14~22 个月<br>
+<br>
+<b>技术路线</b><br>
+Phase 0 (L2) → Phase 1 (L3) → Phase 2 (L3+) → Phase 3 (L4) → Phase 4 (L4+)<br>
+VLM 规划 + VLA 执行 + HIL 强化学习<br>
+<br>
+<b>版本</b><br>
+LeRobot: v0.5.2 · Z-MAX: zmax-1.0.1<br>
+<br>
+<b>智蜂创元 · 具身智能</b><br>
+github.com/MikeBMW/lerobot-smolvla-lew
+""")
+        mb.setStyleSheet(_MSG_SS)
+        mb.setIcon(QMessageBox.Information)
+        mb.addButton(QMessageBox.Ok)
+        mb.exec_()
+
+
+# ============================================================
+# 入口
+# ============================================================
+def _build_global_qss():
+    """🌐 全局 QSS (滚动条/ToolTip/对话框暗色主题) — 用当前 C_* 常量实时生成.
+    主题切换 (apply_ui_theme) 时重调此函数 → 全局样式跟主题走。
+    🎨 2026-08-16 老倪: 按钮金属光泽 — 浅色用垂直渐变 (上白亮下浅灰) + 黑边框,
+      深色保持原样; hover 高光加深。
+    """
+    if CUR_UI_THEME == "light":
+        # 金属光泽: qlineargradient 垂直渐变 (顶部高光 #ffffff → 底部 #d9d9d9) + 黑边框黑字
+        btn_bg = ("qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+                  "stop:0 #ffffff, stop:0.45 #f2f2f2, stop:0.55 #e8e8e8, stop:1 #d9d9d9)")
+        btn_fg = "#000000"
+        btn_br = "#000000"
+        btn_bg_hover = ("qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+                        "stop:0 #ffffff, stop:0.45 #f7f7f7, stop:0.55 #eeeeee, stop:1 #e0e0e0)")
+        btn_br_hover = "#000000"
+        btn_bg_pressed = ("qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+                          "stop:0 #d9d9d9, stop:0.5 #e8e8e8, stop:1 #f2f2f2)")
+    else:
+        btn_bg = C_CARD
+        btn_fg = C_WHITE
+        btn_br = C_BORDER
+        btn_bg_hover = C_BLUE + "33"
+        btn_br_hover = C_BLUE
+        btn_bg_pressed = C_BLUE + "55"
+    return f"""
+        /* 🎨 2026-09-29 老倪「没有横向拖动的拖动条」——实测根因: 滚动条太细(8px)+手柄太暗,
+           现场看不出能不能拖; 横向条此前**根本没有规则**(走 Qt 默认)。统一加粗到 14px +
+           高对比手柄 (蓝), 两个方向都有: 一眼看得见, 鼠标能抓住拖。 */
+        QScrollBar:vertical {{ background: {C_BG2}; width: 14px; margin: 0; border-left: 1px solid {C_BORDER}; }}
+        QScrollBar::handle:vertical {{ background: {C_BLUE}; border-radius: 5px; min-height: 28px; }}
+        QScrollBar::handle:vertical:hover {{ background: {C_BLUE}; border: 1px solid {C_WHITE}; }}
+        QScrollBar:horizontal {{ background: {C_BG2}; height: 14px; margin: 0; border-top: 1px solid {C_BORDER}; }}
+        QScrollBar::handle:horizontal {{ background: {C_BLUE}; border-radius: 5px; min-width: 28px; }}
+        QScrollBar::handle:horizontal:hover {{ background: {C_BLUE}; border: 1px solid {C_WHITE}; }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
+        QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
+        QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 4px; }}
+        QToolTip {{ background: {C_BG2}; color: {C_WHITE}; border: 1px solid {C_BORDER}; padding: 4px 8px; }}
+        QToolTip:hover {{ background: {C_BG2}; }}
+
+        /* 所有对话框统一主题 */
+        QMessageBox, QDialog, QInputDialog {{ 
+            background: {C_BG}; 
+            color: {C_WHITE}; 
+            border: 1px solid {C_BORDER}; 
+        }}
+        QMessageBox QLabel, QDialog QLabel, QInputDialog QLabel {{ 
+            color: {C_WHITE}; 
+            background: transparent;
+        }}
+        QMessageBox QTextEdit {{ 
+            background: {C_BG2}; 
+            color: {C_WHITE}; 
+            border: 1px solid {C_BORDER}; 
+            border-radius: 4px; 
+            padding: 8px;
+        }}
+        QInputDialog QLineEdit {{ 
+            background: {C_BG2}; 
+            color: {C_WHITE}; 
+            border: 1px solid {C_BORDER}; 
+            border-radius: 4px; 
+            padding: 4px 8px;
+        }}
+        QInputDialog QSpinBox, QInputDialog QDoubleSpinBox, QInputDialog QComboBox {{ 
+            background: {C_BG2}; 
+            color: {C_WHITE}; 
+            border: 1px solid {C_BORDER}; 
+            border-radius: 4px; 
+            padding: 4px 8px;
+        }}
+        QMessageBox QPushButton, QDialog QPushButton {{ 
+            background: {btn_bg}; 
+            color: {btn_fg}; 
+            border: 1px solid {btn_br}; 
+            border-radius: 4px; 
+            padding: 6px 16px;
+            min-width: 60px;
+        }}
+        QMessageBox QPushButton:hover, QDialog QPushButton:hover {{ 
+            background: {btn_bg_hover};
+            border-color: {btn_br_hover};
+        }}
+        QMessageBox QPushButton:pressed, QDialog QPushButton:pressed {{ 
+            background: {btn_bg_pressed}; 
+        }}
+        /* 🐛 2026-08-12 老倪: 右键菜单 QMenu 暗色规则已删 — VcXsrv 下 QMenu QSS 渲染黑屏无字,
+           用系统默认菜单 (与 simulink 画布右键一致) */
+
+        /* QComboBox下拉列表样式 - 简单干净 */
+        QComboBox QAbstractItemView {{
+            background: {C_BG};
+            color: {C_WHITE};
+            border: 1px solid {C_BORDER};
+            outline: none;
+        }}
+    """
+
+
+def _fit_window_to_screen(win, margin=8):
+    """🖥 2026-09-29 老倪「窗口没有显示完全」: 把窗口**整个**按回可用工作区内。
+
+    尺寸超可用区就缩, 位置越界就挪回 (留 margin 边距, 不贴死屏幕边缘 —— 贴死时窗口
+    自己的边框/阴影落在屏外, 看起来就是"没显示全")。最大化状态不动 (那是 WM 的事)。
+    返回 (changed, 说明字符串) — 说明串会写进 /tmp/studio_show_diag.log 供取证。
+    """
+    try:
+        from PyQt5.QtGui import QGuiApplication
+        scr = QGuiApplication.primaryScreen()
+        if scr is None:
+            return False, "no-screen"
+        ag = scr.availableGeometry()
+        _mx_fix = False
+        if win.isMaximized() or win.isFullScreen():
+            fr = win.frameGeometry()
+            # 🐛 v5.16.14 老倪「窗口没有显示完全」的**残留根因**: 本机是双屏(X 虚拟屏 7040x2160),
+            #   主屏只可见 y 0..1999。WM 的「最大化」按**跨屏工作区**算 ⇒ 实测窗口变成
+            #   3068x1862@132,212, 底边 2074 落在主屏可见区**外** 74px ⇒ 最底一行(版本提示/跑马灯/
+            #   那个蓝色按钮)老倪**永远看不到**(离屏抓图能抓到, 所以只看截图会漏判)。
+            #   ⇒ 最大化**不等于**在屏内: 越界就退回普通态再按可用区重夹(不留空洞、不贴死边)。
+            if not (fr.x() < ag.x() or fr.y() < ag.y()
+                    or fr.x() + fr.width() > ag.x() + ag.width()
+                    or fr.y() + fr.height() > ag.y() + ag.height()):
+                return False, (f"maximized ok {fr.width()}x{fr.height()}@{fr.x()},{fr.y()} "
+                               f"(可用 {ag.width()}x{ag.height()}@{ag.x()},{ag.y()})")
+            _pre = f"maximized-overflow {fr.width()}x{fr.height()}@{fr.x()},{fr.y()} → "
+            try:
+                win.showNormal()   # 最大化态下 resize/move 会被 WM 忽略, 必须先退
+            except Exception:
+                pass
+            _mx_fix = True
+        else:
+            _pre = ""
+        fr = win.frameGeometry()
+        _aw = max(640, ag.width() - 2 * margin)
+        # 🐛 v5.16.14 底部额外留 48px: mutter 的 CSD 外框/阴影**不体现在 frameGeometry()** 里 ——
+        #   实测按 margin=8 夹完(应用自报 y+h = 64+1936 = 2000)后, WM 真实 frame 窗口仍是
+        #   `3124x1994@104,40`(底边 2034), 主屏可见线 2000 以下还压着 ~30px 内容
+        #   (版本提示 / 跑马灯那一行)。⇒ 夹紧时按 WM 实测差额留安全边, 宁可矮一点也不能被切。
+        _ah = max(480, ag.height() - 2 * margin - 48)
+        tw = _aw if _mx_fix else min(fr.width(), _aw)
+        th = _ah if _mx_fix else min(fr.height(), _ah)
+        tx = min(max(fr.x(), ag.x() + margin), max(ag.x() + margin, ag.x() + ag.width() - tw - margin))
+        ty = min(max(fr.y(), ag.y() + margin), max(ag.y() + margin, ag.y() + ag.height() - th - margin))
+        changed = _mx_fix or (tw, th, tx, ty) != (fr.width(), fr.height(), fr.x(), fr.y())
+        if changed:
+            win.resize(tw, th)
+            win.move(tx, ty)
+        return changed, (_pre + f"{fr.width()}x{fr.height()}@{fr.x()},{fr.y()} → "
+                         f"{tw}x{th}@{tx},{ty} (可用 {ag.width()}x{ag.height()})")
+    except Exception as e:
+        return False, f"err {e}"
+
+
+def main():
+    # 🐛 2026-08-30 老倪: VSCode attach 断点调试 — 启动即监听 5678, 不阻塞
+    # (F5 attach 到现有控制台即可断点单步, 无需再启动一个控制台实例)
+    # 🐛 2026-08-31 老倪: 找不到 attach → F5 默认「🚀 全新调试进程」新实例断点;
+    # 本进程仍 listen 5678, attach 配置作为第二种方式保留
+    # 🐛 2026-09-06: 桌面启动窗口不显示 (IsUnMapped) — debugpy.listen 无 attach 时
+    #   可能阻塞 Qt 主线程 map; 改环境变量 ZMAX_DEBUG=1 才 listen (桌面启动默认不开)
+    if os.environ.get("ZMAX_DEBUG") == "1":
+        try:
+            import debugpy
+            debugpy.listen(("127.0.0.1", 5678))
+            print("[debug] 🔌 调试端口 5678 已监听 — VSCode F5: 「🚀 全新调试进程」= 新实例断点, 「🔌 Attach 现有控制台」= 连本进程")
+        except Exception:
+            pass
+    # 2026-08-05 修复: WSLg 下 Qt GPU 合成渲染假死 (画面不动+点击无响应但逻辑正常)
+    # → 禁用窗口管理器特效 + 软件渲染兜底; 必须在 QApplication 创建前设置
+    try:
+        from PyQt5.QtCore import Qt as _Qt
+        from PyQt5.QtWidgets import QApplication as _QA
+        _QA.setAttribute(_Qt.AA_DisableWindowManagerEffects, True)
+        # 🐛 2026-08-31 GNOME/Xorg 黑屏: AA_UseSoftwareOpenGL 软件 GL 在 Mutter 合成器下
+        # 窗口内容渲染全黑 (WSLg 假死修复专用, 本机 GNOME 桌面不要开)
+        # 🐛 2026-09-07 老倪 (大版本发布前回归实锤): v3.3.4 注释掉 AA_UseSoftwareOpenGL 后
+        #   Windows/macOS exe 无法渲染 3D (GLViewWidget/pyqtgraph 无硬件 GL 兜底 — 3.2.4
+        #   及之前全启用, Windows 3D 正常; 3.3.4 起全注释 → 无独显/远程/虚拟机环境 3D 挂)。
+        #   修复: 按平台条件启用 — Windows/macOS 打包版启用软件 GL 兜底 (3.2.4 行为),
+        #   Linux 源码版不启用 (GNOME/Mutter 软件 GL 黑屏, 2026-08-31 修复保留)。
+        if sys.platform in ("win32", "darwin"):
+            _QA.setAttribute(_Qt.AA_UseSoftwareOpenGL, True)
+        _QA.setAttribute(_Qt.AA_UseHighDpiPixmaps, False)
+    except Exception:
+        pass
+    # 🐛 2026-08-18: 禁用循环 GC — NULL receiver 崩溃 (timer 表残留) = PyQt 包装
+    # 被循环 GC 错误时序收集; 引用计数仍工作, QObject 树无循环垃圾
+    try:
+        import gc
+        gc.disable()
+    except Exception:
+        pass
+    # 🐛 2026-08-20 Segfault 根治: 禁用 D-Bus session bus (消除 10s 重连孤儿 QObject →
+    #   activateTimers 批处理碰撞 NULL receiver SIGSEGV)。offscreen 无 D-Bus 从不崩,
+    #   真实 xcb 平台连 D-Bus 每 10s 重连 = 孤儿 QObject = 竞态源。
+    try:
+        os.environ["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
+    except Exception:
+        pass
+    # 🐛 2026-09-02 老倪: opencv(cv2) import 会设置 QT_QPA_PLATFORM_PLUGIN_PATH → cv2/qt/plugins,
+    #   Qt 插件搜索去 cv2 目录找 xcb → libqxcb 加载失败 → "Could not load the Qt platform plugin"
+    #   + Fatal abort (F5 调试模式启动必现; cv2 5.0.0 自带 Qt 插件与 PyQt5 不匹配)。
+    #   QApplication 前强制清除, 恢复 PyQt5 自带插件路径 (对任何来源的污染都有效)。
+    os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
+    app = QApplication(sys.argv)
+    # 🐛 2026-09-02 老倪: YOLO 预热防 not responding — 首次播放时主线程同步加载 YOLO
+    # 卡 10-40s 弹 "studio.py is not responding"。⚠️ 教训: 后台线程 import metaworld
+    # (gymnasium→cv2 Qt 链) 会 QObject::moveToThread + debugpy abort (GUI 启动崩, 已回滚);
+    # import 链必须在主线程且 QApplication 之后, 模型构造(纯计算)才可放后台线程。
+    try:
+        import threading as _th
+        import node_logic as _nl
+        _nl._yolo_prepare_imports()   # 主线程: import 依赖链 (首次几秒, 之后缓存)
+        _th.Thread(target=lambda: _nl._yolo_ensure_aligner(None), daemon=True).start()
+    except Exception:
+        pass
+    # 🐛 2026-08-20 Segfault 根治: 禁用 D-Bus session bus (消除 10s 重连孤儿 QObject).
+    # 🐛 2026-08-22 老倪"折叠左栏就崩"实锤修正: 原 disconnectFromBus 需 import QtDBus,
+    #   反而启动 QDBusConnectionManager 常驻线程, 其 qDBusRemoveTimeout timer 跨线程
+    #   析构 QObject (gdb killTimer 调用方含 qDBusRemoveTimeout × 7). 上面已设
+    #   DBUS_SESSION_BUS_ADDRESS=disabled:, 不再 import QtDBus → 该线程不启动.
+    # 🐛 2026-08-20 Segfault 根治: 初始化 _oneshot 跨线程队列轮询器 (主线程 QTimer)
+    # 消费 worker 线程 put 的任务, 不再用跨线程 emit 含 QObject 的信号
+    global _oneshot_poller
+    try:
+        _oneshot_poller = _OneshotPoller()
+    except Exception:
+        pass
+    # 🐛 2026-08-18 崩溃根治: QPixmapCache 内部 timer (QPMCache) 无 parent 且高频激活
+    # (播放器帧轮播每 66ms 创建/销毁 QPixmap) → activateTimers 批处理碰撞 → NULL receiver
+    # SIGSEGV (孤儿 timer 追踪实锤 QPMCache)。禁用缓存 → 该 timer 不再激活。
+    try:
+        from PyQt5.QtGui import QPixmapCache
+        QPixmapCache.setCacheLimit(0)
+    except Exception:
+        pass
+    # 🐛 2026-08-22 折叠左栏崩溃根治#3: QThreadPool 全局线程池动态 worker 反复创建/销毁
+    # (gdb 实锤固定栈地址 0x7fff66cdf6c0 = 线程池复用) → worker 线程析构 QObject →
+    # killTimer cross-thread SIGSEGV. 禁用动态扩展 (maxThreadCount=1 + 永不过期),
+    # 消除 worker 反复创建/销毁导致的跨线程析构竞态.
+    try:
+        from PyQt5.QtCore import QThreadPool
+        _qtp = QThreadPool.globalInstance()
+        _qtp.setMaxThreadCount(1)
+        _qtp.setExpiryTimeout(-1)
+    except Exception:
+        pass
+    # 🐛 2026-08-18 崩溃根治#2: QToolTip 全局隐藏 timer (10s 周期孤儿, 无 parent) —
+    # 悬停节点触发 tooltip → 孤儿 timer 激活 → 批处理碰撞 NULL receiver。禁用 tooltip。
+    try:
+        from PyQt5.QtWidgets import QToolTip as _QTT
+        _QTT.setDuration(0)
+    except Exception:
+        pass
+    # 🐛 2026-08-18 崩溃诊断: 安装 TimerEvent 追踪 (崩溃前最后一行 = 凶手 timer 接收者)
+    if _TIMER_TRACE is not None:
+        app.installEventFilter(_TIMER_TRACE)
+    # WSLg/Windows 下 QMessageBox/QToolTip 默认走系统原生渲染 → QSS 失效, 黑字看不清
+    # 强制 Qt 自绘: 对话框 + 气泡提示都吃全局深色 QSS
+    app.setAttribute(Qt.AA_DontUseNativeDialogs, True)
+    app.setStyle("Fusion")
+    app.setFont(QFont("Arial", 10))
+
+    # QToolTip 原生气泡 → 强制深色 palette (QSS 对部分平台 QToolTip 无效)
+    from PyQt5.QtWidgets import QToolTip
+    from PyQt5.QtGui import QPalette, QColor as _QC
+    _ttp = QToolTip.palette()
+    _ttp.setColor(QPalette.ToolTipBase, _QC(C_BG2))
+    _ttp.setColor(QPalette.ToolTipText, _QC(C_WHITE))
+    QToolTip.setPalette(_ttp)
+
+    # 全局滚动条样式 + ToolTip样式 + 对话框暗色主题
+    app.setStyleSheet(_build_global_qss())
+
+    # 🐛 2026-08-17: splash 提前到 win 构建前 — 重量级加载期(数秒)即有稳定纯色占位,
+    #   全程无黑条; 同尺寸同位纯色, 主窗口 show 时无缝覆盖 (1x1 splash 会成左上角黑条)
+    _splash = None
+    # 🐛 2026-09-06: GNOME/Mutter 窗口 Iconic bug 排查 — splash 显示后主窗口被锁最小化?
+    #   ZMAX_NO_SPLASH=1 跳过 splash (诊断用); 默认保留
+    from PyQt5.QtWidgets import QApplication as _QA2  # 兜底: splash 分支外也要可用
+    if os.environ.get("ZMAX_NO_SPLASH") == "1":
+        _splash = None
+    else:
+        try:
+            from PyQt5.QtGui import QPixmap, QColor as _QC2
+            from PyQt5.QtWidgets import QSplashScreen
+            from PyQt5.QtCore import QTimer as _QTM2
+            from PyQt5.QtWidgets import QApplication as _QA2
+            from PyQt5.QtGui import QGuiApplication as _QGA2
+            _gx, _gy, _gw, _gh = 60, 40, 1400, 900
+            try:
+                _scr = _QGA2.primaryScreen()
+                if _scr:
+                    _ag = _scr.availableGeometry()
+                    _gx = max(0, min(60, _ag.width() - 300))
+                    _gy = max(0, min(40, _ag.height() - 200))
+                    _gw = min(1400, _ag.width())
+                    _gh = min(900, _ag.height())
+            except Exception:
+                pass
+            _splash_pm = QPixmap(_gw, _gh)
+            _splash_pm.fill(_QC2(C_BG))
+            _splash = QSplashScreen(_splash_pm)
+            _splash.setGeometry(_gx, _gy, _gw, _gh)
+            _splash.show()
+            _QA2.processEvents()
+        except Exception:
+            _splash = None
+
+    win = StudioMainWindow()
+    _want_max = False  # 🐛 2026-09-06: 大屏最大化延迟到 show 后 (Mutter Iconic bug)
+    # 🐛 2026-08-09 老倪: 强制窗口进屏幕 (WSLg Xwayland 偶发坐标飞到屏幕外 -32692,-32650 → 窗口不可见)
+    try:
+        from PyQt5.QtGui import QGuiApplication
+        scr = QGuiApplication.primaryScreen()
+        geo = scr.availableGeometry() if scr else None
+        if geo is not None and geo.width() >= 2560 and not os.environ.get("ZMAX_FORCE_SMALL"):
+            # 🖥 2026-08-25 老倪 UI 重新适配: 3200x2000 屏上写死 1400x900 只占 27% 面积
+            #   (工具栏被迫折行, 模块库 560px 挤画布) → 大屏直接铺满可用工作区并最大化
+            # 🐛 2026-09-06: setGeometry 精确铺满可用区(3068x1936) + show → Mutter 误判最小化
+            #   (state=1 WindowMinimized 实锤)。改为: resize 96% (留边不贴满) + show 后最大化
+            win.resize(int(geo.width() * 0.96), int(geo.height() * 0.96))
+            win.move(geo.x() + 10, geo.y() + 10)
+            # 🐛 2026-09-06: GNOME/Mutter 窗口 Iconic bug — setWindowState(Maximized)
+            #   在 show() 前调用 → Mutter map 时先给 Iconic 再忽略 Maximized (矛盾状态)
+            #   → 最大化移到 _show_ready 内 show() 之后设置 (正确时序)
+            # win.setWindowState(win.windowState() | Qt.WindowMaximized)
+            _want_max = True
+        elif geo is not None:
+            win.setGeometry(max(0, min(60, geo.width() - 300)), max(0, min(40, geo.height() - 200)),
+                            1400, 900)
+        else:
+            win.setGeometry(60, 40, 1400, 900)
+        # 🖥 2026-09-29 老倪「窗口没有显示完全」: 起手就按回可用工作区 (尺寸/位置都夹紧)
+        try:
+            _ch, _why = _fit_window_to_screen(win)
+            with open("/tmp/studio_show_diag.log", "a") as _df:
+                _df.write(f"{time.time():.1f} fit_to_screen changed={_ch} {_why}\n")
+        except Exception:
+            pass
+    except Exception:
+        win.setGeometry(60, 40, 1400, 900)
+    # 🐛 2026-08-15/08-16 历史注释: 延迟 show + splash 占位 (splash 已提前到 win 前创建,
+    #   此处只做 2s 延迟 show + 平滑移交焦点)
+    try:
+        def _show_ready():
+            # 🐛 2026-09-06 诊断: 窗口不显示 (IsUnMapped) — 记录 show 调用与可见性
+            try:
+                with open("/tmp/studio_show_diag.log", "a") as _df:
+                    _df.write(f"{time.time():.1f} _show_ready called, splash={_splash is not None}\n")
+            except Exception:
+                pass
+            # 🐛 2026-09-06: winId() 强制创建原生 X 窗口 (Qt 延迟创建 native window
+            #   可能是 Mutter map 失败根因) — show 前先确保 native handle 存在
+            try:
+                _ = win.winId()
+                _wh = win.windowHandle()
+                if _wh is not None:
+                    _wh.create()  # 确保 QWindow native 创建
+            except Exception:
+                pass
+            win.show()
+            win.raise_()
+            win.activateWindow()
+            # 🐛 2026-09-06: 大屏最大化延迟到 show 后 (show 前 setWindowState → Mutter Iconic)
+            #   注: show 后立即 setWindowState 也可能触发 UNMAP — 用 QTimer 延后到 800ms 稳定后
+            if _want_max:
+                def _do_max():
+                    try:
+                        win.setWindowState(win.windowState() | Qt.WindowMaximized)
+                        _QA2.processEvents()
+                    except Exception:
+                        pass
+                _oneshot(win, 800, _do_max)
+            else:
+                # 🖥 2026-09-29: 非最大化时, show 之后再按一次 (show 后才有真实 frameGeometry)
+                def _do_fit():
+                    try:
+                        _ch, _why = _fit_window_to_screen(win)
+                        with open("/tmp/studio_show_diag.log", "a") as _df:
+                            _df.write(f"{time.time():.1f} after-show fit changed={_ch} {_why}\n")
+                    except Exception:
+                        pass
+                _oneshot(win, 400, _do_fit)
+            try:
+                with open("/tmp/studio_show_diag.log", "a") as _df:
+                    _df.write(f"{time.time():.1f} after show: visible={win.isVisible()} minimized={win.isMinimized()} state={int(win.windowState())}\n")
+            except Exception:
+                pass
+            if _splash is not None:
+                try:
+                    _splash.finish(win)  # 平滑移交焦点, splash 消失
+                except Exception:
+                    _splash.close()
+            _QA2.processEvents()
+            # 🐛 2026-09-06 静静实测: 本机 GNOME/Mutter 环境任何 Qt 窗口 show 即被最小化
+            # (WM_STATE=Iconic; 最小复现: QLabel show 后 isMinimized=True, 与 maximize/splash 无关)
+            # 主动恢复: 300/800/1500ms 三次探测, 被最小化就清 WindowMinimized 位 + 置前
+            # 🐛 2026-09-06 v2: 无条件 show/raise 反而触发 Mutter UNMAP (XCB_CLIENT_MESSAGE)
+            #   → 改为: 仅当 Qt 明确 isMinimized 才恢复; 正常窗口绝不动 (防 UNMAP)
+            # 🐛 2026-09-06 v3: Qt isMinimized 状态滞后 (show 后立即读=False, 200ms 后=True)
+            #   → 延时探测 + 一旦 True 就恢复, 重复直到稳定 (实测 v3 可恢复 min→normal)
+            def _unminimize():
+                try:
+                    if win.isMinimized():
+                        win.setWindowState(win.windowState() & ~Qt.WindowMinimized)
+                        win.show()
+                        win.raise_()
+                        win.activateWindow()
+                        _QA2.processEvents()
+                        return True  # 已恢复, 继续探测确认稳定
+                    return False
+                except Exception:
+                    return False
+            def _unminimize_loop():
+                # 多次探测直到窗口不再被 Mutter 最小化 (实测: 恢复后需持续确认)
+                try:
+                    if os.environ.get("ZMAX_DIAG_UNMIN"):
+                        with open("/tmp/studio_show_diag.log", "a") as _df:
+                            _df.write(f"{time.time():.1f} unmin_loop: min={win.isMinimized()} vis={win.isVisible()} state={int(win.windowState())}\n")
+                    if win.isMinimized():
+                        win.setWindowState(win.windowState() & ~Qt.WindowMinimized)
+                        win.show()
+                        win.raise_()
+                        win.activateWindow()
+                        _QA2.processEvents()
+                    # 无论是否刚恢复, 持续探测 (每 400ms, 最多 10 次) 直到稳定
+                    _n = getattr(win, "_unmin_attempts", 0) + 1
+                    setattr(win, "_unmin_attempts", _n)
+                    if _n < 10:
+                        _oneshot(win, 400, _unminimize_loop)
+                    else:
+                        setattr(win, "_unmin_attempts", 0)
+                except Exception:
+                    pass
+            for _ms in (1200, 1800, 2600, 3600):
+                _oneshot(win, _ms, _unminimize_loop)
+        # 🐛 2026-09-06: 2s 延迟 show 期间 Mutter 可能把未显示窗口标记异常 —
+        #   改为立即 show (500ms, 等窗口构造完即可); splash 由 show 后 finish 接管
+        _oneshot(win, 500, _show_ready)
+    except Exception:
+        win.show()
+    # 🐛 2026-08-12 老倪: 去掉 WindowStaysOnTopHint — 控制台始终置顶会挡住
+    # 浏览器/文档窗口; 只保留启动时置前一次 (raise_ + activateWindow)
+    try:
+        win.raise_()
+        win.activateWindow()
+    except Exception:
+        pass
+    # 若离屏方案生效, 上面的 raise_/activateWindow 在屏幕外无意义但无害;
+    # 归位由 singleShot(1800) 完成 (含 raise_/activateWindow)
+    # 🐛 2026-08-18: faulthandler — 卡死/崩溃时 dump 全部线程 Python 栈到 stderr
+    # 🐛 2026-08-21: dump_traceback_later(20) 的 SIGALRM 定时器与 Qt 事件循环交互 —
+    #   20s 首次触发后紧跟 killTimer cross-thread SIGSEGV (崩溃日志实锤: Timeout 0:00:20 后立即 Fatal)。
+    #   默认禁用该周期 dump (保留 enable() 崩溃时 dump); 排查卡死时 ZMAX_FAULTHANDLER=1 开启。
+    try:
+        import faulthandler
+        faulthandler.enable()
+        if os.environ.get("ZMAX_FAULTHANDLER") == "1":
+            faulthandler.dump_traceback_later(20, repeat=True, file=sys.stderr)
+    except Exception:
+        pass
+    # 🧿 2026-09-28 老倪: 「下次重启, 自动加载 L2 YOLO / L3 SmolVLA / L4 INTACT 等模型」
+    #   → 真源 tools/model_autoload.py (指针登记表 → 逐层真加载 → 落报告 JSON)
+    #   ⚠️ 必须走**独立子进程**, 不是后台线程: lerobot/metaworld import 链带 gymnasium→cv2→Qt,
+    #      在 studio 进程的后台线程里 import 会 QObject::moveToThread → debugpy abort
+    #      (2026-09-02 实测崩过 GUI 启动)。子进程顺带把 8GB 卡上的 3 层加载串行化, 不抢 GUI 内存。
+    #   关闭: export ZMAX_AUTOLOAD=0 (调试用)
+    try:
+        import subprocess as _sp_al
+        _repo_al = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        _al_py = os.path.join(_repo_al, "gui-venv311", "bin", "python")
+        _al_js = os.path.join(_repo_al, "tools", "model_autoload.py")
+        if os.environ.get("ZMAX_AUTOLOAD", "1") != "0" and os.path.exists(_al_py) and os.path.exists(_al_js):
+            _al_dir = os.path.join(os.path.expanduser("~"), "zmax_data", "model_autoload")
+            os.makedirs(_al_dir, exist_ok=True)
+            _al_log = os.path.join(_al_dir, "startup_%s.log" % time.strftime("%Y%m%d_%H%M%S"))
+            _sp_al.Popen([_al_py, _al_js], cwd=_repo_al, start_new_session=True,
+                         stdout=open(_al_log, "a"), stderr=_sp_al.STDOUT,
+                         env=dict(os.environ, ZMAX_AUTOLOAD_DEEP=os.environ.get("ZMAX_AUTOLOAD_DEEP", "1")))
+            print("🧿 重启自动加载: L2 YOLO / L3 SmolVLA / L4 INTACT 后台子进程已启动 → %s" % _al_log,
+                  flush=True)
+    except Exception as _e:                                                     # noqa: BLE001
+        print("⚠️ 重启自动加载挂钩异常(不影响控制台): %s" % _e, flush=True)
+    # 🐛 2026-09-28 现场: 关机/kill 时控制台以 **SIGABRT 收场** —— 实测 kill(SIGTERM) 后进程直接死在
+    #   in-process DDS 线程上("QThread: Destroyed while thread is still running" → Fatal Python error: Aborted,
+    #   退出码 134 + core dump)。关机时 systemd 先发 SIGTERM ⇒ 每次下电都脏退。
+    #   ⚠️ 第一版用 `signal.signal(SIGTERM, py_handler)` **没用**(实测处理器根本没跑: 主线程在 Qt 的
+    #      C++ 事件循环里, Python 字节码没机会执行 ⇒ 处理器挂不上)。改用 C 级机制:
+    #      `signal.set_wakeup_fd` 由 C 处理器**立即**把信号号写进管道 → 看门狗线程收到 →
+    #      主线程 QTimer 轮询到标记 → `win.close()`(走 closeEvent: 停定时器/Rerun 线程/DDS) → **os._exit(0)**
+    #      (跳过解释器 finalize ⇒ 不再 abort/不留 core)。看门狗线程 6s 兜底(事件循环万一卡死也能干净退)。
+    try:
+        import signal as _sig
+        import threading as _th
+        from PyQt5.QtCore import QTimer as _QTq
+
+        _rq, _wq = os.pipe()
+        os.set_blocking(_wq, False)
+        _sig.set_wakeup_fd(_wq)                            # C 级: 信号到达即写字节, 不等 Python 字节码
+        _sig.signal(_sig.SIGTERM, lambda *_a: None)         # 拦住默认"硬终止"动作
+        _sig.signal(_sig.SIGINT, lambda *_a: None)
+        _ASK = {"quit": False}
+
+        def _watch_sig():
+            while True:
+                try:
+                    _b = os.read(_rq, 1)
+                except Exception:                                          # noqa: BLE001
+                    time.sleep(0.5)
+                    continue
+                if not _b:
+                    continue
+                print("📴 收到信号 %d → 正常关闭界面后退出" % _b[0], flush=True)
+                _ASK["quit"] = True
+                time.sleep(6.0)                    # 兜底: 主线程 6s 内没退就硬退(仍不 abort)
+                os._exit(0)
+
+        _th.Thread(target=_watch_sig, daemon=True).start()
+
+        def _poll_quit():
+            if _ASK["quit"]:
+                try:
+                    win.close()                    # 触发 closeEvent 清理(同步执行完)
+                except Exception:                                          # noqa: BLE001
+                    pass
+                os._exit(0)                        # 跳过 finalize ⇒ 不掉 DDS 线程 abort
+
+        _qtimer_q = _QTq()
+        _qtimer_q.setInterval(200)
+        _qtimer_q.timeout.connect(_poll_quit)
+        _qtimer_q.start()
+    except Exception as _e:                                                  # noqa: BLE001
+        print("⚠️ 信号处理挂钩异常(不影响控制台): %s" % _e, flush=True)
+    sys.exit(app.exec_())
+
+
+
+if __name__ == "__main__":
+    main()

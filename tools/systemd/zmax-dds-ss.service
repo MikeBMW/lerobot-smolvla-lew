@@ -1,0 +1,21 @@
+[Unit]
+Description=Z-MAX 全局数据空间发布守护 (状态空间真实数据源 → DDS, 受遥测模式控制)
+Documentation=file:/home/ubuntu/zmax/docs/design/global_data_space_mapping_20260929.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+Environment=ZMAX_REPO=/home/ubuntu/zmax
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/dds-venv/bin/python /home/ubuntu/zmax/tools/dds/ss_daemon.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/zmax-dds-ss.log
+StandardError=append:/var/log/zmax-dds-ss.log
+
+[Install]
+WantedBy=multi-user.target

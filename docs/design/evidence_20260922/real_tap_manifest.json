@@ -1,0 +1,20 @@
+{
+  "dataset": "真机 ROS 只读 tap (4060 侧 docker ss-remote-tap, ROS_DOMAIN_ID=0, 10Hz)",
+  "collected_by": "tools/ss_remote_tap.py (容器) + tools/ss_yolo_on_real.py + tools/box3d_live_box.py + tools/ss_bypass_run.py",
+  "canonical_path": "/home/ubuntu/zmax_ss_remote",
+  "archive_path": "/home/ubuntu/zmax_data/real_tap_20260921 (硬链接, 同 inode, 不占额外空间)",
+  "stopped_at": "2026-09-22 ~08:15 (优雅 SIGTERM; 机器人侧未动, 只读订阅)",
+  "files": {
+    "state_20260921.jsonl": {"bytes": 544674059, "lines": 287502, "parse_failures": 0,
+      "keys": ["t", "tcp", "tcp_quat", "tcp_frame", "jnames", "robot_status", "image", "images_by_topic"],
+      "t_first": 1790006402.069, "t_last": 1790035939.772, "span_hours": 8.2, "rate_hz": 9.7},
+    "proposal_20260921.jsonl": {"bytes": 71041031, "lines": 386451, "parse_failures": 0,
+      "keys": ["t", "input_map", "action", "yaw", "model_ms"],
+      "t_first": 1789996108.981, "t_last": 1790035939.772, "span_hours": 11.0,
+      "note": "L4 模型在真机数据流上逐帧推理的输出提案 + 实测耗时 model_ms"},
+    "cam_rs.png": {"bytes": 403373, "note": "产线相机末帧 (realsense 口径)"},
+    "status.json": {"bytes": 615}, "live_frame.json": {"bytes": 100}
+  },
+  "integrity_check": "逐行 json.loads 全量校验; 尾行可解析; 无截断",
+  "why_saved": "老倪: 「保存数据, 准备关机」 — 这是本机直连产线 ROS 采到的唯一一份长时真机流 (近 30 万帧状态 + 38 万条模型提案)"
+}

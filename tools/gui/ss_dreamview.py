@@ -1,0 +1,2843 @@
+# -*- coding: utf-8 -*-
+"""
+ss_dreamview.py — 🧭 状态空间 3D 分层视图 (参考百度 Apollo Dreamview, 2026-08-25 老倪)
+
+在同一个 3D 空间 (与操作视频 gen_state_space_video.py 的物理世界坐标一致) 里,
+叠加渲染状态空间仿真的所有处理层数据, 每层可独立开关 (Apollo Layer 风格):
+
+  坐标世界: 工作台平面 + 孔位插座(红) + 光模块 光模块(金) + 末端夹爪(蓝)
+  处理层:
+    🎯 YOLO 检测框  — hand/光模块/hole 三个 3D 半透明立方体框
+    📍 末端轨迹     — 末端历史 3D 轨迹线 (旧→新 渐亮)
+    ⚡ 前馈加速器 — 绿色箭头 (快通道速度指令 u_ff)
+    🔄 反馈校正 u_fb — 蓝色箭头 (慢通道·卡尔曼残差方向)
+    🧭 融合指令 u    — 金黄大箭头 + 目标点大球 (动作调制器输出, action 主图标)
+    🛡 安全限幅 u_sat— 红色箭头 (限幅后指令)
+    🔮 状态估计 latent — 潜状态轨迹点
+    🧲 残差/接触     — 接触概率热力球 (接触时亮起)
+
+用法:
+  from ss_dreamview import DreamView3D
+  dv = DreamView3D(tr)   # tr = state_space_sim.run() 的返回
+  dv.show()
+"""
+import os
+import math
+import numpy as np
+
+from PyQt5.QtCore import Qt, QTimer, QPointF
+from PyQt5.QtGui import QColor, QFont, QVector3D, QPainter, QPen, QPixmap, QBrush, QPolygonF
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
+                             QSlider, QPushButton, QFrame, QComboBox)
+
+import pyqtgraph.opengl as gl
+
+# ── 🧮 流形层探测 (接触/性能流形几何 — 2026-09-07 老倪: 流形是拓扑, 要有形状可看) ──
+def _load_manifold_layer():
+    """定位并 import manifold_layer.py (与 simulink_module 同探测策略; 失败返回 None)"""
+    try:
+        import sys as _sys, os as _os
+        root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        for cand in (root, _os.path.join(root, "src", "lerobot", "manifold"),
+                     getattr(_sys, "_MEIPASS", "")):
+            p = _os.path.join(cand, "manifold_layer.py")
+            if _os.path.isfile(p):
+                import importlib.util as _ilu
+                _m = _ilu.spec_from_file_location("_mani3d", p)
+                if _m is not None:
+                    _mod = _ilu.module_from_spec(_m)
+                    _m.loader.exec_module(_mod)
+                    return _mod
+    except Exception:
+        pass
+    return None
+
+_MANI = _load_manifold_layer()
+
+
+# ════════════════════════════════════════════════════════════════
+# 同源 episode trace 装载 (2026-08-25 老倪: 「3D 视图和操作视频的内容/角度/轨迹都不一样」)
+#   根因: 视频是 metaworld MuJoCo 真实 episode, 3D 视图画的是纯 numpy 引擎的轨迹 →
+#         两套物理必然对不上。真解 = 同源: tools/gen_ss_metaworld_episode.py 让状态空间
+#         六层源码直接驱动 metaworld, 一次跑出 trace(处理层向量全在) + 同一条 episode 的
+#         mp4。3D 视图优先读这个 trace, 相机用 trace 里记录的 corner2 真实外参。
+# ════════════════════════════════════════════════════════════════
+EPISODE_NPZ = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "reports", "ss_episode_latest.npz")
+
+
+def load_episode(path=EPISODE_NPZ):
+    """读同源 episode trace → (tr dict, meta dict); 文件不存在返回 (None, None)
+
+    同源自检 (2026-08-25): npz 与同名 mp4 必须是同一次运行的产物 —
+    只写 npz 的跑法 (--no-video) 一旦覆盖 latest, 3D 视图与操作视频就会悄悄错位。
+    这里比对 npz/mp4 的修改时间, 差 >30s 就在 meta 里挂 `pair_warn` 供 GUI 打印警告。"""
+    if not os.path.isfile(path):
+        return None, None
+    try:
+        z = np.load(path, allow_pickle=True)
+        meta = dict(z["meta"][0])
+        tr = {}
+        for k in z.files:
+            if k == "meta":
+                continue
+            arr = z[k]
+            tr[k] = [str(s) for s in arr] if k == "stage" else arr
+        mp4 = os.path.splitext(path)[0] + ".mp4"
+        if not os.path.isfile(mp4):
+            meta["pair_warn"] = f"缺少同名视频 {os.path.basename(mp4)} — 无法确认与操作视频同源"
+        else:
+            dt = abs(os.path.getmtime(path) - os.path.getmtime(mp4))
+            if dt > 30:
+                meta["pair_warn"] = (f"npz 与 mp4 修改时间差 {dt:.0f}s (>30s) — "
+                                     f"可能不是同一条 episode, 重跑 gen_ss_metaworld_episode.py")
+        tr["_meta"] = meta
+        return tr, meta
+    except Exception:
+        return None, None
+
+
+def camera_quaternion(fwd, right, up):
+    """由相机基底 (视线/右/上) 构造 pyqtgraph 'quaternion' 模式所需的旋转四元数。
+    pyqtgraph viewMatrix = T(0,0,-d) · R · T(-center) → R 必须把世界偏移映射到
+    相机系 (x=右, y=上, z=-视线) ⇒ R 的行 = [right, up, -fwd]。"""
+    from PyQt5.QtGui import QMatrix4x4, QQuaternion
+    r = np.asarray(right, float) / (np.linalg.norm(right) or 1)
+    u = np.asarray(up, float) / (np.linalg.norm(up) or 1)
+    f = np.asarray(fwd, float) / (np.linalg.norm(fwd) or 1)
+    R = np.vstack([r, u, -f])
+    m = QMatrix4x4(float(R[0, 0]), float(R[0, 1]), float(R[0, 2]), 0.0,
+                   float(R[1, 0]), float(R[1, 1]), float(R[1, 2]), 0.0,
+                   float(R[2, 0]), float(R[2, 1]), float(R[2, 2]), 0.0,
+                   0.0, 0.0, 0.0, 1.0)
+    return QQuaternion.fromRotationMatrix(m.normalMatrix())
+
+
+def fov_h_from_fovy(fovy_deg, w, h):
+    """metaworld 相机给的是**垂直** fovy, 而 pyqtgraph opts['fov'] 是**水平** fov
+    (源码: r = near·tan(fov/2); t = r·h/w) → 必须换算, 否则画幅不是正方形时
+    3D 视图的缩放和视频差一截 (实测非正方形窗口下物体投影偏 60px)。"""
+    import math
+    w = max(1, int(w))
+    h = max(1, int(h))
+    return 2.0 * math.degrees(math.atan(math.tan(math.radians(fovy_deg / 2.0)) * w / h))
+
+
+def project_world(view, p):
+    """世界点 → 归一化屏幕 (0~1, 左上原点) — 与 pyqtgraph 投影约定严格一致。
+    离屏(无 GL 上下文)也能算: 只用 viewMatrix + opts['fov'] 手算透视, 不碰 projectionMatrix。
+    唯一实现, 探针 (probe_view_match / probe_view_render) 全部复用, 防口径分裂。"""
+    import math
+    c = view.viewMatrix().map(QVector3D(float(p[0]), float(p[1]), float(p[2])))
+    depth = -c.z()
+    if depth <= 1e-6:
+        return None
+    w, h = max(1, view.width()), max(1, view.height())
+    r = math.tan(math.radians(float(view.opts.get("fov", 60.0)) / 2.0))
+    t = r * h / w
+    nx = (c.x() / depth) / r
+    ny = (c.y() / depth) / t
+    return (0.5 * (nx + 1.0), 0.5 * (1.0 - ny))
+
+# ════════════════════════════════════════════════════════════════
+# 场景锚点 — 2026-08-25 老倪: 与操作视频 (metaworld peg-insert-side-v3) 同一套真实几何
+# 实测来源 tools/probe_scene_geom.py: 光模块 pegGrasp(0.0966,0.5191,0.030) 沿 X 长 0.2,
+# 孔口 hole(-0.1685,0.4623,0.1309), 插入终点 goal(-0.2345,0.4623,0.1309),
+# 带孔盒 box 中心(-0.2645,0.4623,~0.095), 机器人底座 base(0,0,0) 肩高 0.317
+# ════════════════════════════════════════════════════════════════
+_HOLE = np.array([-0.2345, 0.4623, 0.1309])        # 插入终点 (goal)
+_HOLE_MOUTH = np.array([-0.1685, 0.4623, 0.1309])  # 孔口 (侧插入口)
+_BOX_CENTER = np.array([-0.2645, 0.4623, 0.095])   # 带孔盒中心
+_BOX_SIZE = (0.19, 0.20, 0.19)                     # 带孔盒尺寸
+# 🚀 2026-09-08 L3 扩展: AOI 光学检测设备 — 与引擎 state_space_sim_real.AOI_FOCUS
+#   同源常量 (勿改单边): 镜头对焦点 = 光模块头悬停检测位; 设备本体画在对焦点后侧
+_AOI_FOCUS = np.array([0.12, 0.62, 0.10])  # 镜头对焦点 (光模块头悬停检测位)
+_TABLE_CENTER = np.array([0.0, 0.58, -0.012])      # 台面板中心
+_TABLE_SIZE = (0.92, 0.62, 0.024)
+_PEG_SIZE = (0.20, 0.03, 0.03)                     # 光模块 (沿 X 长条)
+_PEG_CENTER_OFF = np.array([-0.030, 0.0, -0.010])  # 光模块几何中心相对抓握点
+_ARM_BASE = np.array([0.0, 0.0, 0.0])              # Sawyer 底座 (metaworld base)
+_ARM_H_BASE = 0.317                                # 肩高
+_ARM_L1 = _ARM_L2 = 0.42                           # 上臂/前臂 (够到 y=0.6 工作台)
+# 相机 = 操作视频 metaworld corner2 换算值 (probe_video_view.py 实测):
+#   cam_pos(1.3,-0.2,1.1) 视线(-0.746,0.458,-0.484) → elevation 28.9° / azimuth 328.4°
+#   (视频里 aligner 分支做 np.rot90(k=2), 旋转后世界 +Z 朝屏幕上 = z-up 常规视角)
+_LABEL_PT = 13          # 3D 标签字号 (高分屏 236DPI, 太小看不见)
+_CAM_ELEV = 28.9
+_CAM_AZIM = 328.4
+_CAM_CENTER = QVector3D(-0.07, 0.50, 0.08)
+_CAM_DIST = 1.05
+
+
+# ────────────────────────────────────────────────────────────
+# 3D 几何 helper
+# ────────────────────────────────────────────────────────────
+def _box_mesh(center, size):
+    """生成长方体 meshdata (12 三角形) — 用于场景几何体"""
+    x0, y0, z0 = center
+    sx, sy, sz = size
+    v = np.array([[x0 + dx * sx / 2, y0 + dy * sy / 2, z0 + dz * sz / 2]
+                  for dx in (-1, 1) for dy in (-1, 1) for dz in (-1, 1)], dtype=float)
+    # 8 顶点 24 三角面
+    faces = np.array([
+        [0, 1, 3], [0, 3, 2],   # 前 z+
+        [4, 6, 5], [4, 7, 6],   # 后 z-
+        [0, 4, 5], [0, 5, 1],   # 底 y-
+        [2, 3, 7], [2, 7, 6],   # 顶 y+
+        [0, 2, 6], [0, 6, 4],   # 左 x-
+        [1, 5, 7], [1, 7, 3],   # 右 x+
+    ], dtype=int)
+    return gl.MeshData(vertexes=v, faces=faces)
+
+
+def _box_mesh_yaw(center, size, yaw_deg, rot_center=None):
+    """长方体 mesh 绕 rot_center (默认 center) 的竖直轴 (z) 旋转 yaw_deg —
+    🎯 2026-09-09 L4 演示: peg 横放(绕z 90°)与夹爪绕z 姿态在 3D 必须可见 (原只画位置无朝向)"""
+    md = _box_mesh(center, size)
+    v = md.vertexes().copy()
+    if yaw_deg:
+        rc = np.asarray(center if rot_center is None else rot_center, dtype=float)
+        th = math.radians(float(yaw_deg))
+        c, s = math.cos(th), math.sin(th)
+        x = v[:, 0] - rc[0]
+        y = v[:, 1] - rc[1]
+        v[:, 0] = rc[0] + x * c - y * s
+        v[:, 1] = rc[1] + x * s + y * c
+    return gl.MeshData(vertexes=v, faces=md.faces())
+
+
+def _bbox_lines(center, size):
+    """生成立方体 12 条边 (8 顶点 + 12 边索引) — 用于检测框"""
+    x0, y0, z0 = center
+    sx, sy, sz = size
+    v = np.array([[x0 + dx * sx / 2, y0 + dy * sy / 2, z0 + dz * sz / 2]
+                  for dx in (-1, 1) for dy in (-1, 1) for dz in (-1, 1)], dtype=float)
+    # 12 条边 (顶点对)
+    edges = np.array([
+        [0, 1], [2, 3], [4, 5], [6, 7],   # z 向
+        [0, 2], [1, 3], [4, 6], [5, 7],   # y 向
+        [0, 4], [1, 5], [2, 6], [3, 7],   # x 向
+    ], dtype=int)
+    return v, edges
+
+
+_U_REF = 0.35     # 箭头满格对应的速度 (m/s) — 实测 u_ff 模长范围 0.031~0.331 m/s
+_L_MAX = 0.10     # 箭头满格长度 (m)
+_L_MIN_FRAC = 0.22   # 最短也画满格的 22% (否则小速度只剩 2mm, 看着就是"一个点")
+
+
+def _arrow(pos, action, scale=None, u_ref=_U_REF, l_max=_L_MAX):
+    """由末端位置 pos + 动作向量 action(3D 速度指令 m/s) 生成箭头几何:
+    返回 (line_pts 2x3, tip 箭头尖 3D, length 长度 m)
+      方向 = action 归一化 (往哪走)
+      长度 = clip(|u|/u_ref, 0.22, 1.0) × l_max  (速度大小 → 箭杆长短)
+
+    🐛 2026-08-25 老倪「为什么是一个绿色圆点和一个绿色线段」根因: 原公式
+    length = clip(|u|,0,1)×0.08m, 而真实 |u_ff| 只有 0.03~0.33 m/s →
+    箭头只有 2.5~26mm 长, 近距时缩到 2mm ⇒ 看起来就剩箭头尖那个点。
+    改成按 u_ref=0.35m/s 归一化 + 最短 22% 保底: 现在 22~100mm, 始终看得见方向。"""
+    a = np.asarray(action[:3], dtype=float)
+    mag = float(np.linalg.norm(a))
+    if mag < 1e-9:
+        return None, None, 0.0
+    d = a / mag
+    length = float(np.clip(mag / max(1e-6, u_ref), _L_MIN_FRAC, 1.0)) * l_max
+    tip = np.asarray(pos, dtype=float) + d * length
+    return np.array([pos[:3], tip], dtype=float), tip, length
+
+
+def _cylinder_mesh(p1, p2, radius, cols=16):
+    """生成两点之间的圆柱体 meshdata (p1→p2 轴向, 半径 radius)"""
+    p1 = np.asarray(p1, dtype=float)
+    p2 = np.asarray(p2, dtype=float)
+    axis = p2 - p1
+    length = float(np.linalg.norm(axis))
+    if length < 1e-9:
+        length = 1e-6
+    z = np.array([0.0, 0.0, 1.0])
+    d = axis / length
+    # 旋转 z 轴对齐到 d (Rodrigues)
+    v = np.cross(z, d)
+    s = float(np.linalg.norm(v))
+    c = float(np.dot(z, d))
+    if s < 1e-9:
+        R = np.eye(3) if c > 0 else np.diag([1.0, 1.0, -1.0])
+    else:
+        K = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+        R = np.eye(3) + K + K @ K * ((1 - c) / (s * s))
+    md = gl.MeshData.cylinder(rows=1, cols=cols, radius=[radius, radius], length=length)
+    verts = md.vertexes()
+    # cylinder 顶点沿 z 从 0 到 length → 先平移到 -length/2, 再旋转, 再移到中点
+    verts = verts - np.array([0, 0, length / 2.0])
+    verts = verts @ R.T
+    verts = verts + (p1 + p2) / 2.0
+    return gl.MeshData(vertexes=verts, faces=md.faces())
+
+
+def _cone_mesh(p_from, p_to, radius, cols=14):
+    """锥形箭头头 (p_from→p_to 方向, 底半径 radius, 尖端在 p_to) —
+    2026-08-25 老倪「线段表示速度, 那方向呢」: 原来只有线+散点看不出朝向, 加真箭头头。"""
+    p1 = np.asarray(p_from, dtype=float)
+    p2 = np.asarray(p_to, dtype=float)
+    axis = p2 - p1
+    length = float(np.linalg.norm(axis)) or 1e-6
+    d = axis / length
+    z = np.array([0.0, 0.0, 1.0])
+    v = np.cross(z, d)
+    s = float(np.linalg.norm(v))
+    c = float(np.dot(z, d))
+    if s < 1e-9:
+        R = np.eye(3) if c > 0 else np.diag([1.0, 1.0, -1.0])
+    else:
+        K = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+        R = np.eye(3) + K + K @ K * ((1 - c) / (s * s))
+    md = gl.MeshData.cylinder(rows=1, cols=cols, radius=[radius, 0.0], length=length)
+    verts = md.vertexes() @ R.T + p1
+    return gl.MeshData(vertexes=verts, faces=md.faces())
+
+
+def _dir_words(vec):
+    """把方向向量翻成人话 (老倪要的"方向"): 取主分量组合, 如 "右下"/"朝孔位/下降" """
+    v = np.asarray(vec[:3], dtype=float)
+    n = float(np.linalg.norm(v)) or 1.0
+    u = v / n
+    parts = []
+    if abs(u[0]) > 0.25:
+        parts.append("−X(朝孔位)" if u[0] < 0 else "+X(离孔位)")
+    if abs(u[1]) > 0.25:
+        parts.append("+Y(朝台面外)" if u[1] > 0 else "−Y(朝台面内)")
+    if abs(u[2]) > 0.25:
+        parts.append("↑抬升" if u[2] > 0 else "↓下压")
+    return " ".join(parts) if parts else "几乎静止"
+
+
+def _sphere_mesh(center, radius, rows=8, cols=12):
+    """生成球体 meshdata (中心在 center)"""
+    md = gl.MeshData.sphere(rows=rows, cols=cols, radius=radius)
+    verts = md.vertexes() + np.asarray(center, dtype=float)
+    return gl.MeshData(vertexes=verts, faces=md.faces())
+
+
+def _ik_sawyer(target, base, L1=_ARM_L1, L2=_ARM_L2, h_base=_ARM_H_BASE):
+    """Sawyer 机械臂 2 连杆 IK: 由末端 target + 底座 base → 肩/肘/腕关节位置
+    底座竖直, 肩在 base 上方 H_base, 肘在肩下方弯曲 (Sawyer 肘上翻)
+    返回 dict: base(底), shoulder(肩), elbow(肘), wrist(腕=target)"""
+    t = np.asarray(target, dtype=float)
+    b = np.asarray(base, dtype=float)
+    shoulder = b + np.array([0.0, 0.0, h_base])
+    # 腕 = 末端 target; 求肘 (平面内 2 连杆)
+    r = t - shoulder
+    d = float(np.linalg.norm(r))
+    d = float(np.clip(d, abs(L1 - L2) + 1e-4, L1 + L2 - 1e-4))
+    # 余弦定理求肘位置 (肘在 shoulder→wrist 连线"上方"弯曲, 取 z 分量偏上)
+    a = (L1 * L1 - L2 * L2 + d * d) / (2.0 * d)   # shoulder→肘投影距离
+    h = float(np.sqrt(max(0.0, L1 * L1 - a * a)))  # 肘到连线垂距
+    u = r / d if d > 1e-9 else np.array([1.0, 0.0, 0.0])
+    # 弯曲方向: 尽量朝 +z (肘上翻), 与 u 正交
+    bend = np.array([0.0, 0.0, 1.0])
+    bend = bend - np.dot(bend, u) * u
+    bn = float(np.linalg.norm(bend))
+    if bn < 1e-6:
+        bend = np.array([0.0, 1.0, 0.0]) - np.dot(np.array([0.0, 1.0, 0.0]), u) * u
+        bn = float(np.linalg.norm(bend))
+    bend = bend / bn
+    elbow = shoulder + a * u + h * bend
+    return {"base": b, "shoulder": shoulder, "elbow": elbow, "wrist": t}
+
+
+# ────────────────────────────────────────────────────────────
+# 图层定义 (Apollo Layer)
+# ────────────────────────────────────────────────────────────
+_LAYER_COLORS = {
+    "uff":     (0.20, 0.85, 0.35, 1.0),   # 绿  前馈加速器
+    "ufb":     (0.35, 0.62, 1.00, 1.0),   # 蓝  反馈校正
+    "ufuse":   (1.00, 0.78, 0.12, 1.0),   # 金黄 融合指令 (action 主图标)
+    "ulimit":  (1.00, 0.30, 0.30, 1.0),   # 红  安全执行边界
+    "prior":   (0.20, 0.90, 0.85, 1.0),   # 青  先验动力学预测器 (纯预测, 无校正)
+    "fsm":     (1.00, 0.85, 0.30, 1.0),   # 琥珀 状态机 (阶段航点/阶梯)
+    "yolo_hand": (0.35, 0.65, 1.00, 0.55),
+    "yolo_peg":  (0.00, 0.83, 0.66, 0.55),
+    "yolo_hole": (1.00, 0.65, 0.00, 0.55),
+}
+
+
+class LabelOverlay(QWidget):
+    """🏷 3D 画布上的透明文字标注层 (2026-08-25 老倪: "你要在旁边标出来")
+
+    ⚠️ 为什么不用 pyqtgraph 的 GLTextItem: 它在 paint() 里 `QPainter(self.view())` 直接画
+    控件表面, 本机 (Mesa 25.2 / GLViewWidget) 实测**完全不渲染** —— 清空文本前后屏幕像素
+    差 0 px (tools/probe_text_labels.py 抓真实窗口验证)。改为自己叠一层透明 QWidget,
+    用 project_world() 算屏幕坐标 + QPainter.drawText 画, 可控且抓图可验证。
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.setStyleSheet("background:transparent;")
+        self._labels = []      # [(x_px, y_px, text, QColor, bold)]
+        self._panel = []       # 屏幕固定位置面板行 [(text, QColor, bold, indent)]
+
+    def set_labels(self, labels):
+        self._labels = labels
+        self.update()
+
+    def set_panel(self, rows):
+        """屏幕左上角固定面板 (状态机阶梯用) — 不随相机变化"""
+        self._panel = rows
+        self.update()
+
+    def paintEvent(self, ev):
+        from PyQt5.QtGui import QPainter, QPen, QBrush
+        if not self._labels and not self._panel:
+            return
+        p = QPainter(self)
+        if self._panel:      # 🧭 状态机阶梯 (屏幕固定, 不随相机走)
+            p.setRenderHint(QPainter.TextAntialiasing, True)
+            _f = QFont("Arial", 11, QFont.Bold)
+            p.setFont(_f)
+            fm = p.fontMetrics()
+            w = max(fm.horizontalAdvance(r[0]) for r in self._panel) + 22
+            h = len(self._panel) * (fm.height() + 3) + 12
+            p.setPen(Qt.NoPen)
+            p.setBrush(QBrush(QColor(13, 17, 23, 215)))
+            p.drawRoundedRect(8, 8, w, h, 6, 6)
+            p.setPen(QPen(QColor(48, 54, 61)))
+            p.drawRoundedRect(8, 8, w, h, 6, 6)
+            y = 8 + fm.height() + 2
+            for text, col, bold, indent in self._panel:
+                p.setFont(QFont("Arial", 11, QFont.Bold if bold else QFont.Normal))
+                p.setPen(QPen(col))
+                p.drawText(16 + indent, y, text)
+                y += fm.height() + 3
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.TextAntialiasing, True)
+        for x, y, text, col, bold in self._labels:
+            f = QFont("Arial", 10, QFont.Bold if bold else QFont.Normal)
+            p.setFont(f)
+            fm = p.fontMetrics()
+            w = fm.horizontalAdvance(text) + 10
+            h = fm.height() + 4
+            bx, by = int(x) + 8, int(y) - h // 2
+            bx = max(2, min(bx, self.width() - w - 2))
+            by = max(2, min(by, self.height() - h - 2))
+            # 半透明深底 (深色画布上文字才看得清; 单色不刺眼 — 老倪不喜大面积彩色高亮)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QBrush(QColor(13, 17, 23, 205)))
+            p.drawRoundedRect(bx, by, w, h, 4, 4)
+            p.setPen(QPen(col))
+            p.drawText(bx + 5, by + h - fm.descent() - 2, text)
+            # 一条短引线连到目标点
+            p.setPen(QPen(QColor(col.red(), col.green(), col.blue(), 150), 1))
+            p.drawLine(int(x), int(y), bx, by + h // 2)
+        p.end()
+
+
+# ── 🎬 SW 实况 (stable-world 渲染帧) — 独立窗口 + 3D 内嵌小窗共用同一数据源 ──
+def sw_dirs():
+    """L4「🌍 SW 仿真世界引擎链」产物目录: (根, frames, video, status.json)"""
+    import os
+    root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    d = os.path.join(root, "reports", "intact_sw")
+    return d, os.path.join(d, "frames"), os.path.join(d, "video"), os.path.join(d, "status.json")
+
+
+def sw_read_status(path):
+    import json
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+_SW_WIN = None            # 全局单例: 3D 内嵌小窗的「⤢ 放大」与画布 L4 ▶运行自动弹出 共用同一个窗口
+
+
+def sw_live_window():
+    """打开/前置 SW 实况独立窗口 (单例; 已开则 raise+activate, 不重复开)"""
+    global _SW_WIN
+    try:
+        if _SW_WIN is None:
+            _SW_WIN = SWLiveWindow()
+        if not _SW_WIN.isVisible():
+            _SW_WIN.show()
+            _SW_WIN._poll()                 # 立刻刷一帧, 不等 150ms
+        _SW_WIN.raise_()
+        _SW_WIN.activateWindow()
+        return _SW_WIN
+    except Exception as e:                  # noqa: BLE001
+        try:
+            print(f"[SW 实况窗口] 打开失败: {type(e).__name__}: {e}")
+        except Exception:
+            pass
+        return None
+
+
+class SWLiveWindow(QWidget):
+    """🎬 stable-world 实况 · **独立窗口** (2026-09-13 老倪: 3D 角落里的小窗太小, 单独开一个正常窗口)
+
+    数据源与 3D 视图内嵌小窗完全相同 (reports/intact_sw/frames/*.jpg + status.json,
+    即 L4「🌍 SW 仿真世界引擎链」逐帧渲染真图); 本窗口只做放大显示:
+      · 可拉伸 (默认 760×860) · 倍率 ×1/×1.5/×2/×3/×4 (默认 ×3 = 672px) · ⏸暂停/▶继续
+      · 📌置顶 toggle · 📂打开视频目录 (3 面板 mp4 + showcase 合集)
+    诚实: 没跑过就显示"尚未跑过", 不画占位假图; 状态行全部读真 status.json。
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("🎬 SW 实况 · stable world (INTACT cube) · L4")
+        self.resize(760, 860)
+        self.setStyleSheet("QWidget{background:#0d1117; color:#e6edf3;}")
+        self._last = None
+        self._pm0 = None
+        self._zoom = 3.0
+        self._paused = False
+        v = QVBoxLayout(self)
+        v.setContentsMargins(10, 10, 10, 10)
+        v.setSpacing(6)
+        t = QLabel("🎬 SW 实况 · stable world (INTACT cube) · L4 档")
+        t.setStyleSheet("color:#00d4aa; font-size:15px; font-weight:700;")
+        v.addWidget(t)
+        bar = QHBoxLayout()
+        bar.setSpacing(6)
+        self.btn_pause = QPushButton("⏸ 暂停")
+        self.btn_pause.setCheckable(True)
+        self.btn_pause.setToolTip("暂停 = 停止轮询刷新 (画面定格); 再点继续")
+        self.btn_pause.toggled.connect(self._on_pause)
+        bar.addWidget(self.btn_pause)
+        self.cmb_zoom = QComboBox()
+        self.cmb_zoom.addItems(["×1", "×1.5", "×2", "×3", "×4"])
+        self.cmb_zoom.setCurrentText("×3")
+        self.cmb_zoom.setToolTip("显示倍率 (原帧 224×224; ×3 = 672px, 越大越糊属正常)")
+        self.cmb_zoom.currentTextChanged.connect(self._on_zoom)
+        bar.addWidget(self.cmb_zoom)
+        self.chk_top = QCheckBox("📌 置顶")
+        self.chk_top.toggled.connect(self._on_top)
+        bar.addWidget(self.chk_top)
+        b_dir = QPushButton("📂 视频目录")
+        b_dir.clicked.connect(self._open_dir)
+        bar.addWidget(b_dir)
+        # 🎛 2026-09-13 老倪: 要像 L2/L3 dreamview 一样能互动看任意帧的信号
+        b_iv = QPushButton("🎛 互动查看器 (拖帧看信号)")
+        b_iv.setToolTip("打开互动查看器: 时间轴拖到任意帧 → 同步显示该帧的真渲染画面、\n"
+                        "模型动作[0..3]、frame_std、done、真推理次数, 并画出动作随帧的曲线 (游标跟随)")
+        b_iv.setStyleSheet("QPushButton{background:#00d4aa;color:#0d1117;font-weight:700;"
+                           "border:none;border-radius:4px;padding:4px 10px;}"
+                           "QPushButton:hover{background:#33e0b8;}")
+        b_iv.clicked.connect(self._open_viewer)
+        bar.addWidget(b_iv)
+        bar.addStretch(1)
+        v.addLayout(bar)
+        self.lbl_img = QLabel("尚未跑过 — 选 L4 档点 ▶运行")
+        self.lbl_img.setAlignment(Qt.AlignCenter)
+        self.lbl_img.setMinimumSize(420, 420)
+        self.lbl_img.setStyleSheet("background:#161b22; color:#8b949e; font-size:13px; border:1px solid #30363d;")
+        v.addWidget(self.lbl_img, 1)
+        self.lbl_info = QLabel("—")
+        self.lbl_info.setStyleSheet("color:#c9d1d9; font-size:12px;")
+        self.lbl_info.setWordWrap(True)
+        v.addWidget(self.lbl_info)
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._poll)
+        self._timer.start(150)
+
+    # ── 交互 ──
+    def _on_pause(self, on):
+        self._paused = bool(on)
+        self.btn_pause.setText("▶ 继续" if on else "⏸ 暂停")
+
+    def _on_zoom(self, txt):
+        try:
+            self._zoom = float(str(txt).replace("×", "").strip())
+        except Exception:
+            self._zoom = 3.0
+        self._render()
+
+    def _on_top(self, on):
+        try:
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, bool(on))
+            self.show()
+        except Exception:
+            pass
+
+    def _open_viewer(self):
+        """🎛 打开互动查看器 (拖帧看任意帧的画面+信号; 老倪 2026-09-13)
+        ⚠️ 2026-09-13 修: 这个按钮此前连到了 DreamView3D 的同名方法 → SWLiveWindow 上不存在
+        → 构造时 AttributeError → sw_live_window() 返回 None → 点按钮"没反应" (只有一个 print)。"""
+        try:
+            import intact_signal_viewer as _iv
+            d, _fr, _vd, _st = sw_dirs()
+            w = _iv.open_signal_viewer(d)
+            if w is not None:
+                w.rescan(d)
+            return w
+        except Exception as e:                              # noqa: BLE001
+            try:
+                print(f"[互动查看器] 打开失败: {type(e).__name__}: {e}")
+            except Exception:
+                pass
+            return None
+
+    def _open_dir(self):
+        try:
+            from PyQt5.QtGui import QDesktopServices
+            from PyQt5.QtCore import QUrl
+            _d, _fr, vd, _st = sw_dirs()
+            QDesktopServices.openUrl(QUrl.fromLocalFile(vd))
+        except Exception:
+            pass
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self._render()
+
+    def _render(self):
+        """按当前倍率 + 窗口尺寸重贴当前帧 (resize/换倍率时调用)"""
+        try:
+            if self._pm0 is None or self._pm0.isNull():
+                return
+            z = max(224.0, 224.0 * float(self._zoom))
+            w = min(int(z), max(200, self.lbl_img.width() - 6))
+            h = min(int(z), max(200, self.lbl_img.height() - 6))
+            self.lbl_img.setPixmap(self._pm0.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        except Exception:
+            pass
+
+    def _poll(self):
+        if self._paused:
+            return
+        try:
+            import os
+            _d, fr, vd, stp = sw_dirs()
+            if not os.path.isdir(fr):
+                return
+            frames = sorted([x for x in os.listdir(fr) if x.endswith(".jpg")])
+            if not frames:
+                if self._last != "__none__":
+                    self.lbl_img.setText("尚未跑过 — 选 L4 档点 ▶运行")
+                    self._pm0 = None
+                    self._last = "__none__"
+                return
+            newest = frames[-1]
+            if newest != self._last:
+                pm = QPixmap(os.path.join(fr, newest))
+                if not pm.isNull():
+                    self._pm0 = pm
+                    self._render()
+                self._last = newest
+            info = sw_read_status(stp)
+            vids = []
+            try:
+                vids = sorted([x for x in os.listdir(vd) if x.endswith(".mp4")])
+            except Exception:
+                pass
+            show = next((x for x in vids if "showcase" in x), (vids[-1] if vids else None))
+            self.lbl_info.setText(
+                f"帧 {newest} · frame_std={info.get('frame_std')} (>5 = 真图) · "
+                f"阶段 {info.get('stage')} · 步 {info.get('step')} · "
+                f"回合 {info.get('ep_done')} · 成功 {info.get('succ')} · "
+                f"success_rate={info.get('success_rate')}\n"
+                f"模型调用 {info.get('model_calls')} 次 · 零搜索={info.get('zero_search')} · "
+                f"ckpt={info.get('ckpt')}\n"
+                f"视频: {show or '—'}   ({len(vids)} 个文件)\n"
+                f"数据源: {fr}")
+        except Exception:
+            pass
+
+
+class DreamView3D(QWidget):
+    """Apollo Dreamview 风格 3D 分层视图"""
+
+    def __init__(self, tr=None, parent=None, on_top=True, module=None, level=None):
+        """module: 画布 SimulinkModule 引用 — 3D 上的 ▶运行/⏹停止 与画布按钮同一入口
+        (v3.4.7 老倪: 3D 世界操作按钮, 与 simulink 画布运行按钮统一功能)"""
+        self.module = module
+        self._level = str(level).upper() if level else None    # 🧭 L2/L3/L4 dreamview 档位
+        super().__init__(parent)
+        self.setWindowTitle("🧭 状态空间 3D 分层视图 (Apollo 风格)")
+        self.resize(1180, 820)
+        # 🖥 2026-08-25 老倪: 置顶 — 不被「操作视频」窗口(InferenceVideoDialog/MLPRolloutDialog, 经 _show_nonmodal 均置顶)遮挡
+        # 🐛 2026-08-26: 运行完自动弹出 3D 视图若置顶 → 盖住 simulink 画布(看起来黑屏)
+        #   → on_top 参数: 手动点按钮打开=置顶; 运行后自动打开=不置顶(不抢画布)
+        if on_top:
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+        self.setStyleSheet("QWidget{background:#0d1117; color:#e6edf3;}")
+
+        self.tr = tr
+        self._idx = 0
+        self._playing = False
+        self._gl_items = {}       # layer -> GL item(s)
+        self._layer_on = {}       # layer -> bool
+        # 场景锚点 (默认 = metaworld seed0 典型值; 同源 trace 里有 meta 就按 meta 覆盖 —
+        #  metaworld 每个 seed 的光模块/孔位是随机化的, 写死会和视频对不上)
+        self._hole = _HOLE.copy()
+        self._mouth = _HOLE_MOUTH.copy()
+        self._box_c = _BOX_CENTER.copy()
+        self._aoi_c = _AOI_FOCUS.copy()   # 🚀 2026-09-08: AOI 对焦点 (meta 覆盖)
+        self._table_c = _TABLE_CENTER.copy()
+        self._peg_center_off = _PEG_CENTER_OFF.copy()
+        self._src = "状态空间 numpy 引擎"
+        self._cam_fovy = 60.0     # 视频相机垂直视场 (metaworld corner2 fovy)
+        # 🎯 2026-09-09 L4 演示场景设备 (转台/压电耦合台) — meta.demo_geom 驱动, 3D 按此绘制
+        self._demo_geom = None
+
+        # ── 主布局: 左(图层面板) | 3D 视图 ──
+        root = QHBoxLayout(self)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(8)
+
+        # 左侧图层开关面板 (Apollo Layer Menu)
+        panel = QFrame()
+        panel.setFixedWidth(230)
+        panel.setStyleSheet("QFrame{background:#161b22; border:1px solid #30363d; border-radius:6px;}")
+        pl = QVBoxLayout(panel)
+        pl.setContentsMargins(12, 12, 12, 12)
+        pl.setSpacing(6)
+        # ── 🕹 3D 世界操作 (v3.4.7 老倪: 3D 上也要能运行/停止 — 与画布同一引擎) ──
+        if module is not None:
+            t_w = QLabel("🕹 3D 世界操作")
+            t_w.setStyleSheet("color:#00d4aa; font-size:15px; font-weight:700;")
+            pl.addWidget(t_w)
+            hw = QHBoxLayout()
+            hw.setSpacing(4)
+            self.btn_run_w = QPushButton("▶ 运行")
+            self.btn_run_w.setToolTip("与 simulink 画布「▶ 运行」同一功能: 跑状态空间引擎 + 逐帧同步到本 3D 视图")
+            self.btn_run_w.setStyleSheet(
+                "QPushButton{background:#00d4aa; color:#0d1117; font-weight:700; border:none;"
+                "border-radius:4px; padding:7px 0; font-size:13px;}"
+                "QPushButton:hover{background:#33e0b8;} QPushButton:disabled{background:#2a3a36; color:#6b7a76;}")
+            self.btn_run_w.clicked.connect(self._on_run_world)
+            self.btn_stop_w = QPushButton("⏹ 停止")
+            self.btn_stop_w.setToolTip("停止仿真播放 (画布 ⏹ 停止同一功能)")
+            self.btn_stop_w.setStyleSheet(
+                "QPushButton{background:#ff4444; color:#fff; border:none; border-radius:4px;"
+                "padding:7px 0; font-size:13px;}"
+                "QPushButton:hover{background:#ff6666;} QPushButton:disabled{background:#3a2a2a; color:#7a6b6b;}")
+            self.btn_stop_w.clicked.connect(self._on_stop_world)
+            self.btn_stop_w.setEnabled(False)
+            hw.addWidget(self.btn_run_w, 1)
+            hw.addWidget(self.btn_stop_w, 1)
+            pl.addLayout(hw)
+            self.btn_top_w = QPushButton("📌 窗口置顶")
+            self.btn_top_w.setCheckable(True)
+            self.btn_top_w.setChecked(bool(on_top))
+            self.btn_top_w.setToolTip("置顶 = 画布运行/其他窗口不会盖住本 3D 视图")
+            self.btn_top_w.setStyleSheet(
+                "QPushButton{background:#21262d; color:#c9d1d9; border:1px solid #30363d;"
+                "border-radius:4px; padding:4px 0; font-size:11px;}"
+                "QPushButton:checked{background:#1f6feb; color:#fff; border-color:#1f6feb;}")
+            self.btn_top_w.toggled.connect(self._on_top_world)
+            pl.addWidget(self.btn_top_w)
+            # 🧠 2026-09-11 老倪: "我要看到 L4 档位的区别" — 模型执行开关
+            #   勾上 → L4 档改走引擎真链路 + L3 模型接管(SS_L3=1) + 二态意图;
+            #   不勾 → 原来的 L4Demo 固定演示 (90° 转台)。同一个档位, 当场对比。
+            self.btn_model_w = QPushButton("🧠 模型执行")
+            self.btn_model_w.setCheckable(True)
+            # 🎯 默认**不勾**: L4 档走引擎解析链 → 保证能看到完整 13 段(插→拔→AOI→放回);
+            #   勾上则改走 L3 模型接管 (注意: L4 干扰布局下模型可能卡在插入段 —
+            #   模型训练数据无干扰布局, 属数据覆盖问题; 建议在无干扰/已训练布局下勾选)
+            self.btn_model_w.setChecked(False)
+            self.btn_model_w.setToolTip(
+                "不勾(默认) = L4 档走引擎解析链: 完整 13 段 (插入→拔出→AOI检测→放回) + L4 干扰\n"
+                "勾上       = L4 档改走 L3 模型接管 (SmolVLA-Lew · 默认 ckpt)\n"
+                "⚠️ 模型在 L4 干扰布局下可能卡在插入段 (训练数据无干扰布局)")
+            self.btn_model_w.setStyleSheet(
+                "QPushButton{background:#21262d; color:#c9d1d9; border:1px solid #30363d;"
+                "border-radius:4px; padding:4px 0; font-size:11px;}"
+                "QPushButton:checked{background:#8957e5; color:#fff; border-color:#8957e5;}")
+            self.btn_model_w.toggled.connect(self._on_model_exec)
+            pl.addWidget(self.btn_model_w)
+            # ⚠️ setChecked 在 connect 之前不触发信号 → 默认值必须主动同步给 module
+            self._on_model_exec(False)
+            # 📉 性能流形曲面窗 (2026-09-07 老倪: 流形要有形状 — η 代价碗独立 3D 曲面)
+            self.btn_mani_bowl = QPushButton("📉 性能流形曲面")
+            self.btn_mani_bowl.setToolTip(
+                "性能流形 = 光耦合对准代价曲面: 横轴 = 光模块头横向错位 (±16mm, 孔口局部系),\n"
+                "竖轴 = 估计耦合效率 η (0→1)。曲面 = η 高斯碗 (σ=4mm 标定); 金色点 = 当前位置\n"
+                "落碗位置, 底部细线 = 错位轨迹历史 — 看它怎么滑进碗底 (对准)")
+            self.btn_mani_bowl.setStyleSheet(
+                "QPushButton{background:#21262d; color:#e6edf3; border:1px solid #58a6ff;"
+                "border-radius:4px; padding:5px 0; font-size:12px;}"
+                "QPushButton:hover{background:#1f6feb; color:#fff;}")
+            self.btn_mani_bowl.clicked.connect(self._open_mani_bowl)
+            pl.addWidget(self.btn_mani_bowl)
+            self.lbl_state_w = QLabel("⏸ 引擎就绪")
+            self.lbl_state_w.setStyleSheet(
+                "color:#8b949e; font-size:11px; background:#0d1117; border:1px solid #30363d;"
+                "border-radius:4px; padding:3px 6px;")
+            self.lbl_state_w.setWordWrap(True)
+            pl.addWidget(self.lbl_state_w)
+            pl.addSpacing(8)
+            # 引擎状态轮询 (画布播放/停止 → 本窗口按钮同步)
+            self._state_timer = QTimer(self)
+            self._state_timer.timeout.connect(self._sync_engine)
+            self._state_timer.start(300)
+        title = QLabel("🗂 图层 (Layers)")
+        title.setStyleSheet("color:#58a6ff; font-size:15px; font-weight:700;")
+        pl.addWidget(title)
+        hint = QLabel("勾选要观察的处理层")
+        hint.setStyleSheet("color:#8b949e; font-size:11px;")
+        pl.addWidget(hint)
+        # 🧭 2026-09-13 老倪: 3D 视图不要画中画 —— 三个 dreamview 窗口 (L2 / L3 / L4·stable-world),
+        #   点哪个开哪个 (各自独立窗口, 与 DreamView3D 同款交互: 时间轴/图层开关/拖帧看信号)
+        _row_lv = QHBoxLayout()
+        _row_lv.setSpacing(4)
+        for _lvl, _txt, _tip, _col in (
+            ("L2", "🧭 L2 DreamView", "L2 档 3D 分层视图 (感知层 + 末端轨迹)", "#2e8b57"),
+            ("L3", "🧭 L3 DreamView", "L3 档 3D 分层视图 (加 前馈/状态估计/预测 层)", "#1f6feb"),
+            ("L4", "🌍 L4·SW DreamView", "L4·stable-world 实况 (逐帧真渲染 + 拖帧看信号)", "#8957e5"),
+        ):
+            _b = QPushButton(_txt)
+            _b.setToolTip(_tip + "\n(独立窗口, 可同时开; 不再有画中画)")
+            _b.setStyleSheet(f"QPushButton{{background:{_col};color:#ffffff;font-weight:700;"
+                             f"border:none;border-radius:4px;padding:6px 4px;font-size:11px;}}"
+                             f"QPushButton:hover{{background:#33e0b8;color:#0d1117;}}")
+            _b.clicked.connect(lambda _=False, lv=_lvl: self._open_level(lv))
+            _row_lv.addWidget(_b)
+        pl.addLayout(_row_lv)
+        pl.addSpacing(6)
+
+        # 图层: (key, 中文名, 默认开, 提示)
+        # 🔢 2026-08-25 老倪: 顺序必须照状态空间链路排 —
+        #   感知层数据在最前, 之后 前馈加速器 → 自适应状态估计器 → 先验动力学预测器
+        #   → 状态校正器 → 动作调制器 → 安全执行边界, 最后才是网格/坐标轴等辅助。
+        self._layers_def = [
+            # ── 感知层 (最前) ──
+            ("scene",     "📡 感知层 · 物理世界几何",     True,
+             "画布节点「📡 融合定位 / 🌍 物理世界」的真实几何: 台面 / 带孔盒 / 光模块 /\n"
+             "Sawyer 臂 + 夹爪 (含物体名字标注; 关掉它连机械臂和标注一起隐藏)"),
+            ("yolo",      "📡 感知层 · YOLO 目标检测",    True,
+             "画布节点「🎯 YOLO 目标检测」的输出: hand / 光模块 / hole 三个 3D 检测框"),
+            ("traj",      "📡 感知层 · 末端实测轨迹",     True,
+             "「🌍 物理世界」每步实测的末端位置连成的历史轨迹 (metaworld MuJoCo 真值)"),
+            # ──  并行处理层 ──
+            ("uff",       "① ⚡ 前馈加速器",             True,
+             "快通道 (前馈加速器 = 原左脑 MLP 的等效控制律) 每步给出的**速度指令** (m/s):\n"
+             "  绿线 = 建议往哪走 (方向), 线越长 = 速度越大 (满格 0.35 m/s = 10cm 长)\n"
+             "  锥形箭头尖 = 照这个建议走一步会到哪; 旁边文字 = 名称 + m/s + 方向\n"
+             "动作调制器只采纳 30% (抓取/插入 85%) → 与「④ 动作调制器」比长短即知被压多少"),
+            ("latent",    "② 🔮 自适应状态估计器 · x̂",   False,
+             "慢通道 AdaptiveStateEstimator 的后验位置估计 x̂ₖ = 预测 + K·(观测−预测), K=0.2\n"
+             "紫线 = 最近 30 帧估计轨迹, 大球 = 当前帧估计位置\n"
+             "与真实末端的偏离量就是残差来源 (实测误差 ~2.6mm, 抖动 ~0.9mm/步)"),
+            ("prior",     "③ 📈 先验动力学预测器",        False,
+             "画布节点「📈 先验动力学预测器」: x̂ₖ⁻ = A·x̂ₖ₋₁ + dt·u_prev (A=1, dt=12.5ms)\n"
+             "画「三点两线」而不是轨迹:\n"
+             "  🟦 青粗线 = 预测增量 dt·u (方向 = 上一步实际下发的控制量; 实测仅 0.36mm/步,\n"
+             "     按原尺寸看不见 → 图示放大 30 倍, 标注里写明真实值)\n"
+             "  ■ 青方块 = 先验位置 x̂ₖ⁻ (纯预测, 还没用本帧观测校正)\n"
+             "  ⚪ 灰点+细线 = 观测 z_k 与先验的差 = **残差** (实测 6.9~9.1mm) → 接触判据\n"
+             "⚠️ 为什么不画先验轨迹: 实测那条线 62% 是观测噪声透传 (确定性增量 0.359mm/步 vs\n"
+             "   继承抖动 0.901mm/步, 噪声/信号 2.7 倍) — 画出来必然\"没规律\"且无信息量"),
+            # ──  认知决策层 ──
+            ("ufb",       "④ 🧪 状态校正器 · 残差方向",   False,
+             "残差 r = 观测 z_k − 先验 x̂⁻ (校正器的核心量, u_fb = 0.5·r 就是它的一半):\n"
+             "  ▬ 粗蓝箭头 = **20 帧滑动平均的系统性偏差** (6mm 满格 9cm) — 有物理意义的那部分\n"
+             "  ┄ 细半透明线 = 瞬时残差 (12mm 满格 6cm)\n"
+             "⚠️ 为什么瞬时的看着乱: 实测相邻帧方向变化 **88.5°** (纯随机 90°) ⇒ 瞬时残差\n"
+             "   **96% 是 5mm 观测噪声**; 只有多帧平均后剩下的才是真实接触/阻力造成的偏差\n"
+             "标注里的百分比 = 系统占比 |均值| / 平均模长: 实测 下降 8% (自由下落无接触)\n"
+             "   → 插入 42% (光模块头顶孔沿产生固定方向阻力) — 这个数字升高就是\"真的碰到东西了\""),
+            ("contact",   "④ 🧪 状态校正器 · 接触指示",   True,
+             "两路接触各一组「核心球 + 脉冲外环」, 强度直接用 MuJoCo 真实接触力驱动:\n"
+             "  🔵 青球 (画在夹爪) = 夹持接触 peg↔指垫 — 一夹住光模块就明显弹出\n"
+             "  🟠 橙球 (画在光模块头) = 环境接触 光模块头↔孔沿 / 夹爪↔台面 — 顶到孔才亮\n"
+             "  直径 8px(无接触) → 54px(满接触), 超过 15% 强度加 1.9 倍脉冲外环\n"
+             "为什么不用接触概率驱动大小: σ(8×|残差|) 被 5mm 观测噪声垫到 0.58 基线,\n"
+             "全程只在 0.58~1.0 变 (球直径仅差 10px 看不出) → 概率改在标注里显示\n"
+             "  (给原始值 + 去基线的净值 (cp−0.58)/0.42)"),
+            ("ufuse",     "⑤ 🧭 动作调制器 (下发 action)", True,
+             "动作调制器 (八阶段状态机 + 否决权) 的最终输出 = 真正下发给执行器的动作:\n"
+             "  u = 0.3·u_ff + 0.7·u_fb (接近/对位/下降/抬起/转移)\n"
+             "  u = 0.85·u_ff + 0.15·u_fb (抓取/插入 — 力控阶段前馈推力主导)\n"
+             "  残差超阈值 → 否决, u 直接归零 (强制减速重试)"),
+            ("fsm",       "⑤ 🧭 动作调制器 · 状态机",     True,
+             "**这就是老倪问的\"状态\"** = 动作调制器 ActionModulator 内部的八阶段状态机\n"
+             "(接近→对位→下降→抓取→抬起→转移→插入→完成), 每次切换都由物理证据触发:\n"
+             "  接近→对位: 手-销水平距离 <60mm   对位→下降: <20mm\n"
+             "  下降→抓取: 接触概率>0.6 或到达抓握位姿   抓取→抬起: 夹持度>0.6\n"
+             "  抬起→转移: 提升>80mm   转移→插入: 光模块头-孔口 <20mm   插入→完成: 残距<4mm\n"
+             "画面左侧阶梯 = 八阶段进度 (✔已过/▶当前/待执行), 当前阶段下方给\n"
+             "**下一阶段预测**: 证据当前值/阈值 + 进度% + 按变化率外推的预计剩余时间\n"
+             "3D 里还画出各阶段的目标航点 (①~⑧ 带序号), 当前阶段航点高亮"),
+            ("ulimit",    "⑥ 🛡 安全执行边界 (饱和限幅)",  False,
+             "安全层饱和限幅后的指令 (上限 0.6 m/s)。与⑤重合 = 没触发限幅;\n"
+             "两者分叉 = 安全层出手削掉了超速部分"),
+            # ── 🧮 流形导航层 (回路外几何监测元层, 2026-09-07 老倪: 流形是拓扑要有形状) ──
+            ("mani",      "🧮 流形导航层 · 接触通道曲面", True,
+             "接触流形 = 插拔安全通道 (1D 测地线 × 容差半径 → 管状 2D 曲面嵌入 3D):\n"
+             "  青色线框管 = 当前阶段的**安全通道** (半径 = 该阶段法向容差):\n"
+             "    下降/抓取/抬起: 光模块上方垂直通道 (容差 30mm, 粗管)\n"
+             "    插入: 孔口悬高→孔底 工艺斜线通道 (容差 6mm, 细管)\n"
+             "    完成: 孔轴水平通道 (容差 4mm, 最细) — 越接近成功通道越窄\n"
+             "  中心白线 = 通道轴 (测地线/最优路径)\n"
+             "  金色小球 = 光模块头当前位置; 状态线 = 头到通道轴的垂直偏离:\n"
+             "    绿 = 在流形上 (偏离<半容差) · 黄 = 贴边缘 (漂移中) · 红 = 离流形 (弯曲/报废风险)\n"
+             "  自由空间阶段 (接近/对位/转移) 无接触约束 → 不画管, 只画手→目标的灰进度线\n"
+             "关掉本层 = 只看控制, 不看流形几何"),
+            # ── 辅助参考 ──
+            ("grid",      "▦ 地面网格 (参考)",           True,  "z=0 台面参考网格 (5cm 一格)"),
+            ("axis",      "🧭 坐标轴 XYZ (参考)",        False,
+             "世界坐标轴指示器 (pyqtgraph GLAxisItem), 画在原点 = 机器人底座:\n"
+             "  绿 = Z 轴 (垂直向上)   黄 = Y 轴 (指向工作台)   蓝 = X 轴\n"
+             "⚠️ 原点在画面外时看不到 (实测: 自动取景/俯视档 0px, 「🎥 视频同框」档可见)"),
+        ]
+        self._chk = {}
+        for key, name, on, tip in self._layers_def:
+            cb = QCheckBox(name)
+            cb.setChecked(on)
+            cb.setToolTip(tip)
+            cb.setStyleSheet("QCheckBox{color:#e6edf3; font-size:13px;} QCheckBox::indicator{width:15px;height:15px;}")
+            cb.toggled.connect(lambda checked, k=key: self._toggle_layer(k, checked))
+            self._chk[key] = cb
+            self._layer_on[key] = on
+            pl.addWidget(cb)
+        pl.addStretch(1)
+
+        # 底部时间轴信息
+        self.lbl_t = QLabel("t=0.00s · 帧 0/0")
+        self.lbl_t.setStyleSheet("color:#8b949e; font-size:11px;")
+        pl.addWidget(self.lbl_t)
+
+        # 🗺 画布信号行 (v3.4.6 老倪: 3D 渲染数据与画布实际信号同步 —
+        #   画布 ▶运行 时正在执行的节点(模块) + 该模块本帧 out, 逐帧推送)
+        self.lbl_mod = QLabel("画布信号: —")
+        self.lbl_mod.setStyleSheet(
+            "color:#00d4aa; font-size:11px; font-family:Consolas,monospace; "
+            "background:#0d1117; border:1px solid #1f6feb; border-radius:4px; padding:4px;")
+        self.lbl_mod.setWordWrap(True)
+        self.lbl_mod.setMinimumHeight(46)
+        pl.addWidget(self.lbl_mod)
+        self._active_node = ""
+        self._user_cam = False        # v3.4.8: 用户手动转视角标记 (resize 自动取景判定)
+        self._last_win = (0, 0)
+
+        # 📟 实时数值面板 (2026-08-25 老倪: "不知道啥意思" → 画面旁边直接给数字)
+        self.lbl_num = QLabel("—")
+        self.lbl_num.setStyleSheet(
+            "color:#c9d1d9; font-size:12px; font-family:Consolas,monospace; "
+            "background:#0d1117; border:1px solid #30363d; border-radius:4px; padding:6px;")
+        self.lbl_num.setMinimumHeight(210)
+        self.lbl_num.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        pl.addWidget(self.lbl_num)
+
+        # 右侧 3D 视图
+        right = QVBoxLayout()
+        right.setSpacing(6)
+        # rotationMethod='quaternion': 才能精确设定相机朝向 (含 roll) = 视频相机外参
+        self.view = gl.GLViewWidget(rotationMethod='quaternion')
+        # 🧭 2026-08-25 老倪: 视角对齐操作视频 — 不再是正俯视 (elev 88), 改成 metaworld
+        # corner2 相机的斜视角 (elev 28.9 / azim 328.4, probe_video_view.py 实测换算),
+        # 与视频里看到的方向一致: 世界 +X→屏幕右下 · +Y→右上 · +Z→上
+        self.view.setCameraPosition(pos=_CAM_CENTER, distance=_CAM_DIST,
+                                    elevation=_CAM_ELEV, azimuth=_CAM_AZIM)
+        self.view.setBackgroundColor('#0d1117')
+        self._overlay = LabelOverlay(self.view)     # 🏷 文字标注层 (贴在 3D 画布上)
+        self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
+        if self._level:                      # 按档位预设开关图层 + 标题标注
+            try:
+                self.setWindowTitle(f"🧭 状态空间 {self._level} DreamView (3D 分层)")
+                self.apply_level_preset(self._level)
+            except Exception:
+                pass
+        self._overlay.show()
+        # 🗑 2026-09-13 老倪改口径: **不要画中画** —— stable-world 实况改为独立 dreamview 窗口
+        #   (原来的画中画小窗已移除; 需要看 L4 实况时点左侧「🌍 L4·stable-world DreamView」按钮)
+        self._sw_last = None
+        self._sw_panel = None
+        self._sw_timer = None
+        self.view.installEventFilter(self)
+        right.addWidget(self.view, 1)
+
+        # 底部控制条
+        ctrl = QHBoxLayout()
+        ctrl.setSpacing(8)
+        self.btn_play = QPushButton("▶ 播放")
+        self.btn_play.setStyleSheet(
+            "QPushButton{background:#1f6feb; color:#fff; border:none; border-radius:4px; padding:6px 16px; font-size:13px;}"
+            "QPushButton:hover{background:#2f7ff0;}")
+        self.btn_play.clicked.connect(self._toggle_play)
+        ctrl.addWidget(self.btn_play)
+
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setRange(0, 0)
+        self.slider.sliderMoved.connect(self._on_slider)
+        self.slider.sliderPressed.connect(self._pause)
+        ctrl.addWidget(self.slider, 1)
+
+        self.lbl_frame = QLabel("0 / 0")
+        self.lbl_frame.setStyleSheet("color:#8b949e; font-size:12px; min-width:70px;")
+        ctrl.addWidget(self.lbl_frame)
+
+        # 🔍 视角三档 (默认自动取景 — 1:1 复刻视频机位时场景只占画面 3%, 看不清)
+        for _txt, _mode, _tip in (("🔍 自动取景", "fit", "朝向与操作视频一致, 距离自动收紧到刚好装下全场景 (推荐)"),
+                                  ("🎥 视频同框", "video", "与操作视频逐像素同机位 (远景, 用于和视频对比)"),
+                                  ("⬇ 俯视", "top", "正上方俯视 (看水平对位)")):
+            b = QPushButton(_txt)
+            b.setToolTip(_tip)
+            b.setStyleSheet(
+                "QPushButton{background:#21262d; color:#c9d1d9; border:1px solid #30363d;"
+                "border-radius:4px; padding:5px 10px; font-size:12px;}"
+                "QPushButton:hover{border-color:#58a6ff; color:#58a6ff;}")
+            b.clicked.connect(lambda _=False, mm=_mode: self._fit_view(mm))
+            ctrl.addWidget(b)
+        right.addLayout(ctrl)
+
+        root.addWidget(panel)
+        root.addLayout(right, 1)
+
+        # 播放定时器
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._tick)
+
+        # 🐛 2026-08-25 老倪「3D 空间的文字没有跟着图像走」: 鼠标旋转/缩放视角时投影变了,
+        #   但标注只在换帧时算 → 文字停在原处。事件过滤器在本机 (Mesa/QOpenGLWidget) 实测
+        #   收不到 view 的鼠标事件 (sendEvent 验证过滤器未触发) → 改用相机状态看门狗:
+        #   20Hz 比对相机参数 (center/distance/elevation/azimuth/rotation/fov/尺寸),
+        #   一变就重投影标注。鼠标拖拽、滚轮缩放、程序切档、窗口 resize 全覆盖。
+        self._cam_watch = QTimer(self)
+        self._cam_watch.timeout.connect(self._watch_camera)
+        self._cam_watch.start(50)
+        self._cam_sig = None
+
+        if tr is not None:
+            self.set_trajectory(tr)
+
+    # ── 数据装载 ──
+    def set_trajectory(self, tr):
+        self.tr = tr
+        # 🔭 2026-09-05 老倪(信号同步严查): 标题标注数据源 — 程序执行轨迹=与画布同步
+        #   vs episode 回放=预录 (打开即自动播放, 不随画布); 一眼可辨不混淆
+        try:
+            _src = tr.get("_viz_src") if isinstance(tr, dict) else None
+            if _src is None and getattr(self, "module", None) is not None:
+                # ▶运行播放 tick 直接喂引擎轨迹 (无标记) → 依 module 引用识别为程序同步
+                try:
+                    if getattr(self.module, "_ss_tr", None) is tr:
+                        _src = "run"
+                except Exception:
+                    pass
+            if _src == "run":
+                self.setWindowTitle("🧭 3D 视图 · 程序执行同步 (▶运行/⏭到哪步, 3D 到哪步)")
+            elif _src == "episode":
+                self.setWindowTitle("🧭 3D 视图 · EPISODE 回放 (预录, 非本次运行 — 先 ▶运行 转同步)")
+        except Exception:
+            pass
+        meta = tr.get("_meta") if isinstance(tr, dict) else None
+        if meta:
+            self._apply_meta(meta)
+        # 📉 性能流形碗窗同源更新 (现场孔位 meta 优先)
+        try:
+            w = getattr(self, "_bowl", None)
+            if w is not None:
+                import sip
+                if not sip.isdeleted(w):
+                    w.set_trajectory(tr, hole=self._hole.copy())
+        except Exception:
+            pass
+        n = len(tr.get("x", []))
+        self._n = n
+        self.slider.setRange(0, max(0, n - 1))
+        self._build_scene()
+        self._fit_view("fit")      # 默认自动取景 (视频同框太远, 物体只有几十像素)
+        if n > 0:
+            self._update_frame(0)
+            self.lbl_frame.setText(f"0 / {n - 1}")
+            # 🐛 2026-09-02 老倪「3D视图打不开/要看到实际的动作渲染视频」:
+            #   原默认停在静态第 0 帧, 必须手动点「▶ 播放」才有动画 → 加载即自动播放
+            if not self._timer.isActive():
+                self._playing = True
+                self.btn_play.setText("⏸ 暂停")
+                self._timer.start(60)
+
+    # ── 同源 episode: 场景几何 + 相机 全部按 trace 里的真实值 ──
+    def _apply_meta(self, meta):
+        """meta 来自 gen_ss_metaworld_episode.py (与操作视频同一条 episode):
+        真实孔口/插入终点/盒子/台面坐标 + corner2 相机外参 (含 rot180 等效基底)"""
+        try:
+            self._hole = np.asarray(meta.get("goal", self._hole), dtype=float)
+            self._mouth = np.asarray(meta.get("hole_mouth", self._mouth), dtype=float)
+            self._box_c = np.asarray(meta.get("box_center", self._box_c), dtype=float)
+            self._aoi_c = np.asarray(meta.get("aoi_focus", self._aoi_c), dtype=float)  # 🚀 AOI
+            tc = np.asarray(meta.get("table_center", self._table_c), dtype=float)
+            self._table_c = np.array([tc[0], tc[1], _TABLE_CENTER[2]])
+            # 🎯 2026-09-09 L4 演示 (L4Demo npz/meta): 演示场景注入设备 (转台/压电耦合台)
+            #   3D 视图按 demo_geom 绘制 — 物理场景真实存在的设备, 视觉必须同呈现
+            # 🎯 2026-09-11 老倪: "没看到转台盘/十字刻度" → 设备几何(转台/光耦合台)的读取
+            #   原先被包在 meta["demo"] 分支里 (那是 L4Demo 专属标记) — 引擎路径(L4 档新链路)
+            #   不带该标记 → _demo_geom 永远 None → 3D 不画转台。拆开: 几何呈现独立于"演示模式"。
+            if meta.get("demo_geom"):
+                self._demo_geom = meta.get("demo_geom") or {}
+            if meta.get("demo"):
+                self._peg_center_off = np.zeros(3)   # 演示 tr["peg"]=真 peg 中心, 无抓握点补偿
+                self._src = ("L4 演示全链 (seed=%s, %s 步, 终态 %s)"
+                             % (meta.get('seed'), meta.get('steps'), meta.get('stage_final')))
+            else:
+                head_off = np.asarray(meta.get("peg_head_off", np.array([-0.13, 0, -0.01])), dtype=float)
+                self._peg_center_off = head_off * 0.5 + np.array([0.035, 0.0, 0.0])
+                self._src = (f"操作视频同源 episode (metaworld seed={meta.get('seed')}, "
+                             f"{meta.get('steps')} 步, 终态 {meta.get('stage_final')})")
+            # 相机: 精确对齐视频 corner2 (四元数含 roll), 视距 = 相机到场景锚点的真实距离
+            try:
+                cp = np.asarray(meta["cam_pos"], dtype=float)
+                cf = np.asarray(meta["cam_fwd"], dtype=float)
+                cr = np.asarray(meta["cam_right"], dtype=float)
+                cu = np.asarray(meta["cam_up"], dtype=float)
+                self._cam_fovy = float(meta.get("cam_fovy", 60.0))
+                anchor = 0.5 * (np.asarray(meta.get("peg0", self._mouth), dtype=float) + self._mouth)
+                t = float(np.dot(anchor - cp, cf / (np.linalg.norm(cf) or 1)))
+                center = cp + cf / (np.linalg.norm(cf) or 1) * t
+                self.view.opts["rotationMethod"] = "quaternion"
+                self.view.setCameraPosition(pos=QVector3D(*center.tolist()),
+                                            distance=max(0.3, t),
+                                            rotation=camera_quaternion(cf, cr, cu))
+                self._sync_fov()
+                # 记下"与视频 1:1 同框"的机位, 供视角切换用
+                self._cam_video = dict(center=center.copy(), dist=max(0.3, t),
+                                       fwd=cf.copy(), right=cr.copy(), up=cu.copy())
+                self.setWindowTitle("🧭 状态空间 3D 分层视图 — 与操作视频同源 (metaworld corner2 视角)")
+            except Exception:
+                pass   # demo/引擎 npz 无相机外参 → 保持默认视角 (几何覆盖已生效)
+        except Exception as e:
+            print(f"⚠️ 同源 trace meta 应用失败, 退回默认视角: {e}")
+
+    # ── 取景 (2026-08-25 老倪: "还是一堆点, 不知道啥意思") ──
+    #   实测: 严格 1:1 复刻视频机位时 (距离 1.735m/竖直fov60), 926x766 画布上
+    #   96.8% 是空背景, 光模块只有 51px、轨迹 3px → 每个东西都成了"小点", 看不懂。
+    #   → 默认改「自动取景」: **朝向保持与视频完全一致**, 只把 center/distance 收紧到
+    #     刚好装下 (末端轨迹 ∪ 光模块轨迹 ∪ 孔口 ∪ 台面) 的包围盒 + 12% 余量。
+    #     要逐像素对比视频时用「视频同框」档切回去。
+    def _fit_view(self, mode=None):
+        mode = mode or getattr(self, "_view_mode", "fit")
+        self._view_mode = mode
+        cam = getattr(self, "_cam_video", None)
+        tr = self.tr or {}
+        try:
+            if mode == "video" and cam:
+                self.view.setCameraPosition(pos=QVector3D(*cam["center"].tolist()),
+                                            distance=cam["dist"],
+                                            rotation=camera_quaternion(cam["fwd"], cam["right"], cam["up"]))
+                self._sync_fov()
+                self._refresh_label_positions()
+                return
+            pts = []
+            for k in ("x", "peg", "peg_head"):
+                if tr.get(k) is not None and len(tr[k]):
+                    pts.append(np.asarray(tr[k], dtype=float))
+            pts.append(np.asarray([self._mouth, self._hole], dtype=float))
+            # 🚀 2026-09-08: AOI 设备纳入取景 (full 模式检测工位可见)
+            pts.append(np.asarray([self._aoi_c + np.array([0, 0, 0.08]),
+                                   self._aoi_c + np.array([0, 0.06, -0.02])], dtype=float))
+            # 🎯 2026-09-09: L4 演示注入设备 (转台/压电耦合台) 纳入取景 — 全景可见
+            for _dev in (self._demo_geom or {}).values():
+                _dp = _dev.get("pos")
+                if _dp:
+                    pts.append(np.asarray([[float(_dp[0]) - 0.12, float(_dp[1]) - 0.08, 0.0],
+                                           [float(_dp[0]) + 0.12, float(_dp[1]) + 0.08, 0.17]],
+                                          dtype=float))
+            P = np.vstack(pts)
+            lo, hi = P.min(axis=0), P.max(axis=0)
+            ctr = (lo + hi) / 2.0
+            radius = float(np.linalg.norm(hi - lo)) / 2.0 + 0.05
+            if mode == "top":       # 俯视档 (正上方看)
+                self.view.opts["rotationMethod"] = "euler"
+                self.view.setCameraPosition(pos=QVector3D(*ctr.tolist()),
+                                            distance=max(0.35, radius * 2.6),
+                                            elevation=88, azimuth=270)
+                self.view.opts["fov"] = 60.0
+                self.view.update()
+                self._refine_distance(P, target=0.72)     # 俯视也按投影收紧距离
+                self._refresh_label_positions()
+                return
+            # fit 档: 朝向沿用视频机位, 距离按包围盒外接球 + fov 求
+            fwd = cam["fwd"] if cam else np.array([-0.746, 0.458, -0.484])
+            right = cam["right"] if cam else np.array([0.55, 0.833, -0.058])
+            up = cam["up"] if cam else np.array([-0.376, 0.310, 0.873])
+            self._sync_fov()
+            self.view.opts["rotationMethod"] = "quaternion"
+            self._fit_camera_to_points(P, ctr, radius, fwd, right, up)
+        except Exception as e:
+            print(f"⚠️ 取景失败: {e}")
+
+    def _fit_camera_to_points(self, P, ctr, radius, fwd, right, up, target=0.72, iters=14):
+        """按**实际投影**迭代取景 (朝向不动, 只调 center/distance):
+        球形包围盒对扁平作业区太保守 (实测只占屏 44%) → 改成每轮把点云投影出来,
+        按屏幕占比缩放距离 + 把点云包围框居中, 收敛到占屏 ≈ target。"""
+        import math
+        pts = np.asarray(P, dtype=float)
+        if len(pts) > 240:
+            pts = pts[:: max(1, len(pts) // 240)]
+        center = np.asarray(ctr, dtype=float).copy()
+        dist = max(0.25, radius * 2.2)
+        for _ in range(iters):
+            self.view.setCameraPosition(pos=QVector3D(*center.tolist()), distance=float(dist),
+                                        rotation=camera_quaternion(fwd, right, up))
+            s = [project_world(self.view, p) for p in pts]
+            s = np.asarray([v for v in s if v is not None], dtype=float)
+            if len(s) < 3:
+                break
+            xmin, ymin = s.min(axis=0)
+            xmax, ymax = s.max(axis=0)
+            spread = max(xmax - xmin, ymax - ymin)
+            # ① 居中: 把投影框中心拉到画面中心 (沿相机 right/up 平移世界 center)
+            fov_h = math.radians(float(self.view.opts.get("fov", 60.0)))
+            w, h = max(1, self.view.width()), max(1, self.view.height())
+            half_x = math.tan(fov_h / 2.0)
+            half_y = half_x * h / w
+            dx = ((xmin + xmax) / 2.0) - 0.5
+            dy = ((ymin + ymax) / 2.0) - 0.5
+            center = center + right * (dx * 2.0 * half_x * dist) - up * (dy * 2.0 * half_y * dist)
+            # ② 缩放: 占屏 → target
+            if spread > 1e-4:
+                dist *= float(np.clip(spread / target, 0.55, 1.8))
+            dist = float(np.clip(dist, 0.18, 6.0))
+            if abs(spread - target) < 0.03 and abs(dx) < 0.01 and abs(dy) < 0.01:
+                break
+        self.view.update()
+        self._refresh_label_positions()
+
+    def _refine_distance(self, P, target=0.72, iters=10):
+        """只调距离不动朝向 (俯视档用): 把点云投影占屏收敛到 target"""
+        pts = np.asarray(P, dtype=float)
+        if len(pts) > 240:
+            pts = pts[:: max(1, len(pts) // 240)]
+        for _ in range(iters):
+            s = [project_world(self.view, p) for p in pts]
+            s = np.asarray([v for v in s if v is not None], dtype=float)
+            if len(s) < 3:
+                return
+            spread = max(s[:, 0].max() - s[:, 0].min(), s[:, 1].max() - s[:, 1].min())
+            if abs(spread - target) < 0.03:
+                break
+            self.view.opts["distance"] = float(np.clip(
+                self.view.opts["distance"] * float(np.clip(spread / target, 0.6, 1.7)), 0.18, 6.0))
+            self.view.update()
+
+    def _camera_signature(self):
+        """相机+画布状态指纹 — 任何一项变了就说明投影变了, 标注必须重算"""
+        o = self.view.opts
+        c = o.get("center")
+        rot = o.get("rotation")
+        return (round(float(c.x()), 6), round(float(c.y()), 6), round(float(c.z()), 6),
+                round(float(o.get("distance", 0)), 6),
+                round(float(o.get("elevation", 0) or 0), 4),
+                round(float(o.get("azimuth", 0) or 0), 4),
+                round(float(o.get("fov", 60)), 4),
+                (round(rot.scalar(), 6), round(rot.x(), 6), round(rot.y(), 6), round(rot.z(), 6))
+                if rot is not None else None,
+                self.view.width(), self.view.height())
+
+    def _watch_camera(self):
+        """20Hz: 相机/画布一变就重投影标注 (文字始终跟着图像走)"""
+        try:
+            sig = self._camera_signature()
+            if sig != self._cam_sig:
+                self._cam_sig = sig
+                if self._overlay.width() != self.view.width() or \
+                   self._overlay.height() != self.view.height():
+                    self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
+                self._refresh_label_positions()
+        except Exception:
+            pass
+
+    def _refresh_label_positions(self):
+        """把已存的世界坐标标注重新投影到当前视角的屏幕坐标 (文字跟着图像走)。
+        任何改变投影的动作都必须调它: 鼠标旋转/平移/滚轮缩放、取景切换、窗口 resize。"""
+        try:
+            out = []
+            w, h = max(1, self.view.width()), max(1, self.view.height())
+            for wp, text, col, bold in getattr(self, "_label_world", []):
+                s = project_world(self.view, wp)
+                if s is None or not (-0.15 <= s[0] <= 1.15 and -0.15 <= s[1] <= 1.15):
+                    continue          # 转到画面外/相机背后 → 不画 (不留在原地误导)
+                out.append((s[0] * w, s[1] * h, text, col, bold))
+            self._overlay.set_labels(out)
+        except Exception:
+            pass
+
+    def _sync_fov(self):
+        """把视频的垂直 fovy 换算成 pyqtgraph 的水平 fov (随窗口尺寸变化必须重算)"""
+        try:
+            self.view.opts["fov"] = fov_h_from_fovy(self._cam_fovy,
+                                                    self.view.width(), self.view.height())
+            self.view.update()
+        except Exception:
+            pass
+
+    def eventFilter(self, obj, ev):
+        # 🎯 v3.4.8: 用户鼠标旋转/平移视角 → 标记手动 (resize 不再自动重取景, 不打断)
+        try:
+            if obj is self.view and ev is not None and hasattr(ev, "type"):
+                _t = int(ev.type())
+                if _t in (4, 5, 6):      # MouseButtonPress/Move/Release
+                    if _t == 4 or (getattr(ev, "buttons", None) is not None and int(ev.buttons())):
+                        self._user_cam = True
+        except Exception:
+            pass
+        """3D 画布尺寸变化 → 标注层跟着变 (覆盖层必须与画布严格同尺寸, 否则坐标错位)"""
+        try:
+            if obj is self.view:
+                et = ev.type()
+                if et == ev.Resize:
+                    self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
+                    self._place_sw_panel()          # 🎬 实况小窗跟着重贴 (右上角)
+                    self._sync_fov()
+                    self._refresh_label_positions()
+                elif et in (ev.MouseMove, ev.Wheel, ev.MouseButtonRelease,
+                            ev.MouseButtonPress, ev.MouseButtonDblClick):
+                    # 鼠标旋转/平移/缩放视角 → 立刻重投影标注 (否则文字停在原处)
+                    self._refresh_label_positions()
+        except Exception:
+            pass
+        return super().eventFilter(obj, ev)
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self._sync_fov()
+        try:
+            self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
+        except Exception:
+            pass
+        # 🎯 v3.4.8 老倪「窗口最大化后图像没跟着放大」: 视口变大但场景/相机未重排 →
+        #   物体仍占原比例 (四周留空)。用户未手动转视角时, 窗口尺寸变化 >6% 自动重取景,
+        #   场景撑满放大后的视口。防抖 250ms (拖动 resize 只收尾一次)。
+        try:
+            _w0, _h0 = getattr(self, "_last_win", (0, 0))
+            _nw, _nh = self.width(), self.height()
+            self._last_win = (_nw, _nh)
+            if (_w0 and _h0 and not getattr(self, "_user_cam", False)
+                    and (abs(_nw - _w0) / max(_w0, 1) > 0.06
+                         or abs(_nh - _h0) / max(_h0, 1) > 0.06)):
+                from PyQt5.QtCore import QTimer as _Qt
+                _Qt.singleShot(250, self._auto_fit_on_resize)
+        except Exception:
+            pass
+
+    def _auto_fit_on_resize(self):
+        """窗口放大后自动取景 (仅用户未手动旋转/平移过视角时 — 避免打断手动视角)"""
+        try:
+            if not getattr(self, "_user_cam", False):
+                self._fit_view("fit")
+        except Exception:
+            pass
+
+    # ── 场景构建 ──
+    def _build_scene(self):
+        # 🐛 2026-08-28: 同一 item 被多个 key 引用 (yolo 列表 ↔ yolo_hand/光模块/hole),
+        #   重建时重复 removeItem → ValueError 中断重建 → 背景丢失。按 id 去重 + 容忍缺失。
+        seen = set()
+        for it in list(self._gl_items.values()):
+            for x in (it if isinstance(it, list) else [it]):
+                if x is None or id(x) in seen:
+                    continue
+                seen.add(id(x))
+                try:
+                    self.view.removeItem(x)
+                except (ValueError, RuntimeError):
+                    pass
+        self._gl_items.clear()
+
+        # 地面网格 (z=0, 覆盖整个工作区: 机器人 y=0 → 工作台 y≈0.6)
+        gz = gl.GLGridItem()
+        gz.setSize(1.1, 1.0)
+        gz.setSpacing(0.05, 0.05)
+        gz.translate(-0.05, 0.45, 0.0)
+        self._gl_items["grid"] = gz          # 受「▦ 地面网格」图层开关控制
+        self.view.addItem(gz)
+
+        # 坐标轴 (世界原点 = 机器人底座)
+        # 坐标轴 (pyqtgraph GLAxisItem 固定配色: 绿=Z 黄=Y 蓝=X, 见源码 updateLines)
+        # 2026-08-25 老倪: 原来叫 "_axis" 不在图层字典里 → 全取消勾选后仍留一段绿线+黄线,
+        #   看不出是什么。现在纳入图层 (默认关) + 轴端加 X/Y/Z 文字标签。
+        ax = gl.GLAxisItem()
+        ax.setSize(0.20, 0.20, 0.20)
+        self.view.addItem(ax)
+        self._gl_items["axis"] = [ax]      # X/Y/Z 字样由 LabelOverlay 画
+
+        # 场景层 (静态几何: 台面 + 带孔盒 + 孔口; 光模块/夹爪动态, 见 _update_frame)
+        scene = []
+        # 工作台面板
+        # 🎯 2026-09-09 L4 演示: 桌面加宽 (注入设备在右前 0.55,0.42, 原渲染台 x 右缘 0.46 放不下)
+        _tw, _tc = _TABLE_SIZE, self._table_c
+        if self._demo_geom:
+            _tw = (1.40, 0.62, 0.024)
+            _tc = np.array([0.10, 0.58, -0.012])
+        table = gl.GLMeshItem(meshdata=_box_mesh(_tc, _tw),
+                              color=(0.16, 0.18, 0.22, 1.0), smooth=False, shader='shaded')
+        self.view.addItem(table)
+        scene.append(table)
+        # 带孔盒 (红, 醒目 — 侧插目标件)
+        box = gl.GLMeshItem(meshdata=_box_mesh(self._box_c, _BOX_SIZE),
+                            color=(0.95, 0.22, 0.14, 1.0), smooth=False, shader='shaded')
+        self.view.addItem(box)
+        scene.append(box)
+        # 🚀 2026-09-08 L3 扩展: AOI 光学检测设备 (底座+立柱+横臂+镜头筒, 亮青)
+        #   镜头筒口朝下, 光模块头悬停在筒口下对焦点 (_aoi_c) 检测
+        _ax, _ay = float(self._aoi_c[0]), float(self._aoi_c[1])
+        aoi_base = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay + 0.04, 0.015]),
+                                                   (0.22, 0.14, 0.03)),
+                                 color=(0.25, 0.30, 0.36, 1.0), smooth=False, shader='shaded')
+        self.view.addItem(aoi_base)
+        scene.append(aoi_base)
+        aoi_post = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay + 0.04, 0.10]),
+                                                    (0.05, 0.05, 0.13)),
+                                 color=(0.20, 0.26, 0.32, 1.0), smooth=False, shader='shaded')
+        self.view.addItem(aoi_post)
+        scene.append(aoi_post)
+        aoi_arm = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay + 0.01, 0.15]),
+                                                   (0.05, 0.04, 0.05)),
+                                color=(0.30, 0.55, 0.65, 1.0), smooth=False, shader='shaded')
+        self.view.addItem(aoi_arm)
+        scene.append(aoi_arm)
+        aoi_lens = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay, 0.1375]),
+                                                    (0.09, 0.05, 0.045)),
+                                 color=(0.15, 0.85, 0.95, 1.0), smooth=False, shader='shaded')
+        self.view.addItem(aoi_lens)
+        scene.append(aoi_lens)
+        # 孔口 (盒子 +X 面上的深色方口 = 光模块侧插入口)
+        mouth = gl.GLMeshItem(meshdata=_box_mesh(self._mouth + np.array([0.004, 0, 0]),
+                                                 (0.012, 0.05, 0.05)),
+                              color=(0.04, 0.03, 0.02, 1.0), smooth=False, shader=None)
+        self.view.addItem(mouth)
+        scene.append(mouth)
+        # 插入终点标记 (goal, 半透明绿点线框)
+        gv, ge = _bbox_lines(self._hole, (0.03, 0.05, 0.05))
+        gpts = []
+        for e in ge:
+            gpts.append(gv[e[0]])
+            gpts.append(gv[e[1]])
+        goal = gl.GLLinePlotItem(pos=np.array(gpts), color=(0.20, 0.95, 0.55, 0.7),
+                                 width=2, mode='lines')
+        self.view.addItem(goal)
+        scene.append(goal)
+
+        # 🎯 2026-09-09 L4 演示场景设备 (物理 XML 注入, 3D 必须同呈现 — 老倪: 看不到转台/光耦合台):
+        dg = self._demo_geom or {}
+        if dg.get("turntable"):
+            _tt = dg["turntable"]
+            _tx, _ty = float(_tt["pos"][0]), float(_tt["pos"][1])
+            _tr = float(_tt.get("r", 0.075))
+            # 转台盘 (深灰短圆柱) + 白色十字刻度线 (随 tt_yaw 旋转, 转角肉眼可见)
+            tt_disc = gl.GLMeshItem(meshdata=_cylinder_mesh(np.array([_tx, _ty, 0.000]),
+                                                            np.array([_tx, _ty, 0.010]), _tr),
+                                    color=(0.30, 0.32, 0.38, 1.0), smooth=True, shader='shaded')
+            self.view.addItem(tt_disc)
+            scene.append(tt_disc)
+            tt_ring = gl.GLMeshItem(meshdata=_cylinder_mesh(np.array([_tx, _ty, 0.010]),
+                                                            np.array([_tx, _ty, 0.012]), _tr * 1.0),
+                                    color=(0.55, 0.58, 0.65, 0.35), smooth=True, shader=None)
+            self.view.addItem(tt_ring)
+            scene.append(tt_ring)
+            # 十字刻度线 ×2 (横/竖, 随 tt_yaw 旋转 — 本机 GLLinePlotItem NaN 断线不兼容, 分两条)
+            tt_cross = [gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.92, 0.94, 0.97, 0.95),
+                                          width=2.5, mode='lines'),
+                        gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.92, 0.94, 0.97, 0.95),
+                                          width=2.5, mode='lines')]
+            for _ln in tt_cross:
+                self.view.addItem(_ln)
+            scene += tt_cross
+            self._gl_items["tt_cross"] = tt_cross
+            self._tt_c = np.array([_tx, _ty, 0.0115])
+            self._tt_r = 0.062
+        if dg.get("coupler"):
+            _cp = dg["coupler"]
+            _cx, _cy = float(_cp["pos"][0]), float(_cp["pos"][1])
+            # 金属底座 (深灰) + 黄色压电叠堆 ×2 (参照芯明天) + 载物台面 + 光纤头基准 (亮柱)
+            cp_base = gl.GLMeshItem(meshdata=_box_mesh(np.array([_cx, _cy, 0.010]),
+                                                       (0.34, 0.11, 0.020)),
+                                    color=(0.42, 0.44, 0.50, 1.0), smooth=False, shader='shaded')
+            self.view.addItem(cp_base)
+            scene.append(cp_base)
+            for _sx in (-0.07, 0.07):
+                pzt = gl.GLMeshItem(meshdata=_box_mesh(np.array([_cx + _sx, _cy, 0.032]),
+                                                       (0.12, 0.016, 0.020)),
+                                    color=(0.82, 0.70, 0.15, 1.0), smooth=False, shader='shaded')
+                self.view.addItem(pzt)
+                scene.append(pzt)
+            cp_stage = gl.GLMeshItem(meshdata=_box_mesh(np.array([_cx, _cy, 0.052]),
+                                                        (0.34, 0.11, 0.010)),
+                                     color=(0.22, 0.25, 0.32, 1.0), smooth=False, shader='shaded')
+            self.view.addItem(cp_stage)
+            scene.append(cp_stage)
+            # 光纤头基准 (水平细亮柱, 指向台上光模块头)
+            fb = gl.GLMeshItem(meshdata=_cylinder_mesh(np.array([_cx - 0.146, _cy, 0.067]),
+                                                       np.array([_cx - 0.114, _cy, 0.067]), 0.004),
+                               color=(0.85, 0.87, 0.92, 1.0), smooth=True, shader='shaded')
+            self.view.addItem(fb)
+            scene.append(fb)
+        self._gl_items["scene"] = scene
+
+        # 🤖 Sawyer 机械臂 (2026-08-25 老倪: 形象渲染 — 底座+肩+肘+腕+夹爪)
+        self._arm_base = _ARM_BASE.copy()   # metaworld 机器人底座 = 世界原点
+        arm = []
+        # 底座立柱 (竖直圆柱)
+        arm_base = gl.GLMeshItem(meshdata=_cylinder_mesh(self._arm_base,
+                                                         self._arm_base + [0, 0, _ARM_H_BASE],
+                                                         0.055),
+                                 color=(0.30, 0.32, 0.36, 1.0), smooth=True, shader='shaded')
+        self.view.addItem(arm_base)
+        arm.append(arm_base)
+        # 肩/肘/腕关节球 + 上臂/前臂圆柱 (动态更新, 先占位)
+        arm_upper = gl.GLMeshItem(meshdata=_cylinder_mesh([0, 0, 0], [0, 0, 0.001], 0.032),
+                                  color=(0.85, 0.30, 0.18, 1.0), smooth=True, shader='shaded')
+        self.view.addItem(arm_upper)
+        arm.append(arm_upper)
+        arm_fore = gl.GLMeshItem(meshdata=_cylinder_mesh([0, 0, 0], [0, 0, 0.001], 0.026),
+                                 color=(0.85, 0.30, 0.18, 1.0), smooth=True, shader='shaded')
+        self.view.addItem(arm_fore)
+        arm.append(arm_fore)
+        arm_shoulder = gl.GLMeshItem(meshdata=_sphere_mesh([0, 0, 0], 0.042),
+                                     color=(0.40, 0.42, 0.46, 1.0), smooth=True, shader='shaded')
+        self.view.addItem(arm_shoulder)
+        arm.append(arm_shoulder)
+        arm_elbow = gl.GLMeshItem(meshdata=_sphere_mesh([0, 0, 0], 0.034),
+                                  color=(0.40, 0.42, 0.46, 1.0), smooth=True, shader='shaded')
+        self.view.addItem(arm_elbow)
+        arm.append(arm_elbow)
+        arm_wrist = gl.GLMeshItem(meshdata=_sphere_mesh([0, 0, 0], 0.026),
+                                  color=(0.40, 0.42, 0.46, 1.0), smooth=True, shader='shaded')
+        self.view.addItem(arm_wrist)
+        arm.append(arm_wrist)
+        # 夹爪两瓣 (沿 Y 开合 — 光模块是沿 X 的长条, 从 ±Y 两侧夹住; 青色纯色不被光照压暗)
+        arm_jaw_l = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], (0.05, 0.016, 0.05)),
+                                  color=(0.20, 0.85, 0.90, 1.0), smooth=True, shader=None)
+        self.view.addItem(arm_jaw_l)
+        arm.append(arm_jaw_l)
+        arm_jaw_r = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], (0.05, 0.016, 0.05)),
+                                  color=(0.20, 0.85, 0.90, 1.0), smooth=True, shader=None)
+        self.view.addItem(arm_jaw_r)
+        arm.append(arm_jaw_r)
+        # 光模块 光模块 (金色光模块 — 独立物体: 抓取前躺在台面, 抓取后随末端; 位置来自 tr["光模块"])
+        arm_peg = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], _PEG_SIZE),
+                                color=(0.95, 0.72, 0.10, 1.0), smooth=True, shader='shaded')
+        self.view.addItem(arm_peg)
+        arm.append(arm_peg)
+        self._gl_items["arm"] = arm
+        self._arm_idx = {"upper": 1, "fore": 2, "shoulder": 3, "elbow": 4,
+                         "wrist": 5, "jaw_l": 6, "jaw_r": 7, "peg": 8}
+
+        # 动态层占位 (创建空 item, 更新时 setData)
+        # 轨迹线 — ⚠️ 2026-08-25 实测: 末端轨迹恰好走在机械臂/夹爪实体位置, 默认深度测试下
+        #   被完全挡住 (画面里只剩 5 个像素) → 数据层统一 setGLOptions('additive')
+        #   穿透遮挡叠加显示 (Apollo Dreamview 覆盖层做法), 线宽 2→3.5
+        traj = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.35, 0.65, 1.0, 1.0), width=3.5)
+        traj.setGLOptions("additive")
+        self.view.addItem(traj)
+        self._gl_items["traj"] = traj
+
+        # 🧮 接触流形几何 (2026-09-07 老倪: 流形是拓扑要有形状): 通道管线框 = 5 环 + 3 母线
+        #   多 GLLinePlotItem (各自闭合/短段, 无 NaN 断线兼容问题); 后跟 [通道轴, peg头球, 偏离线]
+        _MANI_TC = (0.25, 0.85, 0.75, 0.55)
+        mani_tube = []
+        for _ti in range(8):
+            _ln = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=_MANI_TC, width=1.2)
+            _ln.setGLOptions("additive")
+            self.view.addItem(_ln)
+            mani_tube.append(_ln)
+        mani_ax = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.95, 0.95, 0.95, 0.9), width=2.2)
+        self.view.addItem(mani_ax)
+        mani_ball = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(0.95, 0.72, 0.10, 1.0), size=9)
+        self.view.addItem(mani_ball)
+        mani_line = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.2, 1.0, 0.4, 1.0), width=2.5)
+        self.view.addItem(mani_line)
+        self._gl_items["mani"] = mani_tube + [mani_ax, mani_ball, mani_line]
+        self._mani_ix = {"tube": mani_tube, "ax": mani_ax, "ball": mani_ball, "line": mani_line}
+
+        # 箭头线 (4 层动作)
+        for key in ("uff", "ufb", "ufuse", "ulimit"):
+            col = _LAYER_COLORS[key]
+            ln = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=col, width=(7 if key == "ufuse" else 3.5))
+            ln.setGLOptions("additive")          # 动作箭头穿透遮挡 (否则被机械臂挡住)
+            self.view.addItem(ln)
+            self._gl_items[key + "_line"] = ln
+            # 箭头头 (小锥体 / 目标点球)
+            tip = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=col,
+                                       size=(16 if key == "ufuse" else 10))
+            tip.setGLOptions("additive")
+            self.view.addItem(tip)
+            self._gl_items[key + "_tip"] = tip
+            # 🔺 锥形箭头头 (方向) + 🏷 旁边文字标注 (名称/速度/方向) — 2026-08-25 老倪要求
+            head = gl.GLMeshItem(meshdata=_cone_mesh([0, 0, 0], [0, 0, 0.001], 0.004),
+                                 color=col, smooth=True, shader=None)
+            head.setGLOptions("additive")
+            self.view.addItem(head)
+            self._gl_items[key + "_head"] = head
+            if key == "ufb":
+                # 🌫 瞬时残差 (96% 是观测噪声) 用细半透明线; 主箭头留给 20 帧系统性偏差
+                inst = gl.GLLinePlotItem(pos=np.zeros((2, 3)),
+                                         color=(col[0], col[1], col[2], 0.30), width=1.4)
+                inst.setGLOptions("additive")
+                self.view.addItem(inst)
+                self._gl_items["ufb_inst"] = inst
+            # (箭头文字标注由 LabelOverlay 自绘层负责 — GLTextItem 本机不渲染)
+
+        # 融合指令目标点大球 (action 主图标 — 明显醒目)
+        fuse_sphere = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=_LAYER_COLORS["ufuse"], size=18)
+        self.view.addItem(fuse_sphere)
+        self._gl_items["ufuse_sphere"] = fuse_sphere
+
+        # YOLO 检测框 (3 个立方体线框)
+        yolo = []
+        for cls, col in (("hand", _LAYER_COLORS["yolo_hand"]),
+                         ("peg", _LAYER_COLORS["yolo_peg"]),
+                         ("hole", _LAYER_COLORS["yolo_hole"])):
+            ln = gl.GLLinePlotItem(pos=np.zeros((12, 3)), color=col, width=2.5, mode='lines')
+            ln.setGLOptions("additive")
+            self.view.addItem(ln)
+            self._gl_items["yolo_" + cls] = ln
+            yolo.append(ln)
+        self._gl_items["yolo"] = yolo
+
+        # 状态估计 x̂: 紫线(最近 60 帧估计轨迹) + 当前帧估计位置大球
+        #   2026-08-25 老倪「为什么显示一堆点」→ 原来是每帧一个散点(看不出是轨迹),
+        #   改成连线 + 当前点大球, 一眼看出"卡尔曼估计出来的末端在哪、跟真实轨迹差多少"
+        # 📈 先验动力学预测器 (2026-08-25 老倪「怎么这么没有规律」重设计):
+        #   原来画最近 30 帧先验轨迹 → 实测那条线 62% 是观测噪声透传 (确定性预测增量
+        #   仅 0.359mm/步, 继承的后验抖动 0.901mm/步, 噪声/信号 2.7 倍) ⇒ 必然看着乱且无信息。
+        #   改画「三点两线」关系图 (这才是先验的物理含义):
+        #     ① 青色粗线 = 预测增量向量 x̂ₖ₋₁ → x̂ₖ⁻ (方向=上一步实际控制量, 放大显示)
+        #     ② 青色方块 = 先验位置 x̂ₖ⁻
+        #     ③ 灰白细线 = 先验 → 观测 z_k 的差 = **残差** (接触检测的唯一来源)
+        # 🧭 状态机航点: 八阶段各自的目标位置 (常亮小球) + 当前阶段高亮球
+        fsm_wp = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(1.0, 0.85, 0.30, 0.55), size=11)
+        fsm_wp.setGLOptions("additive")
+        self.view.addItem(fsm_wp)
+        fsm_cur = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(1.0, 0.85, 0.30, 1.0), size=26)
+        fsm_cur.setGLOptions("additive")
+        self.view.addItem(fsm_cur)
+        self._gl_items["fsm"] = [fsm_wp, fsm_cur]
+
+        pr_step = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=_LAYER_COLORS["prior"], width=4.0)
+        pr_step.setGLOptions("additive")
+        self.view.addItem(pr_step)
+        pr_now = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=_LAYER_COLORS["prior"], size=15)
+        pr_now.setGLOptions("additive")
+        self.view.addItem(pr_now)
+        pr_res = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.85, 0.88, 0.92, 0.85), width=1.6)
+        pr_res.setGLOptions("additive")
+        self.view.addItem(pr_res)
+        pr_zk = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(0.85, 0.88, 0.92, 0.95), size=9)
+        pr_zk.setGLOptions("additive")
+        self.view.addItem(pr_zk)
+        self._gl_items["prior"] = [pr_step, pr_now, pr_res, pr_zk]
+
+        lat_line = gl.GLLinePlotItem(pos=np.zeros((2, 3)), color=(0.85, 0.45, 0.95, 0.95), width=3.5)
+        lat_line.setGLOptions("additive")
+        self.view.addItem(lat_line)
+        lat_now = gl.GLScatterPlotItem(pos=np.zeros((1, 3)), color=(0.95, 0.55, 1.0, 1.0), size=16)
+        lat_now.setGLOptions("additive")
+        self.view.addItem(lat_now)
+        self._gl_items["latent"] = [lat_line, lat_now]
+
+        # 🧲 接触指示 (2026-08-25 老倪 重新设计: 原来只有一个球, 大小按被噪声垫高的
+        #   接触概率映射 → 直径只在 16~26px 之间变, 而且"碰到光模块"根本不进这个信号)
+        #   新设计: 两路接触各一组「核心球 + 脉冲外环」—
+        #     夹持接触 (光模块↔指垫) 青色, 画在夹爪处 → 一夹住就明显弹出
+        #     环境接触 (光模块头↔孔沿/夹爪↔台面) 橙红, 画在光模块头 → 顶到孔沿才亮
+        #   强度用力的归一化值直接驱动 (不用 cp, 它有 0.58 噪声基线), 直径 8→54px
+        c_items = []
+        for _col in ((0.20, 0.90, 1.00), (1.00, 0.45, 0.10)):        # 青=夹持, 橙红=环境
+            halo = gl.GLScatterPlotItem(pos=np.zeros((1, 3)),
+                                        color=(_col[0], _col[1], _col[2], 0.22), size=10)
+            halo.setGLOptions("additive")
+            self.view.addItem(halo)
+            core = gl.GLScatterPlotItem(pos=np.zeros((1, 3)),
+                                        color=(_col[0], _col[1], _col[2], 1.0), size=8)
+            core.setGLOptions("additive")
+            self.view.addItem(core)
+            c_items += [halo, core]
+        self._gl_items["contact"] = c_items      # [夹持halo, 夹持core, 环境halo, 环境core]
+
+        # 🏷 文字标注统一走 LabelOverlay 自绘层 (GLTextItem 在本机 Mesa 下不渲染, 已弃用)
+
+        # 应用当前图层开关状态
+        for key, on in self._layer_on.items():
+            self._apply_layer_visibility(key, on)
+
+    def _apply_layer_visibility(self, key, on):
+        """图层开关 → GL 元素可见性。
+        🐛 2026-08-25 老倪「所有选项都取消了, 屏幕还有一小段绿线和黄线」根因:
+        四层动作箭头存的 key 是 `<key>_line` / `<key>_tip` (还有 ufuse_sphere),
+        而图层 key ("uff"/"ufb"/"ufuse"/"ulimit") 本身不在 _gl_items 里 →
+        原实现 get(key) 拿到 None 直接 return, **勾选框点了完全没作用**;
+        残留的绿线 = 前馈 u_ff 箭头, 黄线 = 融合指令 u 箭头+大球 (不是坐标轴)。
+        另: 3D 文字标签 _labels 也不受任何图层控制 → 并入 scene 联动。"""
+        targets = []
+        it0 = self._gl_items.get(key)
+        if it0 is not None:
+            targets += it0 if isinstance(it0, list) else [it0]
+        # 动作箭头族: <key>_line / <key>_tip (+ ufuse 的目标点大球)
+        for suf in ("_line", "_tip", "_head", "_inst"):
+            sub = self._gl_items.get(key + suf)
+            if sub is not None:
+                targets += sub if isinstance(sub, list) else [sub]
+        if key == "ufuse":
+            sph = self._gl_items.get("ufuse_sphere")
+            if sph is not None:
+                targets.append(sph)
+        # 场景层联动: 机械臂 + 3D 文字标签
+        if key == "scene":
+            for extra in ("arm", "_labels"):
+                sub = self._gl_items.get(extra)
+                if sub is not None:
+                    targets += sub if isinstance(sub, list) else [sub]
+        for it in targets:
+            try:
+                it.setVisible(on)
+            except Exception:
+                pass
+        if not targets:
+            return
+
+    # ── 图层开关 ──
+    # ── 🎬 SW 实况 · stable-world 渲染帧 (2026-09-13 老倪 A: 贴进 3D 视图本体) ──
+    def _sw_dirs(self):
+        """定位 L4 · SW 引擎链产物: (根, frames, video, status.json)"""
+        import os
+        root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+        d = os.path.join(root, "reports", "intact_sw")
+        return d, os.path.join(d, "frames"), os.path.join(d, "video"), os.path.join(d, "status.json")
+
+    def _build_sw_panel(self):
+        """3D 画面右上角画中画: stable-world 逐帧渲染真图 + 跨 venv 桥状态 (真数据, 没跑过就如实说)"""
+        f = QFrame(self.view)
+        f.setStyleSheet("QFrame{background:rgba(13,17,23,235); border:1px solid #30363d; border-radius:6px;}")
+        v = QVBoxLayout(f)
+        v.setContentsMargins(8, 6, 8, 6)
+        v.setSpacing(4)
+        t = QLabel("🎬 SW 实况 · stable world (INTACT cube) · L4")
+        t.setStyleSheet("color:#00d4aa; font-size:12px; font-weight:700; border:none;")
+        v.addWidget(t)
+        self._sw_img = QLabel("尚未跑过 — 选 L4 档点 ▶运行")
+        self._sw_img.setFixedSize(300, 224)
+        self._sw_img.setAlignment(Qt.AlignCenter)
+        self._sw_img.setStyleSheet("background:#161b22; color:#8b949e; font-size:11px; border:1px solid #30363d;")
+        v.addWidget(self._sw_img)
+        self._sw_info = QLabel("—")
+        self._sw_info.setStyleSheet("color:#c9d1d9; font-size:10px; border:none;")
+        self._sw_info.setWordWrap(True)
+        self._sw_info.setFixedWidth(300)
+        v.addWidget(self._sw_info)
+        b = QPushButton("📂 打开视频目录 (3 面板 mp4)")
+        b.setToolTip("reports/intact_sw/video/ — stable-world 官方 save_panel_videos 出的\n"
+                     "agent | dataset | goal 三面板视频 (每回合一份) + showcase 合集")
+        b.setStyleSheet("QPushButton{background:#21262d;color:#c9d1d9;border:1px solid #30363d;"
+                        "border-radius:4px;padding:3px 0;font-size:11px;}"
+                        "QPushButton:hover{border-color:#00d4aa;color:#00d4aa;}")
+        b.clicked.connect(self._sw_open_dir)
+        hr = QHBoxLayout()
+        hr.setSpacing(4)
+        b2 = QPushButton("⤢ 放大窗口")
+        b2.setToolTip("把这个小窗独立成正常窗口 (可拉伸/倍率/置顶/暂停)")
+        b2.setStyleSheet(b.styleSheet())
+        b2.clicked.connect(self.open_sw_window)
+        hr.addWidget(b, 2)
+        hr.addWidget(b2, 1)
+        v.addLayout(hr)
+        f.adjustSize()
+        return f
+
+    def _place_sw_panel(self):
+        """把实况小窗锚在 3D 画面右上角 (窗口尺寸变化时重贴)"""
+        try:
+            m = 12
+            self._sw_panel.adjustSize()
+            self._sw_panel.move(max(m, self.view.width() - self._sw_panel.width() - m), 44)
+        except Exception:
+            pass
+
+    def _open_viewer(self):
+        """🎛 打开互动查看器 (拖帧看任意帧的画面+信号; 老倪 2026-09-13)"""
+        try:
+            import intact_signal_viewer as _iv
+            d, _fr, _vd, _st = sw_dirs()
+            w = _iv.open_signal_viewer(d)
+            if w is not None:
+                w.rescan(d)
+            return w
+        except Exception as e:                              # noqa: BLE001
+            try:
+                print(f"[互动查看器] 打开失败: {type(e).__name__}: {e}")
+            except Exception:
+                pass
+            return None
+
+    def _sw_open_dir(self):
+        try:
+            from PyQt5.QtGui import QDesktopServices
+            from PyQt5.QtCore import QUrl
+            _d, _fr, vd, _st = self._sw_dirs()
+            QDesktopServices.openUrl(QUrl.fromLocalFile(vd))
+        except Exception:
+            pass
+
+    # ── 🧭 三个 dreamview 窗口 (2026-09-13 老倪: L2 / L3 / L4·stable-world, 不要画中画) ──
+    LEVEL_PRESETS = {
+        "L2": ["scene", "traj"],                                  # L2: 感知层 + 末端实测轨迹
+        "L3": ["scene", "traj", "uff", "latent", "prior"],        # L3: 再加 前馈/状态估计/预测
+        "L4": ["scene", "traj", "uff", "latent", "prior"],        # L4: 引擎真链全部执行层
+    }
+
+    def apply_level_preset(self, level: str):
+        """按档位开关图层 (L2 只留基础感知/轨迹; L3/L4 打开执行层) —— 找不到的键跳过, 不报错"""
+        keys = [k for k, *_ in self._layers_def]
+        want = set(self.LEVEL_PRESETS.get(str(level).upper(), keys))
+        for k in keys:
+            try:
+                on = k in want
+                cb = self._chk.get(k)
+                if cb is not None and cb.isChecked() != on:
+                    cb.setChecked(on)          # 触发 _toggle_layer → 真开关图层
+                else:
+                    self._toggle_layer(k, on)
+            except Exception:
+                pass
+        return want
+
+    def _open_level(self, level: str):
+        """开对应档位的 dreamview 窗口: L4 → stable-world 逐帧实况 (含拖帧看信号); L2/L3 → 3D 分层视图"""
+        lv = str(level).upper()
+        if lv == "L4":
+            try:
+                import intact_signal_viewer as _iv
+                d, _fr, _vd, _st = sw_dirs()
+                w = _iv.open_signal_viewer(d)
+                if w is not None:
+                    w.setWindowTitle("🌍 L4 · stable-world DreamView (拖帧看信号)")
+                    w.rescan(d)
+                return w
+            except Exception as e:
+                try:
+                    print(f"[L4 SW DreamView] 打开失败: {type(e).__name__}: {e}")
+                except Exception:
+                    pass
+                return None
+        mod = getattr(self, "_module", None) or getattr(self, "module", None)
+        try:
+            w = mod.open_ss_3d(level=lv) if mod is not None and hasattr(mod, "open_ss_3d") else None
+            if w is None:
+                w = DreamView3D(tr=getattr(self, "_tr", None), module=mod, level=lv)
+                w.show()
+            self.apply_level_preset(lv)
+            return w
+        except Exception as e:
+            try:
+                print(f"[{lv} DreamView] 打开失败: {type(e).__name__}: {e}")
+            except Exception:
+                pass
+            return None
+
+    def open_sw_window(self):
+        """🎬 独立「SW 实况」窗口 (2026-09-13 老倪: 角落小窗太小 → 正常窗口放大看)
+        走全局单例 → 与画布 L4 ▶运行 自动弹出的那个窗口是同一个 (不会开两个)。"""
+        return sw_live_window()
+
+    def _sw_poll(self):
+        """150ms 轮询真帧: 帧号变了才重贴图 (省 CPU); 图层关掉则完全不刷新"""
+        if not self._layer_on.get("sw_live", True):
+            return
+        try:
+            import os
+            import json
+            _d, fr, vd, st = self._sw_dirs()
+            if not os.path.isdir(fr):
+                return
+            frames = sorted([x for x in os.listdir(fr) if x.endswith(".jpg")])
+            if not frames:
+                if self._sw_last != "__none__":
+                    self._sw_img.setText("尚未跑过 — 选 L4 档点 ▶运行")
+                    self._sw_last = "__none__"
+                return
+            newest = frames[-1]
+            if newest != self._sw_last:
+                pm = QPixmap(os.path.join(fr, newest))
+                if not pm.isNull():
+                    self._sw_img.setPixmap(pm.scaled(self._sw_img.size(), Qt.KeepAspectRatio,
+                                                     Qt.SmoothTransformation))
+                self._sw_last = newest
+            info = {}
+            try:
+                with open(st, encoding="utf-8") as fh:
+                    info = json.load(fh)
+            except Exception:
+                pass
+            vids = []
+            try:
+                vids = sorted([x for x in os.listdir(vd) if x.endswith(".mp4")])
+            except Exception:
+                pass
+            show = next((x for x in vids if "showcase" in x), (vids[-1] if vids else None))
+            self._sw_info.setText(
+                f"帧 {newest} · std={info.get('frame_std')} (>5 = 真图)\n"
+                f"阶段 {info.get('stage')} · 步 {info.get('step')} · "
+                f"回合 {info.get('ep_done')} · 成功 {info.get('succ')}\n"
+                f"模型调用 {info.get('model_calls')} 次 · 零搜索 {info.get('zero_search')}\n"
+                f"视频: {show or '—'}")
+        except Exception:
+            pass
+
+    def _toggle_layer(self, key, checked):
+        """图层开关 → GL 元素可见性 + **重建文字标注**。
+        🐛 2026-08-25 老倪「图像层都关了以后, 文字没有消失; 文字要绑定图层」根因:
+        _toggle_layer 只改 GL 元素 visible, 而文字标注 (LabelOverlay) 只在换帧时重算,
+        且看门狗还在按旧的世界坐标持续重投影 → 图层关了文字仍留在画面上。
+        修: 切完图层立刻按新开关状态重建标注 (每条标注都受其所属图层控制)。"""
+        self._layer_on[key] = checked
+        if key == "sw_live":                       # 🎬 实况小窗 (画中画) 显示/隐藏
+            try:
+                self._sw_panel.setVisible(bool(checked))
+                if checked:
+                    self._place_sw_panel()
+            except Exception:
+                pass
+        self._apply_layer_visibility(key, checked)
+        try:
+            if getattr(self, "_n", 0) > 0:
+                self._update_frame(self._idx)      # 重建标注 (内部按 _layer_on 过滤)
+            else:
+                self._label_world = []
+                self._refresh_label_positions()
+        except Exception:
+            pass
+
+    # ── 🧮 接触流形几何绘制 (2026-09-07 老倪: 流形是拓扑要有形状可看) ──
+    #   流形 = 插拔安全通道: 1D 测地线(通道轴) × 该阶段法向容差(半径) → 管状 2D 曲面。
+    #   每帧按当前阶段画对应通道管 + 光模块头位置 + 到通道轴的状态偏离线。
+    def _update_manifold(self, i, x):
+        ix = getattr(self, "_mani_ix", None)
+        mod = _MANI
+        if ix is None or mod is None:
+            return
+        tr = self.tr
+        stg = ""
+        if tr.get("stage") and i < len(tr["stage"]):
+            stg = str(tr["stage"][i]).replace("阶段 ", "").split("·")[0].strip()
+        hole = np.asarray(self._hole, float)
+        mouth = np.asarray(self._mouth, float)
+        # 光模块头 (插入的"主角"): tr peg_head → 头 site; 退化用 peg(抓握点)
+        ph = None
+        if tr.get("peg_head") is not None and i < len(tr["peg_head"]):
+            ph = np.asarray(tr["peg_head"][i], float)
+        elif tr.get("peg") is not None and i < len(tr["peg"]):
+            ph = np.asarray(tr["peg"][i], float) + getattr(self, "_peg_center_off", np.zeros(3))
+        xs_all = np.asarray(tr["x"], float)
+        dt = 0.0125
+        v = (x - xs_all[i - 1]) / dt if i > 0 else np.zeros(3)
+        tgt = None
+        if tr.get("target") is not None and i < len(tr["target"]):
+            tgt = np.asarray(tr["target"][i], float)
+        cm = mod.ContactManifold(hole_pos=hole, hole_mouth=mouth)
+        r = cm.decompose(np.asarray(x, float), ph if ph is not None else x,
+                         tgt if tgt is not None else x, v, stg)
+        # ── 通道几何 (世界系中心线) ──
+        c0 = c1 = None
+        R = 0.0
+        free = stg in ("接近", "对位", "转移")
+        if not free:
+            if stg in ("下降", "抓取", "抬起"):
+                pg = np.asarray(x, float)
+                if tr.get("peg") is not None and i < len(tr["peg"]):
+                    pg = np.asarray(tr["peg"][i], float)
+                c0 = np.array([pg[0], pg[1], pg[2] + 0.050])
+                c1 = np.array([pg[0], pg[1], pg[2] + 0.002])
+                R = 0.030
+            elif stg == "插入":
+                c0 = mouth + np.array([0.0, 0.0, 0.02])   # 孔口上方悬高 (工艺起点)
+                c1 = hole                                  # 孔底
+                R = 0.006
+            elif stg == "完成":
+                c0 = mouth
+                c1 = hole
+                R = 0.004
+        # ── 通道管 (5 环 + 3 母线) ──
+        tube = ix["tube"]
+        if c0 is None or c1 is None or R <= 0:
+            for ln in tube:
+                ln.setData(pos=np.zeros((2, 3)))
+            ix["ax"].setData(pos=np.zeros((2, 3)))
+        else:
+            axv = np.asarray(c1, float) - np.asarray(c0, float)
+            L = float(np.linalg.norm(axv))
+            if L < 1e-6:
+                axv = np.array([1.0, 0.0, 0.0]); L = 1.0
+            u = axv / L
+            ref = np.array([0.0, 0.0, 1.0]) if abs(u[2]) < 0.9 else np.array([1.0, 0.0, 0.0])
+            e1 = np.cross(u, ref); e1 /= (np.linalg.norm(e1) or 1.0)
+            e2 = np.cross(u, e1)
+            n_ring, n_pt = 5, 12
+            for k in range(n_ring):
+                t = k / max(1, n_ring - 1)
+                c = np.asarray(c0, float) + u * (t * L)
+                ring = [c + R * (np.cos(th) * e1 + np.sin(th) * e2)
+                        for th in np.linspace(0, 2 * np.pi, n_pt, endpoint=False)]
+                tube[k].setData(pos=np.asarray(ring + [ring[0]], float))
+            for k in range(3):
+                th = k * 2 * np.pi / 3
+                d = np.cos(th) * e1 + np.sin(th) * e2
+                tube[n_ring + k].setData(pos=np.asarray([c0 + R * d, c1 + R * d], float))
+            ix["ax"].setData(pos=np.asarray([c0, c1], float))
+        # ── 状态偏离 / 进度线 ──
+        line = ix["line"]
+        ball = ix["ball"]
+        if ph is not None:
+            ball.setData(pos=np.asarray([ph], float))
+        else:
+            ball.setData(pos=np.zeros((1, 3)))
+        if free or r.get("axis") is None:
+            # 自由空间: 无接触约束 → 灰线 = 手到目标的剩余进度
+            if tgt is not None and r.get("e") is not None:
+                line.setData(pos=np.asarray([x, np.asarray(x, float) + r["e"]], float))
+                line.setColor((0.62, 0.66, 0.72, 0.55))
+            else:
+                line.setData(pos=np.zeros((2, 3)))
+            return
+        ep = np.asarray(r.get("e_perp", np.zeros(3)), float)
+        base = ph if (stg in ("插入", "完成")) else np.asarray(x, float)
+        if np.linalg.norm(ep) > 1e-6:
+            line.setData(pos=np.asarray([base, base - ep], float))
+        else:
+            line.setData(pos=np.asarray([base, base], float))
+        st = str(r.get("state", ""))
+        if "在流形" in st:
+            col = (0.35, 1.0, 0.45, 1.0)
+        elif "贴" in st:
+            col = (1.0, 0.85, 0.20, 1.0)
+        else:
+            col = (1.0, 0.30, 0.30, 1.0)
+        line.setColor(col)
+
+    # ── 帧更新 ──
+    def _update_frame(self, i):
+        tr = self.tr
+        if not tr or self._n == 0:
+            return
+        i = int(np.clip(i, 0, self._n - 1))
+        self._idx = i
+        xs = np.asarray(tr["x"])
+        x = xs[i]
+
+        # 末端轨迹 (0..i)
+        if i >= 1:
+            traj_pts = xs[:i + 1]
+        else:
+            traj_pts = np.array([x, x])
+        self._gl_items["traj"].setData(pos=traj_pts)
+        # 🧮 流形几何 (接触通道曲面 + 偏离状态) — 每帧, 纯 numpy 轻量
+        try:
+            self._update_manifold(i, x)
+        except Exception:
+            pass
+
+        # 🤖 Sawyer 机械臂 IK (末端=光模块 位置, 夹爪开合随 gripper)
+        ik = _ik_sawyer(x, self._arm_base)
+        arm = self._gl_items["arm"]
+        arm[self._arm_idx["upper"]].setMeshData(meshdata=_cylinder_mesh(ik["shoulder"], ik["elbow"], 0.032))
+        arm[self._arm_idx["fore"]].setMeshData(meshdata=_cylinder_mesh(ik["elbow"], ik["wrist"], 0.026))
+        arm[self._arm_idx["shoulder"]].setMeshData(meshdata=_sphere_mesh(ik["shoulder"], 0.042))
+        arm[self._arm_idx["elbow"]].setMeshData(meshdata=_sphere_mesh(ik["elbow"], 0.034))
+        arm[self._arm_idx["wrist"]].setMeshData(meshdata=_sphere_mesh(ik["wrist"], 0.026))
+        # 🖐 夹爪开合 (2026-08-25 老倪: 光模块是沿 X 的长条 → 夹爪从 ±Y 两侧夹住抓握点)
+        #   张开 gap=0.048 (瓣在光模块外侧) → 闭合 gap=0.024 (贴住光模块 0.03 宽的两侧)
+        #   🎯 2026-09-09: 夹爪绕 z 姿态 (hand_yaw) — 90° 抓横放光模块时两瓣须转 90°, 3D 可见
+        g = float(tr["gripper"][i])
+        gap = 0.024 + (1.0 - g) * 0.024
+        _hvy = float(tr["hand_yaw"][i]) if (tr.get("hand_yaw") is not None
+                                            and len(tr["hand_yaw"]) > i) else 0.0
+        _wrist = np.asarray(ik["wrist"], dtype=float)
+        # 🐛 2026-09-10 静静实锤 (数学): 爪瓣位置双重旋转 — 旧代码 jaw_lc = wrist + jaw_dir·gap
+        #   (jaw_dir 已含 yaw) 且 _box_mesh_yaw(rot_center=_wrist) 又把 box 绕 wrist 转 yaw →
+        #   位置实际绕 wrist 转 2×yaw: yaw=90° 时爪瓣转 180° 画半圆弧回对侧 (动画=夹爪自己绕
+        #   腕转圈/螺旋; 静止位错对不上横放模块 → 观感没夹住)。修复: 位置用未旋转 ±y 基准,
+        #   box 统一绕 wrist 单次转 yaw (位置 Rz·(0,±1)·gap ✓ 朝向 Rz·x̂ ✓ 同时正确)。
+        _jaw_lc = _wrist + np.array([0.0, gap, 0.0])
+        _jaw_rc = _wrist - np.array([0.0, gap, 0.0])
+        arm[self._arm_idx["jaw_l"]].setMeshData(
+            meshdata=_box_mesh_yaw(_jaw_lc, (0.05, 0.016, 0.05), _hvy, _wrist))
+        arm[self._arm_idx["jaw_r"]].setMeshData(
+            meshdata=_box_mesh_yaw(_jaw_rc, (0.05, 0.016, 0.05), _hvy, _wrist))
+        # 🔩 光模块: 独立物体 — 抓取前躺台面, 抓取后随末端 (位置来自仿真 tr["peg"])
+        #   🎯 2026-09-09: peg 绕 z 朝向 (peg_yaw) — 来料被外力转 90° 的旋转过程 3D 可见
+        peg_grasp = (np.asarray(tr["peg"][i], dtype=float)
+                     if tr.get("peg") is not None and len(tr["peg"]) > i else x)
+        _pyv = float(tr["peg_yaw"][i]) if (tr.get("peg_yaw") is not None
+                                           and len(tr["peg_yaw"]) > i) else 0.0
+        _pc2 = np.asarray(peg_grasp, dtype=float) + np.asarray(self._peg_center_off, dtype=float)
+        arm[self._arm_idx["peg"]].setMeshData(
+            meshdata=_box_mesh_yaw(_pc2, _PEG_SIZE, _pyv))
+
+        # 🎯 2026-09-09 转台盘十字刻度随 tt_yaw 旋转 (来料旋转的机构证据可见)
+        _ttc = self._gl_items.get("tt_cross")
+        if _ttc is not None and getattr(self, "_tt_c", None) is not None:
+            _tty = float(tr["tt_yaw"][i]) if (tr.get("tt_yaw") is not None
+                                              and len(tr["tt_yaw"]) > i) else 0.0
+            _th2 = math.radians(_tty)
+            _c2, _s2 = math.cos(_th2), math.sin(_th2)
+            _cx2, _cy2, _cz2 = self._tt_c
+            _r2 = self._tt_r
+            _hpts = np.array([[_cx2 - _r2 * _c2, _cy2 - _r2 * _s2, _cz2],
+                              [_cx2 + _r2 * _c2, _cy2 + _r2 * _s2, _cz2]], dtype=float)
+            _vpts = np.array([[_cx2 + _r2 * _s2, _cy2 - _r2 * _c2, _cz2],
+                              [_cx2 - _r2 * _s2, _cy2 + _r2 * _c2, _cz2]], dtype=float)
+            _ttc[0].setData(pos=_hpts)
+            _ttc[1].setData(pos=_vpts)
+
+        # 动作箭头 (4 层): 杆 + 锥形箭头头(方向) + 旁边文字标注(名称/速度/方向)
+        _NAMES = {"uff": "⚡前馈加速器", "ufb": "🧪状态校正器·残差",
+                  "ufuse": "🧭动作调制器", "ulimit": "🛡安全执行边界"}
+        # 🧪 状态校正器·残差方向: 实测瞬时残差相邻帧方向变化 88.5° (纯随机 90°) ⇒ 96% 是
+        #   5mm 观测噪声, 逐帧箭头必然乱。改成主箭头画 **20 帧滑动平均的系统性偏差**
+        #   (接触/阻力才会造成固定方向: 实测插入段系统占比 42%, 下降段仅 8%),
+        #   瞬时残差降级为细半透明线。
+        _RW = 20
+        _lo = max(0, i - _RW + 1)
+        _zk_w = np.asarray(tr["z_k_vec"][_lo:i + 1], dtype=float)[:, :3]
+        _pv_w = (np.asarray(tr["prior_vec"][_lo:i + 1], dtype=float)[:, :3]
+                 if tr.get("prior_vec") is not None and len(tr["prior_vec"]) > i
+                 else _zk_w)
+        _rr = _zk_w - _pv_w
+        _r_inst = _rr[-1]
+        _r_sys = _rr.mean(axis=0)
+        _inst_mm = float(np.linalg.norm(_r_inst)) * 1000
+        _sys_mm = float(np.linalg.norm(_r_sys)) * 1000
+        _sys_ratio = _sys_mm / max(float(np.linalg.norm(_rr, axis=1).mean()) * 1000, 1e-9)
+        self._res_info = (_inst_mm, _sys_mm, _sys_ratio)
+        _inst_it = self._gl_items.get("ufb_inst")
+        if _inst_it is not None:      # 瞬时残差细线 (mm 级 → 12mm 满格 6cm)
+            _p2, _t2, _ = _arrow(x, _r_inst, u_ref=0.012, l_max=0.06)
+            _inst_it.setData(pos=_p2 if _p2 is not None else np.array([x[:3], x[:3]]))
+
+        for key in ("uff", "ufb", "ufuse", "ulimit"):
+            if key == "ufb":
+                a = np.concatenate([_r_sys, [0.0]])          # 主箭头 = 系统性偏差方向
+                mag = _sys_mm / 1000.0
+                pts, tip, ln = _arrow(x, a, u_ref=0.006, l_max=0.09)   # 6mm 满格 9cm
+            else:
+                a = np.asarray(tr[self._vec_key(key)][i], dtype=float)
+                mag = float(np.linalg.norm(a[:3]))
+                pts, tip, ln = _arrow(x, a)
+            head_it = self._gl_items.get(key + "_head")
+            if pts is not None:
+                self._gl_items[key + "_line"].setData(pos=pts)
+                self._gl_items[key + "_tip"].setData(pos=np.array([tip]))
+                d = (tip - np.asarray(x, dtype=float))
+                dn = d / (np.linalg.norm(d) or 1.0)
+                if head_it is not None:      # 锥头: 占箭杆末段 28%, 底半径随杆长
+                    hl = max(0.008, ln * 0.28)
+                    head_it.setMeshData(meshdata=_cone_mesh(tip - dn * hl, tip, max(0.004, hl * 0.42)))
+            else:
+                self._gl_items[key + "_line"].setData(pos=np.array([x[:3], x[:3]]))
+                self._gl_items[key + "_tip"].setData(pos=np.array([x[:3]]))
+                if head_it is not None:
+                    head_it.setMeshData(meshdata=_cone_mesh(x, x + np.array([0, 0, 0.001]), 0.002))
+
+        # 融合指令目标点大球 (跟随箭头尖端)
+        a_fuse = tr["u_fuse_vec"][i]
+        _, tip, _ = _arrow(x, a_fuse)
+        if tip is not None:
+            self._gl_items["ufuse_sphere"].setData(pos=np.array([tip]))
+
+        # YOLO 检测框: hand/光模块/hole 三个框 (真实 3D 坐标 — 光模块 用独立光模块位置, hole 用孔口)
+        boxes = [("hand", x, (0.07, 0.07, 0.06)),
+                 ("peg", peg_grasp + self._peg_center_off, (0.21, 0.04, 0.04)),
+                 ("hole", self._mouth, (0.05, 0.07, 0.07))]
+        for cls, ctr, sz in boxes:
+            v, edges = _bbox_lines(ctr, sz)
+            # 线框: 每条边 2 顶点 → 12 条边拼成 24 点序列
+            line_pts = []
+            for e in edges:
+                line_pts.append(v[e[0]])
+                line_pts.append(v[e[1]])
+            self._gl_items["yolo_" + cls].setData(pos=np.array(line_pts))
+
+        # 状态估计 x̂ (latent = 位置3 + 预测接触力1): 紫线 = 最近 60 帧估计轨迹
+        win = min(i + 1, 30)      # 60→30 帧: 观测噪声下估计轨迹本就抖, 窗口太长视觉更乱
+        lv = tr.get("latent_vec")
+        if lv is not None and len(lv) > 0:   # 🐛 2026-09-05: 老 trace 无 latent_vec → KeyError 崩 3D
+            lat_pts = np.array([np.asarray(lv[k], dtype=float)[:3]
+                                for k in range(i - win + 1, i + 1)])
+            if len(lat_pts) < 2:
+                lat_pts = np.vstack([lat_pts, lat_pts])
+        else:
+            lat_pts = np.zeros((1, 3))
+        self._gl_items["latent"][0].setData(pos=lat_pts)
+        self._gl_items["latent"][1].setData(pos=lat_pts[-1:])
+        # 📈 先验动力学预测器 (纯预测, 未经观测校正) — 老 trace 无 prior_vec 时该层留空
+        pv = tr.get("prior_vec")
+        _PRIOR_MAG = 30.0            # 预测增量放大倍数 (0.36mm 原尺寸看不见, 标注里注明)
+        if pv is not None and len(pv) > i:
+            prior3 = np.asarray(pv[i], dtype=float)[:3]
+            prev_post = np.asarray(tr["latent_vec"][max(0, i - 1)], dtype=float)[:3]
+            zk3 = (np.asarray(tr["z_k_vec"][i], dtype=float)[:3]
+                   if tr.get("z_k_vec") is not None and len(tr["z_k_vec"]) > i else prior3)
+            step_vec = prior3 - prev_post                      # dt·u_prev (确定性预测增量)
+            step_mm = float(np.linalg.norm(step_vec)) * 1000.0
+            res_mm = float(np.linalg.norm(zk3 - prior3)) * 1000.0
+            # ① 预测增量向量 (放大绘制, 起点 = 上一帧后验)
+            self._gl_items["prior"][0].setData(
+                pos=np.array([prev_post, prev_post + step_vec * _PRIOR_MAG]))
+            # ② 先验位置 ③ 残差连线 ④ 观测点
+            self._gl_items["prior"][1].setData(pos=np.array([prior3]))
+            self._gl_items["prior"][2].setData(pos=np.array([prior3, zk3]))
+            self._gl_items["prior"][3].setData(pos=np.array([zk3]))
+            self._prior_now = prior3
+            self._prior_info = (step_mm, res_mm, _PRIOR_MAG, zk3)
+        else:
+            self._prior_now = None
+            self._prior_info = None
+
+        # 🧭 状态机: 八阶段航点 + 当前阶段 + 下一阶段预测 (证据/阈值/进度/预计剩余)
+        try:
+            _STG = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
+            _cur = str(tr["stage"][i]).replace("阶段 ", "").split(" · ")[0]
+            _ci2 = _STG.index(_cur) if _cur in _STG else 0
+            _pg = np.asarray(peg_grasp, dtype=float)
+            _wps = [_pg + [0, 0, 0.09], _pg + [0, 0, 0.05], _pg + [0, 0, 0.022],
+                    _pg + [0, 0, 0.022], _pg[:2].tolist() + [_pg[2] + 0.15],
+                    self._mouth + np.array([0.13, 0, 0.02]), self._hole + np.array([0.13, 0, 0]),
+                    self._hole]
+            _wps = [np.asarray(w, dtype=float) for w in _wps]
+            self._fsm_wps = _wps
+            self._gl_items["fsm"][0].setData(pos=np.array(_wps))
+            self._gl_items["fsm"][1].setData(pos=np.array([_wps[min(_ci2, 7)]]))
+            # 下一阶段预测: 该阶段的触发证据 + 阈值 + 进度 + 按最近变化率外推剩余帧
+            _ev = None
+            _pegp = np.asarray(tr["peg"][i], dtype=float)
+            _headp = np.asarray(tr["peg_head"][i], dtype=float)
+            _dxy = float(np.linalg.norm(np.asarray(x)[:2] - _pegp[:2]))
+            if _cur == "接近":
+                _ev = ("手-销水平距离", _dxy, 0.06, "<")
+            elif _cur == "对位":
+                _ev = ("精对位距离", _dxy, 0.02, "<")
+            elif _cur == "下降":
+                _ev = ("手高于抓握点", float(np.asarray(x)[2] - _pegp[2] - 0.022), 0.006, "<")
+            elif _cur == "抓取":
+                _ev = ("夹持度", float(tr["gripper"][i]), 0.60, ">")
+            elif _cur == "抬起":
+                _ev = ("提升高度", float(_pegp[2] - np.asarray(tr["peg"][0], dtype=float)[2]), 0.08, ">")
+            elif _cur == "转移":
+                _ev = ("光模块头-孔口水平", float(np.linalg.norm(_headp[:2] - self._mouth[:2])), 0.02, "<")
+            elif _cur == "插入":
+                _ev = ("光模块头-终点残距", float(np.linalg.norm(_headp - self._hole)), 0.004, "<")
+            _eta = None
+            if _ev is not None and i > 12:
+                _nm, _val, _th, _op = _ev
+                # 用最近 12 帧该证据的变化率外推 (只在朝阈值方向变化时给预测)
+                _prev_i = max(0, i - 12)
+                _pp = np.asarray(tr["peg"][_prev_i], dtype=float)
+                _hp = np.asarray(tr["peg_head"][_prev_i], dtype=float)
+                _xp = np.asarray(tr["x"][_prev_i], dtype=float)
+                _vmap = {"手-销水平距离": float(np.linalg.norm(_xp[:2] - _pp[:2])),
+                         "精对位距离": float(np.linalg.norm(_xp[:2] - _pp[:2])),
+                         "手高于抓握点": float(_xp[2] - _pp[2] - 0.022),
+                         "夹持度": float(tr["gripper"][_prev_i]),
+                         "提升高度": float(_pp[2] - np.asarray(tr["peg"][0], dtype=float)[2]),
+                         "光模块头-孔口水平": float(np.linalg.norm(_hp[:2] - self._mouth[:2])),
+                         "光模块头-终点残距": float(np.linalg.norm(_hp - self._hole))}
+                _v0 = _vmap.get(_nm, _val)
+                _rate = (_val - _v0) / 12.0
+                _need = (_th - _val) if _op == "<" else (_th - _val)
+                if abs(_rate) > 1e-7 and ((_op == "<" and _rate < 0) or (_op == ">" and _rate > 0)):
+                    _eta = max(0.0, _need / _rate) * float(self.tr.get("t", [0, 0.0125])[1] or 0.0125)
+            self._fsm_info = (_ci2, _cur, _ev, _eta)
+        except Exception as _e:
+            self._fsm_info = None
+
+        # 🧲 接触指示: 两路 (夹持/环境) 各「核心球+脉冲外环」, 强度按力的归一化值
+        _cp_raw = float(tr["contact_p"][i])
+        _fe = float(tr["force"][i]) if tr.get("force") is not None else 0.0
+        _fg = float(tr["force_grasp"][i]) if tr.get("force_grasp") is not None else 0.0
+        # 去掉噪声基线的接触概率 (自由移动时残差含 5mm 观测噪声 → cp 恒 0.58)
+        _cp_norm = float(np.clip((_cp_raw - 0.58) / 0.42, 0.0, 1.0))
+        self._contact_vals = (_fg, _fe, _cp_raw, _cp_norm)
+        _grasp_anchor = np.asarray(ik["wrist"], dtype=float)          # 夹持 → 画在夹爪
+        _env_anchor = (np.asarray(tr["peg_head"][i], dtype=float)     # 环境 → 画在光模块头
+                       if tr.get("peg_head") is not None and len(tr["peg_head"]) > i
+                       else np.asarray(x, dtype=float))
+        # 预接触: 还没夹住但夹爪已经贴近光模块 (几何证据) → 画一圈淡青环提示"即将接触"
+        _grasped_now = bool(np.asarray(tr["grasped"]).astype(bool)[i]) if tr.get("grasped") is not None else False
+        _d_hp = float(np.linalg.norm(np.asarray(x, dtype=float) - np.asarray(peg_grasp, dtype=float)))
+        self._pre_contact = (not _grasped_now) and _d_hp < 0.05      # 5cm 内算贴近
+        self._pre_gap = _d_hp
+        _ci = self._gl_items["contact"]
+        for _k, (_st, _anchor, _col) in enumerate(((_fg, _grasp_anchor, (0.20, 0.90, 1.00)),
+                                                   (_fe, _env_anchor, (1.00, 0.45, 0.10)))):
+            s = float(np.clip(_st, 0.0, 1.0))
+            # 平方根映射 (感知线性): 弱接触也看得见 — 力 0.07 线性只有 11px, 开方后 20px;
+            #   实测夹爪刚合上时夹持力仅 0.071, 线性映射下用户根本看不出"碰到了"
+            sv = float(np.sqrt(s))
+            core_sz = 8.0 + 46.0 * sv             # 无接触 8px → 满接触 54px
+            halo_sz = core_sz * (1.9 if s > 0.02 else 1.0)
+            halo_a = 0.05 + 0.30 * sv
+            core_a = 0.25 + 0.75 * sv
+            _ci[_k * 2].setData(pos=np.array([_anchor]), size=halo_sz,
+                                color=(_col[0], _col[1], _col[2], halo_a))
+            _ci[_k * 2 + 1].setData(pos=np.array([_anchor]), size=core_sz,
+                                    color=(_col[0], _col[1], _col[2], core_a))
+            # 夹持那一路: 未接触但已贴近 → 用淡环提示 (接触前也有反馈, 不是死的 8px)
+            if _k == 0 and s < 0.02 and getattr(self, "_pre_contact", False):
+                _prox = float(np.clip(1.0 - self._pre_gap / 0.05, 0.0, 1.0))   # 越近越亮
+                _ci[0].setData(pos=np.array([_anchor]), size=18.0 + 26.0 * _prox,
+                               color=(0.20, 0.90, 1.00, 0.10 + 0.22 * _prox))
+
+        # 🏷 文字标注 (自绘覆盖层 — GLTextItem 在本机不渲染, 见 LabelOverlay 说明)
+        try:
+            _NAMES2 = {"uff": "⚡前馈加速器", "ufb": "🧪状态校正器·残差",
+                       "ufuse": "🧭动作调制器", "ulimit": "🛡安全执行边界"}
+            # 🐛 2026-08-25 老倪「3D 空间的文字没有跟着图像走」: 原来只在换帧时算一次屏幕坐标,
+            #   鼠标旋转/缩放视角后投影变了却不重算 → 文字与物体脱节。
+            #   改成: 这里只存**世界坐标+文字**, 屏幕坐标由 _refresh_label_positions() 每次
+            #   视角变化(鼠标拖拽/滚轮/取景切换/窗口缩放)时重新投影。
+            ovl = []
+            def _add(world_p, text, rgba, bold=True):
+                ovl.append((np.asarray(world_p, dtype=float), text,
+                            QColor(int(rgba[0] * 255), int(rgba[1] * 255), int(rgba[2] * 255)), bold))
+            if self._layer_on.get("scene", False):     # 场景层关 → 物体名字标注一并消失
+                _add(np.asarray(x) + [0, 0, 0.03], "末端 hand", (0.55, 0.78, 1.0))
+                _add(np.asarray(peg_grasp) + [0, 0, 0.03], "光模块 peg", (1.0, 0.82, 0.25))
+                _add(self._mouth + np.array([0, 0, 0.05]), "孔口 hole", (1.0, 0.45, 0.35))
+                _add(self._hole + np.array([0, 0, -0.05]), "插入终点 goal", (0.35, 0.95, 0.60))
+            if self._layer_on.get("latent", False):
+                _add(np.asarray(lat_pts[-1]) + [0, 0, 0.02], "自适应状态估计器 x̂", (0.90, 0.60, 1.0))
+            if self._layer_on.get("contact", False) and getattr(self, "_contact_vals", None):
+                _fg2, _fe2, _cpr, _cpn = self._contact_vals
+                if _fg2 > 0.05:
+                    _add(np.asarray(ik["wrist"], dtype=float) + [0, 0, 0.035],
+                         f"夹持接触 {_fg2:.2f} (peg↔指垫)", (0.20, 0.90, 1.00))
+                elif getattr(self, "_pre_contact", False):
+                    _add(np.asarray(ik["wrist"], dtype=float) + [0, 0, 0.035],
+                         f"即将接触光模块 (距 {self._pre_gap * 1000:.0f} mm)", (0.20, 0.90, 1.00))
+                if _fe2 > 0.05:
+                    _ea = (np.asarray(tr["peg_head"][i], dtype=float)
+                           if tr.get("peg_head") is not None and len(tr["peg_head"]) > i
+                           else np.asarray(x, dtype=float))
+                    _add(_ea + [0, 0, 0.035],
+                         f"环境接触 {_fe2:.2f} · 接触概率 {_cpr:.2f}(净 {_cpn:.2f})", (1.00, 0.45, 0.10))
+            if self._layer_on.get("prior", False) and getattr(self, "_prior_now", None) is not None:
+                _si = getattr(self, "_prior_info", None)
+                if _si:
+                    _step_mm, _res_mm, _mag, _zk3 = _si
+                    _add(np.asarray(self._prior_now) + [0, 0, 0.018],
+                         f"先验 x̂⁻ · 预测增量 {_step_mm:.2f}mm (图示×{_mag:.0f})",
+                         (0.20, 0.90, 0.85))
+                    _add((np.asarray(self._prior_now) + np.asarray(_zk3)) / 2.0 + [0, 0, -0.012],
+                         f"残差 |z_k−x̂⁻| {_res_mm:.1f}mm → 接触判据", (0.85, 0.88, 0.92), False)
+                else:
+                    _add(np.asarray(self._prior_now) + [0, 0, 0.02],
+                         "先验动力学预测器 x̂⁻", (0.20, 0.90, 0.85))
+            if self._layer_on.get("axis", False):
+                for _t, _p, _c in (("Z↑", (0, 0, 0.21), (0.30, 1.0, 0.30)),
+                                   ("Y", (0, 0.21, 0), (1.0, 1.0, 0.35)),
+                                   ("X", (0.21, 0, 0), (0.45, 0.55, 1.0))):
+                    _add(_p, _t, _c)
+            # 四层动作: 箭尖旁标 名称 + 速度 + 方向
+            for _k in ("uff", "ufb", "ufuse", "ulimit"):
+                if not self._layer_on.get(_k, False):
+                    continue
+                _c = _LAYER_COLORS[_k]
+                if _k == "ufb":
+                    # 残差是位置偏差 (mm), 不是速度 → 单位和文案都要对
+                    _im, _sm, _sr = getattr(self, "_res_info", (0.0, 0.0, 0.0))
+                    _av = np.concatenate([_r_sys, [0.0]])
+                    _pts, _tip, _ = _arrow(x, _av, u_ref=0.006, l_max=0.09)
+                    if _tip is None:
+                        continue
+                    _add(_tip, f"🧪状态校正器 系统偏差 {_sm:.2f}mm ({_sr * 100:.0f}%) "
+                               f"{_dir_words(_av)} · 瞬时 {_im:.1f}mm(噪声主导)", _c)
+                    continue
+                _a = np.asarray(tr[self._vec_key(_k)][i], dtype=float)
+                _mag = float(np.linalg.norm(_a[:3]))
+                _pts, _tip, _ = _arrow(x, _a)
+                if _tip is None:
+                    continue
+                _add(_tip, f"{_NAMES2[_k]} {_mag:.3f} m/s  {_dir_words(_a)}", _c)
+            self._label_world = ovl          # [(世界坐标, 文字, 颜色, 粗体)]
+            self._refresh_label_positions()
+            # 🧭 状态机阶梯面板 (含下一阶段预测)
+            _rows = []
+            _fi = getattr(self, "_fsm_info", None)
+            if self._layer_on.get("fsm", False) and _fi:
+                _ci2, _cur, _ev, _eta = _fi
+                _STG2 = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
+                _rows.append(("🧭 动作调制器 · 八阶段状态机", QColor(255, 217, 77), True, 0))
+                for _k, _nm2 in enumerate(_STG2):
+                    if _k < _ci2:
+                        _rows.append((f"  ✔ {_k + 1}. {_nm2}", QColor(110, 118, 129), False, 0))
+                    elif _k == _ci2:
+                        _rows.append((f"  ▶ {_k + 1}. {_nm2}  ← 当前", QColor(255, 217, 77), True, 0))
+                    else:
+                        _rows.append((f"    {_k + 1}. {_nm2}", QColor(139, 148, 158), False, 0))
+                if _ev is not None and _ci2 < 7:
+                    _nm3, _val3, _th3, _op3 = _ev
+                    _prog = (min(1.0, max(0.0, _th3 / max(_val3, 1e-9))) if _op3 == "<"
+                             else min(1.0, max(0.0, _val3 / max(_th3, 1e-9))))
+                    _bar = "█" * int(round(_prog * 12)) + "░" * (12 - int(round(_prog * 12)))
+                    _rows.append((f"  预测下一阶段: {_STG2[_ci2 + 1]}", QColor(88, 166, 255), True, 0))
+                    _rows.append((f"    证据 {_nm3} = {_val3:.4f} {_op3} {_th3:.4f}",
+                                  QColor(201, 209, 217), False, 0))
+                    _rows.append((f"    {_bar} {_prog * 100:.0f}%"
+                                  + (f"   预计 {_eta:.2f}s 后切换" if _eta is not None and _eta < 30
+                                     else "   (变化率不足, 暂不预测)"),
+                                  QColor(88, 166, 255), False, 0))
+                elif _ci2 >= 7:
+                    _rows.append(("  ✅ 已到终态 完成", QColor(63, 185, 80), True, 0))
+            # 🧠 2026-09-11 老倪: 3D 里必须看得见「yaw 指令是谁发的」(来源 + φ* + 取证计数)
+            try:
+                _meta_d = tr.get("_meta") or {}
+                _yaw_now = (float(tr["mani_yaw"][i]) if (tr.get("mani_yaw") is not None
+                                                         and len(tr["mani_yaw"]) > i) else None)
+                _phi_now = (float(tr["mani_phi"][i]) if (tr.get("mani_phi") is not None
+                                                         and len(tr["mani_phi"]) > i) else None)
+                _arm_s = str(_meta_d.get("arm") or "").strip()
+                if _yaw_now is None:
+                    _src3 = "引擎解析链 (metaworld 4D 动作空间, 无 yaw 维)"
+                    _c3 = QColor(139, 148, 158)
+                elif _arm_s == "mani_yaw":
+                    _src3 = "🎯 yaw 试抓头决策 (真实试抓监督)" if _meta_d.get("mani") and \
+                        (_meta_d.get("mani") or {}).get("scorer", "").startswith("yaw 试抓头") \
+                        else "🧠 流形预测器决策 (每帧真调 φ* → 下发角)"
+                    _c3 = QColor(0, 212, 170)
+                else:
+                    _src3 = "脚本开环 Arm A (固定计划角, 预测器不参与动作)"
+                    _c3 = QColor(139, 148, 158)
+                _rows.append((f"🧠 yaw 指令来源: {_src3}", _c3, True, 0))
+                _txt3 = (f"   下发 yaw {_yaw_now:+.1f}°" if _yaw_now is not None else "   下发 yaw —")
+                if _phi_now is not None and _phi_now == _phi_now:      # NaN 安全
+                    _txt3 += f"   φ*(预测器) {_phi_now:+.1f}°"
+                _mi3 = _meta_d.get("mani") or {}
+                if _mi3:
+                    _txt3 += f"   前向 {_mi3.get('n_calls')} 次 trained={_mi3.get('trained')}"
+                _rows.append((_txt3, QColor(139, 148, 158), False, 0))
+            except Exception:
+                pass
+            self._overlay.set_panel(_rows)
+        except Exception as _e:
+            print(f"⚠️ 标注层更新失败: {_e}")
+
+        # 📟 实时数值面板 (每帧滚动 — 老倪: 运行后数据须实时动态滚动, 不要一次性静态填充)
+        t = tr["t"][i]
+        stage = tr["stage"][i].replace("阶段 ", "")
+        def _f(v, n=3):
+            return f"{float(v):+.{n}f}"
+        peg_h = (np.asarray(tr["peg_head"][i], dtype=float)
+                 if tr.get("peg_head") is not None and len(tr["peg_head"]) > i else peg_grasp)
+        res = float(np.linalg.norm(np.asarray(tr["residual_vec"][i], dtype=float)))
+        cp = float(tr["contact_p"][i])
+        fenv = float(tr["force"][i]) if tr.get("force") is not None else 0.0
+        fg = float(tr["force_grasp"][i]) if tr.get("force_grasp") is not None else float("nan")
+        lat3 = np.asarray(lat_pts[-1], dtype=float)
+        err = float(np.linalg.norm(lat3 - np.asarray(x, dtype=float))) * 1000
+        # x̂ 逐步抖动 (最近 30 帧平均步长) — 量化"乱"的程度, 观测噪声 5mm 时约 1mm/步
+        jit = (float(np.linalg.norm(np.diff(lat_pts, axis=0), axis=1).mean()) * 1000
+               if len(lat_pts) > 2 else 0.0)
+        u_ff_m = float(np.linalg.norm(np.asarray(tr["u_ff_vec"][i], dtype=float)[:3]))
+        u_fu_m = float(np.linalg.norm(np.asarray(tr["u_fuse_vec"][i], dtype=float)[:3]))
+        u_li_m = float(np.linalg.norm(np.asarray(tr["u_limit_vec"][i], dtype=float)[:3]))
+        d_ph = float(np.linalg.norm(peg_h[:2] - self._mouth[:2]))
+        self.lbl_num.setText(
+            f"阶段    {stage}\n"
+            f"t       {t:6.2f}s   帧 {i}/{self._n - 1}\n"
+            f"────────────────────\n"
+            f"末端    {_f(x[0])} {_f(x[1])} {_f(x[2])}\n"
+            f"光模块    {_f(peg_grasp[0])} {_f(peg_grasp[1])} {_f(peg_grasp[2])}\n"
+            f"光模块头    {_f(peg_h[0])} {_f(peg_h[1])} {_f(peg_h[2])}\n"
+            f"估计x̂   {_f(lat3[0])} {_f(lat3[1])} {_f(lat3[2])}\n"
+            f"x̂−末端  {err:6.1f} mm   抖动 {jit:4.2f} mm/步\n"
+            f"────────────────────\n"
+            f"夹爪    {float(tr['gripper'][i]):5.2f}  (1=闭合)\n"
+            f"光模块头→孔 {d_ph * 1000:6.1f} mm\n"
+            f"  环境接触 {fenv:5.3f}  夹持 {fg:5.3f}\n"
+            f"状态校正器 残差{res:6.4f}\n"
+            f"  接触概率 {cp:4.2f} (净 {max(0.0, min(1.0, (cp - 0.58) / 0.42)):4.2f})\n"
+            f"  残差系统偏差 {getattr(self, '_res_info', (0, 0, 0))[1]:5.2f}mm "
+            f"({getattr(self, '_res_info', (0, 0, 0))[2] * 100:3.0f}%)\n"
+            f"────────────────────\n"
+            f"前馈加速器  {u_ff_m:5.3f} m/s\n"
+            f"动作调制器  {u_fu_m:5.3f} m/s\n"
+            f"安全边界    {u_li_m:5.3f} m/s")
+        self.lbl_t.setText(f"数据源: {self._src}")
+        self.lbl_frame.setText(f"{i} / {self._n - 1}")
+        if not self.slider.isSliderDown():
+            self.slider.setValue(i)
+
+    def _vec_key(self, key):
+        """动作向量在 tr 里的键名映射"""
+        return {"uff": "u_ff_vec", "ufb": "u_fb_vec",
+                "ufuse": "u_fuse_vec", "ulimit": "u_limit_vec"}[key]
+
+    # ── 播放控制 ──
+    def _toggle_play(self):
+        if self._playing:
+            self._pause()
+        else:
+            self._playing = True
+            self.btn_play.setText("⏸ 暂停")
+            self._timer.start(60)
+
+    def closeEvent(self, ev):
+        """🛡 关闭时停掉所有定时器 (工程铁律: QTimer 不清理 → 析构期回调崩溃)"""
+        for t in ("_timer", "_cam_watch"):
+            try:
+                obj = getattr(self, t, None)
+                if obj is not None:
+                    obj.stop()
+            except Exception:
+                pass
+        super().closeEvent(ev)
+
+    def _pause(self):
+        self._playing = False
+        self.btn_play.setText("▶ 播放")
+        self._timer.stop()
+
+    # 🎯 2026-09-02 老倪「3D 视图显示状态要与程序执行状态保持一致」:
+    #   GUI 播放/调试推进到引擎第 i 步时调用 → 3D 显示第 i 步 (暂停自播, 控制权交给外部)
+    # ── 🕹 3D 世界操作 (v3.4.7) ──
+    def _on_run_world(self):
+        """▶ 运行 = 画布 start_sim 同一入口 (状态空间画布 → 引擎 → 逐帧同步到 3D)"""
+        try:
+            if self.module is not None:
+                self.module.start_sim()
+        except Exception as _e:
+            print(f"⚠️ 3D 运行: {_e}")
+
+    def _on_stop_world(self):
+        try:
+            if self.module is not None:
+                self.module.stop_sim()
+        except Exception as _e:
+            print(f"⚠️ 3D 停止: {_e}")
+
+    def _on_model_exec(self, on):
+        """🧠 模型执行开关 (老倪 2026-09-11: 要看到 L4 档位的区别)。
+        勾上 → L4 档不走 L4Demo, 改走引擎真链路 + L3 模型接管(SS_L3=1) + 二态意图;
+        不勾 → 原来的 L4Demo 固定演示。仅影响 L4 档 (L3 档不动, 老倪明确要求)。"""
+        try:
+            if self.module is not None:
+                self.module._model_exec = bool(on)
+        except Exception:
+            pass
+
+    def _on_top_world(self, checked):
+        """📌 置顶开关 — 画布运行/弹窗不会盖住 3D (flag 改动需重新 show 生效)"""
+        try:
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, bool(checked))
+            self.show()
+        except Exception:
+            pass
+
+    def _sync_engine(self):
+        """引擎状态轮询: 画布播放中 → 本窗口 ▶运行 禁用 / ⏹停止 启用 (同一引擎同一状态)"""
+        try:
+            m = self.module
+            if m is None:
+                return
+            _busy = (bool(getattr(m, "_ss_timer", None) and m._ss_timer.isActive())
+                     or bool(getattr(m, "_sim_running", False)))
+            _brun = getattr(getattr(m, "btn_run", None), "text", lambda: "")()
+            if not _busy and ("仿真中" in _brun or "运行中" in _brun):
+                _busy = True
+            self.btn_run_w.setEnabled(not _busy)
+            self.btn_stop_w.setEnabled(_busy)
+            self.lbl_state_w.setText("⏳ 引擎运行中 — 本视图逐帧同步画布信号…" if _busy
+                                     else "⏸ 引擎就绪 · ▶ 运行 = 画布同引擎")
+        except Exception:
+            pass
+
+    def set_active_node(self, node_name, dw=None):
+        """🎯 v3.4.6 (老倪: 3D 与画布实际信号同步): 画布当前执行的节点(模块)名 +
+        该模块本帧 out 摘要 → 面板「画布信号」行。数据源 = 同一 DataWorld → 同帧。"""
+        self._active_node = node_name or ""
+        if not self._active_node:
+            self.lbl_mod.setText("画布信号: —")
+            return
+        try:
+            _sum = ""
+            if dw is not None:
+                _mo = dw.module_out_values(node_name)
+                if _mo:
+                    from data_world import _fmt
+                    _sum = "  ".join(f"{k}={_fmt(v)}" for k, v in list(_mo.items())[:5])
+            self.lbl_mod.setText(f"▶ 画布信号 · {self._active_node}" +
+                                 (f"\n  {_sum}" if _sum else ""))
+        except Exception:
+            self.lbl_mod.setText(f"▶ 画布信号 · {self._active_node}")
+
+    def set_frame(self, i, follow=True):
+        if follow:
+            self._pause()
+        self._update_frame(i)
+        try:
+            self.slider.setValue(int(i))
+            self.lbl_frame.setText(f"{int(i)} / {self._n - 1}")
+        except Exception:
+            pass
+        # 📉 性能流形碗窗同步 (同源 tr + 现场孔位)
+        try:
+            w = getattr(self, "_bowl", None)
+            if w is not None:
+                import sip
+                if not sip.isdeleted(w):
+                    w.set_frame(i)
+        except Exception:
+            pass
+
+    def _tick(self):
+        if self._idx >= self._n - 1:
+            self._pause()
+            return
+        # 🎯 2026-09-10 静静: 跳帧(÷800→5×)致 L4 长轨迹快进乱跳 — 老倪: 夹爪"自己转一圈"
+        #   (90° 旋转 0.7s 一闪而过)、轨迹跳着走、插拔段 2s 快闪"没看到插拔"; L2/L3 短轨迹
+        #   (<800帧)不跳帧所以平滑 → 播放速度恒定 ~1× 物理: 4704 步 ≈ 94s 播完 (真实速度,
+        #   平滑且每段动作可看清); 短轨迹仍逐帧 (0.33× 慢放, 平滑)
+        _n = int(getattr(self, "_n", 0))
+        step = max(1, int(round(_n / 1500.0)))
+        self._update_frame(min(self._idx + step, self._n - 1))
+
+    def _on_slider(self, val):
+        self._update_frame(val)
+
+    # ── 📉 性能流形曲面窗 (2026-09-07 老倪: 流形是拓扑要有形状) ──
+    def _open_mani_bowl(self):
+        w = getattr(self, "_bowl", None)
+        try:
+            if w is not None:
+                import sip
+                if not sip.isdeleted(w):
+                    w.raise_()
+                    w.activateWindow()
+                    return
+        except Exception:
+            pass
+        hole = np.asarray(self._hole, float)
+        w = ManifoldBowlWidget(self.tr, hole=hole)
+        w.setWindowTitle("📉 性能流形 · 光耦合代价曲面 (η 碗 — 横向错位 vs 估计耦合效率)")
+        w.resize(620, 580)
+        w.show()
+        self._bowl = w
+        if self._n > 0:
+            w.set_frame(self._idx)
+
+
+# ────────────────────────────────────────────────────────────
+# 📉 性能流形曲面 (2026-09-07 老倪: 流形要有形状 — η 高斯碗)
+#   坐标: 横 = 光模块头横向错位 dy/dz (孔底为原点, mm); 竖 = 估计耦合效率 η (×16mm 视觉放大)
+#   几何 = PerformanceManifold 的 η=exp(−Vp/σ²) (σ=4mm 标定, 高斯光束近似非实测)
+# ────────────────────────────────────────────────────────────
+class ManifoldBowlWidget(QWidget):
+    """性能流形曲面 — η(横向错位) 高斯碗 (2026-09-07 老倪: 流形要有形状)
+
+    为什么不用 pyqtgraph GL: 碗窗 = 第二个 GLViewWidget = 新 GL 上下文, 而 pyqtgraph
+    shader 全局缓存绑**第一个**上下文 → 第二窗口所有 GL item 绘制崩 (3.3.0 同款坑,
+    GLError glGetAttribLocation 实锤)。改用 QPainter 自绘 2.5D 正交投影, 零 GL 依赖:
+    静态碗网格预渲染 QPixmap (resize 重画), 每帧只投影动态点/轨迹/竖线。
+
+    坐标系: 孔底为原点, 横 = 光模块头横向错位 dy/dz (mm); 竖 = 估计耦合效率 η (×16mm
+    视觉放大 → 碗高 0~16mm)。几何 = PerformanceManifold η=exp(−Vp/σ²), σ=4mm 标定
+    (高斯光束近似, 非实测 — 真机光功率计标定后替换 σ)。"""
+
+    def __init__(self, tr=None, hole=None, parent=None):
+        super().__init__(parent)
+        self.tr = tr or {}
+        self._hole = np.asarray(hole, float) if hole is not None else _HOLE.copy()
+        self._i = 0
+        self._pix = None          # 静态碗渲染缓存
+        self._m = 16.0            # ±16mm
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(6, 6, 6, 6)
+        self.canvas = _BowlCanvas(self)
+        self.canvas.setStyleSheet("background:#0d1117;")
+        self.canvas.setMinimumHeight(360)
+        lay.addWidget(self.canvas, 1)
+        self.lbl = QLabel("η = 估计耦合效率 · 竖轴×16 视觉放大")
+        self.lbl.setStyleSheet("color:#8b949e; font-size:12px; background:#0d1117;"
+                               "border:1px solid #30363d; border-radius:4px; padding:4px 8px;")
+        self.lbl.setWordWrap(True)
+        lay.addWidget(self.lbl)
+        self.canvas.set_bowl(self._m, n=21)
+
+    def set_trajectory(self, tr, hole=None):
+        self.tr = tr or {}
+        if hole is not None:
+            self._hole = np.asarray(hole, float)
+        if self.tr.get("x") is not None and len(self.tr["x"]) > 0:
+            self.set_frame(0)
+
+    def _ph(self, i):
+        tr = self.tr
+        if tr.get("peg_head") is not None and i < len(tr["peg_head"]):
+            return np.asarray(tr["peg_head"][i], float)
+        if tr.get("peg") is not None and i < len(tr["peg"]):
+            return np.asarray(tr["peg"][i], float)
+        return None
+
+    def set_frame(self, i):
+        self._i = int(i)
+        tr = self.tr
+        n = len(tr.get("x", []))
+        if n == 0:
+            return
+        i = int(np.clip(i, 0, n - 1))
+        mod = _MANI
+        ph = self._ph(i)
+        if ph is None or mod is None:
+            return
+        pm = mod.PerformanceManifold(hole_pos=self._hole)
+        ev = pm.evaluate(ph)
+        d = ev["delta"]
+        dy = float(d[1]) * 1000.0
+        dz = float(d[2]) * 1000.0
+        eta = float(ev["eta"])
+        # 轨迹历史 (横向错位, z=0)
+        hist = []
+        for j in range(max(0, i - 120), i + 1):
+            pj = self._ph(j)
+            if pj is None:
+                continue
+            dj = np.asarray(pj, float) - self._hole
+            hist.append([float(dj[1]) * 1000.0, float(dj[2]) * 1000.0])
+        self.canvas.set_state(dy, dz, eta, hist)
+        self.lbl.setText(
+            f"光模块头横向错位 δ⊥={ev['d_perp_norm'] * 1000:.2f} mm  "
+            f"(dy={dy:+.1f}, dz={dz:+.1f}) · η≈{eta:.3f} · V_p={ev['Vp']:.3e}\n"
+            f"碗底 = 对准最优 (η→1, 竖轴×16 视觉放大); σ=4mm 高斯碗 (估计耦合效率模型, 非实测) · "
+            f"横轴 ±16mm 错位; 底部橙线 = 最近 120 步错位历史")
+
+    def set_trajectory_hole(self, tr, hole):
+        self.set_trajectory(tr, hole)
+
+
+class _BowlCanvas(QWidget):
+    """QPainter 2.5D 正交投影渲染碗曲面 (静态缓存) + 动态点/轨迹。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._m = 16.0
+        self._n = 21
+        self._state = None
+        self._hist = []
+
+    def set_bowl(self, m_mm, n=25):
+        self._m = float(m_mm)
+        self._n = n
+        self._pix = None
+
+    def set_state(self, dy, dz, eta, hist):
+        self._state = (float(dy), float(dz), float(eta))
+        self._hist = [np.asarray(h, float) for h in hist]
+        self.update()
+
+    # ── 正交相机 (固定视角: 俯 30°/ 偏 24°, 距离 75mm) ──
+    def _cam(self):
+        import math
+        az, el, dist = math.radians(24), math.radians(30), 75.0
+        eye = np.array([dist * math.cos(el) * math.sin(az),
+                        dist * math.cos(el) * math.cos(az),
+                        dist * math.sin(el)], float)
+        fwd = -eye / np.linalg.norm(eye)
+        right = np.cross(fwd, np.array([0.0, 0.0, 1.0]))
+        right /= (np.linalg.norm(right) or 1.0)
+        upv = np.cross(right, fwd)
+        return eye, right, upv, fwd
+
+    def _proj(self, pt, eye, right, upv, fwd, s, cx, cy):
+        d = np.asarray(pt, float) - eye
+        return (float(np.dot(d, right)) * s + cx, cy - float(np.dot(d, upv)) * s),                float(np.dot(d, fwd))
+
+    def _build_pix(self, W, H):
+        m, n = self._m, self._n
+        # η 碗网格 (z = η*16mm)
+        ys = np.linspace(-m, m, n)
+        zs = np.linspace(-m, m, n)
+        YY, ZZ = np.meshgrid(ys, zs)
+        eta = np.exp(-0.5 * (YY ** 2 + ZZ ** 2) / 16.0) * 16.0
+        eye, right, upv, fwd = self._cam()
+        s = 11.0
+        cx, cy = W / 2.0, H * 0.47
+        pix = QPixmap(W, H)
+        pix.fill(QColor(13, 17, 23))
+        p = QPainter(pix)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        pen = QPen(QColor(60, 180, 160, 90), 0.6)
+        brush = QColor(30, 140, 120, 16)
+        # 所有 quad (中心 depth 排序, 远→近)
+        quads = []
+        for j in range(n - 1):
+            for i in range(n - 1):
+                # 四边形 (i,j)→(i+1,j)→(i+1,j+1)→(i,j+1), 中心深度远→近排序
+                q4 = [np.array([ys[ii], zs[jj], eta[jj, ii]])
+                      for (ii, jj) in ((i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1))]
+                sc = [self._proj(q, eye, right, upv, fwd, s, cx, cy) for q in q4]
+                dep = sum(dd for _, dd in sc) / 4.0
+                quads.append((dep, sc))
+        quads.sort(key=lambda t: -t[0])           # 远 → 近
+        for dep, sc in quads:
+            poly = QPolygonF([QPointF(x, y) for (x, y), _ in sc])
+            p.setBrush(brush)
+            p.setPen(pen)
+            p.drawPolygon(poly)
+        # 参考环 r=4/8/12/16 (z=0 底部)
+        import math
+        p.setPen(QPen(QColor(70, 90, 110, 130), 1.0))
+        p.setBrush(Qt.NoBrush)
+        for r_mm in (4, 8, 12, 16):
+            pts = [self._proj(np.array([r_mm * math.cos(t), r_mm * math.sin(t), 0.0]),
+                              eye, right, upv, fwd, s, cx, cy)[0]
+                   for t in np.linspace(0, 2 * math.pi, 72)]
+            p.drawPolyline(QPolygonF([QPointF(x, y) for x, y in pts]))
+        # 十字轴线 (dy=0 / dz=0)
+        p.drawLine(QPointF(*self._proj(np.array([-m, 0, 0.0]), eye, right, upv, fwd, s, cx, cy)[0]),
+                   QPointF(*self._proj(np.array([m, 0, 0.0]), eye, right, upv, fwd, s, cx, cy)[0]))
+        p.drawLine(QPointF(*self._proj(np.array([0, -m, 0.0]), eye, right, upv, fwd, s, cx, cy)[0]),
+                   QPointF(*self._proj(np.array([0, m, 0.0]), eye, right, upv, fwd, s, cx, cy)[0]))
+        p.end()
+        return pix
+
+    def paintEvent(self, ev):
+        W, H = self.width(), self.height()
+        if W < 20 or H < 20:
+            return
+        if self._pix is None or self._pix.size().width() != W or self._pix.size().height() != H:
+            self._pix = self._build_pix(W, H)
+        p = QPainter(self)
+        p.drawPixmap(0, 0, self._pix)
+        eye, right, upv, fwd = self._cam()
+        s = 11.0
+        cx, cy = W / 2.0, H * 0.47
+        # 动态: 轨迹(底平面) / 竖线 / 当前点
+        if self._hist:
+            pts = [self._proj(np.array([h[0], h[1], 0.0]), eye, right, upv, fwd, s, cx, cy)[0]
+                   for h in self._hist]
+            pp = QPen(QColor(220, 140, 50, 200), 1.6)
+            p.setPen(pp)
+            for i in range(len(pts) - 1):
+                p.drawLine(QPointF(*pts[i]), QPointF(*pts[i + 1]))
+        if self._state is not None:
+            dy, dz, eta = self._state
+            top = np.array([dy, dz, eta * 16.0])
+            (tx, ty), _ = self._proj(top, eye, right, upv, fwd, s, cx, cy)
+            (bx, by), _ = self._proj(np.array([dy, dz, 0.0]), eye, right, upv, fwd, s, cx, cy)
+            p.setPen(QPen(QColor(245, 185, 30, 160), 1.2))
+            p.drawLine(QPointF(bx, by), QPointF(tx, ty))
+            p.setBrush(QColor(240, 185, 25, 255))
+            p.setPen(Qt.NoPen)
+            r = 5.0
+            p.drawEllipse(QPointF(tx, ty), r, r)
+        p.end()
+
+# 命令行自测
+# ────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from state_space_sim import StateSpaceSim
+    from PyQt5.QtWidgets import QApplication
+
+    os.environ.setdefault("DISPLAY", ":0")
+    app = QApplication(sys.argv)
+    sim = StateSpaceSim(log=lambda *a: None)
+    tr = sim.run()
+    w = DreamView3D(tr)
+    w.show()
+    sys.exit(app.exec_())

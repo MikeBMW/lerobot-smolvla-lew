@@ -1,0 +1,215 @@
+{
+  "format": "zmax-simulink",
+  "version": "1.0",
+  "name": "untitled",
+  "sim": {
+    "dt": 0.01,
+    "t_end": 10.0,
+    "solver": "fixed-step"
+  },
+  "nodes": [
+    {
+      "id": "n17862652764579wu",
+      "type": "hardware",
+      "name": "📦 metaworld_peg",
+      "x": -37,
+      "y": 20,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "source": "metaworld",
+        "frames": 4800,
+        "active": true,
+        "dims": "4D/4D",
+        "shared": true,
+        "desc": "顶层输入: 统一 metaworld 数据集 (4800帧)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786265276458hmt",
+      "type": "system",
+      "name": "📊 对比评估 Scope (仿真)",
+      "x": 506,
+      "y": 29,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "shared": true,
+        "desc": "顶层输出: 双击 → Model Zoo图表 · 🎮 仿真评估 (metaworld 环境)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786265322840x3g",
+      "type": "system",
+      "name": "🖥 SYS2 云端训练",
+      "x": 144,
+      "y": 23,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "desc": "云端训练 · 4090 · 大模型训练/部署 (架构顶层, L4 大脑)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786265326627qiq",
+      "type": "system",
+      "name": "🖐 SYS11 动作系统",
+      "x": 312,
+      "y": 101,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "desc": "SYS11 动作系统 · VLA-T 触觉大模型 (SYS1 层)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786265330463hno",
+      "type": "system",
+      "name": "🧠 SYS12 引导系统",
+      "x": 319,
+      "y": -24,
+      "w": 150,
+      "icon": "◉",
+      "color": "#d4a800",
+      "params": {
+        "desc": "SYS12 引导系统 · Z-Flow 数据流引擎 (SYS1 层)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    }
+  ],
+  "links": [
+    {
+      "id": "l1786265355312np",
+      "f": "n17862652764579wu",
+      "t": "n1786265322840x3g",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l17862653576994a",
+      "f": "n1786265322840x3g",
+      "t": "n1786265330463hno",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786265361303zo",
+      "f": "n1786265322840x3g",
+      "t": "n1786265326627qiq",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 1,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l178626536722218",
+      "f": "n1786265330463hno",
+      "t": "n1786265276458hmt",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 2
+    },
+    {
+      "id": "l1786265371691bg",
+      "f": "n1786265326627qiq",
+      "t": "n1786265276458hmt",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 1,
+      "_mi": 2
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>ACT 基线对比 v1.1.0</title>
+<style>body{font-family:Consolas,monospace;background:#0d1117;color:#c9d1d9;padding:32px}
+h1{color:#58a6ff} table{border-collapse:collapse;width:100%;margin:12px 0}
+td,th{border:1px solid #30363d;padding:10px 14px;text-align:left}
+.up{color:#2ea043} .down{color:#f85149}</style></head><body>
+<h1>🤖 ACT 模型对比评估 <span style="background:#1f6feb;color:#fff;padding:2px 8px;border-radius:4px">v1.1.0</span></h1>
+<p>数据集: metaworld_mt50 · 测试帧: 100 · 时间: 2026-08-02 11:59:10</p>
+<table><tr><th>指标</th><th>基线 (act_metaworld)</th><th>候选 (v1.1.0)</th><th>提升</th></tr>
+<tr><td>动作 MSE</td><td>12037.7830</td><td>11154.9775</td>
+<td class="up">+7.3%</td></tr>
+<tr><td>成功率 (&lt;0.05)</td><td>0.0%</td><td>0.0%</td>
+<td class="down">+0.0pp</td></tr>
+<tr><td>推理延迟</td><td>3.9ms</td><td>1.3ms</td>
+<td class="up">-2.6ms</td></tr>
+</table>
+<h2 style="color:#2ea043">结论: ✅ 提升</h2>
+<p>模型提升路径: 基线(300步) → 更多数据 → 更长训练(2000步) → 超参调优 → 架构升级(SmolVLA)</p>
+</body></html>

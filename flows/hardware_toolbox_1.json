@@ -1,0 +1,1506 @@
+{
+  "format": "zmax-simulink",
+  "version": "1.0",
+  "name": "untitled",
+  "sim": {
+    "dt": 0.01,
+    "t_end": 10.0,
+    "solver": "fixed-step"
+  },
+  "nodes": [
+    {
+      "id": "hwbg0",
+      "type": "row_bg",
+      "name": "🎨 机械臂",
+      "x": -20,
+      "y": 60,
+      "w": 3470,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "bg": "#7a3a3a",
+        "model": "机械臂",
+        "desc": "背景行: 右键改名/改色"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 214
+    },
+    {
+      "id": "hwn0_0",
+      "type": "hardware",
+      "name": "🟠 left_joint_1 · 左臂基座旋转",
+      "x": 140,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "Z700关节",
+        "ctrl": [
+          "目标位置rad",
+          "使能"
+        ],
+        "status": "待查询",
+        "desc": "左臂基座旋转"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn0_1",
+      "type": "hardware",
+      "name": "🟠 left_joint_2 · 左臂肩部俯仰",
+      "x": 380,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "Z700关节",
+        "ctrl": [
+          "目标位置rad",
+          "使能"
+        ],
+        "status": "待查询",
+        "desc": "左臂肩部俯仰"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn0_2",
+      "type": "hardware",
+      "name": "🟠 left_joint_3 · 左臂肘部俯仰",
+      "x": 620,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "Z700关节",
+        "ctrl": [
+          "目标位置rad",
+          "使能"
+        ],
+        "status": "待查询",
+        "desc": "左臂肘部俯仰"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn0_3",
+      "type": "hardware",
+      "name": "🟠 left_joint_4 · 左臂腕部旋转",
+      "x": 860,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "Z700关节",
+        "ctrl": [
+          "目标位置rad",
+          "使能"
+        ],
+        "status": "待查询",
+        "desc": "左臂腕部旋转"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn0_4",
+      "type": "hardware",
+      "name": "🟠 left_joint_5 · 左臂腕部俯仰",
+      "x": 1100,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "Z700关节",
+        "ctrl": [
+          "目标位置rad",
+          "使能"
+        ],
+        "status": "待查询",
+        "desc": "左臂腕部俯仰"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn0_5",
+      "type": "hardware",
+      "name": "🟠 left_joint_6 · 左臂腕部偏航",
+      "x": 1340,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "Z700关节",
+        "ctrl": [
+          "目标位置rad",
+          "使能"
+        ],
+        "status": "待查询",
+        "desc": "左臂腕部偏航"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn0_6",
+      "type": "hardware",
+      "name": "🟠 left_gripper · 左夹爪开合",
+      "x": 1580,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "Z700关节",
+        "ctrl": [
+          "目标位置rad",
+          "使能"
+        ],
+        "status": "待查询",
+        "desc": "左夹爪开合"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn0_7",
+      "type": "hardware",
+      "name": "🟠 right_joint_1 · 右臂基座旋转",
+      "x": 1820,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "Z700关节",
+        "ctrl": [
+          "目标位置rad",
+          "使能"
+        ],
+        "status": "待查询",
+        "desc": "右臂基座旋转"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn0_8",
+      "type": "hardware",
+      "name": "🟠 right_joint_2 · 右臂肩部俯仰",
+      "x": 2060,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "Z700关节",
+        "ctrl": [
+          "目标位置rad",
+          "使能"
+        ],
+        "status": "待查询",
+        "desc": "右臂肩部俯仰"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn0_9",
+      "type": "hardware",
+      "name": "🟠 right_joint_3 · 右臂肘部俯仰",
+      "x": 2300,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "Z700关节",
+        "ctrl": [
+          "目标位置rad",
+          "使能"
+        ],
+        "status": "待查询",
+        "desc": "右臂肘部俯仰"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn0_10",
+      "type": "hardware",
+      "name": "🟠 right_joint_4 · 右臂腕部旋转",
+      "x": 2540,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "Z700关节",
+        "ctrl": [
+          "目标位置rad",
+          "使能"
+        ],
+        "status": "待查询",
+        "desc": "右臂腕部旋转"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn0_11",
+      "type": "hardware",
+      "name": "🟠 right_joint_5 · 右臂腕部俯仰",
+      "x": 2780,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "Z700关节",
+        "ctrl": [
+          "目标位置rad",
+          "使能"
+        ],
+        "status": "待查询",
+        "desc": "右臂腕部俯仰"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn0_12",
+      "type": "hardware",
+      "name": "🟠 right_joint_6 · 右臂腕部偏航",
+      "x": 3020,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "Z700关节",
+        "ctrl": [
+          "目标位置rad",
+          "使能"
+        ],
+        "status": "待查询",
+        "desc": "右臂腕部偏航"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn0_13",
+      "type": "hardware",
+      "name": "🟠 right_gripper · 右夹爪开合",
+      "x": 3260,
+      "y": 80,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "Z700关节",
+        "ctrl": [
+          "目标位置rad",
+          "使能"
+        ],
+        "status": "待查询",
+        "desc": "右夹爪开合"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwbg1",
+      "type": "row_bg",
+      "name": "🎨 执行器",
+      "x": -20,
+      "y": 290,
+      "w": 1070,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "bg": "#3a5a4a",
+        "model": "执行器",
+        "desc": "背景行: 右键改名/改色"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 214
+    },
+    {
+      "id": "hwn1_1",
+      "type": "hardware",
+      "name": "🤖 珞石机械臂",
+      "x": 374,
+      "y": 332,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "6-DOF臂",
+        "ctrl": [
+          "/move_joint(TargetPose)",
+          "/robot_stop(Trigger)"
+        ],
+        "status": "待查询",
+        "desc": "位控+急停"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn1_2",
+      "type": "hardware",
+      "name": "🖐️ 电动夹爪",
+      "x": 526,
+      "y": 408,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "末端执行器",
+        "ctrl": [
+          "/gripper_driver(GripperSrv)"
+        ],
+        "status": "待查询",
+        "desc": "开200.0 / 关0.0"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn1_3",
+      "type": "hardware",
+      "name": "🎛️ 状态机",
+      "x": 127,
+      "y": 383,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "控制器",
+        "ctrl": [
+          "state_machine/*"
+        ],
+        "status": "待查询",
+        "desc": "全局状态路由"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwbg2",
+      "type": "row_bg",
+      "name": "🎨 感知",
+      "x": -20,
+      "y": 520,
+      "w": 1550,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "bg": "#3a4a5a",
+        "model": "感知",
+        "desc": "背景行: 右键改名/改色"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 214
+    },
+    {
+      "id": "hwn2_0",
+      "type": "hardware",
+      "name": "⚡ 力/力矩传感器",
+      "x": 140,
+      "y": 540,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "六维力",
+        "ctrl": [
+          "/robot/force_torque(Wrench)"
+        ],
+        "status": "待查询",
+        "desc": "Fx/Fy/Fz + Tx/Ty/Tz"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn2_1",
+      "type": "hardware",
+      "name": "📷 RealSense D435",
+      "x": 380,
+      "y": 540,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "RGB-D相机",
+        "ctrl": [
+          "/color/image_raw",
+          "/depth/rect",
+          "/points"
+        ],
+        "status": "待查询",
+        "desc": "彩色/深度/点云三流"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn2_2",
+      "type": "hardware",
+      "name": "📱 扫码枪",
+      "x": 620,
+      "y": 540,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "Honeywell",
+        "ctrl": [
+          "/barcode_scanner/status"
+        ],
+        "status": "待查询",
+        "desc": "条码读取"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn2_3",
+      "type": "hardware",
+      "name": "🖐️ 触觉传感器",
+      "x": 860,
+      "y": 540,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "TS-F-L",
+        "ctrl": [
+          "/tactile_sensor(TactileSensor)"
+        ],
+        "status": "待查询",
+        "desc": "接触力分布"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn2_4",
+      "type": "hardware",
+      "name": "👁️ FoundationPose",
+      "x": 1100,
+      "y": 540,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "视觉定位",
+        "ctrl": [
+          "(待接入)"
+        ],
+        "status": "待接入",
+        "desc": "6D 位姿估计"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn2_5",
+      "type": "hardware",
+      "name": "📡 障碍物检测",
+      "x": 1340,
+      "y": 540,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "安全",
+        "ctrl": [
+          "(待接入)"
+        ],
+        "status": "待接入",
+        "desc": "安全光幕/避障"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwbg3",
+      "type": "row_bg",
+      "name": "🎨 相机",
+      "x": -20,
+      "y": 750,
+      "w": 1790,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "bg": "#3a5a5a",
+        "model": "相机",
+        "desc": "背景行: 右键改名/改色"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 214
+    },
+    {
+      "id": "hwn3_0",
+      "type": "hardware",
+      "name": "📷 head_3d",
+      "x": 140,
+      "y": 770,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "相机",
+        "ctrl": [
+          "采集/流"
+        ],
+        "status": "待查询",
+        "desc": "头部3D深度相机 Gemini 335L (1280×720@30fps)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn3_1",
+      "type": "hardware",
+      "name": "📷 left_wrist",
+      "x": 380,
+      "y": 770,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "相机",
+        "ctrl": [
+          "采集/流"
+        ],
+        "status": "待查询",
+        "desc": "左腕部RGB相机 (640×480@60fps)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn3_2",
+      "type": "hardware",
+      "name": "📷 right_wrist",
+      "x": 620,
+      "y": 770,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "相机",
+        "ctrl": [
+          "采集/流"
+        ],
+        "status": "待查询",
+        "desc": "右腕部RGB相机 (640×480@60fps)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwbg4",
+      "type": "row_bg",
+      "name": "🎨 安全IO",
+      "x": -20,
+      "y": 980,
+      "w": 1550,
+      "icon": "▤",
+      "color": "#3a3f4b",
+      "params": {
+        "bg": "#5a4a3a",
+        "model": "安全IO",
+        "desc": "背景行: 右键改名/改色"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": [],
+      "h": 214
+    },
+    {
+      "id": "hwn4_0",
+      "type": "hardware",
+      "name": "🔌 急停按钮",
+      "x": 140,
+      "y": 1000,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "NC常闭",
+        "ctrl": [
+          "estop(True=按下)"
+        ],
+        "status": "待查询",
+        "desc": "安全链首级"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn4_1",
+      "type": "hardware",
+      "name": "🔌 塔灯",
+      "x": 380,
+      "y": 1000,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "3色",
+        "ctrl": [
+          "tower_light(0灭/1红/2黄/3绿)"
+        ],
+        "status": "待查询",
+        "desc": "状态指示"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn4_2",
+      "type": "hardware",
+      "name": "🔌 光栅",
+      "x": 620,
+      "y": 1000,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "安全光幕",
+        "ctrl": [
+          "light_curtain(True=未触发)"
+        ],
+        "status": "待查询",
+        "desc": "入侵检测"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "hwn4_5",
+      "type": "hardware",
+      "name": "🚨 双路急停",
+      "x": 870,
+      "y": 1000,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "安全IO",
+        "ctrl": [
+          "/physical_estop",
+          "/usb_estop"
+        ],
+        "status": "待查询",
+        "desc": "物理+USB 双通道"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    },
+    {
+      "id": "n1786325998990hi4",
+      "type": "hardware",
+      "name": "📷 fisheye_0",
+      "x": 860,
+      "y": 770,
+      "w": 150,
+      "icon": "▣",
+      "color": "#ff4444",
+      "params": {
+        "type": "相机",
+        "ctrl": [
+          "采集/流"
+        ],
+        "status": "待查询",
+        "desc": "鱼眼相机 #0 (640×480@15fps)"
+      },
+      "inputs": [
+        {
+          "id": "in1",
+          "label": "in",
+          "dtype": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out1",
+          "label": "out",
+          "dtype": "any"
+        }
+      ],
+      "actions": []
+    }
+  ],
+  "links": [
+    {
+      "id": "l74890770648203",
+      "f": "hwn0_0",
+      "t": "hwn0_1",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "L1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l27057304499176",
+      "f": "hwn0_1",
+      "t": "hwn0_2",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "L2",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l55149880593475",
+      "f": "hwn0_2",
+      "t": "hwn0_3",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "L3",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l9544427009525",
+      "f": "hwn0_3",
+      "t": "hwn0_4",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "L4",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l64087949361762",
+      "f": "hwn0_4",
+      "t": "hwn0_5",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "L5",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l69511829205579",
+      "f": "hwn0_5",
+      "t": "hwn0_6",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "L6",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l44141968334000",
+      "f": "hwn0_7",
+      "t": "hwn0_8",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "R1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l78849421477690",
+      "f": "hwn0_8",
+      "t": "hwn0_9",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "R2",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l81725745320463",
+      "f": "hwn0_9",
+      "t": "hwn0_10",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "R3",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l24404369608146",
+      "f": "hwn0_10",
+      "t": "hwn0_11",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "R4",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l11511406305556",
+      "f": "hwn0_11",
+      "t": "hwn0_12",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "R5",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l79362744373287",
+      "f": "hwn0_12",
+      "t": "hwn0_13",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "R6",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l30459006939260",
+      "f": "hwn2_0",
+      "t": "hwn2_1",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "力反馈",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l74642857309217",
+      "f": "hwn2_1",
+      "t": "hwn2_2",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "触觉",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l56777035280512",
+      "f": "hwn2_2",
+      "t": "hwn2_3",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "视觉",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l54167278314290",
+      "f": "hwn2_3",
+      "t": "hwn2_4",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "位姿",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l71339434242153",
+      "f": "hwn2_4",
+      "t": "hwn2_5",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "安全",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l13072956006031",
+      "f": "hwn3_0",
+      "t": "hwn3_1",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "头部",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l75833727954789",
+      "f": "hwn3_1",
+      "t": "hwn3_2",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "左腕",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l81205746989802",
+      "f": "hwn4_0",
+      "t": "hwn4_2",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "急停",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786325944536zs",
+      "f": "hwn4_2",
+      "t": "hwn4_5",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l178632599899406",
+      "f": "hwn3_2",
+      "t": "n1786325998990hi4",
+      "f_port": "out1",
+      "t_port": "in1",
+      "label": "右腕",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786326075729gh",
+      "f": "hwn1_3",
+      "t": "hwn1_1",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786326078540vu",
+      "f": "hwn1_3",
+      "t": "hwn1_2",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 1,
+      "_no": 2,
+      "_ti": 0,
+      "_mi": 1
+    },
+    {
+      "id": "l1786326085219h3",
+      "f": "hwn1_1",
+      "t": "hwn0_0",
+      "f_port": "out1",
+      "t_port": "in1",
+      "_fo": 0,
+      "_no": 1,
+      "_ti": 0,
+      "_mi": 1
+    }
+  ]
+}
