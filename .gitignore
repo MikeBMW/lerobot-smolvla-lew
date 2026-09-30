@@ -293,3 +293,33 @@ reports/qa_crops/
 reports/dbg_label_audit*.py
 reports/live_local_frame.jpg
 reports/model_autoload_*.json
+
+### Z-MAX 工程仓库 (2026-09-30 新仓库 MikeBMW/zmax) ###
+# 运行产物与取证库存本机: reports/ 里是截图/状态快照/台账(数百 MB); 权重量在 zmax_data/
+reports/
+media/
+outputs/
+runs/
+out/
+models/
+backups/
+l4_ab/
+gui-venv311/
+*.pt
+*.pth
+*.h5
+*.npz
+*.apk
+*.onnx
+*.whl
+*.pdf
+*.pptx
+*.docx
+*.xlsx
+*.mp4
+*.mov
+*.zst
+*.tar.gz
+*.jsonl
+# 大图(>300KB 多为截图证据)由 tools/ 侧的入库脚本按大小过滤, 这里兜底常见目录
+docs/evidence/
