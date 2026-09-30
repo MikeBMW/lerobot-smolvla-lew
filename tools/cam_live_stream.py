@@ -3061,6 +3061,12 @@ class Handler(BaseHTTPRequestHandler):
                        json.dumps(self._stats(), ensure_ascii=False).encode("utf-8"))
         elif p == "/motion":
             self._send(200, "application/json; charset=utf-8", _jbytes(_motion_state()))
+        elif p == "/pose":
+            # 🅰️🅱️🅲 右上角实时位姿 HUD 的**专用轻量端点** (2026-10-01 老倪: 「在这个页面的右上角,
+            # 实时显示 x y z a b c 的数值」)。和 /ctl/status 里的 tcp 字段调**同一个函数** _rokae_pose()
+            # ⇒ 同源同口径(不会出现页面两处读数不一样); 只读一个 5Hz 小 JSON, 开销微秒级,
+            # 页面用 250ms 快轮询也不会给服务器添负担(整页 /station/status 聚合重, 保持 1.5s 不变)。
+            self._send(200, "application/json; charset=utf-8", _jbytes(_rokae_pose()))
         elif p == "/ctl/status":
             self._send(200, "application/json; charset=utf-8", _jbytes(_ctl_status()))
         elif p == "/ctl/points":
