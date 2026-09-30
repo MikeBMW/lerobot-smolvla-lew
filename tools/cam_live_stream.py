@@ -560,6 +560,39 @@ _CTL_SKILLS = {
 # 2026-09-29 老倪: 「把这个技能放到工位总览 金手指检测窗口 整板原图 按钮旁边, 添加一个『点1』按钮,
 #   点击后即返回点一」。白名单里加的是**技能 id**(不是坐标) ⇒ 点位真值仍由示教点文件 + 执行器收口,
 # 页面/接口都无法改点位; 仍走同一条 授权真动 + 限流 + FIFO + 回执 的路。
+# 🔁 热读白名单覆盖层 (2026-10-01): 「加一个回点按钮就得重启推流服务」这件事去掉 ——
+#    白名单 = 代码常量 ∪ data/skills/l2_atomic/ctl_abs_skills.json ({"skills": {"L2.xxx": "标签"}})。
+#    严格校验: 只认 L2. 开头 + 字母数字下划线点 + 值是非空字符串 ⇒ 手误也塞不进危险 id。
+#    注意: 点位真值仍只在示教点库 + 执行器 point_locked 收口, 覆盖层只放行**技能 id**, 放不进坐标。
+_CTL_ABS_REL = "data/skills/l2_atomic/ctl_abs_skills.json"
+_CTL_ABS_CACHE = {"mtime": None, "map": {}}
+
+
+def _abs_skills() -> dict:
+    # 注意: _REPO_ROOT 在本文件更下方才定义 ⇒ 路径必须**调用时**再拼(模块级拼会在导入期 NameError)
+    extra = os.path.join(_REPO_ROOT, _CTL_ABS_REL)
+    try:
+        mt = os.path.getmtime(extra)
+    except OSError:
+        mt = None
+    if mt != _CTL_ABS_CACHE["mtime"]:
+        mp = {}
+        if mt is not None:
+            try:
+                _j = json.load(open(extra, encoding="utf-8"))
+                for _k, _v in dict((_j or {}).get("skills") or {}).items():
+                    if (isinstance(_k, str) and _k.startswith("L2.") and len(_k) <= 48
+                            and all(ch.isalnum() or ch in "._" for ch in _k)
+                            and isinstance(_v, str) and _v.strip()):
+                        mp[_k] = _v.strip()
+            except Exception as _e:
+                print("[ctl] 热读白名单解析失败(忽略覆盖层): %s" % str(_e)[:100], flush=True)
+        _CTL_ABS_CACHE.update({"mtime": mt, "map": mp})
+    out = dict(_CTL_ABS_SKILLS)
+    out.update(_CTL_ABS_CACHE["map"])
+    return out
+
+
 _CTL_ABS_SKILLS = {
     "L2.goto_gold_pt1": "🎯 回到金手指点1",
     # 🎯 2026-09-30 老倪: 「在侧面检测, 增加一个技能 侧面点1 的按钮, 放在侧面检测窗口的下面,
@@ -631,7 +664,7 @@ def _ctl_points() -> dict:
             "pos": [round(float(v), 4) for v in _pos] if (_rec and _pos) else None,
             "quat_taught": bool(_pd.get("quat")),
             "at": str(_pd.get("at") or _pd.get("ts_str") or _pd.get("updated_at") or "") if _rec else "",
-            "whitelisted": _sid in _CTL_ABS_SKILLS,
+            "whitelisted": _sid in _abs_skills(),
         })
     return {"ok": True, "slots": out, "green": sum(1 for _s in out if _s["ready"]), "n": len(out),
             "points_file": "data/skills/l2_atomic/taught_points.json"}
@@ -1463,7 +1496,7 @@ def _ctl_move(req: dict) -> dict:
     不是"已发送"这种自报。
     """
     sid = str(req.get("skill") or "")
-    _abs = _CTL_ABS_SKILLS.get(sid)
+    _abs = _abs_skills().get(sid)
     if sid not in _CTL_SKILLS and _abs is None:
         return {"ok": False, "msg": "技能 %r 不在手动控制白名单里" % sid}
     if _abs is not None:
