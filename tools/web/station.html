@@ -94,19 +94,21 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
 /* ── 右上角实时位姿 HUD (2026-10-01 老倪: 「在这个页面的右上角，实时显示 x y z a b c 的数值」)
    固定在视口右上角 ⇒ 滚动也看得见; 等宽+tabular-nums ⇒ 数字跳动时不左右抖;
    数据来自同一次 /station/status 轮询里的 tcp(SDK 直采 5Hz, endInRef), 不新增请求。 */
-#posehud{position:fixed;top:60px;right:10px;z-index:40;background:rgba(13,17,23,.93);
-  border:1px solid #30363d;border-radius:8px;padding:7px 10px;cursor:copy;
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;
-  white-space:nowrap;font-variant-numeric:tabular-nums;box-shadow:0 3px 12px rgba(0,0,0,.4)}
-#posehud.stale{border-color:#f85149}
+/* 实时位姿卡片: 6 值横向一排(不换行), 等宽 + tabular-nums 数字不抖, 平均分配宽度 ⇒ 与同栏卡片等宽 */
+#posehud{cursor:copy}
+#posehud.stale{border-color:#f85149;box-shadow:inset 0 0 0 1px #f85149}
 #posehud.copied{border-color:#3fb950}
-#posehud .k{color:#8b949e;font-size:11px}
-#posehud .v{display:inline-block;min-width:8ch;text-align:right;color:#e6edf3;font-weight:700}
-#posehud .v.bad{color:#f85149}
 #posehud .dim{color:#8b949e;font-size:11px;font-weight:400}
-/* 📱 窄屏(手机)按比例缩小并贴角, 别挡画面主体 —— 老倪要手机也能看/控 */
-@media (max-width:820px){#posehud{top:52px;right:6px;font-size:11px;padding:5px 7px;transform:scale(.9);transform-origin:top right}
-  #posehud .v{min-width:7ch} #posehud .dim{font-size:10px}}
+#posehud .posegrid{display:flex;flex-wrap:nowrap;align-items:baseline;justify-content:space-between;
+  gap:6px;margin-top:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+#posehud .pv{display:flex;align-items:baseline;gap:3px;flex:1 1 0;min-width:0;justify-content:center}
+#posehud .pv .k{color:#8b949e;font-size:11px;font-style:normal;flex:0 0 auto}
+#posehud .pv .v{color:#e6edf3;font-weight:700;font-size:14px;white-space:nowrap}
+#posehud .pv .v.bad{color:#f85149}
+#posehud .hint{margin-top:3px}
+/* 📱 窄屏(手机): 字缩小保证仍是横向一排, 不换行、不截断数字 */
+@media (max-width:820px){#posehud .posegrid{gap:3px} #posehud .pv .v{font-size:12px} #posehud .pv .k{font-size:10px}}
 </style></head><body>
 <header>
   <h1>🛰 工位总览</h1>
@@ -115,13 +117,6 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
   <span class="warnbar" id="warn" style="display:none"></span>
   <span class="clk" id="clk"></span>
 </header>
-<!-- ── 右上角实时位姿 HUD: x y z (m) + a b c (°), 与示教器同口径; 点击复制全部 -->
-<div id="posehud" title="实时位姿: x y z (m) + a b c (°) · 读 ROKAE SDK 直采 (endInRef, 与示教器同口径, 5Hz) · 点击复制全部数值">
-  <div><span class="k">实时位姿</span> <span class="k">x y z (m)</span></div>
-  <div>X<span class="v" id="ph_x">—</span> Y<span class="v" id="ph_y">—</span> Z<span class="v" id="ph_z">—</span></div>
-  <div>A<span class="v" id="ph_a">—</span> B<span class="v" id="ph_b">—</span> C<span class="v" id="ph_c">—</span></div>
-  <div class="dim" id="ph_age">读位姿中…</div>
-</div>
 <main>
   <section class="grid">
     <div class="panel"><div class="cap"><span class="ttl">🦾 机器人臂上 D405</span>
@@ -298,6 +293,21 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
     </div>
   </section>
   <aside>
+    <!-- ── 实时位姿 = 独立控件 (2026-10-01 老倪: 「将实时位姿，也做成一个独立的控件，将 x y z a b c
+         横向一排，放在手动控制台的上面吧。宽度要对齐」) —— 随控制台那一栏的卡片宽度(宽度对齐 = 同栏同宽),
+         不再用 fixed 悬浮(悬浮会被滚动内容压住/遮挡)。点一下复制全部数值。 -->
+    <div class="card" id="posehud" title="实时位姿 x y z (m) + a b c (°) · ROKAE SDK 直采 (endInRef, 与示教器同口径, 5Hz) · 点击复制全部数值">
+      <h2>🎯 实时位姿 <span class="dim">x y z (m) · a b c (°)</span></h2>
+      <div class="posegrid">
+        <span class="pv"><i class="k">X</i><b class="v" id="ph_x">—</b></span>
+        <span class="pv"><i class="k">Y</i><b class="v" id="ph_y">—</b></span>
+        <span class="pv"><i class="k">Z</i><b class="v" id="ph_z">—</b></span>
+        <span class="pv"><i class="k">A</i><b class="v" id="ph_a">—</b></span>
+        <span class="pv"><i class="k">B</i><b class="v" id="ph_b">—</b></span>
+        <span class="pv"><i class="k">C</i><b class="v" id="ph_c">—</b></span>
+      </div>
+      <div class="hint" id="ph_age">读位姿中…</div>
+    </div>
     <div class="card">
       <h2>🕹 手动控制台</h2>
       <div id="armbar">
@@ -462,7 +472,7 @@ function poseHud(tp){
     ['ph_x','ph_y','ph_z'].forEach((id,i)=>M(id,fmt(tp.xyz[i],4),st));
     const ab=tp.abc_deg||[];
     ['ph_a','ph_b','ph_c'].forEach((id,i)=>M(id,
-      (ab.length===3&&ab[i]!==null&&ab[i]!==undefined)?(fmt(ab[i],3)+'°'):'—', st));
+      (ab.length===3&&ab[i]!==null&&ab[i]!==undefined)?fmt(ab[i],3):'—', st));
     S('ph_age', st
       ? ('⚠ 源已静止 '+fmt(tp.file_age_s,1)+'s · 上面是最后一帧, 勿当实时')
       : ('帧龄 '+fmt(tp.age_s,2)+'s · 5Hz · '+(tp.frame_id||'—')));
@@ -474,8 +484,8 @@ function poseHud(tp){
 }
 function poseCopy(){
   const g=id=>document.getElementById(id);
-  const line=(ks)=>ks.map(k=>k+' '+((g('ph_'+k)||{}).textContent||'—')).join('  ');
-  const t=line(['X','Y','Z'])+'\n'+line(['A','B','C'])+'\n'+(((g('ph_age')||{}).textContent)||'');
+  const line=(ks,unit)=>ks.map(k=>k+' '+((g('ph_'+k)||{}).textContent||'—')).join('  ')+(unit||'');
+  const t=line(['X','Y','Z'],'  (m)')+'\n'+line(['A','B','C'],'  (°)')+'\n'+(((g('ph_age')||{}).textContent)||'');
   const ta=document.createElement('textarea');
   ta.value=t; ta.style.position='fixed'; ta.style.top='-1000px';
   document.body.appendChild(ta); ta.select();
