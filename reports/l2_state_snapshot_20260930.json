@@ -1,0 +1,3643 @@
+{
+ "snapshot_at": "2026-09-30 09:44:00",
+ "why": "v5.16.34 收工快照: L2 原子技能注册表 + 示教点库(runtime state 在 .gitignore 的 data/ 里, 单独存一份进 git 以防丢)",
+ "registry": {
+  "version": "v1",
+  "layer": "L2",
+  "note": "L2 原子技能注册表 — 每个技能=可单独调用的运动/夹爪原语; 单位 mm; 由 l2_daemon 常驻执行 (立即动作) | 2026-09-23 整理: 金手指/表面 AOI 技能统一序号命名(①触发②实拍③拉长④原比例⑤区域⑥指标⑦伺服), 删除与②重复的 L2.aoi_picture | 2026-09-23 补: 表面通道(V4 后)可看图/读判决的技能 4 条 + 金手指判决 1 条",
+  "skills": [
+   {
+    "id": "L2.lift",
+    "name": "抬升",
+    "icon": "⬆️",
+    "ros": "line_rel",
+    "axis": "z_pos",
+    "param": {
+     "d_mm": {
+      "default": 50,
+      "unit": "mm",
+      "min": 5,
+      "max": 300,
+      "label": "抬升高度"
+     }
+    }
+   },
+   {
+    "id": "L2.lower",
+    "name": "下降",
+    "icon": "⬇️",
+    "ros": "line_rel",
+    "axis": "z_neg",
+    "param": {
+     "d_mm": {
+      "default": 30,
+      "unit": "mm",
+      "min": 5,
+      "max": 300,
+      "label": "下降高度"
+     }
+    }
+   },
+   {
+    "id": "L2.rot_a_pos",
+    "name": "A轴正转",
+    "icon": "🔄",
+    "ros": "pose_rot",
+    "axis": "a",
+    "param": {
+     "deg": {
+      "default": 5,
+      "unit": "deg",
+      "min": 1,
+      "max": 10.0,
+      "label": "旋转角度(只填正数)"
+     }
+    },
+    "guard": {
+     "max_deg": 10.0
+    },
+    "speed_max": 20,
+    "note": "绕工具X轴(俯仰(抬头/低头)) 正向旋转; **位置不动, 只改姿态**; 度数只填正数(方向内定) · 单次≤10°(要更大分次转) · 走 /move_pose 不掉电"
+   },
+   {
+    "id": "L2.rot_a_neg",
+    "name": "A轴反转",
+    "icon": "🔄",
+    "ros": "pose_rot",
+    "axis": "a",
+    "param": {
+     "deg": {
+      "default": 5,
+      "unit": "deg",
+      "min": 1,
+      "max": 10.0,
+      "label": "旋转角度(只填正数)"
+     }
+    },
+    "guard": {
+     "max_deg": 10.0
+    },
+    "speed_max": 20,
+    "note": "绕工具X轴(俯仰(抬头/低头)) 反向旋转; **位置不动, 只改姿态**; 度数只填正数(方向内定) · 单次≤10°(要更大分次转) · 走 /move_pose 不掉电"
+   },
+   {
+    "id": "L2.rot_b_pos",
+    "name": "B轴正转",
+    "icon": "🔄",
+    "ros": "pose_rot",
+    "axis": "b",
+    "param": {
+     "deg": {
+      "default": 5,
+      "unit": "deg",
+      "min": 1,
+      "max": 10.0,
+      "label": "旋转角度(只填正数)"
+     }
+    },
+    "guard": {
+     "max_deg": 10.0
+    },
+    "speed_max": 20,
+    "note": "绕工具Y轴(倾侧(左右歪)) 正向旋转; **位置不动, 只改姿态**; 度数只填正数(方向内定) · 单次≤10°(要更大分次转) · 走 /move_pose 不掉电"
+   },
+   {
+    "id": "L2.rot_b_neg",
+    "name": "B轴反转",
+    "icon": "🔄",
+    "ros": "pose_rot",
+    "axis": "b",
+    "param": {
+     "deg": {
+      "default": 5,
+      "unit": "deg",
+      "min": 1,
+      "max": 10.0,
+      "label": "旋转角度(只填正数)"
+     }
+    },
+    "guard": {
+     "max_deg": 10.0
+    },
+    "speed_max": 20,
+    "note": "绕工具Y轴(倾侧(左右歪)) 反向旋转; **位置不动, 只改姿态**; 度数只填正数(方向内定) · 单次≤10°(要更大分次转) · 走 /move_pose 不掉电"
+   },
+   {
+    "id": "L2.rot_c_pos",
+    "name": "C轴正转",
+    "icon": "🔄",
+    "ros": "pose_rot",
+    "axis": "c",
+    "param": {
+     "deg": {
+      "default": 5,
+      "unit": "deg",
+      "min": 1,
+      "max": 10.0,
+      "label": "旋转角度(只填正数)"
+     }
+    },
+    "guard": {
+     "max_deg": 10.0
+    },
+    "speed_max": 20,
+    "note": "绕工具Z轴(自转(画面原地转)) 正向旋转; **位置不动, 只改姿态**; 度数只填正数(方向内定) · 单次≤10°(要更大分次转) · 走 /move_pose 不掉电"
+   },
+   {
+    "id": "L2.rot_c_neg",
+    "name": "C轴反转",
+    "icon": "🔄",
+    "ros": "pose_rot",
+    "axis": "c",
+    "param": {
+     "deg": {
+      "default": 5,
+      "unit": "deg",
+      "min": 1,
+      "max": 10.0,
+      "label": "旋转角度(只填正数)"
+     }
+    },
+    "guard": {
+     "max_deg": 10.0
+    },
+    "speed_max": 20,
+    "note": "绕工具Z轴(自转(画面原地转)) 反向旋转; **位置不动, 只改姿态**; 度数只填正数(方向内定) · 单次≤10°(要更大分次转) · 走 /move_pose 不掉电"
+   },
+   {
+    "id": "L2.forward",
+    "name": "前进",
+    "icon": "⏩",
+    "ros": "line_rel",
+    "axis": "x_pos",
+    "param": {
+     "d_mm": {
+      "default": 50,
+      "unit": "mm",
+      "min": 5,
+      "max": 300,
+      "label": "前进距离"
+     }
+    },
+    "note": "基座 **+X** 方向平移; 距离只填正数(方向内定) —— 2026-09-20 起取代「前后平移」的 ± 输入 · 符号口径: +X=前 · +Y=左 · +Z=上"
+   },
+   {
+    "id": "L2.backward",
+    "name": "后退",
+    "icon": "⏪",
+    "ros": "line_rel",
+    "axis": "x_neg",
+    "param": {
+     "d_mm": {
+      "default": 50,
+      "unit": "mm",
+      "min": 5,
+      "max": 300,
+      "label": "后退距离"
+     }
+    },
+    "note": "基座 **-X** 方向平移; 距离只填正数(方向内定) · 符号口径: +X=前 · +Y=左 · +Z=上"
+   },
+   {
+    "id": "L2.left",
+    "name": "向左",
+    "icon": "⬅️",
+    "ros": "line_rel",
+    "axis": "y_pos",
+    "param": {
+     "d_mm": {
+      "default": 50,
+      "unit": "mm",
+      "min": 5,
+      "max": 300,
+      "label": "向左距离"
+     }
+    },
+    "note": "基座 **+Y** 方向平移; 距离只填正数(方向内定) —— 取代「左右平移」的 ± 输入 · 符号口径: +X=前 · +Y=左 · +Z=上"
+   },
+   {
+    "id": "L2.right",
+    "name": "向右",
+    "icon": "➡️",
+    "ros": "line_rel",
+    "axis": "y_neg",
+    "param": {
+     "d_mm": {
+      "default": 50,
+      "unit": "mm",
+      "min": 5,
+      "max": 300,
+      "label": "向右距离"
+     }
+    },
+    "note": "基座 **-Y** 方向平移; 距离只填正数(方向内定) · 符号口径: +X=前 · +Y=左 · +Z=上"
+   },
+   {
+    "id": "L2.grip_close",
+    "name": "合爪(夹紧)",
+    "ros": "gripper",
+    "param": {
+     "force": {
+      "default": 40,
+      "unit": "%",
+      "min": 10,
+      "max": 80,
+      "label": "夹持力"
+     }
+    }
+   },
+   {
+    "id": "L2.grip_open",
+    "name": "张爪(松开)",
+    "ros": "gripper",
+    "param": {}
+   },
+   {
+    "id": "L2.goto_point",
+    "name": "到示教点",
+    "ros": "line_abs",
+    "param": {
+     "point": {
+      "default": "home",
+      "unit": "点位名",
+      "label": "点位"
+     }
+    }
+   },
+   {
+    "id": "L2.goto_aoi_gold",
+    "name": "🎯 运动·进入金手指检测区",
+    "icon": "🎯",
+    "ros": "line_abs",
+    "quat": "taught",
+    "note": "回到金手指AOI检测区示教点(位置+姿态锁定, 向下>20mm 需显式允许)",
+    "param": {},
+    "point": "aoi_gold_view",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 20
+    },
+    "group": "运动"
+   },
+   {
+    "id": "L2.slot1",
+    "name": "一号位",
+    "icon": "🅰️",
+    "ros": "line_abs",
+    "quat": "taught",
+    "point": "slot1",
+    "point_locked": true,
+    "speed_max": 150,
+    "param": {},
+    "guard": {
+     "max_lin_mm": 500,
+     "z_floor_point": "slot1",
+     "z_floor_offset_mm": 0
+    },
+    "steps": [
+     {
+      "stage": 1,
+      "to": "slot1",
+      "dz_mm": 30.0,
+      "note": "阶段1 到一号位正上方",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "tol_mm": 1.0,
+      "timeout_s": 60,
+      "dwell_s": 1.5
+     },
+     {
+      "stage": 2,
+      "to": "slot1",
+      "dz_mm": 0,
+      "note": "阶段2 下降到一号位(到位即停, 禁下压)",
+      "guard": {
+       "dz_down_limit_mm": 40
+      },
+      "tol_mm": 0.5,
+      "timeout_s": 40,
+      "dwell_s": 1.0
+     }
+    ],
+    "contact_guard": "阶段2 到位即停、禁下压; 若现场见触底/顶住, 把 slot1 点抬高 3~5mm 重录 —— 不改判据硬说成功",
+    "note": "【一号位 · 两阶段回槽位】人机在环示教(只读订阅 /robot/tcp_pose 录点): slot1=抓持光模块那一刻的槽位位姿。阶段1 = 该点 base+Z 抬 30mm(工具X轴≈base+Z → 纯竖直平移、不带旋转) → 真值等到位后 阶段2 = 竖直下 30mm 回槽位。全程不碰夹爪(定义里没有 gripper 步骤)。守卫: z_floor=slot1(绝不低于该点) · 直线>500mm 拒发 · 限速 30。"
+   },
+   {
+    "id": "L2.slot2",
+    "name": "二号位",
+    "icon": "🅱️",
+    "ros": "line_abs",
+    "quat": "taught",
+    "point": "slot2",
+    "point_locked": true,
+    "speed_max": 30,
+    "param": {},
+    "guard": {
+     "max_lin_mm": 500,
+     "z_floor_point": "slot2",
+     "z_floor_offset_mm": 0
+    },
+    "steps": [
+     {
+      "stage": 1,
+      "to": "slot2",
+      "dz_mm": 30.0,
+      "note": "阶段1 到二号位正上方",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "tol_mm": 1.0,
+      "timeout_s": 60,
+      "dwell_s": 1.5
+     },
+     {
+      "stage": 2,
+      "to": "slot2",
+      "dz_mm": 0,
+      "note": "阶段2 下降到二号位(到位即停, 禁下压)",
+      "guard": {
+       "dz_down_limit_mm": 40
+      },
+      "tol_mm": 0.5,
+      "timeout_s": 40,
+      "dwell_s": 1.0
+     }
+    ],
+    "contact_guard": "阶段2 到位即停、禁下压; 若现场见触底/顶住, 把 slot2 点抬高 3~5mm 重录 —— 不改判据硬说成功",
+    "note": "【二号位 · 两阶段回槽位】人机在环示教(只读订阅 /robot/tcp_pose 录点): slot2=抓持光模块那一刻的槽位位姿。阶段1 = 该点 base+Z 抬 30mm(工具X轴≈base+Z → 纯竖直平移、不带旋转) → 真值等到位后 阶段2 = 竖直下 30mm 回槽位。全程不碰夹爪(定义里没有 gripper 步骤)。守卫: z_floor=slot2(绝不低于该点) · 直线>500mm 拒发 · 限速 30。"
+   },
+   {
+    "id": "L2.lissa_search",
+    "name": "里萨如力控插入·只搜索",
+    "icon": "🔍",
+    "ros": "line_abs",
+    "quat": "taught",
+    "point": "insert_pose",
+    "point_locked": true,
+    "speed_max": 30,
+    "param": {},
+    "guard": {
+     "max_lin_mm": 300,
+     "z_floor_point": "insert_pose",
+     "z_floor_offset_mm": 0
+    },
+    "steps": [
+     {
+      "stage": 1,
+      "op": "service",
+      "srv": "/lissajous_force_search",
+      "type": "interfaces/srv/LissajousForceSearch",
+      "timeout_s": 60,
+      "dwell_s": 0.5,
+      "note": "阶段1 里萨如力控搜索插入(6N)",
+      "args": {
+       "frame_type": 3,
+       "plane": 0,
+       "load": [
+        1.51,
+        0.01617,
+        0.01289,
+        0.03117,
+        0.0,
+        0.0,
+        0.0
+       ],
+       "cartesian_stiffness": [
+        6000.0,
+        6000.0,
+        0.0,
+        300.0,
+        300.0,
+        100.0
+       ],
+       "cartesian_max_vel": [
+        0.1,
+        0.1,
+        0.01,
+        5.0,
+        5.0,
+        5.0
+       ],
+       "cartesian_desired_force": [
+        0.0,
+        0.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0
+       ],
+       "amplify_one": 6.0,
+       "frequency_one": 3.0,
+       "amplify_two": 4.0,
+       "frequency_two": 2.0,
+       "phase_diff": 0.0,
+       "calibrate_force_sensor": true,
+       "force_settle_sec": 0.1,
+       "timeout_sec": 2.0,
+       "use_current_pose_as_box_origin": true,
+       "search_box": [
+        -0.01,
+        0.01,
+        -0.01,
+        0.01,
+        -0.01,
+        0.01
+       ],
+       "search_box_is_inside": true,
+       "search_box_timeout_sec": 8.0
+      }
+     }
+    ],
+    "contact_guard": "只调力控服务, 本机不下发任何运动; 回执 success=False 即中止不重发",
+    "note": "【里萨如力控插入·只搜索】人工已把光模块摆到插槽口后, 只执行产线的 /lissajous_force_search(配方与 L2.lissa_insert 同一份: 工具系 · XY · 6N 沿工具 Z · 李萨如 6mm/3Hz+4mm/2Hz · 盒 ±10mm 原点=当前位姿/8s · 自动标定力传感器)。点 insert_pose 仅用于守卫(z_floor/锁点)。"
+   },
+   {
+    "id": "L2.lissa_insert",
+    "name": "里萨如力控插入",
+    "icon": "🔌",
+    "ros": "line_abs",
+    "quat": "taught",
+    "point": "insert_pose",
+    "point_locked": true,
+    "speed_max": 120,
+    "param": {},
+    "guard": {
+     "max_lin_mm": 300,
+     "z_floor_point": "insert_pose",
+     "z_floor_offset_mm": 0
+    },
+    "steps": [
+     {
+      "stage": 1,
+      "to": "insert_pose",
+      "local_mm": [
+       0.0,
+       0.0,
+       -60.0
+      ],
+      "needs_unlock": true,
+      "note": "阶段1 沿模块轴向退 60mm 到插槽口(⚠️ 会拔出模块: 必须先解锁)",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "tol_mm": 1.0,
+      "timeout_s": 90,
+      "dwell_s": 1.0
+     },
+     {
+      "stage": 2,
+      "to": "insert_pose",
+      "local_mm": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "note": "阶段2 直线推进到插入位",
+      "guard": {
+       "dz_down_limit_mm": 40
+      },
+      "tol_mm": 0.5,
+      "timeout_s": 90,
+      "dwell_s": 1.0
+     },
+     {
+      "stage": 3,
+      "op": "service",
+      "srv": "/lissajous_force_search",
+      "type": "interfaces/srv/LissajousForceSearch",
+      "timeout_s": 60,
+      "dwell_s": 0.5,
+      "note": "阶段3 里萨如力控搜索插入(6N)",
+      "args": {
+       "frame_type": 3,
+       "plane": 0,
+       "load": [
+        1.51,
+        0.01617,
+        0.01289,
+        0.03117,
+        0.0,
+        0.0,
+        0.0
+       ],
+       "cartesian_stiffness": [
+        6000.0,
+        6000.0,
+        0.0,
+        300.0,
+        300.0,
+        100.0
+       ],
+       "cartesian_max_vel": [
+        0.1,
+        0.1,
+        0.01,
+        5.0,
+        5.0,
+        5.0
+       ],
+       "cartesian_desired_force": [
+        0.0,
+        0.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0
+       ],
+       "amplify_one": 6.0,
+       "frequency_one": 3.0,
+       "amplify_two": 4.0,
+       "frequency_two": 2.0,
+       "phase_diff": 0.0,
+       "calibrate_force_sensor": true,
+       "force_settle_sec": 0.1,
+       "timeout_sec": 2.0,
+       "use_current_pose_as_box_origin": true,
+       "search_box": [
+        -0.01,
+        0.01,
+        -0.01,
+        0.01,
+        -0.01,
+        0.01
+       ],
+       "search_box_is_inside": true,
+       "search_box_timeout_sec": 8.0
+      }
+     }
+    ],
+    "contact_guard": "力控插入只靠驱动的 cartesian_desired_force(本机不下压); 若现场见插入不到位, 先看服务回执原文, 再考虑改用 8N(产线第二次档), 不改判据硬说成功",
+    "note": "【里萨如力控插入 · 里萨如力控插入】配方**只读抄自产线** 尝试插入第一次.yaml: 沿工具 Z 退 60mm 到插槽口 → 直线推进到插入位(insert_pose 示教点) → 调 /lissajous_force_search(工具系 · XY 平面 · 6N 沿工具 Z · 李萨如 6mm/3Hz + 4mm/2Hz · 盒 ±10mm/8s · 到位前自动标定力传感器)。全程不发夹爪指令。服务回执 success=False 即中止并报原文。已到槽口只想做力控那一段 → 用同源技能 L2.lissa_search(同一份配方, 只调服务)。"
+   },
+   {
+    "id": "L2.pull_module",
+    "name": "解锁并拔出",
+    "icon": "🪝",
+    "ros": "line_abs",
+    "quat": "taught",
+    "point": "insert_pose",
+    "point_locked": true,
+    "speed_max": 30,
+    "param": {},
+    "guard": {
+     "max_lin_mm": 200,
+     "z_floor_point": "insert_pose",
+     "z_floor_offset_mm": -10
+    },
+    "steps": [
+     {
+      "stage": 1,
+      "rel": true,
+      "dz_mm": -3.0,
+      "note": "阶段1 垂直下移补偿模块下垂 3mm",
+      "tol_mm": 0.5,
+      "timeout_s": 60,
+      "dwell_s": 0.5
+     },
+     {
+      "op": "gripper",
+      "stage": 2,
+      "pos": 1000.0,
+      "speed": 100.0,
+      "force": 50.0,
+      "acc": 100.0,
+      "note": "阶段2 松开夹爪(释放模块, 产线 暂时松开.yaml 同参数)",
+      "dwell_s": 0.5
+     },
+     {
+      "stage": 3,
+      "rel": true,
+      "local_mm": [
+       0.0,
+       0.0,
+       -15.0
+      ],
+      "note": "阶段3 沿模块轴退 15mm 让后方钩子钩住绿色环",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "tol_mm": 0.5,
+      "timeout_s": 60,
+      "dwell_s": 0.5
+     },
+     {
+      "op": "gripper",
+      "stage": 4,
+      "pos": 0.0,
+      "speed": 100.0,
+      "force": 30.0,
+      "acc": 100.0,
+      "note": "阶段4 合爪 force30 夹住绿色环(产线 拔出.yaml 同参数)",
+      "dwell_s": 0.5
+     },
+     {
+      "stage": 5,
+      "rel": true,
+      "local_mm": [
+       0.0,
+       0.0,
+       -120.0
+      ],
+      "note": "阶段5 沿模块轴退 120mm 拉出模块(产线 AOI_1 同口径)",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "tol_mm": 1.0,
+      "timeout_s": 120,
+      "dwell_s": 0.5
+     }
+    ],
+    "contact_guard": "夹爪回执是唯一真值: 空爪≈21 / 夹住模块≈185; 夹空或 curr_pos 异常一律停手人工确认 —— 不许用'已下发'当成功。逐段跑 {\"stages\":[N]} 更稳。",
+    "note": "【解锁并拔出 · 解锁并拔出】机理=夹爪后方钩子(老倪现场): 松开 → 沿轴退 15mm 钩住**绿色环** → 合爪 force30 夹住 → 沿轴退 120mm 拉出。参数只读抄产线(暂时松开/移动到治具插槽/拔出/AOI_1)。阶段1 垂直下移 3mm 补偿模块后半截重力下垂。每段可单独跑: {\"skill\":\"L2.pull_module\",\"stages\":[3]}。"
+   },
+   {
+    "id": "L2.aoi_gold",
+    "name": "🎯 金手指①触发拍照检测",
+    "ros": "http",
+    "url": "http://192.168.23.23:10082/capture_detect",
+    "method": "POST",
+    "param": {},
+    "note": "POST /capture_detect 触发产线金手指相机拍一张并跑后台YOLO。**判决(OK/NG/缺陷数)只打印在工控机终端, API 只回「已受理」**",
+    "group": "AOI检测"
+   },
+   {
+    "id": "L2.aoi_surface",
+    "name": "🎯 表面①触发拍照检测",
+    "ros": "http",
+    "url": "http://192.168.23.23:10083/capture_detect",
+    "method": "POST",
+    "param": {},
+    "note": "POST 10083/capture_detect 触发表面检测相机拍照+YOLO(异步; 判决同样只打工控机终端)。注意 10083 没有 /picture 等读图路由",
+    "group": "AOI检测"
+   },
+   {
+    "id": "L2.aoi_picture_fresh",
+    "name": "📷 金手指②实拍原图",
+    "ros": "http",
+    "method": "GET",
+    "url": "http://192.168.23.23:10082/picture",
+    "query": "?grab=1",
+    "kind": "image",
+    "param": {},
+    "note": "GET /picture?grab=1 —— 现场重拍一帧再返回原图 2448x2048 (看'画面是否实时/有没有光')",
+    "group": "AOI检测"
+   },
+   {
+    "id": "L2.aoi_picture_crop",
+    "name": "✂️ 金手指③拉长960(喂YOLO)",
+    "icon": "✂️",
+    "ros": "http",
+    "method": "GET",
+    "url": "http://192.168.23.23:10082/picture",
+    "query": "?kind=crop",
+    "kind": "image",
+    "param": {},
+    "note": "GET /picture?kind=crop —— v4.2 口径: 只含焊盘排, 纵向拉伸到 960x960, 与 imgsz=960 对齐",
+    "group": "AOI检测"
+   },
+   {
+    "id": "L2.aoi_region",
+    "name": "🔲 金手指⑤区域+对焦清晰度",
+    "icon": "🎯",
+    "ros": "http",
+    "method": "GET",
+    "url": "http://192.168.23.23:10082/region",
+    "query": "?grab=1",
+    "param": {},
+    "note": "GET /region?grab=1 —— 原始图坐标系的金手指区域(定向框/四边形)+对焦清晰度 focus(Laplacian方差)",
+    "group": "AOI检测"
+   },
+   {
+    "id": "L2.aoi_crop_info",
+    "name": "📐 金手指⑥裁剪质量指标",
+    "icon": "📐",
+    "ros": "http",
+    "method": "GET",
+    "url": "http://192.168.23.23:10082/crop_info",
+    "param": {},
+    "note": "GET /crop_info —— 最近一次裁剪的 score/残余倾角/线残差/金覆盖 (规整度自证)",
+    "group": "AOI检测"
+   },
+   {
+    "id": "L2.aoi_gold_align",
+    "name": "🛠 金手指⑦对准+自动对焦",
+    "icon": "🎯",
+    "ros": "script",
+    "script": "tools/aoi_gold_servo.py",
+    "args": [
+     "serve"
+    ],
+    "dry_default": true,
+    "param": {
+     "max_step": {
+      "default": 2.0,
+      "unit": "mm",
+      "min": 0.1,
+      "max": 5.0,
+      "label": "单步限幅"
+     },
+     "max_total": {
+      "default": 15.0,
+      "unit": "mm",
+      "min": 1.0,
+      "max": 30.0,
+      "label": "单轴累计限幅"
+     },
+     "max_iters": {
+      "default": 25,
+      "unit": "次",
+      "min": 1,
+      "max": 60,
+      "label": "迭代上限"
+     }
+    },
+    "note": "伺服技能 tools/aoi_gold_servo.py: 误差 e→Δarm=-M·e + 沿光轴退火爬坡对焦; 四级闸; 默认 dry-run",
+    "group": "AOI检测"
+   },
+   {
+    "id": "L2.aoi_picture_natural",
+    "name": "📏 金手指④原比例(目检)",
+    "icon": "📏",
+    "ros": "http",
+    "method": "GET",
+    "url": "http://192.168.23.23:10082/picture",
+    "query": "?kind=natural",
+    "kind": "image",
+    "param": {},
+    "note": "GET /picture?kind=natural —— 不拉伸 1455x70, 目检/复核用",
+    "group": "AOI检测"
+   },
+   {
+    "id": "L2.grasp_vision",
+    "name": "视觉引导抓取",
+    "icon": "🎯",
+    "ros": "line_abs",
+    "quat": "taught",
+    "point": "slot_vision",
+    "point_locked": false,
+    "speed_max": 30,
+    "vision_gate": {
+     "resolver": "vision_grasp_skill.judge_slot",
+     "candidates": [
+      "slot1",
+      "slot2"
+     ],
+     "require": "module_present",
+     "fail_closed": true,
+     "double_witness": [
+      "yolo_box_bottom_vs_slot_projection",
+      "vertical_edge_column_peak"
+     ],
+     "note": "执行前跑双路视觉判据决定 slot_vision→slot1/slot2; 判不出/两路冲突/帧不新鲜 → 拒发(宁缺勿假)"
+    },
+    "param": {},
+    "guard": {
+     "max_lin_mm": 500,
+     "z_floor_point": "slot_vision",
+     "z_floor_offset_mm": 0
+    },
+    "steps": [
+     {
+      "stage": 1,
+      "to": "slot_vision",
+      "dz_mm": 30.0,
+      "note": "阶段1 到模块所在槽正上方(视觉解析)",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "tol_mm": 1.0,
+      "timeout_s": 60,
+      "dwell_s": 1.5
+     },
+     {
+      "stage": 2,
+      "to": "slot_vision",
+      "dz_mm": 0,
+      "note": "阶段2 下降到抓取位(到位即停, 禁下压)",
+      "guard": {
+       "dz_down_limit_mm": 40
+      },
+      "tol_mm": 0.5,
+      "timeout_s": 40,
+      "dwell_s": 1.0
+     },
+     {
+      "op": "gripper",
+      "stage": 3,
+      "pos": 0.0,
+      "speed": 100.0,
+      "force": 40.0,
+      "acc": 100.0,
+      "note": "阶段3 合爪夹住模块(force40; 回执 curr_pos 应≈185 而非空爪≈21)",
+      "dwell_s": 0.5
+     },
+     {
+      "rel": true,
+      "stage": 4,
+      "dz_mm": 50.0,
+      "note": "阶段4 抬升 50mm 离槽(相对当前位姿, 姿态不变)",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "tol_mm": 1.0,
+      "timeout_s": 60,
+      "dwell_s": 0.5
+     }
+    ],
+    "contact_guard": "判完成只看真值: 阶段到位看 TCP 真值; 抓没抓到看夹爪回执 curr_pos(空爪≈21 / 夹住模块≈185); 任一段失败 → 中止剩余段且**绝不重发**",
+    "note": "【视觉引导抓取】判位 = 双路独立证据一致才认: ①YOLO peg 框底心 ↔ 槽位示教点手眼投影 (Δx≤12px ∧ 框底-投影∈[-5,25]px) ②模块竖直带『竖直棱边能量』列剖面峰列归属(≤20px)。执行 = 槽正上方→下降→合爪 force40→抬升 50mm。视觉门在**执行器内** fail-closed: 解析不到槽位就拒发。零下发自检/编排: tools/vision_grasp_skill.py (不加 --apply 一律 dry-run)"
+   },
+   {
+    "id": "L2.aoi_surface_picture",
+    "name": "📷 表面②检测图(1280方图)",
+    "icon": "📷",
+    "ros": "http",
+    "method": "GET",
+    "url": "http://192.168.23.23:10083/picture",
+    "query": "?kind=crop",
+    "kind": "image",
+    "param": {},
+    "group": "AOI检测",
+    "note": "喂表面模型的规范图 = 原图按比例 letterbox 到 1280x1280 (与 config imgsz=1280 对齐, 不拉伸变形)。【需 10083 跑 V4 程序】V2 没有这个路由(会 404)"
+   },
+   {
+    "id": "L2.aoi_surface_origin",
+    "name": "📷 表面③原图",
+    "icon": "📷",
+    "ros": "http",
+    "method": "GET",
+    "url": "http://192.168.23.23:10083/picture",
+    "query": "?kind=origin",
+    "kind": "image",
+    "param": {},
+    "group": "AOI检测",
+    "note": "表面相机原图 2448x2048 (目检用)。【需 V4】"
+   },
+   {
+    "id": "L2.aoi_surface_result",
+    "name": "📝 表面④判决(OK/NG)",
+    "icon": "📝",
+    "ros": "http",
+    "method": "GET",
+    "url": "http://192.168.23.23:10083/last_result",
+    "param": {},
+    "group": "AOI检测",
+    "note": "读最近一次表面检测判决: {verdict: OK/NG, count, defects[{class_name,conf,bbox}], ms, saved_incoming}。【需 V4】—— 有了它本机不用再看工控机终端"
+   },
+   {
+    "id": "L2.aoi_surface_info",
+    "name": "📐 表面⑤规范图指标",
+    "icon": "📐",
+    "ros": "http",
+    "method": "GET",
+    "url": "http://192.168.23.23:10083/crop_info",
+    "param": {},
+    "group": "AOI检测",
+    "note": "规范图/画面健康度: canonical 尺寸 · letterbox 比例 · mean/std(亮度) · focus(Laplacian 方差)。灰度 mean 应在 60~200, 过低=没打光/曝光不足。【需 V4】"
+   },
+   {
+    "id": "L2.aoi_gold_result",
+    "name": "📝 金手指⑧判决(OK/NG)",
+    "icon": "📝",
+    "ros": "http",
+    "method": "GET",
+    "url": "http://192.168.23.23:10082/last_result",
+    "param": {},
+    "group": "AOI检测",
+    "note": "读最近一次金手指检测判决 (V4 程序已支持): {verdict, count, defects[{class_name,conf,bbox}], ms}"
+   },
+   {
+    "id": "L2.goto_gold_pt1",
+    "name": "🎯 回到金手指点1",
+    "icon": "🎯",
+    "ros": "line_abs",
+    "quat": "taught",
+    "point": "金手指点1",
+    "point_locked": true,
+    "group": "AOI检测",
+    "guard": {
+     "dz_down_limit_mm": 20
+    },
+    "note": "回到示教点『金手指点1』(AOI 金手指观察位) — 位姿由 质量检测终端『📍记住此点』/ tools/aoi_teach_point.py 现场记录; 位置+姿态锁定, 向下>20mm 需显式允许"
+   },
+   {
+    "id": "L2.loop20_p1",
+    "name": "⬆️绝对·上",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "loop20_p1",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 30
+    },
+    "note": "绝对位姿循环路点(20mm), 与 L2.lift/backward/lower/forward 同序但绝对 → 无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.loop20_p2",
+    "name": "⏪绝对·后",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "loop20_p2",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 30
+    },
+    "note": "绝对位姿循环路点(20mm), 与 L2.lift/backward/lower/forward 同序但绝对 → 无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.loop20_p3",
+    "name": "⬇️绝对·下",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "loop20_p3",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 30
+    },
+    "note": "绝对位姿循环路点(20mm), 与 L2.lift/backward/lower/forward 同序但绝对 → 无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.loop20_p4",
+    "name": "⏩绝对·前",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "loop20_p4",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 30
+    },
+    "note": "绝对位姿循环路点(20mm), 与 L2.lift/backward/lower/forward 同序但绝对 → 无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.afx30_p1",
+    "name": "⏩绝对·前",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "afx30_p1",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 40.0
+    },
+    "note": "绝对位姿循环路点 30mm(前→上→后→下)，无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.afx30_p2",
+    "name": "⬆️绝对·上",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "afx30_p2",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 40.0
+    },
+    "note": "绝对位姿循环路点 30mm(前→上→后→下)，无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.afx30_p3",
+    "name": "⏪绝对·后",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "afx30_p3",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 40.0
+    },
+    "note": "绝对位姿循环路点 30mm(前→上→后→下)，无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.afx30_p4",
+    "name": "⬇️绝对·下",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "afx30_p4",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 40.0
+    },
+    "note": "绝对位姿循环路点 30mm(前→上→后→下)，无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.afx50_p1",
+    "name": "⏩绝对·前",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "afx50_p1",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 60.0
+    },
+    "note": "绝对位姿循环路点 50mm(前→上→后→下)，无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.afx50_p2",
+    "name": "⬆️绝对·上",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "afx50_p2",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 60.0
+    },
+    "note": "绝对位姿循环路点 50mm(前→上→后→下)，无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.afx50_p3",
+    "name": "⏪绝对·后",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "afx50_p3",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 60.0
+    },
+    "note": "绝对位姿循环路点 50mm(前→上→后→下)，无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.afx50_p4",
+    "name": "⬇️绝对·下",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "afx50_p4",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 60.0
+    },
+    "note": "绝对位姿循环路点 50mm(前→上→后→下)，无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.loop_fubd50_x10",
+    "name": "🔁 5cm 前上后下 ×10 (5.0mm/s)",
+    "icon": "🔁",
+    "ros": "line_abs",
+    "quat": "taught",
+    "speed_max": 55.0,
+    "param": {},
+    "guard": {
+     "max_lin_mm": 100.0,
+     "dz_down_limit_mm": 60.0
+    },
+    "steps": [
+     {
+      "stage": 1,
+      "to": "afx50_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈1 第1步 前 +X"
+     },
+     {
+      "stage": 2,
+      "to": "afx50_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈1 第2步 上 +Z"
+     },
+     {
+      "stage": 3,
+      "to": "afx50_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈1 第3步 后 -X"
+     },
+     {
+      "stage": 4,
+      "to": "afx50_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈1 第4步 下 -Z"
+     },
+     {
+      "stage": 5,
+      "to": "afx50_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈2 第5步 前 +X"
+     },
+     {
+      "stage": 6,
+      "to": "afx50_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈2 第6步 上 +Z"
+     },
+     {
+      "stage": 7,
+      "to": "afx50_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈2 第7步 后 -X"
+     },
+     {
+      "stage": 8,
+      "to": "afx50_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈2 第8步 下 -Z"
+     },
+     {
+      "stage": 9,
+      "to": "afx50_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈3 第9步 前 +X"
+     },
+     {
+      "stage": 10,
+      "to": "afx50_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈3 第10步 上 +Z"
+     },
+     {
+      "stage": 11,
+      "to": "afx50_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈3 第11步 后 -X"
+     },
+     {
+      "stage": 12,
+      "to": "afx50_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈3 第12步 下 -Z"
+     },
+     {
+      "stage": 13,
+      "to": "afx50_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈4 第13步 前 +X"
+     },
+     {
+      "stage": 14,
+      "to": "afx50_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈4 第14步 上 +Z"
+     },
+     {
+      "stage": 15,
+      "to": "afx50_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈4 第15步 后 -X"
+     },
+     {
+      "stage": 16,
+      "to": "afx50_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈4 第16步 下 -Z"
+     },
+     {
+      "stage": 17,
+      "to": "afx50_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈5 第17步 前 +X"
+     },
+     {
+      "stage": 18,
+      "to": "afx50_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈5 第18步 上 +Z"
+     },
+     {
+      "stage": 19,
+      "to": "afx50_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈5 第19步 后 -X"
+     },
+     {
+      "stage": 20,
+      "to": "afx50_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈5 第20步 下 -Z"
+     },
+     {
+      "stage": 21,
+      "to": "afx50_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈6 第21步 前 +X"
+     },
+     {
+      "stage": 22,
+      "to": "afx50_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈6 第22步 上 +Z"
+     },
+     {
+      "stage": 23,
+      "to": "afx50_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈6 第23步 后 -X"
+     },
+     {
+      "stage": 24,
+      "to": "afx50_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈6 第24步 下 -Z"
+     },
+     {
+      "stage": 25,
+      "to": "afx50_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈7 第25步 前 +X"
+     },
+     {
+      "stage": 26,
+      "to": "afx50_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈7 第26步 上 +Z"
+     },
+     {
+      "stage": 27,
+      "to": "afx50_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈7 第27步 后 -X"
+     },
+     {
+      "stage": 28,
+      "to": "afx50_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈7 第28步 下 -Z"
+     },
+     {
+      "stage": 29,
+      "to": "afx50_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈8 第29步 前 +X"
+     },
+     {
+      "stage": 30,
+      "to": "afx50_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈8 第30步 上 +Z"
+     },
+     {
+      "stage": 31,
+      "to": "afx50_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈8 第31步 后 -X"
+     },
+     {
+      "stage": 32,
+      "to": "afx50_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈8 第32步 下 -Z"
+     },
+     {
+      "stage": 33,
+      "to": "afx50_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈9 第33步 前 +X"
+     },
+     {
+      "stage": 34,
+      "to": "afx50_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈9 第34步 上 +Z"
+     },
+     {
+      "stage": 35,
+      "to": "afx50_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈9 第35步 后 -X"
+     },
+     {
+      "stage": 36,
+      "to": "afx50_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈9 第36步 下 -Z"
+     },
+     {
+      "stage": 37,
+      "to": "afx50_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈10 第37步 前 +X"
+     },
+     {
+      "stage": 38,
+      "to": "afx50_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈10 第38步 上 +Z"
+     },
+     {
+      "stage": 39,
+      "to": "afx50_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈10 第39步 后 -X"
+     },
+     {
+      "stage": 40,
+      "to": "afx50_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 60.0
+      },
+      "note": "圈10 第40步 下 -Z"
+     }
+    ],
+    "note": "【5cm 正方形循环 · 前→上→后→下 ×10 圈】绝对位姿路点(由 make_abs_path.py 从真机 TCP 采样算出) → 无 line_rel 累积漂移(实测同条件 line_rel 漂 24.2mm)。每阶段下发后用真值等到位(tol 0.5mm)再进下一段, 到点即停不重发。限速上限 55。40 段 = 5cm×10 圈。"
+   },
+   {
+    "id": "L2.afx100_p1",
+    "name": "⏩绝对·前",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "afx100_p1",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 110.0
+    },
+    "note": "绝对位姿循环路点 100mm(前→上→后→下)，无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.afx100_p2",
+    "name": "⬆️绝对·上",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "afx100_p2",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 110.0
+    },
+    "note": "绝对位姿循环路点 100mm(前→上→后→下)，无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.afx100_p3",
+    "name": "⏪绝对·后",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "afx100_p3",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 110.0
+    },
+    "note": "绝对位姿循环路点 100mm(前→上→后→下)，无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.afx100_p4",
+    "name": "⬇️绝对·下",
+    "icon": "🧭",
+    "ros": "line_abs",
+    "quat": "taught",
+    "param": {},
+    "point": "afx100_p4",
+    "point_locked": true,
+    "guard": {
+     "dz_down_limit_mm": 110.0
+    },
+    "note": "绝对位姿循环路点 100mm(前→上→后→下)，无累积漂移",
+    "group": "运动"
+   },
+   {
+    "id": "L2.loop_fubd100_x10",
+    "name": "正方形10厘米 (10cm·前上后下×10·10mm/s)",
+    "icon": "🔁",
+    "ros": "line_abs",
+    "quat": "taught",
+    "speed_max": 105.0,
+    "param": {},
+    "guard": {
+     "max_lin_mm": 200.0,
+     "dz_down_limit_mm": 110.0
+    },
+    "steps": [
+     {
+      "stage": 1,
+      "to": "afx100_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈1 第1步 前 +X"
+     },
+     {
+      "stage": 2,
+      "to": "afx100_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈1 第2步 上 +Z"
+     },
+     {
+      "stage": 3,
+      "to": "afx100_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈1 第3步 后 -X"
+     },
+     {
+      "stage": 4,
+      "to": "afx100_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈1 第4步 下 -Z"
+     },
+     {
+      "stage": 5,
+      "to": "afx100_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈2 第5步 前 +X"
+     },
+     {
+      "stage": 6,
+      "to": "afx100_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈2 第6步 上 +Z"
+     },
+     {
+      "stage": 7,
+      "to": "afx100_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈2 第7步 后 -X"
+     },
+     {
+      "stage": 8,
+      "to": "afx100_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈2 第8步 下 -Z"
+     },
+     {
+      "stage": 9,
+      "to": "afx100_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈3 第9步 前 +X"
+     },
+     {
+      "stage": 10,
+      "to": "afx100_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈3 第10步 上 +Z"
+     },
+     {
+      "stage": 11,
+      "to": "afx100_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈3 第11步 后 -X"
+     },
+     {
+      "stage": 12,
+      "to": "afx100_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈3 第12步 下 -Z"
+     },
+     {
+      "stage": 13,
+      "to": "afx100_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈4 第13步 前 +X"
+     },
+     {
+      "stage": 14,
+      "to": "afx100_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈4 第14步 上 +Z"
+     },
+     {
+      "stage": 15,
+      "to": "afx100_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈4 第15步 后 -X"
+     },
+     {
+      "stage": 16,
+      "to": "afx100_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈4 第16步 下 -Z"
+     },
+     {
+      "stage": 17,
+      "to": "afx100_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈5 第17步 前 +X"
+     },
+     {
+      "stage": 18,
+      "to": "afx100_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈5 第18步 上 +Z"
+     },
+     {
+      "stage": 19,
+      "to": "afx100_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈5 第19步 后 -X"
+     },
+     {
+      "stage": 20,
+      "to": "afx100_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈5 第20步 下 -Z"
+     },
+     {
+      "stage": 21,
+      "to": "afx100_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈6 第21步 前 +X"
+     },
+     {
+      "stage": 22,
+      "to": "afx100_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈6 第22步 上 +Z"
+     },
+     {
+      "stage": 23,
+      "to": "afx100_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈6 第23步 后 -X"
+     },
+     {
+      "stage": 24,
+      "to": "afx100_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈6 第24步 下 -Z"
+     },
+     {
+      "stage": 25,
+      "to": "afx100_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈7 第25步 前 +X"
+     },
+     {
+      "stage": 26,
+      "to": "afx100_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈7 第26步 上 +Z"
+     },
+     {
+      "stage": 27,
+      "to": "afx100_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈7 第27步 后 -X"
+     },
+     {
+      "stage": 28,
+      "to": "afx100_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈7 第28步 下 -Z"
+     },
+     {
+      "stage": 29,
+      "to": "afx100_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈8 第29步 前 +X"
+     },
+     {
+      "stage": 30,
+      "to": "afx100_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈8 第30步 上 +Z"
+     },
+     {
+      "stage": 31,
+      "to": "afx100_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈8 第31步 后 -X"
+     },
+     {
+      "stage": 32,
+      "to": "afx100_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈8 第32步 下 -Z"
+     },
+     {
+      "stage": 33,
+      "to": "afx100_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈9 第33步 前 +X"
+     },
+     {
+      "stage": 34,
+      "to": "afx100_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈9 第34步 上 +Z"
+     },
+     {
+      "stage": 35,
+      "to": "afx100_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈9 第35步 后 -X"
+     },
+     {
+      "stage": 36,
+      "to": "afx100_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈9 第36步 下 -Z"
+     },
+     {
+      "stage": 37,
+      "to": "afx100_p1",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈10 第37步 前 +X"
+     },
+     {
+      "stage": 38,
+      "to": "afx100_p2",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈10 第38步 上 +Z"
+     },
+     {
+      "stage": 39,
+      "to": "afx100_p3",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈10 第39步 后 -X"
+     },
+     {
+      "stage": 40,
+      "to": "afx100_p4",
+      "dz_mm": 0,
+      "tol_mm": 0.5,
+      "timeout_s": 45,
+      "dwell_s": 0.3,
+      "guard": {
+       "dz_down_limit_mm": 110.0
+      },
+      "note": "圈10 第40步 下 -Z"
+     }
+    ],
+    "note": "【10cm 正方形循环 · 前→上→后→下 ×10 圈】绝对位姿路点(由 make_abs_path.py 从真机 TCP 采样算出) → 无 line_rel 累积漂移(实测同条件 line_rel 漂 24.2mm)。每阶段下发后用真值等到位(tol 0.5mm)再进下一段, 到点即停不重发。限速上限 105。40 段 = 10cm×10 圈。"
+   },
+   {
+    "id": "L2.insert_roundtrip__DISABLED_需修(执行器unpack崩溃)",
+    "name": "⛔暂停使用",
+    "icon": "🔁",
+    "ros": "line_abs",
+    "quat": "taught",
+    "point": "insert_deep",
+    "point_locked": true,
+    "speed_max": 200,
+    "param": {},
+    "guard": {
+     "max_lin_mm": 300,
+     "z_floor_point": "insert_pose",
+     "z_floor_offset_mm": 0
+    },
+    "steps": [
+     {
+      "stage": 1,
+      "to": "slot1_up",
+      "local_mm": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "tol_mm": 1.0,
+      "timeout_s": 120,
+      "dwell_s": 1.0,
+      "note": "阶段1 一号位抬到安全高度 z≈0.300",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "speed": 100
+     },
+     {
+      "stage": 2,
+      "to": "x_mid_up",
+      "local_mm": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "tol_mm": 1.0,
+      "timeout_s": 120,
+      "dwell_s": 1.0,
+      "note": "阶段2 安全高度横移(-X)",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "speed": 100
+     },
+     {
+      "stage": 3,
+      "to": "hole_up",
+      "local_mm": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "tol_mm": 1.0,
+      "timeout_s": 120,
+      "dwell_s": 1.0,
+      "note": "阶段3 安全高度横移到孔正上方",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "speed": 100
+     },
+     {
+      "stage": 4,
+      "to": "hole_retract",
+      "local_mm": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "tol_mm": 1.0,
+      "timeout_s": 120,
+      "dwell_s": 1.0,
+      "note": "阶段4 下降到孔边(未插入前位姿)",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "speed": 80
+     },
+     {
+      "stage": 5,
+      "to": "insert_pose",
+      "local_mm": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "tol_mm": 1.0,
+      "timeout_s": 120,
+      "dwell_s": 1.0,
+      "note": "阶段5 沿模块轴推进到插槽口",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "speed": 80
+     },
+     {
+      "stage": 6,
+      "op": "service",
+      "srv": "/lissajous_force_search",
+      "type": "interfaces/srv/LissajousForceSearch",
+      "timeout_s": 60,
+      "dwell_s": 0.5,
+      "note": "阶段6 里萨如力控搜索插入(6N)",
+      "args": {
+       "frame_type": 3,
+       "plane": 0,
+       "load": [
+        1.51,
+        0.01617,
+        0.01289,
+        0.03117,
+        0.0,
+        0.0,
+        0.0
+       ],
+       "cartesian_stiffness": [
+        6000.0,
+        6000.0,
+        0.0,
+        300.0,
+        300.0,
+        100.0
+       ],
+       "cartesian_max_vel": [
+        0.1,
+        0.1,
+        0.01,
+        5.0,
+        5.0,
+        5.0
+       ],
+       "cartesian_desired_force": [
+        0.0,
+        0.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0
+       ],
+       "amplify_one": 6.0,
+       "frequency_one": 3.0,
+       "amplify_two": 4.0,
+       "frequency_two": 2.0,
+       "phase_diff": 0.0,
+       "calibrate_force_sensor": true,
+       "force_settle_sec": 0.1,
+       "timeout_sec": 2.0,
+       "use_current_pose_as_box_origin": true,
+       "search_box": [
+        -0.01,
+        0.01,
+        -0.01,
+        0.01,
+        -0.01,
+        0.01
+       ],
+       "search_box_is_inside": true,
+       "search_box_timeout_sec": 8.0
+      }
+     },
+     {
+      "stage": 7,
+      "to": "insert_deep",
+      "local_mm": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "tol_mm": 0.5,
+      "timeout_s": 120,
+      "dwell_s": 1.0,
+      "note": "阶段7 继续推入到底(现场示教终点)",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "speed": 30
+     },
+     {
+      "stage": 8,
+      "to": "hole_retract",
+      "local_mm": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "tol_mm": 1.0,
+      "timeout_s": 120,
+      "dwell_s": 1.0,
+      "note": "阶段8 ★回退: 沿轴拔出到孔边",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "speed": 100
+     },
+     {
+      "stage": 9,
+      "to": "hole_up",
+      "local_mm": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "tol_mm": 1.0,
+      "timeout_s": 120,
+      "dwell_s": 1.0,
+      "note": "阶段9 抬到安全高度",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "speed": 100
+     },
+     {
+      "stage": 10,
+      "to": "x_mid_up",
+      "local_mm": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "tol_mm": 1.0,
+      "timeout_s": 120,
+      "dwell_s": 1.0,
+      "note": "阶段10 横移回中转点",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "speed": 100
+     },
+     {
+      "stage": 11,
+      "to": "slot1_up",
+      "local_mm": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "tol_mm": 1.0,
+      "timeout_s": 120,
+      "dwell_s": 1.0,
+      "note": "阶段11 横移到一号位正上方",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "speed": 100
+     },
+     {
+      "stage": 12,
+      "to": "slot1",
+      "local_mm": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "tol_mm": 1.0,
+      "timeout_s": 120,
+      "dwell_s": 1.0,
+      "note": "阶段12 下降到一号位(到位即停, 禁下压)",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "speed": 80
+     }
+    ],
+    "contact_guard": "力控插入只靠驱动的 cartesian_desired_force(本机不下压); 若现场见插入不到位, 先看服务回执原文, 再考虑改用 8N(产线第二次档), 不改判据硬说成功",
+    "note": "老倪 2026-09-27 现场示教固化: 一号位→安全高度→孔边→力控插入到底→原路回退→回一号位; 目标点全部为现场实测位姿 | 已去掉非法 op=move_line(疑致执行器解包崩溃), 待离线验证再启用"
+   },
+   {
+    "id": "L2.return_to_slot1",
+    "name": "回一号位(最短低抬升, 50mm/s)",
+    "icon": "↩️",
+    "ros": "line_abs",
+    "quat": "taught",
+    "point": "slot1",
+    "point_locked": true,
+    "speed_max": 500,
+    "param": {},
+    "guard": {
+     "max_lin_mm": 500,
+     "z_floor_point": "slot1",
+     "z_floor_offset_mm": 0
+    },
+    "steps": [
+     {
+      "stage": 1,
+      "to": "hole_retract",
+      "dz_mm": 0.0,
+      "note": "阶段1 沿轴拔出到孔边(出孔口)",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "tol_mm": 1.0,
+      "timeout_s": 90,
+      "dwell_s": 0.0
+     },
+     {
+      "stage": 2,
+      "to": "hole_retract_up",
+      "dz_mm": 0.0,
+      "note": "阶段2 抬到0.2704(低抬升, 只过标定板)",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "tol_mm": 1.0,
+      "timeout_s": 90,
+      "dwell_s": 0.0
+     },
+     {
+      "stage": 3,
+      "to": "slot1_low_up",
+      "dz_mm": 0.0,
+      "note": "阶段3 对角横移到一号位正上方(最短横向)",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "tol_mm": 1.0,
+      "timeout_s": 120,
+      "dwell_s": 0.0
+     },
+     {
+      "stage": 4,
+      "to": "slot1",
+      "dz_mm": 0.0,
+      "note": "阶段4 竖直下降到一号位(到位即停, 禁下压)",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "tol_mm": 1.0,
+      "timeout_s": 90,
+      "dwell_s": 0.0
+     }
+    ],
+    "contact_guard": "阶段2 到位即停、禁下压; 若现场见触底/顶住, 把 slot1 点抬高 3~5mm 重录 —— 不改判据硬说成功",
+    "note": "老倪指定: 中间不停顿(一条请求4阶段) · 抬升只到0.270 · 50mm/s · 对角横移省一条腿"
+   },
+   {
+    "id": "L2.insert_from_slot1",
+    "name": "一号位→插入(一条请求, 50mm/s)",
+    "icon": "⬇️",
+    "ros": "line_abs",
+    "quat": "taught",
+    "point": "insert_mouth_up",
+    "point_locked": true,
+    "speed_max": 500,
+    "param": {},
+    "guard": {
+     "max_lin_mm": 450,
+     "z_floor_point": "slot1",
+     "z_floor_offset_mm": 0
+    },
+    "steps": [
+     {
+      "stage": 1,
+      "to": "insert_mouth_up",
+      "dz_mm": 0.0,
+      "note": "阶段1 对角横移到插槽口正上方(最短路径)",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "tol_mm": 1.0,
+      "timeout_s": 120,
+      "dwell_s": 0.0
+     },
+     {
+      "stage": 2,
+      "to": "insert_mouth_up",
+      "dz_mm": -109.578,
+      "note": "阶段2 竖直下降到插槽口(按 insert_pose 轴线高度, 修正 5mm)",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "tol_mm": 1.0,
+      "timeout_s": 90,
+      "dwell_s": 0.5
+     }
+    ],
+    "contact_guard": "力控插入只靠驱动的 cartesian_desired_force(本机不下压); 若现场见插入不到位, 先看服务回执原文, 再考虑改用 8N(产线第二次档), 不改判据硬说成功",
+    "note": "一个point(insert_mouth_up)+偏移; 阶段2 dz=-109.578 对齐 insert_pose 轴线; 后交 L2.lissa_insert 推进+力控"
+   },
+   {
+    "id": "L2.slot3",
+    "name": "3号位(到位即停)",
+    "icon": "🅰️",
+    "ros": "line_abs",
+    "quat": "taught",
+    "point": "slot3",
+    "point_locked": true,
+    "speed_max": 150,
+    "param": {},
+    "guard": {
+     "max_lin_mm": 500,
+     "z_floor_point": "slot3",
+     "z_floor_offset_mm": 0
+    },
+    "steps": [
+     {
+      "stage": 1,
+      "to": "slot3",
+      "dz_mm": 30.0,
+      "note": "阶段1 到3号位正上方",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "tol_mm": 1.0,
+      "timeout_s": 60,
+      "dwell_s": 1.5
+     },
+     {
+      "stage": 2,
+      "to": "slot3",
+      "dz_mm": 0,
+      "note": "阶段2 下降到3号位(到位即停, 禁下压)",
+      "guard": {
+       "dz_down_limit_mm": 40
+      },
+      "tol_mm": 0.5,
+      "timeout_s": 40,
+      "dwell_s": 1.0
+     }
+    ],
+    "contact_guard": "阶段2 到位即停、禁下压; 若现场见触底/顶住, 把 slot1 点抬高 3~5mm 重录 —— 不改判据硬说成功",
+    "note": "3号位收口技能: 同 slot1 形态(先到正上方再竖直下降), 一个point+偏移; 2026-09-27 老倪要求建立"
+   },
+   {
+    "id": "L2.slot7",
+    "name": "7号位(到位即停)",
+    "icon": "🅰️",
+    "ros": "line_abs",
+    "quat": "taught",
+    "point": "slot7",
+    "point_locked": true,
+    "speed_max": 150,
+    "param": {},
+    "guard": {
+     "max_lin_mm": 500,
+     "z_floor_point": "slot7",
+     "z_floor_offset_mm": 0
+    },
+    "steps": [
+     {
+      "stage": 1,
+      "to": "slot7",
+      "dz_mm": 30.0,
+      "note": "阶段1 到7号位正上方",
+      "guard": {
+       "dz_down_limit_mm": 400
+      },
+      "tol_mm": 1.0,
+      "timeout_s": 60,
+      "dwell_s": 1.5
+     },
+     {
+      "stage": 2,
+      "to": "slot7",
+      "dz_mm": 0,
+      "note": "阶段2 下降到7号位(到位即停, 禁下压)",
+      "guard": {
+       "dz_down_limit_mm": 40
+      },
+      "tol_mm": 0.5,
+      "timeout_s": 40,
+      "dwell_s": 1.0
+     }
+    ],
+    "contact_guard": "阶段2 到位即停、禁下压; 若现场见触底/顶住, 把 slot1 点抬高 3~5mm 重录 —— 不改判据硬说成功",
+    "note": "7号位收口技能: 同 slot1 形态(先到正上方再竖直下降), 一个point+偏移"
+   },
+   {
+    "id": "L2.goto_point_pose",
+    "name": "到示教点(含姿态)",
+    "ros": "line_abs",
+    "param": {
+     "point": {
+      "default": "home",
+      "unit": "点位名",
+      "label": "点位"
+     }
+    },
+    "quat": "taught",
+    "note": "回到示教点: **位置 + 姿态都回示教值**(与 L2.goto_point 的区别就在这个 quat:taught)。用途: 回到\"某个视角\"(如把臂上相机转回对着光模块/托盘) —— 只给位置不给姿态时, 相机朝向会沿用当时姿态, 实测出现过\"位置到了但相机朝天\"的情况(2026-09-28)。"
+   },
+   {
+    "id": "L2.goto_surface_pt1",
+    "name": "🎯 回到侧面点1",
+    "icon": "🎯",
+    "ros": "line_abs",
+    "quat": "taught",
+    "point": "侧面点1",
+    "point_locked": true,
+    "group": "AOI检测",
+    "guard": {
+     "dz_down_limit_mm": 20
+    },
+    "note": "回到示教点『侧面点1』(表面/侧面检测观察位) — 位姿由 tools/record_point_sdk.py 现场记录(ROKAE SDK 直读 endInRef, 页面同源); 位置+姿态锁定, 向下>20mm 需显式允许"
+   }
+  ],
+  "composite": [
+   {
+    "id": "L2.cycle_pick",
+    "name": "抓取循环(演示学习)",
+    "steps_file": "data/skills/l2_muscle/光模块_抓取_右_v1_A.json"
+   },
+   {
+    "id": "L2.cycle_demo",
+    "name": "演示学习循环(11点)",
+    "steps_file": "data/skills/l2_muscle/光模块_抓放_演示学习_v1.json"
+   }
+  ]
+ },
+ "registry_sha256": "5e4695c9d6dde5cb75d36b94776994ef55ab7d2c05b01be2eb724679fa798db0",
+ "registry_bytes": 73626,
+ "taught_points": {
+  "version": "v1",
+  "note": "L2 示教绝对点位 (按真机 /robot/tcp_pose 实测记录, 供 line_abs 回点)",
+  "frame": "base_link",
+  "points": {
+   "aoi_gold_view": {
+    "pos": [
+     0.4595548,
+     0.1486891,
+     0.6986801
+    ],
+    "quat": [
+     -0.7357474,
+     0.0114899,
+     -0.6771243,
+     -0.0068155
+    ],
+    "desc": "金手指AOI检测区 — 能看清光模块的位姿(工位观察点); 反复练习回点用",
+    "recorded_at": "2026-09-20 08:32:30",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 2.1e-07,
+    "spread_quat": 2.9e-07
+   },
+   "slot1": {
+    "pos": [
+     0.6488366,
+     0.4982911,
+     0.1103784
+    ],
+    "quat": [
+     -0.7392295,
+     0.0034448,
+     -0.6733875,
+     0.0087852
+    ],
+    "desc": "一号位(槽位1) 光模块插入/抓取位 — 2026-09-27 老倪手动挪到真正的一号位后现场重记(前版偏移)",
+    "recorded_at": "2026-09-27 12:29:18",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 1.65e-06,
+    "spread_quat": 8.7e-07
+   },
+   "slot2": {
+    "pos": [
+     0.6483203,
+     0.452411,
+     0.1130842
+    ],
+    "quat": [
+     0.7207317,
+     0.0297177,
+     0.6924774,
+     0.0117378
+    ],
+    "desc": "二号位(槽位2) 光模块插入/抓取位 — 人机在环示教, 抓持光模块状态下记录(老倪现场站定)",
+    "recorded_at": "2026-09-20 21:19:51",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 9.2e-07,
+    "spread_quat": 8e-07
+   },
+   "insert_pose": {
+    "pos": [
+     0.7624816,
+     0.2277595,
+     0.1907766
+    ],
+    "quat": [
+     0.7311625,
+     0.0105382,
+     0.6821115,
+     0.0037775
+    ],
+    "desc": "产线治具插入位(光模块已插入时的位姿) — 人机在环示教; 与产线示教点 manual_pose_2 相差 3.6mm",
+    "recorded_at": "2026-09-20 22:08:17",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 6.3e-07,
+    "spread_quat": 5.5e-07
+   },
+   "金手指点1": {
+    "pos": [
+     0.596737,
+     0.142622,
+     0.641536
+    ],
+    "quat": [
+     -0.018882,
+     0.008486,
+     0.999007,
+     0.039462
+    ],
+    "desc": "AOI 金手指观察位 (2026-09-24 17:5x 现场更新)",
+    "recorded_at": "2026-09-24 17:53:12",
+    "source": "/robot/tcp_pose (只读订阅)",
+    "n_samples": 6,
+    "spread_pos_m": 1.56e-06,
+    "spread_quat": 1.23e-06,
+    "frame": "base_link",
+    "reteach_note": "2026-09-28 老倪现场重教(pos+quat), 来源 ROKAE SDK 直读 endInRef",
+    "updated_at": "2026-09-28 09:31:56"
+   },
+   "loop20_p1": {
+    "pos": [
+     0.5337222,
+     0.2313198,
+     0.2771127
+    ],
+    "quat": [
+     0.8114262,
+     0.0545373,
+     0.5813658,
+     -0.02504
+    ],
+    "desc": "绝对位姿循环路点 上 +Z 20mm (消漂移用, 由 make_abs_loop.py 生成)",
+    "recorded_at": "2026-09-26 19:15:36",
+    "source": "/robot/tcp_pose (只读采样 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 6.52660582939335e-07
+   },
+   "loop20_p2": {
+    "pos": [
+     0.5137222,
+     0.2313198,
+     0.2771127
+    ],
+    "quat": [
+     0.8114262,
+     0.0545373,
+     0.5813658,
+     -0.02504
+    ],
+    "desc": "绝对位姿循环路点 后 -X 20mm (消漂移用, 由 make_abs_loop.py 生成)",
+    "recorded_at": "2026-09-26 19:15:36",
+    "source": "/robot/tcp_pose (只读采样 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 6.52660582939335e-07
+   },
+   "loop20_p3": {
+    "pos": [
+     0.5137222,
+     0.2313198,
+     0.2571127
+    ],
+    "quat": [
+     0.8114262,
+     0.0545373,
+     0.5813658,
+     -0.02504
+    ],
+    "desc": "绝对位姿循环路点 下 -Z 20mm (消漂移用, 由 make_abs_loop.py 生成)",
+    "recorded_at": "2026-09-26 19:15:36",
+    "source": "/robot/tcp_pose (只读采样 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 6.52660582939335e-07
+   },
+   "loop20_p4": {
+    "pos": [
+     0.5337222,
+     0.2313198,
+     0.2571127
+    ],
+    "quat": [
+     0.8114262,
+     0.0545373,
+     0.5813658,
+     -0.02504
+    ],
+    "desc": "绝对位姿循环路点 前 +X 20mm (=起点) (消漂移用, 由 make_abs_loop.py 生成)",
+    "recorded_at": "2026-09-26 19:15:36",
+    "source": "/robot/tcp_pose (只读采样 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 6.52660582939335e-07
+   },
+   "afx30_p1": {
+    "pos": [
+     0.5637221,
+     0.2313196,
+     0.2571126
+    ],
+    "quat": [
+     0.8114264,
+     0.0545371,
+     0.5813656,
+     -0.0250396
+    ],
+    "desc": "绝对位姿循环路点 前 +X 30mm (make_abs_path.py 生成)",
+    "recorded_at": "2026-09-26 19:35:17",
+    "source": "/robot/tcp_pose (只读 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 1.0551444970530177e-06
+   },
+   "afx30_p2": {
+    "pos": [
+     0.5637221,
+     0.2313196,
+     0.2871126
+    ],
+    "quat": [
+     0.8114264,
+     0.0545371,
+     0.5813656,
+     -0.0250396
+    ],
+    "desc": "绝对位姿循环路点 上 +Z 30mm (make_abs_path.py 生成)",
+    "recorded_at": "2026-09-26 19:35:17",
+    "source": "/robot/tcp_pose (只读 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 1.0551444970530177e-06
+   },
+   "afx30_p3": {
+    "pos": [
+     0.5337221,
+     0.2313196,
+     0.2871126
+    ],
+    "quat": [
+     0.8114264,
+     0.0545371,
+     0.5813656,
+     -0.0250396
+    ],
+    "desc": "绝对位姿循环路点 后 -X 30mm (make_abs_path.py 生成)",
+    "recorded_at": "2026-09-26 19:35:17",
+    "source": "/robot/tcp_pose (只读 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 1.0551444970530177e-06
+   },
+   "afx30_p4": {
+    "pos": [
+     0.5337221,
+     0.2313196,
+     0.2571126
+    ],
+    "quat": [
+     0.8114264,
+     0.0545371,
+     0.5813656,
+     -0.0250396
+    ],
+    "desc": "绝对位姿循环路点 下 -Z 30mm (=起点) (make_abs_path.py 生成)",
+    "recorded_at": "2026-09-26 19:35:17",
+    "source": "/robot/tcp_pose (只读 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 1.0551444970530177e-06
+   },
+   "afx50_p1": {
+    "pos": [
+     0.5837218,
+     0.23132,
+     0.2571124
+    ],
+    "quat": [
+     0.8114266,
+     0.0545373,
+     0.5813652,
+     -0.0250399
+    ],
+    "desc": "绝对位姿循环路点 前 +X 50mm (make_abs_path.py 生成)",
+    "recorded_at": "2026-09-26 19:53:49",
+    "source": "/robot/tcp_pose (只读 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 1.2740699448787751e-06
+   },
+   "afx50_p2": {
+    "pos": [
+     0.5837218,
+     0.23132,
+     0.3071124
+    ],
+    "quat": [
+     0.8114266,
+     0.0545373,
+     0.5813652,
+     -0.0250399
+    ],
+    "desc": "绝对位姿循环路点 上 +Z 50mm (make_abs_path.py 生成)",
+    "recorded_at": "2026-09-26 19:53:49",
+    "source": "/robot/tcp_pose (只读 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 1.2740699448787751e-06
+   },
+   "afx50_p3": {
+    "pos": [
+     0.5337218,
+     0.23132,
+     0.3071124
+    ],
+    "quat": [
+     0.8114266,
+     0.0545373,
+     0.5813652,
+     -0.0250399
+    ],
+    "desc": "绝对位姿循环路点 后 -X 50mm (make_abs_path.py 生成)",
+    "recorded_at": "2026-09-26 19:53:49",
+    "source": "/robot/tcp_pose (只读 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 1.2740699448787751e-06
+   },
+   "afx50_p4": {
+    "pos": [
+     0.5337218,
+     0.23132,
+     0.2571124
+    ],
+    "quat": [
+     0.8114266,
+     0.0545373,
+     0.5813652,
+     -0.0250399
+    ],
+    "desc": "绝对位姿循环路点 下 -Z 50mm (=起点) (make_abs_path.py 生成)",
+    "recorded_at": "2026-09-26 19:53:49",
+    "source": "/robot/tcp_pose (只读 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 1.2740699448787751e-06
+   },
+   "afx100_p1": {
+    "pos": [
+     0.6337216,
+     0.2313201,
+     0.2571122
+    ],
+    "quat": [
+     0.8114269,
+     0.0545374,
+     0.5813648,
+     -0.0250399
+    ],
+    "desc": "绝对位姿循环路点 前 +X 100mm (make_abs_path.py 生成)",
+    "recorded_at": "2026-09-26 20:24:49",
+    "source": "/robot/tcp_pose (只读 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 8.325646050910684e-07
+   },
+   "afx100_p2": {
+    "pos": [
+     0.6337216,
+     0.2313201,
+     0.3571122
+    ],
+    "quat": [
+     0.8114269,
+     0.0545374,
+     0.5813648,
+     -0.0250399
+    ],
+    "desc": "绝对位姿循环路点 上 +Z 100mm (make_abs_path.py 生成)",
+    "recorded_at": "2026-09-26 20:24:49",
+    "source": "/robot/tcp_pose (只读 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 8.325646050910684e-07
+   },
+   "afx100_p3": {
+    "pos": [
+     0.5337216,
+     0.2313201,
+     0.3571122
+    ],
+    "quat": [
+     0.8114269,
+     0.0545374,
+     0.5813648,
+     -0.0250399
+    ],
+    "desc": "绝对位姿循环路点 后 -X 100mm (make_abs_path.py 生成)",
+    "recorded_at": "2026-09-26 20:24:49",
+    "source": "/robot/tcp_pose (只读 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 8.325646050910684e-07
+   },
+   "afx100_p4": {
+    "pos": [
+     0.5337216,
+     0.2313201,
+     0.2571122
+    ],
+    "quat": [
+     0.8114269,
+     0.0545374,
+     0.5813648,
+     -0.0250399
+    ],
+    "desc": "绝对位姿循环路点 下 -Z 100mm (=起点) (make_abs_path.py 生成)",
+    "recorded_at": "2026-09-26 20:24:49",
+    "source": "/robot/tcp_pose (只读 6 帧均值)",
+    "n_samples": 6,
+    "spread_pos_m": 8.325646050910684e-07
+   },
+   "insert_deep": {
+    "pos": [
+     0.793922,
+     0.228375,
+     0.189511
+    ],
+    "quat": [
+     0.7325718,
+     0.0087881,
+     0.6806265
+    ],
+    "desc": "一号位(槽位1) 光模块插入/抓取位 — 2026-09-27 老倪手动挪到真正的一号位后现场重记(前版偏移)",
+    "recorded_at": "2026-09-27 12:29:18",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 1.65e-06,
+    "spread_quat": 8.7e-07,
+    "point_locked": true,
+    "taught_at": "2026-09-27 16:40:09",
+    "note": "老倪现场示教 2026-09-27"
+   },
+   "slot1_up": {
+    "pos": [
+     0.648836,
+     0.498292,
+     0.300378
+    ],
+    "quat": [
+     -0.7392295,
+     0.0034448,
+     -0.6733875,
+     0.0087852
+    ],
+    "desc": "一号位(槽位1) 光模块插入/抓取位 — 2026-09-27 老倪手动挪到真正的一号位后现场重记(前版偏移)",
+    "recorded_at": "2026-09-27 12:29:18",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 1.65e-06,
+    "spread_quat": 8.7e-07,
+    "point_locked": true,
+    "taught_at": "2026-09-27 16:40:09",
+    "note": "老倪现场示教 2026-09-27"
+   },
+   "x_mid_up": {
+    "pos": [
+     0.750837,
+     0.498292,
+     0.30038
+    ],
+    "quat": [
+     -0.7392295,
+     0.0034448,
+     -0.6733875,
+     0.0087852
+    ],
+    "desc": "一号位(槽位1) 光模块插入/抓取位 — 2026-09-27 老倪手动挪到真正的一号位后现场重记(前版偏移)",
+    "recorded_at": "2026-09-27 12:29:18",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 1.65e-06,
+    "spread_quat": 8.7e-07,
+    "point_locked": true,
+    "taught_at": "2026-09-27 16:40:09",
+    "note": "老倪现场示教 2026-09-27"
+   },
+   "hole_up": {
+    "pos": [
+     0.750837,
+     0.227256,
+     0.30038
+    ],
+    "quat": [
+     -0.7392295,
+     0.0034448,
+     -0.6733875,
+     0.0087852
+    ],
+    "desc": "一号位(槽位1) 光模块插入/抓取位 — 2026-09-27 老倪手动挪到真正的一号位后现场重记(前版偏移)",
+    "recorded_at": "2026-09-27 12:29:18",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 1.65e-06,
+    "spread_quat": 8.7e-07,
+    "point_locked": true,
+    "taught_at": "2026-09-27 16:40:09",
+    "note": "老倪现场示教 2026-09-27"
+   },
+   "hole_retract": {
+    "pos": [
+     0.7505,
+     0.2273,
+     0.1904
+    ],
+    "quat": [
+     0.732572,
+     0.008788,
+     0.680626
+    ],
+    "desc": "一号位(槽位1) 光模块插入/抓取位 — 2026-09-27 老倪手动挪到真正的一号位后现场重记(前版偏移)",
+    "recorded_at": "2026-09-27 12:29:18",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 1.65e-06,
+    "spread_quat": 8.7e-07,
+    "point_locked": true,
+    "note": "孔边(未插入前位姿) — 2026-09-27 现场实测; 供插孔往返技能的回退目标",
+    "taught_at": "2026-09-27 16:40:19"
+   },
+   "hole_retract_up": {
+    "pos": [
+     0.7508,
+     0.2279,
+     0.2704
+    ],
+    "quat": [
+     -0.7392295,
+     0.0034448,
+     -0.6733875,
+     0.0087852
+    ],
+    "desc": "一号位(槽位1) 光模块插入/抓取位 — 2026-09-27 老倪手动挪到真正的一号位后现场重记(前版偏移)",
+    "recorded_at": "2026-09-27 12:29:18",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 1.65e-06,
+    "spread_quat": 8.7e-07,
+    "point_locked": true,
+    "note": "回程最低抬升路径点 — 2026-09-27 现场"
+   },
+   "slot1_low_up": {
+    "pos": [
+     0.648836,
+     0.498292,
+     0.270378
+    ],
+    "quat": [
+     -0.7392295,
+     0.0034448,
+     -0.6733875,
+     0.0087852
+    ],
+    "desc": "一号位(槽位1) 光模块插入/抓取位 — 2026-09-27 老倪手动挪到真正的一号位后现场重记(前版偏移)",
+    "recorded_at": "2026-09-27 12:29:18",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 1.65e-06,
+    "spread_quat": 8.7e-07,
+    "point_locked": true,
+    "note": "回程最低抬升路径点 — 2026-09-27 现场"
+   },
+   "insert_mouth_up": {
+    "pos": [
+     0.702636,
+     0.227192,
+     0.300378
+    ],
+    "quat": [
+     -0.7392295,
+     0.0034448,
+     -0.6733875,
+     0.0087852
+    ],
+    "desc": "一号位(槽位1) 光模块插入/抓取位 — 2026-09-27 老倪手动挪到真正的一号位后现场重记(前版偏移)",
+    "recorded_at": "2026-09-27 12:29:18",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 1.65e-06,
+    "spread_quat": 8.7e-07,
+    "point_locked": true,
+    "note": "插槽口正上方(安全高度) — 最短横移终点"
+   },
+   "insert_mouth": {
+    "pos": [
+     0.702636,
+     0.227192,
+     0.1908
+    ],
+    "quat": [
+     -0.7392295,
+     0.0034448,
+     -0.6733875,
+     0.0087852
+    ],
+    "desc": "一号位(槽位1) 光模块插入/抓取位 — 2026-09-27 老倪手动挪到真正的一号位后现场重记(前版偏移)",
+    "recorded_at": "2026-09-27 12:29:18",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 1.65e-06,
+    "spread_quat": 8.7e-07,
+    "point_locked": true,
+    "note": "插槽口(已对齐 insert_pose 轴线 z=0.1908)"
+   },
+   "slot3": {
+    "pos": [
+     0.648794,
+     0.407029,
+     0.108579
+    ],
+    "quat": [
+     -0.734799,
+     -0.001114,
+     -0.678163
+    ],
+    "desc": "一号位(槽位1) 光模块插入/抓取位 — 2026-09-27 老倪手动挪到真正的一号位后现场重记(前版偏移)",
+    "recorded_at": "2026-09-27 12:29:18",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 1.65e-06,
+    "spread_quat": 8.7e-07,
+    "point_locked": true,
+    "note": "3号位(老倪 2026-09-27 手工摆位后记录, 零运动采样6次/均值, 抖动0.001mm)"
+   },
+   "insert_corrected": {
+    "pos": [
+     0.778042,
+     0.230019,
+     0.191028
+    ],
+    "quat": [
+     -0.727082,
+     -0.002622,
+     -0.68648
+    ],
+    "desc": "一号位(槽位1) 光模块插入/抓取位 — 2026-09-27 老倪手动挪到真正的一号位后现场重记(前版偏移)",
+    "recorded_at": "2026-09-27 12:29:18",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 1.65e-06,
+    "spread_quat": 8.7e-07,
+    "point_locked": true,
+    "note": "老倪 2026-09-27 接管后手工校正的插入位(力控落点后手工调姿态/对正); 采样6次 抖动0.002mm"
+   },
+   "slot7": {
+    "pos": [
+     0.647361,
+     0.205931,
+     0.107685
+    ],
+    "quat": [
+     0.738262,
+     0.019596,
+     0.674223
+    ],
+    "desc": "一号位(槽位1) 光模块插入/抓取位 — 2026-09-27 老倪手动挪到真正的一号位后现场重记(前版偏移)",
+    "recorded_at": "2026-09-27 12:29:18",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 1.65e-06,
+    "spread_quat": 8.7e-07,
+    "point_locked": true,
+    "note": "7号位(老倪 2026-09-27 手工摆位后零运动记录; 采样6次 抖动0.001mm)"
+   },
+   "slot7_up": {
+    "pos": [
+     0.647343,
+     0.205945,
+     0.174325
+    ],
+    "quat": [
+     0.738271,
+     0.019617,
+     0.674213
+    ],
+    "desc": "一号位(槽位1) 光模块插入/抓取位 — 2026-09-27 老倪手动挪到真正的一号位后现场重记(前版偏移)",
+    "recorded_at": "2026-09-27 12:29:18",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 1.65e-06,
+    "spread_quat": 8.7e-07,
+    "point_locked": true,
+    "note": "7号位正上方(老倪 2026-09-27 手工摆位; 下次\"经此点回7号位\"的中转点; 采样6次 抖动0.001mm)"
+   },
+   "insert_pre": {
+    "pos": [
+     0.753914,
+     0.226196,
+     0.190317
+    ],
+    "quat": [
+     0.729608,
+     0.001993,
+     0.683827
+    ],
+    "desc": "一号位(槽位1) 光模块插入/抓取位 — 2026-09-27 老倪手动挪到真正的一号位后现场重记(前版偏移)",
+    "recorded_at": "2026-09-27 12:29:18",
+    "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+    "n_samples": 6,
+    "spread_pos_m": 1.65e-06,
+    "spread_quat": 8.7e-07,
+    "point_locked": true,
+    "note": "插入点之前的点(尚未插入) — 老倪 2026-09-27 手工摆位后零运动记录; 采样6次 抖动0.001mm"
+   },
+   "正向观察位": {
+    "pos": [
+     0.46268,
+     0.19809,
+     0.33952
+    ],
+    "quat": [
+     -0.02314,
+     0.997954,
+     -0.043154,
+     -0.041122
+    ],
+    "note": "正向手臂相机观察位(老倪 09-29 拖动前的位置 P9) — 由 marker P9 停顿点+40Hz录制真值登记; 用途: 任务后回到正向前方观察位",
+    "src": "pause_points.jsonl P9 (0.462681,0.198089,0.339523)",
+    "recorded_at": "2026-09-29 08:10:52"
+   },
+   "侧面点1": {
+    "pos": [
+     0.404639,
+     -0.450586,
+     0.526237
+    ],
+    "quat": [
+     0.7231227,
+     0.027253,
+     -0.03644,
+     0.689219
+    ],
+    "desc": "表面检测观察位(侧面点1) — 2026-09-30 老倪现场位姿",
+    "recorded_at": "2026-09-30 09:38:20",
+    "source": "ROKAE SDK 直读 endInRef (rokae_tcp_sampler → tcp_out/latest.json, 页面同源)",
+    "frame": "base_link",
+    "n_samples": 6,
+    "spread_pos_m": 0.0,
+    "spread_quat": 1e-06
+   }
+  },
+  "updated_at": "2026-09-29 08:10:52"
+ },
+ "taught_points_sha256": "8f264a246ae5ba3a1cc8108eb5ea6b94e24bbbd896817c245e4dc6ec8e91a310",
+ "taught_points_bytes": 18148,
+ "aoi_skills": [
+  {
+   "id": "L2.goto_point",
+   "name": "到示教点",
+   "ros": "line_abs",
+   "param": {
+    "point": {
+     "default": "home",
+     "unit": "点位名",
+     "label": "点位"
+    }
+   }
+  },
+  {
+   "id": "L2.goto_aoi_gold",
+   "name": "🎯 运动·进入金手指检测区",
+   "icon": "🎯",
+   "ros": "line_abs",
+   "quat": "taught",
+   "note": "回到金手指AOI检测区示教点(位置+姿态锁定, 向下>20mm 需显式允许)",
+   "param": {},
+   "point": "aoi_gold_view",
+   "point_locked": true,
+   "guard": {
+    "dz_down_limit_mm": 20
+   },
+   "group": "运动"
+  },
+  {
+   "id": "L2.aoi_gold",
+   "name": "🎯 金手指①触发拍照检测",
+   "ros": "http",
+   "url": "http://192.168.23.23:10082/capture_detect",
+   "method": "POST",
+   "param": {},
+   "note": "POST /capture_detect 触发产线金手指相机拍一张并跑后台YOLO。**判决(OK/NG/缺陷数)只打印在工控机终端, API 只回「已受理」**",
+   "group": "AOI检测"
+  },
+  {
+   "id": "L2.aoi_surface",
+   "name": "🎯 表面①触发拍照检测",
+   "ros": "http",
+   "url": "http://192.168.23.23:10083/capture_detect",
+   "method": "POST",
+   "param": {},
+   "note": "POST 10083/capture_detect 触发表面检测相机拍照+YOLO(异步; 判决同样只打工控机终端)。注意 10083 没有 /picture 等读图路由",
+   "group": "AOI检测"
+  },
+  {
+   "id": "L2.aoi_picture_fresh",
+   "name": "📷 金手指②实拍原图",
+   "ros": "http",
+   "method": "GET",
+   "url": "http://192.168.23.23:10082/picture",
+   "query": "?grab=1",
+   "kind": "image",
+   "param": {},
+   "note": "GET /picture?grab=1 —— 现场重拍一帧再返回原图 2448x2048 (看'画面是否实时/有没有光')",
+   "group": "AOI检测"
+  },
+  {
+   "id": "L2.aoi_picture_crop",
+   "name": "✂️ 金手指③拉长960(喂YOLO)",
+   "icon": "✂️",
+   "ros": "http",
+   "method": "GET",
+   "url": "http://192.168.23.23:10082/picture",
+   "query": "?kind=crop",
+   "kind": "image",
+   "param": {},
+   "note": "GET /picture?kind=crop —— v4.2 口径: 只含焊盘排, 纵向拉伸到 960x960, 与 imgsz=960 对齐",
+   "group": "AOI检测"
+  },
+  {
+   "id": "L2.aoi_region",
+   "name": "🔲 金手指⑤区域+对焦清晰度",
+   "icon": "🎯",
+   "ros": "http",
+   "method": "GET",
+   "url": "http://192.168.23.23:10082/region",
+   "query": "?grab=1",
+   "param": {},
+   "note": "GET /region?grab=1 —— 原始图坐标系的金手指区域(定向框/四边形)+对焦清晰度 focus(Laplacian方差)",
+   "group": "AOI检测"
+  },
+  {
+   "id": "L2.aoi_crop_info",
+   "name": "📐 金手指⑥裁剪质量指标",
+   "icon": "📐",
+   "ros": "http",
+   "method": "GET",
+   "url": "http://192.168.23.23:10082/crop_info",
+   "param": {},
+   "note": "GET /crop_info —— 最近一次裁剪的 score/残余倾角/线残差/金覆盖 (规整度自证)",
+   "group": "AOI检测"
+  },
+  {
+   "id": "L2.aoi_gold_align",
+   "name": "🛠 金手指⑦对准+自动对焦",
+   "icon": "🎯",
+   "ros": "script",
+   "script": "tools/aoi_gold_servo.py",
+   "args": [
+    "serve"
+   ],
+   "dry_default": true,
+   "param": {
+    "max_step": {
+     "default": 2.0,
+     "unit": "mm",
+     "min": 0.1,
+     "max": 5.0,
+     "label": "单步限幅"
+    },
+    "max_total": {
+     "default": 15.0,
+     "unit": "mm",
+     "min": 1.0,
+     "max": 30.0,
+     "label": "单轴累计限幅"
+    },
+    "max_iters": {
+     "default": 25,
+     "unit": "次",
+     "min": 1,
+     "max": 60,
+     "label": "迭代上限"
+    }
+   },
+   "note": "伺服技能 tools/aoi_gold_servo.py: 误差 e→Δarm=-M·e + 沿光轴退火爬坡对焦; 四级闸; 默认 dry-run",
+   "group": "AOI检测"
+  },
+  {
+   "id": "L2.aoi_picture_natural",
+   "name": "📏 金手指④原比例(目检)",
+   "icon": "📏",
+   "ros": "http",
+   "method": "GET",
+   "url": "http://192.168.23.23:10082/picture",
+   "query": "?kind=natural",
+   "kind": "image",
+   "param": {},
+   "note": "GET /picture?kind=natural —— 不拉伸 1455x70, 目检/复核用",
+   "group": "AOI检测"
+  },
+  {
+   "id": "L2.aoi_surface_picture",
+   "name": "📷 表面②检测图(1280方图)",
+   "icon": "📷",
+   "ros": "http",
+   "method": "GET",
+   "url": "http://192.168.23.23:10083/picture",
+   "query": "?kind=crop",
+   "kind": "image",
+   "param": {},
+   "group": "AOI检测",
+   "note": "喂表面模型的规范图 = 原图按比例 letterbox 到 1280x1280 (与 config imgsz=1280 对齐, 不拉伸变形)。【需 10083 跑 V4 程序】V2 没有这个路由(会 404)"
+  },
+  {
+   "id": "L2.aoi_surface_origin",
+   "name": "📷 表面③原图",
+   "icon": "📷",
+   "ros": "http",
+   "method": "GET",
+   "url": "http://192.168.23.23:10083/picture",
+   "query": "?kind=origin",
+   "kind": "image",
+   "param": {},
+   "group": "AOI检测",
+   "note": "表面相机原图 2448x2048 (目检用)。【需 V4】"
+  },
+  {
+   "id": "L2.aoi_surface_result",
+   "name": "📝 表面④判决(OK/NG)",
+   "icon": "📝",
+   "ros": "http",
+   "method": "GET",
+   "url": "http://192.168.23.23:10083/last_result",
+   "param": {},
+   "group": "AOI检测",
+   "note": "读最近一次表面检测判决: {verdict: OK/NG, count, defects[{class_name,conf,bbox}], ms, saved_incoming}。【需 V4】—— 有了它本机不用再看工控机终端"
+  },
+  {
+   "id": "L2.aoi_surface_info",
+   "name": "📐 表面⑤规范图指标",
+   "icon": "📐",
+   "ros": "http",
+   "method": "GET",
+   "url": "http://192.168.23.23:10083/crop_info",
+   "param": {},
+   "group": "AOI检测",
+   "note": "规范图/画面健康度: canonical 尺寸 · letterbox 比例 · mean/std(亮度) · focus(Laplacian 方差)。灰度 mean 应在 60~200, 过低=没打光/曝光不足。【需 V4】"
+  },
+  {
+   "id": "L2.aoi_gold_result",
+   "name": "📝 金手指⑧判决(OK/NG)",
+   "icon": "📝",
+   "ros": "http",
+   "method": "GET",
+   "url": "http://192.168.23.23:10082/last_result",
+   "param": {},
+   "group": "AOI检测",
+   "note": "读最近一次金手指检测判决 (V4 程序已支持): {verdict, count, defects[{class_name,conf,bbox}], ms}"
+  },
+  {
+   "id": "L2.goto_gold_pt1",
+   "name": "🎯 回到金手指点1",
+   "icon": "🎯",
+   "ros": "line_abs",
+   "quat": "taught",
+   "point": "金手指点1",
+   "point_locked": true,
+   "group": "AOI检测",
+   "guard": {
+    "dz_down_limit_mm": 20
+   },
+   "note": "回到示教点『金手指点1』(AOI 金手指观察位) — 位姿由 质量检测终端『📍记住此点』/ tools/aoi_teach_point.py 现场记录; 位置+姿态锁定, 向下>20mm 需显式允许"
+  },
+  {
+   "id": "L2.goto_point_pose",
+   "name": "到示教点(含姿态)",
+   "ros": "line_abs",
+   "param": {
+    "point": {
+     "default": "home",
+     "unit": "点位名",
+     "label": "点位"
+    }
+   },
+   "quat": "taught",
+   "note": "回到示教点: **位置 + 姿态都回示教值**(与 L2.goto_point 的区别就在这个 quat:taught)。用途: 回到\"某个视角\"(如把臂上相机转回对着光模块/托盘) —— 只给位置不给姿态时, 相机朝向会沿用当时姿态, 实测出现过\"位置到了但相机朝天\"的情况(2026-09-28)。"
+  },
+  {
+   "id": "L2.goto_surface_pt1",
+   "name": "🎯 回到侧面点1",
+   "icon": "🎯",
+   "ros": "line_abs",
+   "quat": "taught",
+   "point": "侧面点1",
+   "point_locked": true,
+   "group": "AOI检测",
+   "guard": {
+    "dz_down_limit_mm": 20
+   },
+   "note": "回到示教点『侧面点1』(表面/侧面检测观察位) — 位姿由 tools/record_point_sdk.py 现场记录(ROKAE SDK 直读 endInRef, 页面同源); 位置+姿态锁定, 向下>20mm 需显式允许"
+  }
+ ]
+}
