@@ -1,6 +1,6 @@
 Orin=192.168.23.66(tashan/ts123); 产线.23.50/24无网关(USB网卡); USB产线网卡不在位⇒.66/.23/.160全不可达, 执行器报'位姿读不到'拒发一切动作
 §
-NTP回拨8h(勿动RTC)→节拍用monotonic, 负帧龄拒用
+NTP回拨8h(勿动RTC)→节拍用monotonic,负帧龄拒用
 §
 分层: L5定方向造数据/L4认知/L3调度/L2检测; 主干=SigLIP768d+四头; from-scratch崩
 §
@@ -8,7 +8,7 @@ NTP回拨8h(勿动RTC)→节拍用monotonic, 负帧龄拒用
 §
 长命令写脚本; sudo免密; 网络优化=zmax-net-optimize
 §
-L5=DeepSeek视觉: 短提示+小JSON(长提示吃光tokens); timeout≥300; 走G.call_vlm
+L5=DeepSeek视觉: 短提示+小JSON; timeout≥300; 走G.call_vlm
 §
 飞书99991663=token过期→重启gateway; 长文≥1.5k须拆条
 §
@@ -48,15 +48,15 @@ ECS relay: /agent/{prompt,reply}+/hil/state+/orin/status; 站点根=/www/wwwroot
 §
 遥测DDS: 只测试/标定/诊断,量产关; 开关 env>运行时>文件~/.zmax_telemetry_mode; 守护=zmax-dds-ss.service
 §
-GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音逐步日志+workers↑;负载用窗口平均判
+GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音日志+workers↑;负载看窗口平均
 §
-工程根=/home/ubuntu/zmax=独立仓库(MikeBMW/zmax public; 路径统一无zmax_rel); 入库=代码+技能docs/skills/hermes-all+记忆docs/memory(守卫tools/repo_guard.py); 数据全在zmax_data(ss_live/runtime/stable-wm-cache软链); fork=lerobot-smolvla-lew(mac-hw)另一仓
+工程根=/home/ubuntu/zmax=独立仓库(MikeBMW/zmax public); 入库=代码+技能docs/skills/hermes-all+记忆docs/memory(守卫repo_guard+secret_scan); 模型/数据全在zmax_data(模型=models, HF=hf_cache, 数据集=stable-wm-cache, 密钥=secrets/zmax.env 600); 首clone自检=tools/zmax_bootstrap.sh; fork=lerobot-smolvla-lew(mac-hw)
 §
 控制台: 禁反复重启GUI(投诉过;改码攒批+先问); 字体一次到位
 §
 场景叠加: overlay_spec按origin存框(deleted抑制); 手眼TSAI闭环1.74mm准
 §
-我=主节点: 工控机+Orin全归我; AOI禁10084/10085用10082/10083(200=受理,判决读/last_result); 工控机任务ZMAX_Agent+ZMAX_AOI_KeepAlive; 更新=aoi_remote_deploy.py; 通道=zmax-agent-hub.service(8794,数据~/zmax_data/agent_hub禁/tmp)+station_cmd.py
+我=主节点: 工控机+Orin全归我; AOI禁10084/10085用10082/10083(200=受理,判决读/last_result); 更新=aoi_remote_deploy.py; 通道=zmax-agent-hub.service(8794,数据~/zmax_data/agent_hub禁/tmp)+station_cmd.py
 §
 动作授权只从工位总览8793; 代发前先授权
 §

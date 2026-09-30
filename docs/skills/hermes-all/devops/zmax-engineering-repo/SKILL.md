@@ -53,6 +53,33 @@ python3 tools/ns_unify_paths.py         # 真改 (改前 tar 备份: zmax_data/b
 仓库外一起改(否则口径不一致): `/etc/systemd/system/*.service` + `~/.hermes/scripts/*`(改前 `.bak`),
 改完 `systemctl daemon-reload`, 再逐个核 `systemctl is-active`(reload 不会重启服务)。
 
+## 基线自检 / 首次 clone 初始化 (老倪: 首 clone 就要识别出已下载的模型和数据)
+- 入口: `bash tools/zmax_bootstrap.sh [--apply|--download|--smoke|--secrets|--systemd]`
+  (实现在 `tools/zmax_bootstrap.py`; 清单 `tools/zmax_assets.json`, 机器可读, 加资产只加一条)。
+- **识别顺序**(已下载的绝不重下): 默认路径 → `alt_paths`(老位置) → `alt_globs`(精确文件) → HF 老缓存 `~/.cache/huggingface`。
+  命中即"可用/可采纳"; `--apply` 只建软链/建目录/写 `$ZMAX_DATA/zmax_paths.env`, **只增不改不删**。
+- `--smoke` = 状态空间功能自检(10 个核心模块 import + 关键文件 + 端口), 全绿 = 代码面恢复完成。
+- 退出码: 必需资产齐 0 / 缺 1(可进 CI)。裸机上跑一次应当**打印出确切的下载命令**, 而不是偷偷下 100G。
+- 文档口径: `docs/notes/model-paths.md`(默认路径+下载命令) / `docs/notes/restore_matrix.md`(功能→代码→资产, 四类资产)。
+
+## 默认落盘路径约定 (模型下载默认落哪)
+| 变量 | 默认 | 放什么 |
+|---|---|---|
+| `ZMAX_DATA` | `/home/ubuntu/zmax_data` | 所有重东西的根 |
+| `ZMAX_MODELS` | `$ZMAX_DATA/models` | **模型默认下载根** |
+| `ZMAX_HF_HOME` | `$ZMAX_DATA/hf_cache` | **HF 缓存默认根**(布局同 `~/.cache/huggingface`: `hub/models--…`) |
+| `STABLEWM_HOME` | `$ZMAX_DATA/stable-wm-cache` | 数据集 + 训练产物 |
+| `ZMAX_SECRETS` | `$ZMAX_DATA/secrets` | `zmax.env`(600, 永不入库) |
+
+环境变量优先; `--apply` 生成 `$ZMAX_DATA/zmax_paths.env`, `source` 后全部脚本/服务同一套路径。
+
+## 密钥出库 (公开仓库的硬红线)
+- 真值只放 `$ZMAX_DATA/secrets/zmax.env`(600); 代码/单元只留 `${VAR}` 占位;
+  systemd 用 `EnvironmentFile=-/home/ubuntu/zmax_data/secrets/zmax.env`。
+- `python3 tools/secret_scan.py [--staged]` 扫已跟踪/暂存区(值打码输出, 命中退 1); 与 `repo_guard.py` 一起当提交前双闸。
+- 已泄露的值: 上游 vendored 文档里的示例 key 不算(路径白名单 `docs/source/` `src/lerobot/`);
+  **历史里的密钥清不掉**(force-push 后旧对象仍可按 SHA 取) ⇒ 要么删库重建(破坏性, 需老倪点头), 要么轮换密钥。
+
 ## 技能 + 记忆同步
 - 脚本: `tools/sync_hermes_to_repo.sh` (`--no-push` 只提交)。三件事: ① zmax-console 全家 → `docs/skills/xspace/`
   ② **技能全量镜像** `~/.hermes/skills` → `docs/skills/hermes-all/`(rsync --delete + 删 >300KB 大图)
@@ -78,3 +105,7 @@ rm -rf /tmp/c && git clone --depth 1 https://github.com/MikeBMW/zmax.git /tmp/c 
 | 只改仓库内、忘了 systemd/Hermes 脚本 | 单元里还是旧路径, 下次改口径又漂 | 仓库外一起 sed + daemon-reload + 核验 |
 | 技能镜像与仓库不一致 | `git status` 一堆 D 与 ??(docs/skills 下) | `rsync -a --delete` 重新镜像, 别只 cp |
 | 大图/PDF 混进技能镜像 | 仓库体积暴涨 | 镜像后 `find -size +300k -delete` + `repo_guard.py` 兜底 |
+| 把 venv 当老位置资产"采纳" | 软链过去的 venv 跑不了(内部路径写死) | bootstrap 里 venv/env 类只报"复用原处"并给重建命令, **不建软链** |
+| `alt_paths` 里写了目录 | 把整个目录当资产采纳(如 lora_l3 → reports/) | 精确文件用 `alt_globs` 且 **glob 先于 alt_paths**; 取文件要 `os.path.isfile` 过滤 |
+| 从 fork 收源码时连生成物一起收 | `tools/ros2_interfaces/install/**` 上千个 rosidl 生成文件入库 | 排除 `/install/`、`docs/`、`reports/`、`media/`、`.github/`; 根级脚本归 `tools/fork_experiments/` |
+| 用 `du -sh` 判目录空不空 | 明明有文件却报 0 | 用 `ls -A`/`os.listdir` 判非空; du 受挂载/稀疏影响 |
