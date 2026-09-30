@@ -61,6 +61,12 @@ def build(n: int) -> dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry", action="store_true", help="只打印将要新增的技能, 不落盘")
+    ap.add_argument("--max-lin-mm", type=float, default=None,
+                    help="同时把**已有**号位技能的 guard.max_lin_mm 改到这个值(如 1500 = 整机工作范围); "
+                         "2026-09-30 老倪: 「1号位, 没有回去, 不动, 这个技能怎么回事」—— 真因就是这条 500mm 距离上限 "
+                         "(臂停在 (0.6451,-0.0126,0.2689), 1号位 527mm ⇒ 每次都被拒, 现场看着像技能坏了)。"
+                         "这条是**距离可用性上限**, 不是防撞红线: 防撞靠 z_floor_point(绝不低于该点) + "
+                         "阶段级 dz_down_limit_mm(下降≤40mm) + 到位即停禁下压 —— 那三条一律保留。")
     a = ap.parse_args()
 
     with open(REG, encoding="utf-8") as f:
@@ -84,15 +90,32 @@ def main():
         if not a.dry:
             reg["skills"].append(build(n))
 
+    # 🔝 距离上限: 只改这条(可用性), 防撞三件套(z_floor / dz_down_limit / 到位即停)一律不动。
+    lin_changed = []
+    if a.max_lin_mm is not None and not a.dry:
+        for s in reg["skills"]:
+            if not str(s.get("id", "")).startswith("L2.slot"):
+                continue
+            g = s.setdefault("guard", {})
+            old = g.get("max_lin_mm")
+            if old != a.max_lin_mm:
+                g["max_lin_mm"] = a.max_lin_mm
+                lin_changed.append("%s %s→%s" % (s["id"], old, a.max_lin_mm))
+            s["note"] = (str(s.get("note", "")).rstrip("。 ") +
+                         " · 2026-09-30 老倪现场: 距离上限 500→%g(臂停位离 1 号位 527mm 被反复拒; "
+                         "防撞仍靠 z_floor+下降≤40mm+到位即停)" % a.max_lin_mm).strip(" ·")
+
     print("注册表: %s" % REG)
     for sid in added:
         n = int(sid.rsplit("slot", 1)[1])
         print("  ➕ %s (%d号位) · 示教记录: %s" % (sid, n, "有" if ("slot%d" % n) in pts else "无(灰色按钮)"))
     print("  跳过已有(未动): %s" % (", ".join(kept) if kept else "无"))
+    for _c in lin_changed:
+        print("  🔝 距离上限: %s" % _c)
     if a.dry:
         print("(--dry: 未落盘)")
         return
-    if added:
+    if added or lin_changed:
         bak = "/tmp/registry.json.preslot_%s" % time.strftime("%m%d_%H%M%S")
         shutil.copy(REG, bak)
         with open(REG, "w", encoding="utf-8") as f:
