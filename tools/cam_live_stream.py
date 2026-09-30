@@ -1357,7 +1357,10 @@ def _ctl_move(req: dict) -> dict:
         speed = float(req.get("speed", 8))
     except (TypeError, ValueError):
         speed = 8.0
-    speed = max(1.0, min(60.0, speed))            # 手动控制速度上限 60(与页面档位一致); 默认 8 很慢
+    speed = max(1.0, min(1000.0, speed))          # 手动控制速度上限(2026-09-30 老倪: 「转速太慢了，加速。别限制，我在现场，安全」)
+    #   口径: 页面档位 8/60/200/500 + 可自己填数字; 上限定 1000(相对量, 线性实测 ≈0.0999mm/s 每单位,
+    #   即 speed=1000 ≈ 100mm/s) —— 真正的物理上限由控制器自己的关节限速兜, 这里只挡住"填错量级"。
+    #   实测基线: speed=60 → 腕部 10° 花 ~10s (~1°/s), 所以想快 5 倍就用 300。
     want_real = bool(req.get("arm")) and bool(_CTL["motion"])
     if want_real and not _auth_info()["armed"]:
         # 🔐 现场安全: 真动必须由人显式授权(且授权未过期)。拒绝时**明确告诉怎么授权**, 不给含糊的失败。

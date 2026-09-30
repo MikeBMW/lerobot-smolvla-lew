@@ -304,13 +304,14 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       <div class="rot"><span class="lbl">C 绕工具Z轴 · 自转</span>
         <button data-skill="L2.rot_c_neg" data-p="deg">↻ −C <span class="hint">5°</span></button>
         <button data-skill="L2.rot_c_pos" data-p="deg">↺ +C <span class="hint">5°</span></button></div>
-      <div class="row" style="margin-top:8px"><span class="k">速度 (相对量 1~60+)</span>
-        <span class="seg" id="sSpd"><button data-v="8" class="on">8 慢·默认</button>
-        <button data-v="20">20</button><button data-v="40">40</button><button data-v="60">60 快</button></span>
+      <div class="row" style="margin-top:8px"><span class="k">速度 (相对量 1~1000)</span>
+        <span class="seg" id="sSpd"><button data-v="8" class="on">8 慢</button>
+        <button data-v="60">60</button><button data-v="200">200</button><button data-v="500">500 快</button></span>
         <input class="num" id="spd" value="8"></div>
-      <div class="hint" style="margin-top:6px">速度是相对量: <b>8 很慢</b>(一次动作可能十几~几十秒才停, 停下前
-        驱动可能报一次 wait_until_idle 超时 —— <b>那是超时标记, 不是失败</b>, 看 TCP 有没有变就知道动没动);
-        想快用 40/60。键盘: A/B/C 加 Shift = 反向; 单次 ≤30°(执行层守卫)。整页没有软急停, 急停请用示教器。</div>
+      <div class="hint" style="margin-top:6px">速度是相对量(线性实测 ≈0.0999mm/s 每单位 ⇒ 1000 ≈ 100mm/s; 可直接在右边框里填任意数, 上限 1000)。
+        <b>实测基线: 60 → 腕部 10° 约 10s</b>, 想快 5 倍填 300。停下前
+        驱动可能报一次 wait_until_idle 超时 —— <b>那是超时标记, 不是失败</b>, 看 TCP 有没有变就知道动没动。
+        键盘: A/B/C 加 Shift = 反向; 单次 ≤30°(执行层守卫)。整页没有软急停, 急停请用示教器。</div>
     </div>
     <div class="card">
       <h2>🔩 第 6 轴 (J6) 独立自转 · 关节自转</h2>
