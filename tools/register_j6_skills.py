@@ -46,9 +46,9 @@ def build(sign, max_deg):
         "param": {"deg": {"default": 5, "unit": "deg", "min": 1, "max": max_deg,
                           "label": "旋转角度(只填正数)"}},
         "guard": {"max_deg": max_deg},
-        # 🔝 2026-09-30 老倪: 「转速太慢了，加速。别限制，我在现场，安全」
-        #   技能级限速上限提到 1000(相对量) —— 真正物理上限由控制器关节限速兜底。
-        #   实测基线: speed=60 → 10° 约 10s(~1°/s); 60→300 约 5 倍。
+        # 🔝 2026-09-30 老倪: 「转速太慢了，加速。别限制，我在现场，安全」 + 「放开到 30°/90°」
+        #   单次角度上限 10 → 90(页面档 1/5/10/30/90); 技能级限速 20 → 1000(相对量)。
+        #   真正物理上限由控制器关节限速兜底; 圆弧尺度(半径 ~24.2mm): 10°≈4.2mm · 30°≈12.7mm · 90°≈38.0mm。
         "speed_max": 1000,
         "note": ("第6轴(J6)%s自转(**关节自转**, 其余五轴不动) = %sJ6; 度数只填正数(方向内定) · "
                  "单次≤%d° · 末端沿 ~24.2mm 半径走小圆弧(5°≈2.1mm) · 走 /move_pose 不掉电 · "
@@ -58,7 +58,7 @@ def build(sign, max_deg):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--max-deg", type=float, default=10.0, help="单次自转上限(度)")
+    ap.add_argument("--max-deg", type=float, default=90.0, help="单次自转上限(度) — 2026-09-30 老倪: 放开到 30°/90°")
     a = ap.parse_args()
     with open(REG, encoding="utf-8") as f:
         reg = json.load(f)
