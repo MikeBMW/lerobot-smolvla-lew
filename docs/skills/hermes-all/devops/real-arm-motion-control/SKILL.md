@@ -287,6 +287,22 @@ daemon 全部运动技能安全拒绝("位姿缓存未就绪"); 恢复前不要�
   页面档 `1/5/10/30/90`。圆弧尺度实测(dry 算目标): 30° → `Δ=(-9.7,-6.1,-5.3)mm` 弧长 12.56mm;
   90° → `Δ=(+15.2,-20.2,+23.3)mm` 弧长 34.32mm —— **竖直分量 +23.3mm**, 因为 J6 轴此刻与竖直差得多, 大角度已不是"小圆弧"而是一次真实位移 ⇒ 让现场先看末端周围再点。
   验收样例: `deg=95` 必被白名单拒 `deg=95.0 超出允许范围 [1, 90]`(证明上限真生效, 不是只改界面)。
+- 📍 **号位 1~7 按钮 (2026-09-30 老倪: 「页面左下角…增加技能点: 1号位…一直到7号位; 有记录的点就是绿色按钮, 没有记录的点就是灰色按钮」)**:
+  页面 `📍 号位 1~7` 面板 + 服务端 `GET /ctl/points` —— 判据 = 示教点库有 `slotN`(recorded) + 注册表有 `L2.slotN`(has_skill)
+  + 白名单放行 ⇒ `ready` 才画**绿+可点**; 否则灰+`disabled`(点了也不下发, 服务端同样拦)。
+  **判据必须在服务端算** —— 页面自己判会画出"点了却没通道"的假绿(点位真值在执行器侧, 页面读不到)。
+  号位技能用 `tools/register_slot_skills.py` 幂等注册(与 slot1/2/3 同规格: 先到正上方 30mm → 竖直下降 30mm,
+  `z_floor_point` 兜底, `speed_max=150`); 未示教的号位被执行器干净拒发 `点位 slotN 不在点位库`(不崩也不瞎走)。
+  ⚠️ **真 bug(现场只会看到一行 `执行异常`)**: 示教点库里 `slot3/slot7/slot7_up/hole_retract/insert_*` 共 **7 个点的
+  `quat` 只存了 3 个分量**(抄 slot1 改写 pos 时丢了 w, 疑似写入侧 `[:3]` 或丢字段) ⇒ `plan_stage` 取 `q[3]` 抛
+  `IndexError: list index out of range`, 被外层 `except Exception` 吞成 `执行异常` ⇒ 号位技能 **dry 与真动都干点不动**
+  (不是守卫拒、不是授权问题)。修法两层: ①数据 `tools/fix_taught_quat.py`(按单位约束补 `w=+sqrt(1-Σ)`,
+  取正号 = 与同盘已记录点同号, 两候选姿态差 ~1°, 留 `quat_repaired_*` 痕; 可 `--dry` 复核);
+  ②执行器 `_quat4()` 收口(3 分量补并**告警**, 其它分量数拒发) —— 单阶段 `_target` 与多阶段 `plan_stage` 两处都要过一遍,
+  **永不拿 `len(q)!=4` 的四元数去拼 ROS 指令**。
+  诊断手法(比翻日志快): 直接 import 执行器模块调 `dispatch()` 打完整 traceback ——
+  `python3 -c "import importlib.util;spec=...;l2d=…;l2d.dispatch(json.load(open('data/skills/l2_atomic/registry.json')),{'skill':'L2.slot3','speed':60,'dry':True},None)"`;
+  `dispatch(reg, spec, chan)` 的 `reg` 就是 registry.json 原文, `chan=None` 在 dry 下安全。
 - ⚠️ **重启执行器的自伤坑**: `~/.hermes/scripts/l2_daemon_keepalive.sh` 内部是 `pkill -f "[l]2_daemon.py"` ——
   **同一条命令行里别出现字面量 `l2_daemon.py`**(例如 `python3 -m py_compile tools/l2_daemon.py`),
   否则自己的 shell 会被 SIGTERM 掉(实测 exit -15, 连带 keepalive 没跑完)。py_compile 单独发一条, 或把名字用变量拼。
