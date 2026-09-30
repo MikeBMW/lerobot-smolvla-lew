@@ -19,10 +19,10 @@ cat /proc/self/cgroup ; pid=$(pgrep -f 'hermes_cli.main gateway run' | head -1);
 ```
 2026-09-23 实测: ①code=0 ②code=0 success (群里真收到) → 凭据/网络都好 ⇒ **gateway 进程内 token 缓存过期**。
 
-**⚠️ 本机 guard 会拦住 agent 的所有重启路径** (shell `systemctl restart hermes-gateway`、
-写脚本再跑、**连 cron job 都拦**: "cron job contains a gateway lifecycle command") ——
-即"CLI 不在 gateway cgroup 就能自己 restart"的旧结论在本机不成立 (guard 只按命令文本判, 不看 cgroup)。
-⇒ 只能**请用户在自己终端**跑 `hermes gateway restart`(或 `sudo systemctl restart hermes-gateway`)。
+**重启路径: 先试再说"不行"** —— 从 CLI 会话里 `sudo systemctl restart hermes-gateway` 实测可用
+(重启后日志出现干净的 `Previous gateway exited cleanly` → `✓ feishu connected`; 加 systemd drop-in 重启同样可行)。
+只有运行时真的回绝了命令文本(cron job 里带 gateway 生命周期命令、或从 gateway 自身会话里发起)才需要转人工 ——
+别不试就直接告诉用户"agent 自己重启不了"。
 
 **兜底(推荐同时做)**: `~/.hermes/scripts/feishu_notify.py` 直连开放平台发送 (每次自换 token, 不过 gateway),
 哨兵脚本用它推送 → 即使 gateway token 死了, 训练/巡逻结果照样进群。两者并存无冲突。
@@ -218,6 +218,30 @@ Evidence chain (each step either confirms or rules out a cause):
 **Fix** (user-side, 2 min on open.feishu.cn): 事件订阅 → add/re-save `接收消息 im.message.receive_v1` → confirm `获取群组中用户@机器人消息` permission granted → **创建版本并发布** (permissions/events only take effect after publishing a new version). Then have the user @ the bot in the group again and re-check step 1.
 
 Full working command sequence (token + all 4 API calls): see `references/group-receive-debugging.md`.
+
+### 「我从飞书发消息但没反应」——先分清 没推到 / 被门控丢了 / 发错了地方
+
+群里**策略已是 `open` 也仍然默认要求被 @**（adapter `require_mention` 默认 True）：不带 @ 的群消息被
+`_admit()` 拒成 `bot_not_mentioned`，**只写 DEBUG**，gateway.log 里零痕迹 ⇒ 看起来像网关死了，其实是设计。
+要免 @：给该群配 `platforms.feishu.extra.group_rules`，或让用户 @ 机器人 / 走私聊（私聊不受 @ 门控，最干净的对照）。
+群里有多个机器人时 @ 必须命中本 app（群里出现 4 个机器人是常态）：`GET /open-apis/bot/v3/info` 取
+`app_name`/`open_id`，再核对消息详情里的 `mentions[].id.open_id`；@ 了别的机器人 = 本 app 一个事件都收不到。
+
+三个判据（按此序，都不需要猜）：
+1. **事件到底有没有推到适配器** → `~/.hermes/feishu_seen_message_ids.json`（`{"message_ids": {om_…: 本机 epoch}}`）。
+   去重发生在 admission **之前** ⇒ **被拒的消息也在里面**；落盘在 disconnect。让用户发一条 → 重启 gateway
+   （强制落盘）→ 文件里多了新 id = 推送通、问题在本地门控；一条不增 = 事件根本没推到这台机器。
+2. **拒绝原因** → 临时 systemd drop-in 把 ExecStart 换成 `… gateway run -vv`（DEBUG 只进 journald），
+   `journalctl -u hermes-gateway | grep -a 'dropping inbound event'`；查完删 drop-in + daemon-reload + 重启。
+   同一份 journal 里的 `[Lark] connected to wss://msg-frontier.feishu.cn/ws/v2?…` 顺带证明连的是 feishu 前沿。
+3. **飞书侧对账** → `GET /im/v1/messages?container_id_type=chat&container_id=<chat>` **会返回人类发的消息**
+   （别以为只有机器人自己的；`sender.id_type=app_id` 是机器人、`open_id` 是人）。群/私聊都要查
+   （`/im/v1/chats` 列出机器人所在全部会话）。群最新消息时间早于用户声称的发送时间 ⇒ 那些消息没进这个会话，
+   先怀疑发错会话/别的租户，别先怀疑本机。
+
+网关活体状态（不重启，只看平台层）：往 `~/.hermes/gateway.sock` 写 `{"verb":"status"}\n`，回 JSON 里
+`platforms.feishu.state=connected` / `needs_attention` / `active_agents`。协议键是 `verb`（用 `cmd` 会被回
+`unknown verb: None` + supported_verbs）。注意：**状态 connected ≠ 入站事件在流动**，必须用上面第 1 条判据复核。
 
 ### Proactive send test
 

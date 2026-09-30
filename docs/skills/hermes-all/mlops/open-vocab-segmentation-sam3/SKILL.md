@@ -46,6 +46,27 @@ metadata:
 - `/boxes` 要给前端**真实轮廓点集** `contour`(取最大一圈), 页面 `bShape()` 才能画多边形并按多边形命中(否则退回外接矩形, 掩膜的"贴合"在页面上看不出来)。
 - 服务化: 独立进程常驻(如 8796), **显存独占**红线; 推流服务只转发 + 落规格, 失败如实回页面。
 
+## 残留: 按需分割写进规格后**不会自己消失** (2026-09-30 老倪问 "怎么残留历史的分割图")
+
+分割是**一次性/按需**跑的, 结果以 `origin="seg"` 落进 `data/scene/overlay_spec.json` 后**没有任何过期机制**;
+而推流服务 `cam_live_stream.py` **每帧热读**这份规格照画 ⇒ 只要规格里还留着掩膜, 页面就一直在画**那一刻的**掩膜,
+相机/机械臂已经动了也不管 —— 看上去就是"残留的历史分割图"(实测: 06:52 一次补写留下的 6 条掩膜,
+到了 20:5x 还在画, 坐标还是当时那帧的 640x480)。
+
+**清层要这样清**(只动自己 origin, 不碰 meas/plan/trace/l5live/det/vlm):
+```bash
+cd /home/ubuntu/zmax && ./gui-venv311/bin/python -c "import sys;sys.path.insert(0,'tools');\
+import scene_overlay as SO;s=SO.load_spec();s=SO.merge_origin(s,'arm','seg',[]);SO.save_spec(s)"   # 先备份 spec
+```
+清完复核 `GET /boxes?cam=arm` 的 drawn 里没有 `origin=seg`, 且 `meas` 条数不变。
+
+⚠️ **别用页面上的 🗑 去删分割框**: `_boxes_edit(mode='delete')` 会把 id(`origin|label`, 如 `seg|metal`)写进
+`spec.deleted`, 而 `draw_overlay` 对 deleted 里的 id **一律跳过** ⇒ 之后再跑分割拿到同名实例会被**静默吞掉**
+(表现又是"分割没出图")。deleted 语义是给 VLM 的"不要再给", 不是清层工具; 要清就清层或用 "恢复全部" 清空清单。
+
+**治本方向**(未做): 掩膜绑帧 —— 写规格时存一个帧签名(如 32x32 灰度 dHash), 渲染时帧差超阈就不画。
+注意**不能拿 JPEG 字节 md5 当判据**(同一静止场景每帧字节都不同, 会立刻全灭), 要用感知级阈值。
+
 ## 预算与定位
 - 4060 8GB: bf16 载入 ≈1.7GB, 1008² 前向**峰值 2.1~2.4GB**, 加载 1.3s, 单概念 0.4s。
 - 定位**关键帧/触发式**(页面按钮、画布节点双击、标注批次), **不做逐帧**; YOLO 每帧(轻) + SAM3 按需(重) 互补。
