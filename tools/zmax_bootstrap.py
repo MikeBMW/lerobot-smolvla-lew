@@ -239,7 +239,10 @@ def main():
     print("\n结论: %d 项资产, 已有 %d, 可采纳(老位置) %d, 缺 %d" % (
         len(rows), sum(r[5] == "default" for r in rows), sum(r[5] == "alt" for r in rows), sum(r[5] == "missing" for r in rows)))
     if missing_req:
+        auto = [x["id"] for x in missing_req if (x.get("fetch") or {}).get("method") == "mkdir"]
         print("%s❌ 必需项缺 %d 个: %s%s" % (C_BAD, len(missing_req), ", ".join(x["id"] for x in missing_req), C_END))
+        if auto:
+            print("   (%s 是目录骨架, 跑 --apply 会立刻建好)" % ", ".join(auto))
     else:
         print("%s✅ 必需项齐全%s" % (C_OK, C_END))
 
@@ -266,6 +269,10 @@ def main():
         n_link = 0
         for at in man["assets"]:
             st, dest, src = check_asset(at, P)
+            if at.get("kind") in ("venv", "env") and st == "alt":
+                print("  ⓘ %s: 本机已有同类环境(%s), venv 内部路径写死不能软链 —— 复用原处, 或按 %s 重建" % (
+                    at["id"], src, (at.get("fetch") or {}).get("note", "")[:60]))
+                continue
             if st == "alt" and src and not os.path.exists(dest):
                 try:
                     if os.path.isfile(dest) or os.path.isdir(dest):
