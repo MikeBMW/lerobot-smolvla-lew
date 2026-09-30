@@ -30,6 +30,14 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12p
 .note{padding:8px 10px;font-size:15px;color:#f0c674;background:#2a2012;
   border-top:1px solid #4b3a1a;line-height:1.5}
 .note b{color:#ffd479}
+/* 📍 号位 1~7 (2026-09-30 老倪「有记录的点就是绿色按钮, 没有记录的点就是灰色按钮」):
+   判据由服务端 /ctl/points 给(示教点库 + 注册表 + 白名单), 页面只画不算。 */
+.slotbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:10px 10px 4px}
+.slotbar button{font-size:17px;font-weight:700;padding:12px 6px;line-height:1.3}
+.slotbar button.rec{background:#0f3d22;border-color:#2ea043;color:#7ee787}
+.slotbar button.rec:hover:not(:disabled){background:#155a31}
+.slotbar button.norec{background:#161b22;border-color:#2a3038;color:#6e7681;opacity:.8}
+.slotbar button small{display:block;font-size:12px;font-weight:400;opacity:.9;margin-top:4px}
 .dim{color:#8b949e}
 .ok{color:#3fb950}.wa{color:#d29922}.bad{color:#f85149}
 /* ── 右侧控制台 ── */
@@ -236,6 +244,12 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       <pre id="aoi_det_out_s" style="display:none;margin:4px 10px 8px;padding:8px;max-height:200px;overflow:auto;
            background:#0b1018;color:#cfe3ff;font-size:11px;line-height:1.45;border-radius:6px;
            white-space:pre-wrap;word-break:break-all;user-select:text"></pre></div>
+    <div class="panel" id="p_slots"><div class="cap"><span class="ttl">📍 号位 1~7 (示教点)</span>
+      <span class="meta" id="m_slots">…</span></div>
+      <div class="slotbar" id="slotbar"></div>
+      <div class="row" style="padding:0 10px 4px"><span id="slot_msg" style="font-size:13px;opacity:.9"></span></div>
+      <div id="n_slots" style="padding:4px 10px 10px;font-size:14px;color:#8b949e;line-height:1.5"></div>
+    </div>
   </section>
   <aside>
     <div class="card">
@@ -856,6 +870,44 @@ addEventListener('keydown',(e)=>{
   const b=document.querySelector('button[data-skill="'+skill+'"]');
   if(b && !b.disabled){ e.preventDefault(); move(b); }
 });
+/* 📍 号位 1~7 (2026-09-30 老倪): 「有记录的点就是绿色按钮, 没有记录的点就是灰色按钮」。
+   判据全在服务端 /ctl/points(示教点库 taught_points.json + 注册表 L2.slotN + 白名单) ——
+   页面只画不算: 页面自己判断会画出"点了却没通道"的假绿(点位真值在执行器侧, 页面读不到)。
+   点绿按钮 = 下发该号位技能, 走与「侧面点1/金手指点1」同一条路:
+   白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作。 */
+const _SLOT_ST={};
+function gotoSlot(n,skill,btn){
+  if(!_SLOT_ST[n]) _SLOT_ST[n]={};
+  return gotoTeachPoint(btn,_SLOT_ST[n],skill,'『'+n+'号位』','#slot_msg','去'+n+'号位');
+}
+async function loadSlots(){
+  try{
+    const j=await getj('/ctl/points?t='+Date.now(),8000);
+    if(!j||!j.ok||!j.slots) return;
+    const bar=$('#slotbar'); if(!bar) return;
+    const sig=j.slots.map(s=>s.ready?'1':'0').join('');
+    if(bar.dataset.sig!==sig){                       // 只在绿/灰变化时重建 —— 否则会打断正在点的按钮
+      bar.dataset.sig=sig;
+      bar.innerHTML=j.slots.map(s=>
+        '<button data-skill="'+s.skill+'" data-slot="'+s.no+'" class="'+(s.ready?'rec':'norec')+'"'
+        +(s.ready?'':' disabled')
+        +' title="'+(s.ready
+            ? (s.skill+' · 点位 '+s.point+' 已记录'+(s.pos?(' ('+s.pos.join(', ')+')'):'')
+               +' · 走 白名单→授权真动→限流→FIFO→执行器→安全裁决; 未授权时只算目标不动作')
+            : (s.recorded? ('点位已记录, 但缺少下发技能 '+s.skill) : ('未记录: 示教点库里没有 '+s.point))
+               +' —— 要现场示教(工位总览『📍记住此点』/ python3 tools/record_l2_point.py --name '+s.point+')')
+        +'">'+s.name+'<small>'+(s.ready?'✅ 有记录':'⛔ 未记录')+'</small></button>').join('');
+      bar.querySelectorAll('button[data-slot]').forEach(b=>{
+        if(!b.disabled) b.onclick=()=>gotoSlot(parseInt(b.dataset.slot,10),b.dataset.skill,b);
+      });
+    }
+    $('#m_slots').textContent='绿 '+j.green+'/'+j.n+' · 判据 示教点库';
+    $('#n_slots').innerHTML='<b style="color:#7ee787">绿</b> = 有示教记录(可点 → 去该号位) · '
+      +'<b style="color:#8b949e">灰</b> = 还没有记录(不可点; 现场教完自动变绿)。'
+      +'点位真值在 <span style="font-family:ui-monospace">'+j.points_file+'</span> —— 页面/接口都改不了点位。';
+  }catch(e){}
+}
 poll(); setInterval(poll,1500);
+loadSlots(); setInterval(loadSlots,10000);
 </script></body></html>
 

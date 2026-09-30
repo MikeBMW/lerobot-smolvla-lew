@@ -567,7 +567,64 @@ _CTL_ABS_SKILLS = {
     #    无页面可调参数(夹持力/行程由技能定义 registry 固定) ⇒ 只送技能 id, 仍走同一条授权+收口路
     "L2.grip_close": "🤏 关闭夹爪(夹紧)",
     "L2.grip_open": "🤏 打开夹爪(松开)",
+    # 📍 2026-09-30 老倪: 「页面左下角…增加技能点: 1号位 … 一直到7号位; 有记录的点就是绿色按钮,
+    #    没有记录的点就是灰色按钮」 —— 白名单按**技能 id** 放行(不是坐标), 点位真值仍在示教点库
+    #    taught_points.json + 执行器 point_locked 收口; 未示教的号位会被执行器干净拒发
+    #    「点位 slotN 不在点位库」; 页面灰按钮根本不下发, 这里只是给绿按钮留通道。
+    "L2.slot1": "🅰️ 1号位", "L2.slot2": "🅰️ 2号位", "L2.slot3": "🅰️ 3号位", "L2.slot4": "🅰️ 4号位",
+    "L2.slot5": "🅰️ 5号位", "L2.slot6": "🅰️ 6号位", "L2.slot7": "🅰️ 7号位",
 }
+
+
+# 📍 号位 1~7 (2026-09-30 老倪): 页面「有记录=绿 / 没记录=灰」的判据**只能在服务端算** ——
+#   页面自己判会出现"以为自己能发"的假绿(点位真值在执行器侧的示教点库, 页面读不到)。
+_POINT_SLOTS = {1: "slot1", 2: "slot2", 3: "slot3", 4: "slot4", 5: "slot5", 6: "slot6", 7: "slot7"}
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _taught_points() -> dict:
+    """示教点库(与执行器 _load_points 同一口径: 演示学习轨迹点 + L2 传授点库, 同名以传授点库为准)。"""
+    pts: dict = {}
+    for _pf in ("data/skills/l2_muscle/光模块_抓放_演示学习_v1.json",
+                "data/skills/l2_atomic/taught_points.json"):
+        try:
+            with open(os.path.join(_REPO_ROOT, _pf), encoding="utf-8") as _f:
+                pts.update(json.load(_f).get("points", {}))
+        except Exception:                                                     # noqa: BLE001
+            pass
+    return pts
+
+
+def _registry_skill_ids() -> set:
+    try:
+        with open(os.path.join(_REPO_ROOT, "data/skills/l2_atomic/registry.json"), encoding="utf-8") as _f:
+            return {str(_s.get("id")) for _s in json.load(_f).get("skills", [])}
+    except Exception:                                                         # noqa: BLE001
+        return set()
+
+
+def _ctl_points() -> dict:
+    """📍 1~7 号位状态 —— 供页面画按钮:
+       recorded = 示教点库里有 slotN(老倪口径: **有记录的点就是绿色**);
+       has_skill = 注册表里有 L2.slotN(有下发壳才能真的按);
+       ready = 两者都齐 ⇒ 绿+可点, 否则灰+不可点(点了也不下发, 服务端白名单同样拦)。"""
+    pts, ids = _taught_points(), _registry_skill_ids()
+    out = []
+    for _no, _p in sorted(_POINT_SLOTS.items()):
+        _sid = "L2." + _p
+        _rec = _p in pts
+        _pd = pts.get(_p) or {}
+        _pos = _pd.get("pos") or _pd.get("position")
+        out.append({
+            "no": _no, "name": "%d号位" % _no, "point": _p, "skill": _sid,
+            "recorded": bool(_rec), "has_skill": _sid in ids, "ready": bool(_rec and _sid in ids),
+            "pos": [round(float(v), 4) for v in _pos] if (_rec and _pos) else None,
+            "quat_taught": bool(_pd.get("quat")),
+            "at": str(_pd.get("at") or _pd.get("ts_str") or _pd.get("updated_at") or "") if _rec else "",
+            "whitelisted": _sid in _CTL_ABS_SKILLS,
+        })
+    return {"ok": True, "slots": out, "green": sum(1 for _s in out if _s["ready"]), "n": len(out),
+            "points_file": "data/skills/l2_atomic/taught_points.json"}
 
 
 def _read_json(path: str, default=None):
@@ -2899,6 +2956,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "application/json; charset=utf-8", _jbytes(_motion_state()))
         elif p == "/ctl/status":
             self._send(200, "application/json; charset=utf-8", _jbytes(_ctl_status()))
+        elif p == "/ctl/points":
+            # 📍 1~7 号位状态(只读, GET 安全): 页面用它决定「绿按钮(有记录/可点) / 灰按钮(没记录)」。
+            # 2026-09-30 老倪: 「有记录的点就是绿色按钮, 没有记录的点就是灰色按钮」。判据在服务端
+            # (示教点库 + 注册表 + 白名单), 页面只画不算 —— 免得页面画出假绿(点了却没通道)。
+            self._send(200, "application/json; charset=utf-8", _jbytes(_ctl_points()))
         elif p == "/ctl/log":
             # 📜 执行器日志尾(只读, GET 安全): 页面用它追「等安全裁决 → 受理·已下发 / 拒发」这一行。
             # 为什么需要: 带 VL 安全闸时, 一次动作的最终结果在 45~190s 后才落在执行器日志里,

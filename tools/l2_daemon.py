@@ -195,7 +195,10 @@ def build_move(sk, spec, pts, cur=None, curq=None):
         # 默认沿用旧行为(位置用示教点 · 姿态保持当前), 技能上标 "quat":"taught" 才恢复示教姿态
         # —— 不改既有 goto_point/home 的行为(避免给老技能加姿态旋转风险)。
         if str(sk.get("quat", "")).lower() == "taught" and pts[name].get("quat"):
-            q = list(pts[name]["quat"])
+            q, _qe = _quat4(pts[name]["quat"], name)       # 校验/整形: 分量数不对宁可拒, 也不发坏姿态
+            if _qe:
+                log("拒绝: 点位 %s 的姿态不可用(%s) ⇒ 拒发; 请重录该点" % (name, _qe))
+                return None
     return (t, q)
 
 
@@ -237,6 +240,39 @@ def _qnorm(q):
     """四元数归一 (防数值漂移: 反复相乘后模长偏了会被控制器当成坏姿态)"""
     n = (q[0] ** 2 + q[1] ** 2 + q[2] ** 2 + q[3] ** 2) ** 0.5 or 1.0
     return [q[0] / n, q[1] / n, q[2] / n, q[3] / n]
+
+
+def _quat4(q, name=""):
+    """四元数整形/校验 → (q4, err)。**别再用 len(q)!=4 的四元数去拼指令**。
+
+    2026-09-30 实测坑: 示教点库里有 7 个点(slot3/slot7/slot7_up/hole_retract/insert_*)
+    的 ``quat`` 只存了 x,y,z(抄 slot1 改写 pos 时把 w 丢了), 而 ``plan_stage`` 取 ``q[3]``
+    ⇒ ``IndexError`` 被外层吞成一行 ``执行异常``: 号位技能 dry 和真动**都**干点不动,
+    现场只看到"点了没反应"。同类问题在单阶段点位技能里会变成"拼出一条坏姿态指令发出去"。
+
+    口径(宁可拒发, 不瞎猜):
+      · 4 分量 → 归一后放行;
+      · 3 分量 → 唯一能有据补的形态: 按单位约束 w=+sqrt(1-(x²+y²+z²)) 补(取正号, 与同盘
+        已记录点同号; 两候选姿态差 ≈ 2·asin|w| ~1°), **并在日志里喊出来 + 建议重录**;
+        x²+y²+z²>1 时补不出来 ⇒ 拒;
+      · 其它分量数 ⇒ 拒。
+      数据侧已用 ``tools/fix_taught_quat.py`` 一次性补齐(可 --dry 复核)。
+    """
+    try:
+        v = [float(x) for x in (q or [])]
+    except (TypeError, ValueError):
+        return None, "四元数不是数字"
+    if len(v) == 4:
+        return _qnorm(v), None
+    if len(v) == 3:
+        s = sum(x * x for x in v)
+        if s > 1.0 + 1e-6:
+            return None, "只有 3 分量且 x²+y²+z²=%.6f>1, 补不出 w" % s
+        w = max(0.0, 1.0 - s) ** 0.5
+        log("⚠️ 点位 %s 的 quat 只有 3 分量(缺 w) ⇒ 按单位约束补 w=+%.6f(与同盘已记录点同号); "
+            "建议现场重录该点" % (name or "?", w))
+        return _qnorm([v[0], v[1], v[2], w]), None
+    return None, "四元数有 %d 个分量(应为 4: x,y,z,w)" % len(v)
 
 
 def _qmul(a, b):
@@ -628,9 +664,13 @@ def plan_stage(sk, st, pts, spec, cur):
             return {"err": "点位 %s 不在点位库" % name}
         t = [float(v) for v in pts[name]["pos"]]
         if str(st.get("quat", sk.get("quat", ""))).lower() == "taught" and pts[name].get("quat"):
-            q = [float(v) for v in pts[name]["quat"]]     # 显式回示教姿态 → 纯平移, 不带旋转
+            q, _qe = _quat4(pts[name]["quat"], name)       # 显式回示教姿态 → 纯平移, 不带旋转
+            if _qe:
+                return {"err": "点位 %s 的姿态不可用(%s) ⇒ 拒发; 请重录该点" % (name, _qe)}
         else:
             q = list(_pose["q"]) if _pose["q"] else None
+            if q and len(q) != 4:
+                return {"err": "当前姿态四元数有 %d 个分量(应为 4) ⇒ 拒发" % len(q)}
         if not q:
             return {"err": "位姿缓存未就绪(当前姿态缺)"}
     t[2] += float(st.get("dz_mm", 0.0)) / 1000.0          # base 系竖直偏移(mm): 正=上, 负=下
