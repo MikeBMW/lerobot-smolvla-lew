@@ -59,8 +59,13 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .rot{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;margin-top:8px}
 .rot button{font-size:21px;padding:14px 12px;min-width:104px}
 .rot .lbl{font-size:17px;color:#c9d1d9}
+/* 🔩 2026-09-30 第 6 轴 (J6) 自转: 两个大按钮并排(逆时针 / 顺时针) —— 现场不用看小字也分得清 */
+.rot2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.rot2 button{font-size:22px;font-weight:700;padding:16px 10px;min-height:78px;line-height:1.35}
+.rot2 button[data-skill="L2.j6_ccw"]{border-color:#2f6f3f}
+.rot2 button[data-skill="L2.j6_cw"]{border-color:#6f5b2f}
 .flash{animation:fl .9s ease-out}
-body.locked .pad button[data-skill],body.locked .rot button[data-skill]{opacity:.55}
+body.locked .pad button[data-skill],body.locked .rot button[data-skill],body.locked .rot2 button[data-skill]{opacity:.55}
 @keyframes fl{0%{background:#1f6feb;border-color:#58a6ff}100%{background:#21262d}}
 #msg{font-size:22px;font-weight:700;margin:2px 0 6px;word-break:break-all}
 #lines{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:8px;margin:0;
@@ -308,6 +313,24 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
         想快用 40/60。键盘: A/B/C 加 Shift = 反向; 单次 ≤30°(执行层守卫)。整页没有软急停, 急停请用示教器。</div>
     </div>
     <div class="card">
+      <h2>🔩 第 6 轴 (J6) 独立自转 · 关节自转</h2>
+      <div class="row"><span class="k">步进</span>
+        <span class="seg" id="sJ6"><button data-v="1" class="on">1</button><button data-v="5">5</button>
+        <button data-v="10">10</button></span>
+        <span class="k">°</span></div>
+      <div class="rot2">
+        <button data-skill="L2.j6_ccw" data-p="deg"
+          title="第6轴(J6)逆时针自转 = +J6 (右手定则绕 J6 轴正向) —— 只转这一根关节轴, 其余五轴不动; 末端沿 ~24mm 半径走小圆弧(5°≈2.1mm)。技能 L2.j6_ccw · 走的还是 /move_pose(不掉电), 同一条闸门路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">↺ 逆时针<br><span class="hint" data-pre="+J6 · ">+J6 · 1°</span></button>
+        <button data-skill="L2.j6_cw" data-p="deg"
+          title="第6轴(J6)顺时针自转 = −J6 —— 与逆时针同一根轴、相反方向; 点错了一下反向点回来即可。技能 L2.j6_cw · 同一条闸门路; 未授权时只算目标不动作">↻ 顺时针<br><span class="hint" data-pre="−J6 · ">−J6 · 1°</span></button>
+      </div>
+      <div class="hint" style="margin-top:8px">只转 <b>第 6 轴</b>(腕部自转轴) —— 其余五轴不动; 末端沿 ~24.2mm 半径走小圆弧
+        (5° ≈ 2.1mm, 10° ≈ 4.2mm)。<b>与上面 A/B/C 不是一回事</b>: 那三个是绕<b>工具轴</b>旋转、位置不动,
+        而 J6 轴与工具 X / Y / Z 各差 51° / 88° / 39° ⇒ <b>那三个按钮转不到 J6</b>。
+        方向: 「逆时针」= 右手定则绕 J6 轴正向(轴的方向随姿态变, 首次建议用 1° 试一下观感, 反向点一下即回)。
+        走 /move_pose(不掉电), 速度取上面「速度」段(默认 8 慢)。</div>
+    </div>
+    <div class="card">
       <h2>📋 最近一次动作 (可复制)</h2>
       <div id="msg">—</div>
       <div class="row"><button id="copyb" onclick="copylog()">📄 复制原始日志</button>
@@ -329,7 +352,7 @@ const $=(s)=>document.querySelector(s);
 // (2026-09-28 老倪: 「8793 这个通道推流到 ECS」)
 const B=(location.pathname.replace(/\/[^/]*$/,'')||'');
 const _u=(u)=>(typeof u==='string'&&u.charAt(0)==='/')?(B+u):u;
-let STEP_MM=10, STEP_DEG=5;
+let STEP_MM=10, STEP_DEG=5, STEP_J6=1;   // STEP_J6: 🔩 第 6 轴自转自己的步进档(默认 1° 起步, 首次用最稳)
 /* 🔐 ARMED 不再写死: 由**服务端授权状态**决定(默认 false=未授权), 见 applyAuth()。
    老倪 2026-09-27: 「页面的授权真动 / 现场安全 / 授权」 —— 默认必须是未授权, 真动要人显式两步确认。 */
 let ARMED=false, AUTH_LEFT=0, ARMWIN=300, AUTH_IP='', AUTH_PENDING=0;
@@ -339,6 +362,10 @@ function seg(id,cb){document.querySelectorAll('#'+id+' button').forEach(b=>b.onc
 seg('sX',v=>{STEP_MM=parseFloat(v); $('#stepshow').textContent=STEP_MM;
   document.querySelectorAll('.pad button[data-p=d_mm] .hint').forEach(h=>h.textContent=STEP_MM+'mm');});
 seg('sA',v=>{STEP_DEG=parseFloat(v); document.querySelectorAll('.rot .hint').forEach(h=>h.textContent=STEP_DEG+'°');});
+/* 🔩 第 6 轴 (J6) 自转用自己的步进档(1/5/10°, ≤技能守卫 10°)。
+   别和 A/B/C 的 20° 档共用 —— 20° 会被执行器守卫拒发, 现场看到的就是"点了没反应"(已踩过)。 */
+seg('sJ6',v=>{STEP_J6=parseFloat(v);
+  document.querySelectorAll('.rot2 .hint').forEach(h=>h.textContent=(h.dataset.pre||'')+STEP_J6+'°');});
 seg('sSpd',v=>{ $('#spd').value=v; });
 function hhmmss(a){const d=new Date(Date.now()-a*1000);const p=n=>String(n).padStart(2,'0');
   return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}
@@ -415,7 +442,8 @@ function moveReal(){ armClick(); }              // 兼容旧按钮名
 function flash(btn){try{btn.classList.remove('flash');void btn.offsetWidth;btn.classList.add('flash');}catch(e){}}
 async function move(btn,force){
   const skill=btn.dataset.skill, p=btn.dataset.p;
-  const v=(p==='deg')?STEP_DEG:STEP_MM;
+  // 🔩 第 6 轴自转走自己的步进档(≤10°); 其余 deg 类(A/B/C)仍用 STEP_DEG
+  const v=(p==='deg')?(skill.indexOf('L2.j6_')===0?STEP_J6:STEP_DEG):STEP_MM;
   const spd=parseFloat($('#spd').value||'8');
   _lastMove={skill:skill,p:p,v:v};
   const real=ARMED;   // 🔐 只有已授权才真下发(服务端还会再拦一次); 未授权一律 dry-run 演练

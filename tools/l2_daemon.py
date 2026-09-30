@@ -364,6 +364,151 @@ def run_rot_chunks(sk, spec, sid, chan):
     return "已下发 %d 段 · 合计 %.1f°(腕部转动较慢, 到位实测随后写日志)" % (n, total)
 
 
+# ===== 🔩 第 6 轴 (J6) 独立自转 (2026-09-30 老倪手动控制台: 逆时针 / 顺时针) =====
+#   「让 6 轴独立旋转」= **只转关节 J6 自己**(其余五轴不动)。两条通道:
+#     ① 关节通道 `/target_relative_joint` —— 直接给关节增量, 但实测(rx rt 通道)动作后
+#        **伺服下电**, 现场要反复上电(老倪骂过「怎么又下电了? 我还没看清动作呢」) ⇒ 不用;
+#     ② 等效笛卡尔: 绕 **J6 轴轴线**(法兰原点 + link6 的 z)旋转, 走 `/move_pose`(实测不掉电)。
+#   公式(由现场 URDF tool0→tool1 的固定位姿导出, 与当前姿态无关):
+#     a_tool = R_off^T·[0,0,1] = (-0.6250, 0.0289, 0.7801)   J6 轴在**工具系**的方向
+#     t_tool = R_off^T·t_off                                 TCP→法兰 平移(工具系)
+#     a_base = R_tool·a_tool                                 base 系下 J6 轴方向
+#     p_fl   = p_tcp − R_tool·t_tool                         法兰原点(轴线上一点)
+#     p_new  = p_fl + Rot(a_base,θ)·(p_tcp − p_fl) · q_new = q(a_base,θ) ⊗ q_tcp
+#   ⚠️ 别把 URDF 的 t_off 直接当工具系向量用: R_off ≠ I, 必须先换到工具系
+#      (踩过: 直接把 t_off 乘 R_tool ⇒ 位置差 11mm/5°, 姿态却完全对 ⇒ 只有位置会错, 很隐蔽)。
+#   离线核对(**零运动**): `python3 tools/test_j6_axis.py` —— 与 FK(q, J6±θ) 位置差 6e-14 mm ·
+#      姿态差 1.7e-06° ⇒ 公式 = 纯 J6 自转(TCP 沿 ~24.2mm 半径走小圆弧: 5°≈2.1mm, 10°≈4.2mm)。
+#   ⚠️ 现有 A/B/C(pose_rot) **转不到 J6**: J6 轴与工具 X/Y/Z 各差 51.3°/88.3°/38.7°。
+_J6_RPY = (0.03702517838719945, 0.6751675651256659, 2.375248653715161)      # URDF tool0→tool1 rpy
+_J6_T = (-0.01588615307905028, 0.018348498948158043, 0.2586775713451509)    # URDF tool0→tool1 xyz
+
+
+def _rpy_R(r, p, y):
+    """rpy(URDF 口径 Rz·Ry·Rx) → 3x3 旋转矩阵"""
+    import math
+    def rx(a):
+        c, s = math.cos(a), math.sin(a)
+        return [[1, 0, 0], [0, c, -s], [0, s, c]]
+
+    def ry(a):
+        c, s = math.cos(a), math.sin(a)
+        return [[c, 0, s], [0, 1, 0], [-s, 0, c]]
+
+    def rz(a):
+        c, s = math.cos(a), math.sin(a)
+        return [[c, -s, 0], [s, c, 0], [0, 0, 1]]
+    _mm = lambda A, B: [[sum(A[i][k] * B[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
+    return _mm(rz(y), _mm(ry(p), rx(r)))
+
+
+def _R_T(R):
+    """转置(正交阵的逆)"""
+    return [[R[j][i] for j in range(3)] for i in range(3)]
+
+
+def _R_mv(R, v):
+    return [sum(R[i][k] * v[k] for k in range(3)) for i in range(3)]
+
+
+J6_AXIS_TOOL = _R_mv(_R_T(_rpy_R(*_J6_RPY)), [0.0, 0.0, 1.0])       # J6 轴方向(工具系, 常数)
+J6_T_TOOL = _R_mv(_R_T(_rpy_R(*_J6_RPY)), list(_J6_T))             # TCP→法兰平移(工具系, 常数)
+
+
+def build_j6_rot(sk, spec, cur, curq):
+    """🔩 由 TCP 位姿算「绕 J6 轴转 ±deg」的等效笛卡尔目标。
+
+    返回 (p_new, q_new, deg, arc_mm) 或 None(已 log)。方向**由技能名内定**
+    (`_ccw`=逆时针=+J6 · `_cw`=顺时针=−J6), 页面只填正数 —— 与方向点动同一口径。
+    """
+    import math
+    if not cur or not curq:
+        log("拒绝: 目标位姿读不到(直读失败且常驻缓存过期), J6 自转需要真实当前位姿")
+        return None
+    sid = str(sk.get("id", ""))
+    _pd = (sk.get("param") or {}).get("deg") or {}
+    deg = abs(float(spec.get("deg", _pd.get("default", 5))))
+    if sid.endswith("_cw"):
+        deg = -deg
+    elif not sid.endswith("_ccw"):
+        log("拒绝: 技能 %s 名字里既没有 _ccw 也没有 _cw —— J6 方向不明确, 不敢猜" % sid)
+        return None
+    g = dict(sk.get("guard") or {})
+    g.update(spec.get("guard") or {})
+    gmax = abs(float(g.get("max_deg", 10.0)))
+    if abs(deg) > gmax:
+        log("🛡 拒绝: J6 单次自转 %.1f° 超过守卫 max_deg=%.0f° (要更大角度请分次点)" % (deg, gmax))
+        return None
+    R = _quat_R(curq)
+    a_base = _R_mv(R, J6_AXIS_TOOL)
+    p_fl = [cur[i] - _R_mv(R, J6_T_TOOL)[i] for i in range(3)]        # 法兰原点(轴线过它)
+    th = math.radians(deg)
+    x, y, z = a_base
+    c, s, C = math.cos(th), math.sin(th), 1.0 - math.cos(th)
+    Rr = [[c + x * x * C, x * y * C - z * s, x * z * C + y * s],
+          [y * x * C + z * s, c + y * y * C, y * z * C - x * s],
+          [z * x * C - y * s, z * y * C + x * s, c + z * z * C]]
+    d = [cur[i] - p_fl[i] for i in range(3)]
+    p_new = [p_fl[i] + _R_mv(Rr, d)[i] for i in range(3)]
+    h = th / 2.0
+    q_new = _qnorm(_qmul([x * math.sin(h), y * math.sin(h), z * math.sin(h), math.cos(h)], list(curq)))
+    arc = math.sqrt(sum((p_new[i] - cur[i]) ** 2 for i in range(3))) * 1000.0
+    return p_new, q_new, deg, arc
+
+
+def run_j6_rot(sk, spec, sid, chan):
+    """🔩 第 6 轴 (J6) 独立自转 · 单步 (守卫 max_deg=10°), 走 /move_pose。
+
+    与 A/B/C(绕工具轴, TCP 不动)的区别: 这里转的是**关节 J6 自己**, TCP 沿 ~24.2mm 半径
+    走小圆弧 —— 但**不掉电**(关节通道才会)。下发前打 Δ + 姿态前后(取证), 下发后后台用**姿态真值**
+    报「实测转过多少度」(腕部慢转, 现场只回「已下发」会被当成没反应)。
+    """
+    import threading
+    p0, q0, csrc = _pose_best()
+    if not p0 or not q0:
+        log("拒绝: 位姿读不到(直读失败且常驻缓存过期) — J6 自转需要真实当前位姿")
+        return "🛡 已拒绝: 位姿读不到, 不敢转(原因见日志)"
+    r = build_j6_rot(sk, spec, p0, q0)
+    if not r:
+        return "🛡 已拒绝: J6 自转条件不满足(位姿读不到 / 角度超守卫 / 方向未定义) — 原因见日志"
+    p_new, q_new, deg, arc = r
+    dx, dy, dz = [(p_new[i] - p0[i]) * 1000.0 for i in range(3)]
+    log("🔩 目标 %s: 绕 J6 轴 %+.1f° · TCP Δ=(%+.1f, %+.1f, %+.1f)mm 沿腕轴小圆弧(%.2fmm, 半径≈24.2mm)"
+        " · 位姿来源 %s" % (sid, deg, dx, dy, dz, arc, csrc))
+    log("🔄 J6 自转 %+.1f°(绕**关节轴**, 非工具轴): quat [%.4f %.4f %.4f %.4f] → [%.4f %.4f %.4f %.4f]"
+        % (deg, *q0, *q_new))
+    sp = float(spec.get("speed", 8))
+    _to = int(max(90, 20 + abs(deg) * 6))
+    call = ('timeout %d ros2 service call /move_pose interfaces/srv/TargetPose "{speed: %s, joint_state: {name: [], '
+            'position: []}, pose: {position: {x: %s, y: %s, z: %s}, orientation: {x: %s, y: %s, z: %s, w: %s}}}"'
+            % (_to, sp, p_new[0], p_new[1], p_new[2], *q_new))
+    if spec.get("dry"):
+        log("DRY-RUN %s → %s" % (sid, call[:200]))
+        return "DRY-RUN(未下发): %s" % call[:170]
+    _desc = ("%s 第6轴(J6)自转 %+.1f° · 末端沿腕轴走 %.2fmm 小圆弧(绕关节轴自转, 非平移非下降)"
+             % (sid, deg, arc))
+    if not chan_send(call, _desc):
+        _bm = _block_msg()
+        log(_bm)
+        return _bm
+    log("已下发 %s → 绕 J6 轴 %+.1f° (目标姿态 quat [%.4f %.4f %.4f %.4f])" % (sid, deg, *q_new))
+
+    def _report():                                   # 后台等终态, 用姿态真值报"实测转了多少"
+        t0 = time.time()
+        best = 0.0
+        _s = ""
+        while time.time() - t0 < 90:
+            _p, _q, _s = _pose_best()
+            if _q:
+                best = _quat_angle_deg(q0, _q)
+                if abs(best - abs(deg)) <= 1.5:
+                    break
+            time.sleep(2.0)
+        log("✅ %s 实测转过 %.1f° (目标 %.1f° · 姿态真值 %s)" % (sid, best, abs(deg), _s or "?"))
+    threading.Thread(target=_report, daemon=True).start()
+    return "已下发 J6 %+.1f°(腕部慢转, 到位实测随后写日志)" % deg
+
+
 def _args_to_yaml(a):
     """dict → ROS2 CLI 的服务请求串 {k: v, k2: [..]} (只支持 标量/布尔/数值数组)"""
     def val(v):
@@ -468,6 +613,9 @@ def plan_stage(sk, st, pts, spec, cur):
         # 🔄 旋转是单步技能(位置不动, 一次一个角度) —— 多阶段(steps)会把 name/点位逻辑绕进去,
         #    静默算错落点。宁可直接拒发, 也不让"看起来跑了"。
         return {"err": "pose_rot(绕工具轴旋转)是单步技能, 不支持 steps 多阶段; 请去掉 steps"}
+    if sk.get("ros") == "j6_rot":
+        # 🔩 同理: J6 自转是单步(一次一个角度), 带 steps 会静默算错落点 ⇒ 直接拒发
+        return {"err": "j6_rot(第6轴自转)是单步技能, 不支持 steps 多阶段; 请去掉 steps"}
     if st.get("rel"):
         name = "rel(当前位姿)"
         t = [float(v) for v in cur]
@@ -912,6 +1060,11 @@ def dispatch(reg, spec, chan):
         # 🔧 2026-09-28: 页面角度档(20°) > 技能守卫(max_deg=10°) 会被拒且文案误导 ⇒ 交 run_rot_chunks 自动分次
         if sk.get("ros") == "pose_rot":
             return run_rot_chunks(sk, spec, sid, chan)
+        # 🔩 2026-09-30 老倪手动控制台: 「让 6 轴独立旋转」—— 只转关节 J6 自己。
+        #   等效笛卡尔实现, 走 /move_pose(不掉电); 关节通道 /target_relative_joint 动作后会**伺服下电**。
+        #   ⚠️ 别把它并进 pose_rot: pose_rot 是绕**工具轴**且 TCP 不动, 数学上转不到 J6(差 39~88°)。
+        if sk.get("ros") == "j6_rot":
+            return run_j6_rot(sk, spec, sid, chan)
         _cur, _cq, _csrc = _pose_best()
         _rot = None
         r = build_move(sk, spec, pts, _cur, _cq)
