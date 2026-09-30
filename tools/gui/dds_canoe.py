@@ -272,7 +272,136 @@ class BusView(QWidget):
         if self.standalone:                      # 独立窗口里没有主窗口那套 Tab 视图 → 不显示该开关
             self.btn_classic.setVisible(False)
         lay.addWidget(self.btn_classic)
+
+        # 🔎 右上角**全局搜索** (2026-09-30 老倪: 「在全局数据空间, 右上角增加搜索功能」)
+        #    搜的是**信号表里的条目**(报文/信号/节点), 不是 Trace。输入即筛: 不匹配的行隐藏、
+        #    组内无匹配自动收起, 组标题显示 匹配 n/m; 回车 ⇒ 选中第一条命中并滚过去(右侧详情跟着出)。
+        #    可搜: 话题 key(ss_plan) · 全名(zmax/ss_plan) · 类型(zmax::SSPlan) · 节点名 · 层名。
+        self._find_saved = None                  # 清空时还原各组展开状态
+        self.ed_find = QLineEdit()
+        self.ed_find.setPlaceholderText("🔎 搜索信号表 (试: ss_plan)")
+        self.ed_find.setFont(QFont(MONO, 10))
+        self.ed_find.setFixedWidth(230)
+        self.ed_find.setClearButtonEnabled(True)
+        self.ed_find.setToolTip("按名字筛信号表: 话题 key(如 ss_plan) / 全名(zmax/ss_plan) / "
+                                "类型(zmax::SSPlan) / 节点名 / 层名。边打边筛, 回车跳到第一条命中。")
+        self.ed_find.setStyleSheet(f"QLineEdit {{ background:{C_BG}; color:{C_WHITE};"
+                                   f" border:1px solid {C_YELLOW}; border-radius:4px; padding:4px 8px; }}")
+        self.ed_find.textChanged.connect(self._apply_find)
+        self.ed_find.returnPressed.connect(self._find_jump)
+        lay.addWidget(self.ed_find)
+        self.lb_find = QLabel("")
+        self.lb_find.setFont(QFont(MONO, 9))
+        self.lb_find.setStyleSheet(f"color:{C_YELLOW}; background:transparent; border:none;")
+        lay.addWidget(self.lb_find)
         return bar
+
+    # ─────────────────── 🔎 右上角全局搜索: 筛信号表(报文/信号/节点) ───────────────────
+    def _find_haystack(self, item):
+        """一行的可搜文本 = 各列文字 + 悬浮提示 + UserRole 数据(话题 key/类型 常在这里)。"""
+        parts = [item.text(c) for c in range(item.columnCount())]
+        for c in range(item.columnCount()):
+            tt = item.toolTip(c)
+            if tt:
+                parts.append(tt)
+        d = item.data(0, Qt.UserRole)
+        if d:
+            parts.append(str(d))
+        return " ".join(parts).lower()
+
+    def _find_walk(self, item, q):
+        """递归设 hidden; 返回 (命中叶子数, 叶子总数)。"""
+        n = item.childCount()
+        if n == 0:
+            hit = q in self._find_haystack(item)
+            item.setHidden(not hit)
+            return (1 if hit else 0), 1
+        hit = tot = 0
+        for i in range(n):
+            h, a = self._find_walk(item.child(i), q)
+            hit += h
+            tot += a
+        item.setHidden(hit == 0)
+        if hit:
+            item.setExpanded(True)               # 搜索时展开, 保证命中可见
+        return hit, tot
+
+    def _apply_find(self):
+        try:
+            q = (self.ed_find.text() or "").strip().lower()
+            n_hit = n_all = 0
+            if not q:                            # 清空 ⇒ **整树复位**(根+叶子全部取消隐藏),
+                self._unhide_all()               #    否则组显示出来了、叶子还藏着(实测踩过)
+            if q and self._find_saved is None:   # 首次进入搜索: **先**存各组展开状态(后面会被展开)
+                self._find_saved = [self.tree.topLevelItem(i).isExpanded()
+                                    for i in range(self.tree.topLevelItemCount())]
+            for gi in range(self.tree.topLevelItemCount()):
+                root = self.tree.topLevelItem(gi)
+                if not q:
+                    root.setHidden(False)
+                    continue
+                h, a = self._find_walk(root, q)
+                n_hit += h
+                n_all += a
+            if not q and self._find_saved is not None:   # 清空: 还原展开状态
+                for i, was in enumerate(self._find_saved):
+                    it = self.tree.topLevelItem(i)
+                    if it is not None:
+                        it.setExpanded(was)
+                self._find_saved = None
+            _gh, _ga = self._group_counts(q)
+            self.lb_find.setText("" if not q else ("匹配 %d/%d · 组 %d/%d" % (n_hit, n_all, _gh, _ga)
+                                                   + ("" if n_hit else " · 无命中(试试 ss_plan)")))
+        except Exception as e:                                                   # noqa: BLE001
+            try:
+                self.lb_find.setText("搜索异常: %s" % str(e)[:40])
+            except Exception:                                                    # noqa: BLE001
+                pass
+
+    def _unhide_all(self):
+        """整树取消隐藏(清空搜索时用): 根与所有叶子一起复位。"""
+        def walk(it):
+            it.setHidden(False)
+            for i in range(it.childCount()):
+                walk(it.child(i))
+        for gi in range(self.tree.topLevelItemCount()):
+            walk(self.tree.topLevelItem(gi))
+
+    def _group_counts(self, q):
+        """命中的组数/组总数(空查询 ⇒ 全算命中) —— 只读, 不改可见性。"""
+        gh = ga = 0
+        for gi in range(self.tree.topLevelItemCount()):
+            root = self.tree.topLevelItem(gi)
+            ga += 1
+            if not q or (not root.isHidden()):
+                gh += 1
+        return gh, ga
+
+    def _visible_leaves(self):
+        """当前可见(未被搜索/存活筛掉)的叶子, 供回车跳转用。"""
+        out = []
+
+        def walk(it):
+            if it.isHidden():
+                return
+            if it.childCount() == 0:
+                out.append(it)
+            else:
+                for i in range(it.childCount()):
+                    walk(it.child(i))
+        for gi in range(self.tree.topLevelItemCount()):
+            walk(self.tree.topLevelItem(gi))
+        return out
+
+    def _find_jump(self):
+        """回车: 选中第一条命中 + 滚过去 ⇒ 右侧详情立刻显示该条目(老倪要"名字一搜就出来")。"""
+        vs = self._visible_leaves()
+        if not vs:
+            self.lb_find.setText("无命中 · 试试 ss_plan")
+            return
+        self.tree.setCurrentItem(vs[0])
+        self.tree.scrollToItem(vs[0])
+        self._on_tree_click(vs[0], 0)
 
     def _data_panel(self):
         """CANoe 的 Data 面板: 信号表(Name | Value | Unit | Last Value Time [s] | Bar)"""
@@ -646,6 +775,7 @@ class BusView(QWidget):
                     nid, n.get("type", "—"), n.get("x"), n.get("y")))
                 lyr.addChild(it)
         root_n.setExpanded(False)
+        self._apply_find()          # 🔎 树重建后(含「只看活报文」勾选) 立刻重放搜索词, 不让筛选丢
 
     def _update_values(self):
         if not self._trace_rows:                   # 🐛 质检: Last Value Time 整列 '—' —— 首刷顺序问题
