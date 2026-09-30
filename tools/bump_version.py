@@ -57,12 +57,19 @@ def main() -> int:
         VM = os.path.join(REPO, "VERSION.md")
     new, nv = a.to, "v" + a.to
     s = _read(STUDIO)
-    m = re.findall(r"Z-MAX v(\d+\.\d+\.\d+)", s)
+    # 🐛 2026-09-30 实测: 品牌字面量自 vv5.16.x 起是**双 v** (`Z-MAX vv5.16.34`), 而旧探测正则写的是
+    #   单 v ⇒ 命中到 changelog 里的历史字符串 (实测探出 1.0.4) 或直接崩。口径 = 认版本号不认记法。
+    m = (re.findall(r'QLabel\("Z-MAX v{1,2}(\d+\.\d+\.\d+)"\)', s)
+         or re.findall(r"XSpace Studio — Z-MAX v{1,2}(\d+\.\d+\.\d+)", s)
+         or re.findall(r"Z-MAX v{1,2}(\d+\.\d+\.\d+)", s))
     old = a.frm or (max(set(m), key=m.count) if m else "")
     if not old:
         print("❌ 探测不到旧版本号")
         return 2
     ov = "v" + old
+    # 🐛 2026-09-30: 品牌位(QLabel/窗口标题/CURRENT_VERSION/docs_sync/integrity)一律 **vv** 记法;
+    #   写回统一用 nv_brand, 匹配用 v{1,2} 正则 ⇒ 单 v 时代的老检出也能平滑升级。
+    nv_brand = "vv" + a.to
     if old == a.to:
         print("❌ 新版本号与现有相同")
         return 2
@@ -70,30 +77,41 @@ def main() -> int:
     chk: list[tuple[str, int, int]] = []
 
     # 1) studio.py 品牌版本
-    s2 = s.replace('QLabel("Z-MAX %s")' % ov, 'QLabel("Z-MAX %s")' % nv)
-    chk.append(("studio.py QLabel", s.count('QLabel("Z-MAX %s")' % ov), s2.count('QLabel("Z-MAX %s")' % nv)))
+    s2 = s
+    _ql = re.compile(r'QLabel\("Z-MAX v{1,2}%s"\)' % re.escape(old))
+    n_ql = len(_ql.findall(s2))
+    s2 = _ql.sub('QLabel("Z-MAX %s")' % nv_brand, s2)
+    chk.append(("studio.py QLabel", n_ql,
+                len(re.findall(r'QLabel\("Z-MAX v{1,2}%s"\)' % re.escape(a.to), s2))))
     # 2) studio.py 窗口标题 (两处)
-    n_t = s2.count("XSpace Studio — Z-MAX %s" % ov)
-    s2 = s2.replace("XSpace Studio — Z-MAX %s" % ov, "XSpace Studio — Z-MAX %s" % nv)
-    chk.append(("studio.py 窗口标题", n_t, s2.count("XSpace Studio — Z-MAX %s" % nv)))
+    _ti = re.compile(r"XSpace Studio — Z-MAX v{1,2}%s" % re.escape(old))
+    n_t = len(_ti.findall(s2))
+    s2 = _ti.sub("XSpace Studio — Z-MAX %s" % nv_brand, s2)
+    chk.append(("studio.py 窗口标题", n_t,
+                len(re.findall(r"XSpace Studio — Z-MAX v{1,2}%s" % re.escape(a.to), s2))))
     # 3) changelog 前缀 (插在旧版本注释行之前)
     #   🐛 2026-09-27: 原锚点是死串 "# v5.15.13:" —— 但真源里的 changelog 行长这样
     #     "# v5.15.13 (2026-09-27): **手眼标定 T_base_cam 首次解出…**"
     #   带日期括号 ⇒ 死串永远匹配不到 (在真源上直接崩, 在别的树上则可能静默改错)。
     #   改成"行首版本号"正则 = 认版本号不认记法。
-    pat = re.compile(r"(?m)^([ \t]*)# %s\b.*$" % re.escape(ov))
+    pat = re.compile(r"(?m)^([ \t]*)# v{1,2}%s\b.*$" % re.escape(old))
     mm = pat.search(s2)
-    assert mm, "找不到 changelog 锚点 (# %s …) — 先确认 repo/分支: %s" % (ov, REPO)
+    assert mm, "找不到 changelog 锚点 (# v[V]%s …) — 先确认 repo/分支: %s" % (old, REPO)
     #   行首可能有缩进 (真源里就是 8 空格缩进的注释块) ⇒ 连带缩进一起还原
-    s2 = s2[:mm.start()] + "%s# %s: %s\n" % (mm.group(1), nv, summ) + s2[mm.start():]
-    chk.append(("studio.py changelog 行", 1, s2.count("# %s:" % nv)))
+    s2 = s2[:mm.start()] + "%s# %s: %s\n" % (mm.group(1), nv_brand, summ) + s2[mm.start():]
+    chk.append(("studio.py changelog 行", 1, len(re.findall(r"# v{1,2}%s:" % re.escape(a.to), s2))))
 
-    u = _read(UPD).replace('CURRENT_VERSION = "%s"' % ov, 'CURRENT_VERSION = "%s"' % nv)
-    chk.append(("update_checker CURRENT_VERSION", 1, u.count('CURRENT_VERSION = "%s"' % nv)))
+    _cv = re.compile(r'CURRENT_VERSION = "v{1,2}%s"' % re.escape(old))
+    u = _cv.sub('CURRENT_VERSION = "%s"' % nv_brand, _read(UPD))
+    chk.append(("update_checker CURRENT_VERSION", 1,
+                len(re.findall(r'CURRENT_VERSION = "v{1,2}%s"' % re.escape(a.to), u))))
 
     d = _read(DOCS)
-    d2 = d.replace('"version": "%s"' % ov, '"version": "%s"' % nv).replace('"zmax_version": "%s"' % ov, '"zmax_version": "%s"' % nv)
-    chk.append(("docs_sync 两键", d.count('"%s"' % ov), d2.count('"%s"' % nv)))
+    d2 = (re.sub(r'"version": "v{1,2}%s"' % re.escape(old), '"version": "%s"' % nv_brand, d)
+          .replace('"zmax_version": "v%s"' % old, '"zmax_version": "%s"' % nv_brand)
+          .replace('"zmax_version": "vv%s"' % old, '"zmax_version": "%s"' % nv_brand))
+    chk.append(("docs_sync 两键", len(re.findall(r'"version": "v{1,2}%s"' % re.escape(old), d)),
+                len(re.findall(r'"version": "v{1,2}%s"' % re.escape(a.to), d2))))
 
     # 4) version_sync.py 版本面板字面量 (🐛 2026-09-24: 原先漏了这处 → 面板长期显示旧号)
     #   ⚠️ 2026-09-24 实测修: 本文件的值**不带 v 前缀** (`zmax_ver = "5.13.0"`), 而 ov/nv 带 v
@@ -109,12 +127,13 @@ def main() -> int:
     #   等于"改版本必同步"清单漏了一处。门自己就是判据, 必须一起改。
     INTEG = os.path.join(REPO, "tools/ci/integrity_check.py")
     ic = _read(INTEG)
-    ic2 = ic.replace('EXPECTED_VERSION = "%s"' % ov, 'EXPECTED_VERSION = "%s"' % nv)
-    chk.append(("integrity_check EXPECTED_VERSION", ic.count('EXPECTED_VERSION = "%s"' % ov),
-                ic2.count('EXPECTED_VERSION = "%s"' % nv)))
+    _ev = re.compile(r'EXPECTED_VERSION = "v{1,2}%s"' % re.escape(old))
+    ic2 = _ev.sub('EXPECTED_VERSION = "%s"' % nv_brand, ic)
+    chk.append(("integrity_check EXPECTED_VERSION", len(_ev.findall(ic)),
+                len(re.findall(r'EXPECTED_VERSION = "v{1,2}%s"' % re.escape(a.to), ic2))))
 
     vm = _read(VM)
-    row = "| **%s** | %s | %s |\n" % (nv, time.strftime("%m-%d"), summ)     # 🐛 日期原写死 09-22
+    row = "| **%s** | %s | %s |\n" % (nv_brand, time.strftime("%m-%d"), summ)     # 🐛 日期原写死 09-22; 品牌位用 vv 记法
     lines = vm.splitlines(keepends=True)
     idx = next((i for i, l in enumerate(lines) if l.startswith("| **v")), None)
     if idx is None:
@@ -127,7 +146,7 @@ def main() -> int:
     for name, before, after in chk:
         print("  %-32s 旧命中 %-3d → 新命中 %-3d %s" % (name, before, after, "✅" if after >= max(1, before) else "❌"))
     print("  %-32s %s" % ("VERSION.md 新行", "✅ 插入到表首(第 %d 行)" % (idx + 1)))
-    resid = len(re.findall(r"\bv%s\b" % re.escape(old), s2 + u + d2 + v2)) + len(re.findall(r"\bv%s\b" % re.escape(old), vm2))
+    resid = len(re.findall(r"\bv{1,2}%s\b" % re.escape(old), s2 + u + d2 + v2)) + len(re.findall(r"\bv{1,2}%s\b" % re.escape(old), vm2))
     print("  旧版本号残留 (历史行属正常): %d 处" % resid)
     if a.dry:
         print("(--dry: 未写盘)")
