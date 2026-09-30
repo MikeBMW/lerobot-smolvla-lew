@@ -3417,6 +3417,7 @@ def main():
         _CAM_LABEL["aoi_gold"] = "🔍 金手指检测 (工控机 OPT)"
         _CAM_LABEL["aoi_gold_anno"] = "🧾 金手指检测框 (叠加结果)"
         _CAM_LABEL["aoi_surface"] = "🔍 表面检测 (工控机 OPT)"
+        _CAM_LABEL["aoi_surface_raw"] = "🖼 表面检测整板原图 (工控机 OPT)"
         # 2026-09-28 老倪: 「工控机拍摄的照片与你的金手指判据图不一样, 要跟判据图保持一致」+
         #   「改成一样的, 产线可以切换」⇒ 金手指格改**口径感知** (见 _aoi_gold_worker 文档):
         #     口径 canonical(默认) = 老口径(kind=origin → 本地原比例+去倾角+3× → 900x332)
@@ -3425,12 +3426,19 @@ def main():
         threading.Thread(target=_aoi_gold_worker,
                          args=(10082, "aoi_gold", args.aoi_fps, "aoi_gold_raw", "aoi_gold_anno"),
                          daemon=True, name="aoi-gold").start()
+        # 2026-09-30 老倪: 「表面检测也要增加判据图, 将光模块整体切割出来, 调整好水平状态, 不要背景;
+        #   增加判据图 和 整板原图 两个按钮」⇒ 表面格改成:
+        #     判据图 = 取工控机 v12.1 的 **kind=judge**(已在工控机切好模块+调平+定尺 1600x300) ⇒ 本地零加工;
+        #     整板原图 = 低频取 kind=origin(原图缩图) ⇒ /aoi_surface_raw.mjpg。
+        #   模型输入那张(1280 全幅规范图)不受影响, 仍可在 /aoi_surface_modelin.png 看。
         threading.Thread(target=_aoi_worker,
-                         args=(10083, "aoi_surface", args.aoi_fps, "crop", False, True),
+                         args=(10083, "aoi_surface", args.aoi_fps, "judge", False, True,
+                               "aoi_surface_raw", "origin", 3),
                          daemon=True, name="aoi-surface").start()
         print(f"   🏭 工控机检测源: 10082 金手指(**口径感知**: canonical=本地 原比例+去倾角+3×→900×332 · "
               f"same=直接显示工控机送检那张 kind=crop, 零本地加工; 另推 /aoi_gold_anno.mjpg = 判据图+检测框) "
-              f"+ 10083 表面 @≤{args.aoi_fps}Hz (只 GET 不触发拍照) "
+              f"+ 10083 表面 @≤{args.aoi_fps}Hz (只 GET 不触发拍照; /aoi_surface.mjpg=**判据图**(工控机 v12.1 切模块+调平) "
+              f"· /aoi_surface_raw.mjpg=整板原图; 模型输入那张看 /aoi_surface_modelin.png) "
               f"· 两路都推 MJPEG: /aoi_gold.mjpg · /aoi_surface.mjpg", flush=True)
     # ── 🕹 手动控制闸门 (双重: 这里 + 页面勾选) ──
     _CTL["motion"] = bool(args.ctl_motion)

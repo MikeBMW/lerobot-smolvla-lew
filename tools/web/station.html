@@ -222,6 +222,9 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
     <div class="panel"><div class="cap"><span class="ttl">🔍 表面检测 (工控机 10083)</span>
       <span class="meta" id="m_aoi_surface">…</span></div>
       <img id="i_aoi_surface" data-mode="mjpg" data-src="/aoi_surface.mjpg">
+      <div class="row" style="padding:6px 10px 2px"><span class="seg" id="sview">
+        <button data-stream="/aoi_surface.mjpg" class="on">判据图</button>
+        <button data-stream="/aoi_surface_raw.mjpg">整板原图</button></span></div>
       <div class="note" id="n_aoi_surface"></div>
       <div class="row" style="padding:6px 10px 2px">
         <button id="b_spt1" onclick="gotoSurfacePt1(this)"
@@ -798,17 +801,11 @@ async function poll(){
     }
     const sfv=(sf.verdict&&(sf.verdict.count!==undefined))
       ? ' · 上轮判定 '+(sf.verdict.verdict||'')+' ('+sf.verdict.count+' 缺陷 · 推理 '+fmt(sf.verdict.ms,0)+'ms)' : '';
-    if(sf.ok===true){ $('#m_aoi_surface').textContent+=' · 模型看的规范图 kind=crop'+sfv; }
+    if(sf.ok===true){ $('#m_aoi_surface').textContent+=' · 判据图 kind=judge(切模块+调平) · 模型输入 kind=crop'+sfv; }
     if(sf.ok===false){
       $('#n_aoi_surface').style.display='block';
-      $('#n_aoi_surface').innerHTML='<b>这一格还没有画面 —— 10083 那台程序还是 v2(没有取图路由)</b><br>'
-        +'实测: 10083 上 55 条候选路径全 404, 只有 POST /capture_detect; 工控机上也没有第二个 HTTP 服务能取表面相机的图。<br>'
-        +'<b>修法已经备好, 只等在那台机器上执行</b>: 把 <code>surface_10083_work_v4.py</code> 拷进 '
-        +'<code>D:\\xspace\\ultralytics_AOI</code>, 停掉 v2 的进程后运行它 —— 端口还是 10083, '
-        +'<b>v2 的文件一个字都不改</b>(出问题原样回 v2)。<br>'
-        +'<b>它一上线, 本页不用改一行就出图</b> —— 这一格一直在轮询 <code>GET /picture?kind=crop</code> '
-        +'(v4 新增的取图路由), 还会顺带显示它上一轮的判定(OK/NG + 缺陷数 + 推理耗时)。<br>'
-        +'现在能做的: 点「📸 拍帧」真拍一次(图会存到工控机 ./surface_images/, 但在 v2 下取不回来)。';
+      $('#n_aoi_surface').innerHTML='<b>这一格没取到图</b> —— 10083 上的表面检测服务没应答, 或者它内存里当前没有照片(OPT 只在检测/拍照时留图, 闲着时取就是 404「尚无照片」)。<br>'
+        +'可点下面的「📸 拍帧 (真拍一次)」让它现拍一张; 若一直 404, 就查工控机 10083 服务还在不在。';
       const lc=sf.last_capture;
       if(lc) $('#n_aoi_surface').innerHTML+='<br>上次拍帧: HTTP '+lc.http+' '+(lc.msg||'')
         +(lc.got_image?' · 已取到图':(lc.how?' · '+lc.how:''));
@@ -860,6 +857,12 @@ document.querySelectorAll('#gview button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#gview button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on');
   const im=$('#i_aoi_gold');                    // 现在是 MJPEG 流: 换 src 就等于换源(旧连接自动断)
+  if(im) im.src=_u(b.dataset.stream)+'?t='+Date.now();
+});
+document.querySelectorAll('#sview button').forEach(b=>b.onclick=()=>{   // 🔍 表面: 判据图(切模块+调平) / 整板原图
+  document.querySelectorAll('#sview button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  const im=$('#i_aoi_surface');
   if(im) im.src=_u(b.dataset.stream)+'?t='+Date.now();
 });
 const _a82=$('#auto82');
