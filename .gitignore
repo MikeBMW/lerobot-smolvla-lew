@@ -323,3 +323,9 @@ gui-venv311/
 *.jsonl
 # 大图(>300KB 多为截图证据)由 tools/ 侧的入库脚本按大小过滤, 这里兜底常见目录
 docs/evidence/
+# 新仓库边界(续): 上游 CI/编辑器配置与打包交付件不进库
+.github/
+.vscode/
+*.zip
+docs/design/evidence_*/
+docs/mm_muscle_compare.png
