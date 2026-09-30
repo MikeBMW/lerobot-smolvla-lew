@@ -22,8 +22,13 @@ metadata:
   · 旧名 `/home/ubuntu/zmax_rel`、`/home/ubuntu/zmax_dds` 仍是软链(兼容), 但代码里不该再出现。
   · `/home/ubuntu/lerobot-smolvla-lew`(分支 mac-hw)是**另一仓库里的另一棵工作树**, 内容与 main 有差异。
 - **数据全在 `/home/ubuntu/zmax_data/`**: `ss_live/`(Orin 状态流+深度源, 旧名 zmax_ss_remote)、
-  `runtime/moveit_plan/`(旧名 zmax_moveit_plan)、`stable-wm-cache/`(训练缓存 136G, 含政策保护的 95G 官方数据集)、
-  `backups/`、`models/weights/`。**根上只留软链**。
+  `runtime/moveit_plan/`(旧名 zmax_moveit_plan)、`stable-wm-cache/`(训练缓存, 含政策保护的 95G 官方数据集)、
+  `hf_cache/`(HF 缓存默认根, `~/.cache/huggingface` 是它的软链)、`aoi_v4/`(AOI 工具链 + agent-hub 静态目录)、
+  `backups/`(hermes 备份 + 整套复制件)、`models/weights/`、`secrets/`(600)。**根上只留软链**。
+- 根目录目标形态(2026-09-30 收尾后, 81 条) = `zmax/`(工程) + `zmax_data/`(数据) + 几个软链
+  (`zmax_rel` `zmax_dds` `stable-wm-cache` `zmax_ss_remote` `zmax_moveit_plan` `aoi_v4` `.cache/huggingface`)
+  + 第三方仓库(`INTACT-JEPA` `lerobot-smolvla-lew`) + venv(`lerobot-venv` `dds-venv`) + 点文件/个人目录。
+  说明书: `docs/notes/home_top_level_map.md`(每个条目是什么/谁在用/能不能删)。
 
 ## 入库边界 (老倪: 只放源代码 + 技能 + 记忆)
 | 进 | 不进(留本机) |
@@ -109,3 +114,5 @@ rm -rf /tmp/c && git clone --depth 1 https://github.com/MikeBMW/zmax.git /tmp/c 
 | `alt_paths` 里写了目录 | 把整个目录当资产采纳(如 lora_l3 → reports/) | 精确文件用 `alt_globs` 且 **glob 先于 alt_paths**; 取文件要 `os.path.isfile` 过滤 |
 | 从 fork 收源码时连生成物一起收 | `tools/ros2_interfaces/install/**` 上千个 rosidl 生成文件入库 | 排除 `/install/`、`docs/`、`reports/`、`media/`、`.github/`; 根级脚本归 `tools/fork_experiments/` |
 | 用 `du -sh` 判目录空不空 | 明明有文件却报 0 | 用 `ls -A`/`os.listdir` 判非空; du 受挂载/稀疏影响 |
+| 用 `ln -s 相对路径` 在**别的目录**里建软链 | 链指向 `<那个目录>/相对路径`, 直接断(如 `.cache/huggingface → zmax_data/hf_cache` 变成 `.cache/zmax_data/hf_cache`) | 跨目录一律用**绝对路径**; 建完立即 `python3 -c "import os;print(os.path.isdir(p))"` 验一次 |
+| 搬数据目录后没验活链路 | 服务/训练在报错, 半天后才发现 | 搬完立刻验: 软链目标存在 + `bash tools/zmax_bootstrap.sh` 仍 15/15 + 8793/8794 返回 200 |
