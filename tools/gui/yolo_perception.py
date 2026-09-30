@@ -52,13 +52,32 @@ else:
 
 
 
+def default_weights_path() -> str:
+    """YOLO 通用兜底权重 (COCO 80 类) 的**唯一真身路径** —— 在数据盘, 不在家目录。
+
+    解析顺序: 环境变量 → `$ZMAX_DATA/models/weights/yolov8s.pt`(默认约定) → 仓库根 → 家目录旧路径(遗留兼容)。
+    🐛 2026-09-30 修 (老倪: 「怎么还有 yolo 模型呢?」): 原来按「__file__ 上溯四级」硬拼 `/home/ubuntu/yolov8s.pt`
+       —— 那是工程迁移期在家目录留的兼容软链, 真身在数据盘, 仓库根还有一份 22.5MB 重复实物。
+       口径 = 模型只留数据盘一份 (`docs/notes/model-paths.md` 的默认下载路径约定), 代码按路径解析, 不在根上堆模型文件。
+    注意: 在役的检测权重不是它 —— 是 `models/yolo_peg_live.pt` (真机域微调); 本函数只是"未指定 weights 时"的兜底。
+    """
+    env = os.environ.get("ZMAX_YOLO_WEIGHTS") or os.environ.get("SS_YOLO_WEIGHTS")
+    data = os.environ.get("ZMAX_DATA") or "/home/ubuntu/zmax_data"
+    repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # tools/gui → 仓库根
+    for c in (env,
+              os.path.join(data, "models", "weights", "yolov8s.pt"),
+              os.path.join(repo, "yolov8s.pt"),
+              "/home/ubuntu/yolov8s.pt"):
+        if c and os.path.isfile(c):
+            return c
+    return os.path.join(data, "models", "weights", "yolov8s.pt")
+
+
 class YoloPerception:
     """状态空间 YOLO 感知 (B1 识别 + B2 位姿 + 状态对齐)"""
 
     def __init__(self, weights=None, cam=None):
-        self.weights = weights or os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
-                os.path.abspath(__file__))))), "yolov8s.pt")
+        self.weights = weights or default_weights_path()
         self.cam = dict(_DEF_CAM)
         if cam:
             self.cam.update(cam)

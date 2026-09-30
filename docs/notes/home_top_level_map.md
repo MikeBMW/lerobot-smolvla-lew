@@ -74,6 +74,12 @@
 **归文件夹（有用的）**：Hermes 安装/恢复对 → `~/hermes-install/`（两者必须同目录，`Exec` 用 `$(dirname %k)`）；10 个 oneoff 脚本的**真身**本就在 `zmax/tools/oneoff/`，5 个 DDS/上传脚本真身在 `zmax/tools/dds/` 与 `zmax/tools/`。
 **台账**：`zmax_data/artifacts_20260930/tidy_ledger_20260930.json`（含每条原指向）。验证: 顶层裸文件 **0**、DDS 三单元仍 active、`systemctl --failed` **0**。
 
+**同轮 · YOLO 权重归位**（老倪追问「怎么还有 yolo 模型呢?」）：顶层 `yolov8s.pt` 是**软链**（真身在数据盘），但它同时是代码的**默认权重路径**，所以还活着 —— 根因是 `yolo_perception.py` 按 `__file__` 上溯四级硬拼 `/home/ubuntu/yolov8s.pt`，且 `simulink_module.py` 双击 YOLO 节点时取仓库根那份 **22.5MB 重复实物**。
+- 代码修：新增 `tools/gui/yolo_perception.py:default_weights_path()`（解析顺序 = 环境变量 → `$ZMAX_DATA/models/weights/yolov8s.pt` → 仓库根 → 家目录旧路径），类默认与 GUI 双击节点都改用它。
+- 文件清：删顶层软链 + 仓库根重复实物；仓库根 `yolov8n.pt` / `yolo26n.pt`（各 6.5M/5.5M，仅 CLI 默认名字，ultralytics 会自己解析）一并移到 `zmax_data/models/weights/`。现在 **YOLO 权重只在数据盘一处**，家目录/仓库根 **0 个裸 `.pt`**。
+- 在役检测权重不是它：`zmax/models/yolo_peg_live.pt` →（软链）`lerobot-smolvla-lew/runs/detect/outputs/yolo_annot/annot_0919_1814/weights/best.pt`（真机域微调）；`yolov8s.pt` 只是没指定 weights 时的 COCO 80 类兜底。
+- 实测：改后 `YoloPerception()` 与 GUI 口径都从数据盘加载 `yolov8s.pt (80 类)`；基线自检 15/15（可采纳项归 0，说明已全部落在约定路径）。
+
 ## 六、仍待老倪一句话的
 
 1. **公开仓库历史里的 agent hub token**：代码/单元已出库改成 secrets 文件，但**历史提交里清不掉**（force-push 后旧对象仍可按 SHA 取）。三选一：① 删库重建 ② 轮换 token（要同步工控机部署件）③ 维持现状。

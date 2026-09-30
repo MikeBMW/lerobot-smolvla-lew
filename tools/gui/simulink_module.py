@@ -11085,11 +11085,13 @@ class SimulinkModule(QWidget):
 
         def _work():
             try:
-                from yolo_perception import YoloPerception
+                from yolo_perception import YoloPerception, default_weights_path
                 import numpy as np
                 from PIL import Image
                 root = self._repo_root()
-                p = YoloPerception(weights=os.path.join(root, "yolov8s.pt"))
+                # 🐛 2026-09-30: 原写 os.path.join(root, "yolov8s.pt") ⇒ 靠仓库根那份 22.5MB 重复实物;
+                #   改成与 YoloPerception 默认同一个解析器 (唯一真身在数据盘)。
+                p = YoloPerception(weights=default_weights_path())
                 img_path = os.path.join(root, "reports", "_yolo_demo.jpg")
                 if not os.path.exists(img_path):
                     img_path = os.path.join(root, "reports", "_yolo_demo.png")

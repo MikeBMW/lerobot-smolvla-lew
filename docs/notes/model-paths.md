@@ -26,6 +26,8 @@
 |---|---|---|---|
 | SAM3 分割权重 | `$ZMAX_MODELS/sam3_hf` | 3.2G | `HF_ENDPOINT=https://hf-mirror.com hf download facebook/sam3 --include 'model.safetensors' '*.json' --local-dir $ZMAX_MODELS/sam3_hf`（**gated=manual**：需 HF 账号申请授权 + `HF_TOKEN`；有本地副本可直接拷，不必重下） |
 | YOLO 在役权重 | `$ZMAX_MODELS/weights/yolov8s.pt` | 21M | `curl -L -o $ZMAX_MODELS/weights/yolov8s.pt https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8s.pt` |
+| YOLO 其他基座 | `$ZMAX_MODELS/weights/{yolov8n,yolo26n}.pt` | 6.5M/5.5M | 只在 CLI 里当默认名字用，ultralytics 会自己解析；**约定拉到这里**，别让它在当前目录落地（否则仓库根/家目录又堆一堆 .pt——2026-09-30 就是这么清出来的）。检测在役权重的软链真身在 `lerobot-smolvla-lew/runs/detect/outputs/yolo_annot/annot_0919_1814/weights/best.pt` |
+| YOLO 默认路径解析 | — | — | 代码统一走 `tools/gui/yolo_perception.py:default_weights_path()`：环境变量(`ZMAX_YOLO_WEIGHTS`/`SS_YOLO_WEIGHTS`) → 数据盘 → 仓库根 → 家目录旧路径；**别再写死家目录绝对路径** |
 | SmolVLM2-500M | `$ZMAX_HF_HOME/hub/models--HuggingFaceTB--SmolVLM2-500M-Video-Instruct` | 1.9G | `HF_HOME=$ZMAX_HF_HOME hf download HuggingFaceTB/SmolVLM2-500M-Video-Instruct --include 'model.safetensors' '*.json'` ← **必须带 include**，不带会连 `onnx/` 5.4G 一起下（总 7.4G） |
 | Qwen2.5-VL-3B | `$ZMAX_HF_HOME/hub/models--Qwen--Qwen2.5-VL-3B-Instruct` | 7.0G | `HF_HOME=$ZMAX_HF_HOME hf download Qwen/Qwen2.5-VL-3B-Instruct` |
 | INTACT/LeWM 权重 | `/home/ubuntu/INTACT-JEPA/checkpoints_hf` | 2.5G（hub 上 7G） | `hf download INTACT-JEPA/INTACT --include 'INTACT-unified/*' --local-dir <目标>` 再解压 |

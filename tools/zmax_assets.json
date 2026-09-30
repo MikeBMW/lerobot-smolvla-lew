@@ -38,7 +38,7 @@
       "desc": "L2 检测在役权重(yolo_peg_live.pt 是软链)",
       "needed_by": ["L2检测", "AOI", "状态空间感知"],
       "path": "${ZMAX_MODELS}/weights/yolov8s.pt",
-      "alt_paths": ["/home/ubuntu/yolov8s.pt", "${ZMAX_MODELS}/weights/yolo26n.pt"],
+      "alt_paths": ["${ZMAX_MODELS}/weights/yolo26n.pt", "${ZMAX_MODELS}/weights/yolov8n.pt"],
       "size_gb": 0.02,
       "required": true,
       "fetch": {
@@ -46,7 +46,7 @@
         "urls": [
           "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8s.pt"
         ],
-        "note": "也可以让 ultralytics 自己拉: python -c \"from ultralytics import YOLO; YOLO('yolov8s.pt')\" (会落在当前目录)。"
+        "note": "也可以让 ultralytics 自己拉: python -c \"from ultralytics import YOLO; YOLO('yolov8s.pt')\" —— ⚠️ 会在**当前目录**落一份权重(实测就这样把仓库根/家目录搞出一堆 .pt); 约定: 拉到 ${ZMAX_MODELS}/weights/ 并删掉临时那份 (代码用 tools/gui/yolo_perception.py:default_weights_path() 解析, 别写死家目录路径)。"
       }
     },
     {
