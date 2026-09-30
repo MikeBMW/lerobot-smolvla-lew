@@ -208,6 +208,11 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       <span class="meta" id="m_aoi_surface">…</span></div>
       <img id="i_aoi_surface" data-mode="mjpg" data-src="/aoi_surface.mjpg">
       <div class="note" id="n_aoi_surface"></div>
+      <div class="row" style="padding:6px 10px 2px">
+        <button id="b_spt1" onclick="gotoSurfacePt1(this)"
+          style="font-size:19px;font-weight:700;border-color:#1f6feb"
+          title="回到示教点『侧面点1』(技能 L2.goto_surface_pt1 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 走 L2 收口: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 侧面点1</button>
+        <span id="spt1_msg" style="font-size:13px;opacity:.85"></span></div>
       <div class="row" style="padding:4px 10px 4px">
         <button onclick="shot(10083)">📸 拍帧 (真拍一次)</button>
         <button onclick="aoiDetect(10083,'s')" style="font-weight:600">🔍 请求检测</button>
@@ -452,23 +457,35 @@ document.querySelectorAll('button[data-skill]').forEach(b=>b.onclick=()=>move(b)
    带安全闸时最终结果要 45~190s(上限 300s)才落日志 ⇒ 回执先如实说"已收到·在等裁决",
    再由 pt1Track() 每 5s 追 /ctl/log 直到出现「受理: 已下发」或「🛑 被拦… ⇒ 拒发」, 把那一行原文摆出来。 */
 let _pt1={t0:0,timer:null};
+let _spt1={t0:0,timer:null};
+/* 通用回点(『🎯 点1』『🎯 侧面点1』共用同一份实现 —— 不新开通道, 不复制一套闸门逻辑):
+   页面只送**技能 id**: 目标位姿由技能定义 point_locked 锁死, 页面/接口都改不了点位。 */
 async function gotoPt1(btn){
+  return gotoTeachPoint(btn,_pt1,'L2.goto_gold_pt1','『🎯 点1』','#pt1_msg','回到金手指点1');
+}
+/* ═══ 🎯 侧面点1: 回到示教点『侧面点1』(技能 L2.goto_surface_pt1) ═══
+   2026-09-30 老倪: 「在侧面检测, 增加一个技能 侧面点1 的按钮, 放在侧面检测窗口的下面,
+   类似 技能 返回 金手指点1 的技能」。与『🎯 点1』完全同一条路(白名单 → 授权真动 → 限流
+   → FIFO → 执行器 → 安全裁决); 点位真值 = 示教点库里的 侧面点1(2026-09-30 现场实录)。 */
+async function gotoSurfacePt1(btn){
+  return gotoTeachPoint(btn,_spt1,'L2.goto_surface_pt1','『🎯 侧面点1』','#spt1_msg','回到侧面点1');
+}
+async function gotoTeachPoint(btn,st,skill,label,msgSel,human){
   const spd=parseFloat($('#spd').value||'8');
   const real=ARMED;                    // 🔐 只有已授权才真下发(服务端还会再拦一次)
-  const m=$('#pt1_msg');
-  if(_pt1.timer){ clearInterval(_pt1.timer); _pt1.timer=null; }
+  const m=$(msgSel);
+  if(st.timer){ clearInterval(st.timer); st.timer=null; }
   flash(btn); btn.disabled=true; setTimeout(()=>{btn.disabled=false;},20000);
   m.textContent='⏳ 下发中(最多 20s 出初步回执)…';
-  $('#msg').textContent='🎯 回到金手指点1: 下发中…'; $('#msg').className='wa';
+  $('#msg').textContent='🎯 '+human+': 下发中…'; $('#msg').className='wa';
   $('#mq').style.display='none';
   try{
-    const j=renderMoveOut(await post('/ctl/move',{skill:'L2.goto_gold_pt1',speed:spd,arm:real?1:0},20000),
-                          '『🎯 点1』');
+    const j=renderMoveOut(await post('/ctl/move',{skill:skill,speed:spd,arm:real?1:0},20000), label);
     if(j.denied||(j.ok&&j.dry)){
       m.textContent='⛔ 未授权: 只算了目标, 机械臂不会动 —— 先点左边『🔓 授权真动』再点我';
     }else if(j.ok&&j.pending){
       m.textContent='⏳ 已收到, 正在等安全裁决(最多 300s)… 下面是实时回执';
-      pt1Track();
+      trackTeachPoint(st,msgSel);
     }else if(j.ok){
       m.textContent='✅ 已下发(真动) —— 盯下方日志 + 画面里机械臂';
     }
@@ -478,33 +495,35 @@ async function gotoPt1(btn){
   }
   poll();
 }
+function pt1Track(){ trackTeachPoint(_pt1,'#pt1_msg'); }
+function spt1Track(){ trackTeachPoint(_spt1,'#spt1_msg'); }
 /* 追裁决: 每 5s 读执行器日志尾, 直到出现 受理/拒发 那一行(上限 340s = 闸门 300s + 余量) */
-function pt1Track(){
-  _pt1.t0=Date.now();
-  if(_pt1.timer) clearInterval(_pt1.timer);
+function trackTeachPoint(st,msgSel){
+  st.t0=Date.now();
+  if(st.timer) clearInterval(st.timer);
   const tick=async()=>{
-    const el=Math.round((Date.now()-_pt1.t0)/1000);
-    if(el>340){ clearInterval(_pt1.timer); _pt1.timer=null;
-      $('#pt1_msg').textContent='⏰ 已等 340s 还没等到裁决行 —— 看下方日志原文判断'; return; }
+    const el=Math.round((Date.now()-st.t0)/1000);
+    if(el>340){ clearInterval(st.timer); st.timer=null;
+      $(msgSel).textContent='⏰ 已等 340s 还没等到裁决行 —— 看下方日志原文判断'; return; }
     try{
       const j=await getj('/ctl/log?n=14&t='+Date.now(),7000);
       if(j&&j.lines&&j.lines.length){
         $('#lines').textContent=j.lines.join('\n')+
           '\n—— ⏳ 已等 '+el+'s (点击时刻起算; 上限 300s)';
         if(j.done){
-          clearInterval(_pt1.timer); _pt1.timer=null;
+          clearInterval(st.timer); st.timer=null;
           const v=(j.verdict||'').slice(0,300);
           const bad=(v.indexOf('拒发')>=0||v.indexOf('被拦')>=0);
-          $('#pt1_msg').textContent=(bad?'🛑 被安全闸拒发':'✅ 裁决通过·已下发')+' · 共等 '+el+'s';
+          $(msgSel).textContent=(bad?'🛑 被安全闸拒发':'✅ 裁决通过·已下发')+' · 共等 '+el+'s';
           $('#msg').textContent=(bad?'🛑 ':'✅ ')+v;
           $('#msg').className=(bad?'bad':'ok');
         }else{
-          $('#pt1_msg').textContent='⏳ 等安全裁决中… 已 '+el+'s (实测 45~190s, 上限 300s)';
+          $(msgSel).textContent='⏳ 等安全裁决中… 已 '+el+'s (实测 45~190s, 上限 300s)';
         }
       }
     }catch(e){}
   };
-  tick(); _pt1.timer=setInterval(tick,5000);
+  tick(); st.timer=setInterval(tick,5000);
 }
 /* ═══ 🤏 夹爪: 关闭(夹紧) / 打开(松开) ═══
    2026-09-29 老倪: 「在手动控制台 增加 关闭夹抓 和 打开夹抓 两个技能」。

@@ -554,6 +554,10 @@ _CTL_SKILLS = {
 # 页面/接口都无法改点位; 仍走同一条 授权真动 + 限流 + FIFO + 回执 的路。
 _CTL_ABS_SKILLS = {
     "L2.goto_gold_pt1": "🎯 回到金手指点1",
+    # 🎯 2026-09-30 老倪: 「在侧面检测, 增加一个技能 侧面点1 的按钮, 放在侧面检测窗口的下面,
+    #    类似 技能 返回 金手指点1 的技能」 —— 与 goto_gold_pt1 同规格: 只送技能 id,
+    #    目标点『侧面点1』的真值在示教点库 + 执行器 point_locked 收口, 页面/接口都改不了点位。
+    "L2.goto_surface_pt1": "🎯 回到侧面点1",
     "L2.goto_aoi_gold": "🎯 进入金手指检测区",
     # 🤏 2026-09-29 老倪: 「在手动控制台 增加 关闭夹抓 和 打开夹抓 两个技能」
     #    无页面可调参数(夹持力/行程由技能定义 registry 固定) ⇒ 只送技能 id, 仍走同一条授权+收口路
@@ -834,7 +838,9 @@ def _aoi_last_result(port: int = 10082) -> dict:
         elif _code:
             out["msg"] = "工控机 /last_result 返回 HTTP %s" % _code
         else:
-            out["msg"] = "连不上工控机 %s (10082 上的进程在跑吗?): %s" % ("192.168.23.23", str(e)[:120])
+            out["msg"] = ("连不上工控机 192.168.23.23:%d (这路的程序在跑吗? 看 %s 上「%s」进程): %s"
+                          % (int(port), "工控机", ("cam_finger_10082_work_v6.py" if int(port) == 10082
+                                                 else "cam_surface_10083_work_v12.py"), str(e)[:120]))
     return out
 
 
