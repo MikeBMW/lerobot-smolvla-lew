@@ -51,7 +51,7 @@
 
 ```bash
 # 0) 系统层: python3.11/3.12、docker、nvidia 驱动、sudo 免密
-git clone https://github.com/MikeBMW/zmax.git /home/ubuntu/zmax     # 期望: 4962 文件 / 54MB
+git clone https://github.com/MikeBMW/zmax.git /home/ubuntu/zmax     # 期望: 5094 文件 / ~55MB
 cd /home/ubuntu/zmax
 bash tools/zmax_bootstrap.sh          # 期望: 打印已有/可采纳/缺失清单, 退出码 0=必需齐
 bash tools/zmax_bootstrap.sh --apply  # 期望: 目录骨架 + zmax_paths.env + 采纳软链
