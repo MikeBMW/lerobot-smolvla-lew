@@ -35,6 +35,7 @@ import argparse
 import base64
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -1585,8 +1586,15 @@ def _rokae_pose() -> dict:
     except OSError:
         file_age = -1.0
     stale = (file_age < 0.0) or (file_age > ROKAE_TCP_MAX_AGE_S)
+    # 🅰️🅱️🅲 a b c = SDK 原生 p6[3..5] (endInRef 世界系欧拉角), 示教器/产线 /robot/tcp_pose 同口径。
+    #    单位 rad, 页面上给度 —— **直接透传, 不由我方从四元数反算**(反算只在需要比对方便时用,
+    #    已实测: quat 按 ZYX(绕X→Y→Z 命名) 反算与原生 abc 差 ≤1e-6 rad)。
+    _abc = [d.get("rx"), d.get("ry"), d.get("rz")]
     return {
         "xyz": [d.get("x"), d.get("y"), d.get("z")],
+        "abc_rad": _abc,
+        "abc_deg": [None if v is None else round(math.degrees(v), 3) for v in _abc],
+        "abc_src": "SDK 原生 p6[3..5] endInRef (与示教器/产线 /robot/tcp_pose 同口径)",
         "quat": [d.get("qx"), d.get("qy"), d.get("qz"), d.get("qw")],
         "age_s": _age(d.get("ts")),          # 数据自身时间(ts)的年龄
         "file_age_s": file_age,              # 采样器最后一次落盘的年龄(判失效用它)
