@@ -277,6 +277,12 @@ daemon 全部运动技能安全拒绝("位姿缓存未就绪"); 恢复前不要�
 - **验证口径(全程零运动, 四条都要过)**: ①`POST /ctl/move` 不带 `arm` → `dry=true` + 日志三行(目标 Δ / 姿态前后 / DRY-RUN)
   ②`arm:1` 未授权 → **HTTP 403**(服务端拦) ③**绕过页面**直接写 FIFO → 执行器「🛑 被拦(真动授权)」且 `grep -c 已下发` = 0
   ④页面点按钮 → 结果栏出执行器**原始行**(可复制)。
+- ⚠️ **速度有两道限幅, 提速要同时改两处** (2026-09-30 老倪: 「转速太慢了，加速。别限制，我在现场，安全」):
+  ① 服务端 `cam_live_stream._ctl_move` 里 `speed = max(1.0, min(<上限>, speed))` (原写死 60);
+  ② 技能级 `registry.speed_max` (`plan_stage` 用 `sp = min(sp, speed_max)` 收口; **`run_rot_chunks`/`run_j6_rot` 不读它**)。
+  现口径: 上限 **1000**(相对量), 页面档位 8/60/200/500 + 右侧可自填任意数 ⇒ 真正物理上限交给控制器关节限速。
+  **实测基线: speed=60 → 腕部 10° 花 ~10s(≈1°/s)**; 线性实测 ≈0.0999mm/s 每单位 ⇒ 想快 N 倍就把 60 乘 N。
+  零动作验收: 发一条不带 arm 的 `/ctl/move`(dry), 看执行器 DRY-RUN 行里的 `speed: <值>` 是否等于你填的值或上限。
 - ⚠️ **重启执行器的自伤坑**: `~/.hermes/scripts/l2_daemon_keepalive.sh` 内部是 `pkill -f "[l]2_daemon.py"` ——
   **同一条命令行里别出现字面量 `l2_daemon.py`**(例如 `python3 -m py_compile tools/l2_daemon.py`),
   否则自己的 shell 会被 SIGTERM 掉(实测 exit -15, 连带 keepalive 没跑完)。py_compile 单独发一条, 或把名字用变量拼。
