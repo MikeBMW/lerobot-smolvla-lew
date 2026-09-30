@@ -89,7 +89,7 @@ done
 # ── 2b. 技能全量镜像 (2026-09-30 起: 新工程仓库 MikeBMW/zmax 收全量, 不再只挑关键路径) ──
 echo "  → 技能全量镜像 docs/skills/hermes-all/ ..."
 rsync -a --delete --exclude='__pycache__' --exclude='*.pyc' --exclude='*.log' \
-      --exclude='node_modules/' --exclude='.git/' "$SKILLS_SRC"/ "$REPO_ROOT/docs/skills/hermes-all"/
+      --exclude='node_modules/' --exclude='.git/' --exclude='*.lock' "$SKILLS_SRC"/ "$REPO_ROOT/docs/skills/hermes-all"/
 find "$REPO_ROOT/docs/skills/hermes-all" -type f -size +300k -delete    # 大图/PDF 模板不进库
 echo "    hermes-all: $(find "$REPO_ROOT/docs/skills/hermes-all" -name SKILL.md | wc -l) 个技能"
 
