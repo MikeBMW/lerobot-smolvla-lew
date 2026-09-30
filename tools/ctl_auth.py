@@ -21,7 +21,11 @@ import os
 import time
 
 PATH = os.path.expanduser(os.environ.get("ZMAX_CTL_AUTH", "~/zmax_data/ctl_auth.json"))
-DEFAULT_WINDOW = float(os.environ.get("ZMAX_CTL_WINDOW", "300"))   # 授权默认有效期(秒)
+DEFAULT_WINDOW = float(os.environ.get("ZMAX_CTL_WINDOW", "600"))   # 授权默认有效期(秒)
+# ↑ 2026-09-30 老倪现场定: 5 分钟 → **10 分钟**。理由: 号位技能是两阶段(先到正上方再下降),
+#   慢速档一个阶段就走 22~40s, 两次技能连不上窗口就到期 ⇒ 阶段2 被"真动授权未开"拦下中止,
+#   现场表现是"点了不动"。10 分钟仍然自动失效(人走开不会一直armed), 但够连做几套动作。
+#   临时改回: 环境变量 ZMAX_CTL_WINDOW=300 或改这里的数字(已 armed 的窗口在 ctl_auth 文件里)。
 _MAX_EVENTS = 40
 
 
