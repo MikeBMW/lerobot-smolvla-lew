@@ -244,7 +244,13 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
         <button data-stream="/aoi_surface.mjpg" class="on">判据图</button>
         <button data-stream="/aoi_surface_raw.mjpg">整板原图</button></span></div>
       <div class="note" id="n_aoi_surface"></div>
+      <!-- 🎯 表面检测观察位回点按钮 —— 从左到右按点位序号排: 0 → 1 → 2 → 3
+           (2026-10-01 老倪: 「增加侧面点0的按钮，顺序在侧面点1的前面，按钮 侧面点0 也要放在侧面点1的
+           左侧，你重新排列一下UI布局」) ⇒ 按钮与它右边的结果文字都按 0/1/2/3 同序, 序号直观对应。 -->
       <div class="row" style="padding:6px 10px 2px">
+        <button id="b_spt0" onclick="gotoSurfacePt0(this)"
+          style="font-size:19px;font-weight:700;border-color:#1f6feb"
+          title="回到示教点『侧面点0』(技能 L2.goto_surface_pt0 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 与 侧面点1/2/3 同一条路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 侧面点0</button>
         <button id="b_spt1" onclick="gotoSurfacePt1(this)"
           style="font-size:19px;font-weight:700;border-color:#1f6feb"
           title="回到示教点『侧面点1』(技能 L2.goto_surface_pt1 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 走 L2 收口: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 侧面点1</button>
@@ -254,6 +260,7 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
         <button id="b_spt3" onclick="gotoSurfacePt3(this)"
           style="font-size:19px;font-weight:700;border-color:#1f6feb"
           title="回到示教点『侧面点3』(技能 L2.goto_surface_pt3 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 与 侧面点1/2 同一条路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 侧面点3</button>
+        <span id="spt0_msg" style="font-size:13px;opacity:.85"></span>
         <span id="spt1_msg" style="font-size:13px;opacity:.85"></span>
         <span id="spt2_msg" style="font-size:13px;opacity:.85"></span>
         <span id="spt3_msg" style="font-size:13px;opacity:.85"></span></div>
@@ -607,6 +614,14 @@ let _spt1={t0:0,timer:null};
    页面只送**技能 id**: 目标位姿由技能定义 point_locked 锁死, 页面/接口都改不了点位。 */
 async function gotoPt1(btn){
   return gotoTeachPoint(btn,_pt1,'L2.goto_gold_pt1','『🎯 点1』','#pt1_msg','回到金手指点1');
+}
+/* ═══ 🎯 侧面点0: 回到示教点『侧面点0』(技能 L2.goto_surface_pt0) ═══
+   2026-10-01 老倪: 「记录当前的侧面点0，增加侧面点0的按钮，顺序在侧面点1的前面，按钮 侧面点0
+   也要放在侧面点1的左侧，你重新排列一下UI布局」。与 1/2/3 完全同一份 gotoTeachPoint(不新开通道、
+   不复制闸门); 点位真值 = 示教点库 侧面点0(2026-10-01 07:30 现场实录, 6 帧极差 1e-6)。 */
+let _spt0={t0:0,timer:null};
+async function gotoSurfacePt0(btn){
+  return gotoTeachPoint(btn,_spt0,'L2.goto_surface_pt0','『🎯 侧面点0』','#spt0_msg','回到侧面点0');
 }
 /* ═══ 🎯 侧面点1: 回到示教点『侧面点1』(技能 L2.goto_surface_pt1) ═══
    2026-09-30 老倪: 「在侧面检测, 增加一个技能 侧面点1 的按钮, 放在侧面检测窗口的下面,
