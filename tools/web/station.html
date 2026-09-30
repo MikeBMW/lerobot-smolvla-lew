@@ -124,19 +124,23 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
         /* 2026-09-30 老倪: 「在请求检测按钮旁边, 增加 最后结果 按钮, 实现 /last_result 功能, 最终得有结果啊」
            本服务 GET /api/aoi/last_result → 转发工控机 GET /last_result(只读: 不拍照、不检测)。
            显示判决/缺陷数/耗时/检测序号 + **拍照时间与帧龄**(老倪硬要求) + 模型输入图/判据图链接 + 原始 JSON(可复制)。 */
-        async function aoiLastResult(port){
-          const m=document.getElementById('aoi_lr_msg'); m.textContent='⏳ 读取工控机 /last_result …';
+        async function aoiLastResult(port,tag){
+          const sfx=tag?('_'+tag):'', m=document.getElementById('aoi_lr_msg'+sfx);
+          if(!m){ alert('页面缺 #aoi_lr_msg'+sfx+' 元素, 请 Ctrl+F5 强制刷新'); return; }
+          const lk=(port==10083)?{mi:_u('/aoi_surface_modelin.png'),jd:_u('/snapshot/aoi_surface.jpg')}
+                                :{mi:_u('/aoi_modelin.png'),        jd:_u('/snapshot/aoi_gold.jpg')};
+          m.textContent='⏳ 读取工控机 /last_result …';
           try{
             const t0=performance.now();
             const r=await fetch(_u('/api/aoi/last_result?port='+port+'&t='+Date.now()));
             const j=await r.json(), d=j.last_result||{};
-            document.getElementById('aoi_lr_box').style.display='block';
+            document.getElementById('aoi_lr_box'+sfx).style.display='block';
             const ng=(d.verdict==='NG');
-            document.getElementById('aoi_lr_head').innerHTML=
+            document.getElementById('aoi_lr_head'+sfx).innerHTML=
               (j.ok===true?(ng?'❌ <b style="color:#ff6b6b">NG · 有缺陷</b>':'✅ <b style="color:#3fb950">OK · 无缺陷</b>')
                           :'⚠️ 没拿到判决')
               +'<span style="font-size:13px;opacity:.85"> · 缺陷 '+((d.count===undefined)?'—':d.count)+' 处</span>';
-            document.getElementById('aoi_lr_meta').textContent=
+            document.getElementById('aoi_lr_meta'+sfx).textContent=
               '检测序号 '+((d.n===undefined)?'—':d.n)
               +' · 拍照时间 '+((d.t)?new Date(d.t*1000).toLocaleTimeString():'—')
               +((j.age_s===undefined)?'':(' · 帧龄 '+j.age_s+'s'))
@@ -144,10 +148,10 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
               +' · 类型 '+((d.detect_type===undefined)?'—':d.detect_type)
               +' · 本次读取 '+((performance.now()-t0)/1000).toFixed(1)+'s';
             const _bn=function(s){ return s? String(s).split('\\').pop() : '—'; };
-            document.getElementById('aoi_lr_imgs').innerHTML=
-              '模型实际吃: <a href="'+_u('/aoi_modelin.png')+'" target="_blank" style="color:#7ee787">'+_bn(d.model_input)+'</a>'
-              +' &nbsp;·&nbsp; 判据图: <a href="'+_u('/snapshot/aoi_gold.jpg')+'" target="_blank" style="color:#7ee787">'+_bn(d.judge)+'</a>';
-            document.getElementById('aoi_lr_pre').textContent=JSON.stringify(j,null,1);
+            document.getElementById('aoi_lr_imgs'+sfx).innerHTML=
+              '模型实际吃: <a href="'+lk.mi+'" target="_blank" style="color:#7ee787">'+_bn(d.model_input)+'</a>'
+              +' &nbsp;·&nbsp; 判据图: <a href="'+lk.jd+'" target="_blank" style="color:#7ee787">'+_bn(d.judge)+'</a>';
+            document.getElementById('aoi_lr_pre'+sfx).textContent=JSON.stringify(j,null,1);
             m.textContent=(j.ok===true?'✅ ':'❌ ')+(j.msg||'');
           }catch(e){ m.textContent='❌ 读取失败: '+e; }
         }
@@ -158,15 +162,29 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
                  setTimeout(function(){ btn.textContent=t; },1200); }); }
           catch(e){ btn.textContent='复制失败(请手动选中)'; }
         }
-        async function aoiDetect(port){
-          const m=document.getElementById('aoi_det_msg'), o=document.getElementById('aoi_det_out');
+        async function aoiDetect(port,tag){
+          const sfx=tag?('_'+tag):'';
+          const m=document.getElementById('aoi_det_msg'+sfx), o=document.getElementById('aoi_det_out'+sfx);
+          if(!m||!o){ alert('页面缺 #aoi_det_msg'+sfx+' / #aoi_det_out'+sfx+', 请 Ctrl+F5 强制刷新'); return; }
           m.textContent='⏳ 已发出检测命令, 等判决…'; o.style.display='block'; o.textContent='';
           try{
             const t0=performance.now();
-            const r=await fetch(_u('/api/aoi/detect?port='+port),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-            const j=await r.json();
-            m.textContent=(j.ok===true?'✅ ':'❌ ')+(j.msg||j.err||j.err2||'见下方 JSON')
-                          +'  · 用时 '+((performance.now()-t0)/1000).toFixed(1)+'s';
+            let j;
+            for(let attempt=1; attempt<=2; attempt++){
+              const r=await fetch(_u('/api/aoi/detect?port='+port),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+              j=await r.json();
+              // 表面相机偶发"抓帧失败"(工控机自己已重连重抓一次) ⇒ 页面再给一次机会, 别让老倪看见一按就红
+              if(attempt===1 && !j.ok && /500|抓取失败|抓帧失败/.test(String(j.err)+String(j.err2)+String(j.msg))){
+                m.textContent='⚠️ 相机这次抓帧失败, 3 秒后自动重试一次…';
+                await new Promise(_s=>setTimeout(_s,3000));
+                continue;
+              }
+              break;
+            }
+            const _sym=(j.ok===true?((j.fresh===false||j.err||j.err2)?'⚠️ ':'✅ '):'❌ ');
+            m.textContent=_sym+(j.msg||j.err||j.err2||'见下方 JSON')
+                          +'  · 本次用时 '+((performance.now()-t0)/1000).toFixed(1)+'s'
+                          +(j.fresh===false?'  ⇒ 上面结果是**上一次**的, 不是本次判决!':'');
             o.textContent=JSON.stringify(j,null,1);
           }catch(e){ m.textContent='❌ 请求失败: '+e; }
         }
@@ -190,8 +208,24 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       <span class="meta" id="m_aoi_surface">…</span></div>
       <img id="i_aoi_surface" data-mode="mjpg" data-src="/aoi_surface.mjpg">
       <div class="note" id="n_aoi_surface"></div>
-      <div class="row" style="padding:4px 10px 10px">
-        <button onclick="shot(10083)">📸 拍帧 (真拍一次)</button></div></div>
+      <div class="row" style="padding:4px 10px 4px">
+        <button onclick="shot(10083)">📸 拍帧 (真拍一次)</button>
+        <button onclick="aoiDetect(10083,'s')" style="font-weight:600">🔍 请求检测</button>
+        <button onclick="aoiLastResult(10083,'s')" style="font-weight:600">🧾 最后结果</button>
+        <span id="aoi_lr_msg_s" style="margin-left:8px;font-size:12px;opacity:.85"></span>
+        <span id="aoi_det_msg_s" style="margin-left:8px;font-size:12px;opacity:.85"></span></div>
+      <div id="aoi_lr_box_s" style="display:none;margin:4px 10px 8px;padding:8px;background:#0d1420;border:1px solid #21304a;border-radius:6px">
+        <div id="aoi_lr_head_s" style="font-size:16px"></div>
+        <div id="aoi_lr_meta_s" style="font-size:12px;opacity:.85;margin-top:3px"></div>
+        <div id="aoi_lr_imgs_s" style="font-size:12px;margin-top:3px"></div>
+        <button onclick="aoiCopy('aoi_lr_pre_s',this)" style="margin-top:6px;font-size:12px">📋 复制 JSON</button>
+        <pre id="aoi_lr_pre_s" style="margin:6px 0 0;padding:8px;max-height:240px;overflow:auto;
+             background:#0b1018;color:#cfe3ff;font-size:11px;line-height:1.45;border-radius:6px;
+             white-space:pre-wrap;word-break:break-all;user-select:text"></pre>
+      </div>
+      <pre id="aoi_det_out_s" style="display:none;margin:4px 10px 8px;padding:8px;max-height:200px;overflow:auto;
+           background:#0b1018;color:#cfe3ff;font-size:11px;line-height:1.45;border-radius:6px;
+           white-space:pre-wrap;word-break:break-all;user-select:text"></pre></div>
   </section>
   <aside>
     <div class="card">

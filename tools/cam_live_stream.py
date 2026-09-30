@@ -742,7 +742,19 @@ def _aoi_detect(port: int = 10082, wait_s: float = 2.5) -> dict:
     """
     import json as _json
     import urllib.request as _ur
+    # 🆕 2026-09-30: 表面(housing)单帧推理实测 ~7.8s, 金手指 ~1.6s ⇒ 等待时间分开, 免得一上来就报"还没出结果"
+    if float(wait_s) == 2.5 and int(port) == 10083:
+        wait_s = 13.0
     out = {"ok": False, "port": port, "cmd": "POST /capture_detect"}
+    # 🆕 2026-09-30 修「点了请求检测却报上一帧」: 先记下**点之前**的检测序号, POST 之后必须等到序号变了,
+    #   才算"这一次"的结果。否则表面推理 8.9s、等待到点没等到 ⇒ 页面把上一次(可能几分钟前)的判决当本次报出来。
+    _n0 = None
+    try:
+        with _ur.urlopen("http://192.168.23.23:%d/last_result" % int(port), timeout=8) as _r0:
+            _n0 = _json.loads(_r0.read().decode("utf-8", "ignore")).get("n")
+    except Exception:                                                             # noqa: BLE001
+        _n0 = None
+    out["n_before"] = _n0
     try:
         req = _ur.Request("http://192.168.23.23:%d/capture_detect" % port, data=b"", method="POST")
         with _ur.urlopen(req, timeout=60) as r:
@@ -752,14 +764,44 @@ def _aoi_detect(port: int = 10082, wait_s: float = 2.5) -> dict:
         out["err"] = "触发检测失败: %s" % str(e)[:180]
         return out
     try:
-        time.sleep(max(0.0, float(wait_s)))
-        with _ur.urlopen("http://192.168.23.23:%d/last_result" % port, timeout=20) as r:
-            d = _json.loads(r.read().decode("utf-8", "ignore"))
-        out["last_result"] = d
-        out["saved_locally"] = d.get("saved_incoming") or ""
-        out["msg"] = ("✅ 检测完成: 判决 %s · 缺陷 %s 处 · 用时 %sms · 工控机本地存图 %s"
-                      % (d.get("verdict"), d.get("count"), d.get("ms"),
-                         d.get("saved_incoming") or "(未返回路径)"))
+        _dl = time.monotonic() + max(0.0, float(wait_s))
+        d, _fresh = None, False
+        _slept = False
+        _last_code = None
+        while True:
+            if _slept:
+                time.sleep(0.6)
+            _slept = True
+            try:
+                with _ur.urlopen("http://192.168.23.23:%d/last_result" % port, timeout=20) as r:
+                    d = _json.loads(r.read().decode("utf-8", "ignore"))
+                _last_code = 200
+            except Exception as _e1:                                              # noqa: BLE001
+                _last_code = getattr(_e1, "code", None)
+                if _last_code not in (404, 500, 502, 503):
+                    raise
+                d = None        # 工控机还没有任何结果(冷启后第一次) ⇒ 继续等, 不当失败
+            if d and d.get("n") is not None and (out["n_before"] is None or d.get("n") != out["n_before"]):
+                _fresh = True
+                break
+            if time.monotonic() >= _dl:
+                break
+        if d:
+            out["last_result"] = d
+            out["fresh"] = bool(_fresh)
+            out["saved_locally"] = d.get("saved_incoming") or ""
+            if _fresh:
+                out["msg"] = ("✅ 检测完成: 判决 %s · 缺陷 %s 处 · 用时 %sms · 工控机本地存图 %s"
+                              % (d.get("verdict"), d.get("count"), d.get("ms"),
+                                 d.get("saved_incoming") or "(未返回路径)"))
+            else:
+                out["msg"] = ("⚠️ 这一次还没出结果(检测仍在跑, 过几秒点「🧾 最后结果」) —— 下面是**上一次**(序号 %s): "
+                              "判决 %s · 缺陷 %s 处 · 用时 %sms"
+                              % (d.get("n"), d.get("verdict"), d.get("count"), d.get("ms")))
+        else:
+            out["fresh"] = False
+            out["msg"] = ("⚠️ 工控机还没出结果(HTTP %s, 冷启动第一次检测要等模型加载完): 过几秒点「🧾 最后结果」"
+                          % (_last_code or "?"))
     except Exception as e:                                                        # noqa: BLE001
         out["err2"] = "取判决失败(检测可能仍在跑, 稍后看判决格): %s" % str(e)[:150]
     return out
@@ -2804,6 +2846,24 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as _e:                                               # noqa: BLE001
                 self._send(502, "application/json; charset=utf-8",
                            _jbytes({"code": 502, "msg": "取模型输入图失败: %s" % str(_e)[:120]}))
+        elif p == "/aoi_surface_modelin.png":
+            # 🆕 2026-09-30: 表面 10083 的"模型实际吃的那张"(v12 起的 /picture?kind=modelin)
+            try:
+                _st, _raw, _hd = _aoi_modelin_get("", 10083)
+                self._send(_st, "image/png", _raw, extra={
+                    "X-Zmax-Modelin-Md5": _hd.get("X-Zmax-Modelin-Md5", ""),
+                    "X-Zmax-Modelin-HW": _hd.get("X-Zmax-Modelin-HW", ""),
+                    "X-Zmax-Modelin-N": _hd.get("X-Zmax-Modelin-N", "")})
+            except Exception as _e:                                               # noqa: BLE001
+                self._send(502, "application/json; charset=utf-8",
+                           _jbytes({"code": 502, "msg": "取表面模型输入图失败: %s" % str(_e)[:120]}))
+        elif p == "/aoi_surface_modelin_meta":
+            try:
+                _st, _raw, _hd = _aoi_modelin_get("&meta=1", 10083)
+                self._send(_st, "application/json; charset=utf-8", _raw)
+            except Exception as _e:                                               # noqa: BLE001
+                self._send(502, "application/json; charset=utf-8",
+                           _jbytes({"code": 502, "msg": str(_e)[:120]}))
         elif p == "/aoi_modelin_meta":
             try:
                 _st, _raw, _hd = _aoi_modelin_get("&meta=1")

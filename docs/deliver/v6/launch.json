@@ -18,10 +18,10 @@
             "redirectOutput": false
         },
         {
-            "name": "② 10083 表面 (v6)",
+            "name": "② 10083 表面 (v12)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/cam_surface_10083_work_v6.py",
+            "program": "${workspaceFolder}/cam_surface_10083_work_v12.py",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "justMyCode": false,

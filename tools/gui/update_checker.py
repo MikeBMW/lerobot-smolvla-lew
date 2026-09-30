@@ -7,7 +7,7 @@ import os, sys, json, urllib.request, threading, time
 
 REPO = "MikeBMW/lerobot-smolvla-lew"
 API_RELEASES = f"https://api.github.com/repos/{REPO}/releases/latest"
-CURRENT_VERSION = "v5.16.32"
+CURRENT_VERSION = "vv5.16.33"
 
 
 def get_current_version():
