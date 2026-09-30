@@ -48,5 +48,5 @@ rm -f "$ARC" "$ARC.aria2"
 df -h / | tail -1
 
 echo "=== 跑 reacher 官方评测 $(date '+%F %T') ==="
-N_EVAL=6 bash /home/ubuntu/run_official_eval.sh reacher
+N_EVAL=6 bash /home/ubuntu/zmax/tools/oneoff/run_official_eval.sh reacher
 echo "=== 完成 $(date '+%F %T') ==="
