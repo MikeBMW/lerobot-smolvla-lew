@@ -322,6 +322,9 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
     </div>
     <div class="card">
       <h2>🕹 手动控制台</h2>
+      <!-- 🛠 2026-10-01 老倪: 「上电 on 报警 无…要是不能动，你得显示信息」⇒ 手动控制台顶部
+           固定显示执行器在不在 —— 它离线时所有按钮都发不出去(这才是"点了没反应"的真因)。 -->
+      <div class="hint" id="execline" style="margin:2px 0 6px">执行器: 检查中…</div>
       <div id="armbar">
         <button id="armbtn" onclick="armClick()" style="font-size:19px;padding:14px 16px;min-width:230px"
           title="现场安全: 真动必须先显式授权"><span id="armtxt">🔓 授权真动</span></button>
@@ -597,6 +600,15 @@ function renderMoveOut(j,again){
     +'  (对上 X/Y/Z 看有没有变就知道动没动)';
   $('#msg').className=(j.ok?((j.pending||j.dry)?'wa':'ok'):'bad');
   $('#lines').textContent=(j.lines&&j.lines.length?j.lines.join('\n'):'(执行器还没有回执)');
+  /* 🛠 失败/未授权时, 在手动控制台顶部再摆一次真因(老倪只盯控制台, 不一定滚到底部卡片) */
+  try{
+    const _ex=document.getElementById('execline');
+    if(_ex&&!j.ok){
+      if(!_ex.dataset.base){ _ex.dataset.base=_ex.innerHTML; }
+      _ex.innerHTML=_ex.dataset.base+'<br><span class="bad">⛔ 最近一次下发被拒: '+(j.msg||'')+'</span>'
+        +'<span class="hint"> · 用时 '+((j.elapsed_s||0).toFixed(1))+'s</span>';
+    }
+  }catch(_e){}
   if(j.denied||(j.ok&&j.dry)){           // 未授权点了 → 给**授权入口**
     $('#mq').style.display='';
     $('#mq').textContent='🔓 授权真动(现场确认无人) —— 授权完再点一次'+(again||'刚才那个方向键');
@@ -676,6 +688,13 @@ async function gotoTeachPoint(btn,st,skill,label,msgSel,human){
       trackTeachPoint(st,msgSel);
     }else if(j.ok){
       m.textContent='✅ 已下发(真动) —— 盯下方日志 + 画面里机械臂';
+    }else{
+      /* ⛔ 服务器明确拒发(执行器离线/白名单/守卫/环境校验…): 必须把**原文原因**摆在按钮旁边,
+         不能让提示停在下发中 —— 老倪 2026-10-01: 「点了没反应」的就是这里。 */
+      m.textContent='⛔ 没发出去: '+(j.msg||'被拒(看下方日志原文)');
+      $('#msg').textContent='⛔ '+human+': '+(j.msg||'被拒')+' · 用时 '+((j.elapsed_s||0).toFixed(1))+'s';
+      $('#msg').className='bad';
+      $('#lines').textContent=(j.lines&&j.lines.length?j.lines.join('\n'):$('#lines').textContent);
     }
   }catch(e){
     m.textContent='❌ 请求失败: '+e;
@@ -738,6 +757,10 @@ async function gripAct(btn, skill, label){
       gripTrack(skill,label);
     }else if(j.ok){
       m.textContent='✅ 已下发(真动) —— 盯下方日志 + 画面里夹爪';
+    }else{
+      m.textContent='⛔ 没发出去: '+(j.msg||'被拒(看下方日志原文)');
+      $('#msg').textContent='⛔ '+label+': '+(j.msg||'被拒');
+      $('#msg').className='bad';
     }
   }catch(e){
     m.textContent='❌ 请求失败: '+e;
@@ -825,7 +848,17 @@ async function poll(){
   try{
     if(!s) throw 0;
     const r=s.robot||{}, tp=s.tcp||{};
-    $('#robot').innerHTML=(r.operation&&r.operation!=='idle'
+    /* 🛠 执行器健康(老倪 2026-10-01: 「上电 on 报警 无」看着正常却不动 ⇒ 必须显示真正拦在哪) */
+    try{
+      const ex=s.exec||{};
+      $('#execline').innerHTML=(ex.online
+        ? '<span class="ok">✅ 执行器在线</span> · '+(ex.skills!=null?ex.skills+' 个技能':'技能数未知')+' · pid '+ex.pid
+        : '<span class="bad">⛔ 执行器离线 —— 按钮点了不会动(回点/平动/夹爪/旋转全部发不出去)</span>'
+          +'<span class="hint"> · 保活 cron 每 5 分钟自动拉起; 急着用就让 Hermes 手动拉</span>');
+    }catch(_e){}
+    $('#robot').innerHTML=(typeof r.age_s==='number'&&r.age_s>10
+      ? '<span class="bad">⚠ 下面是旧值('+fmt(r.age_s,1)+'s 前), 不代表现在: </span>':'')
+      + (r.operation&&r.operation!=='idle'
         ?'<span class="wa">🔄 移动中 </span>':'')
       +'上电 '+(r.power==='on'?'<span class="ok">on</span>':'<span class="bad">'+(r.power||'?')+'</span>')
       +' · 运行 <span class="'+(r.operation==='idle'?'ok':'wa')+'">'+(r.operation||'?')+'</span>'

@@ -1672,7 +1672,51 @@ def _ctl_status() -> dict:
         "last_cmd": dict(_CTL["last"], age_s=_age(_CTL["last"].get("t"))),
         "server_time": now,
         "labels": dict(_CAM_LABEL),
+        "exec": _exec_health(),      # 🛠 执行器在不在(页面显示; 离线时按钮点了不动)
     }
+
+
+_EXEC_CACHE = {"t": 0.0, "v": {}}
+
+
+def _exec_health() -> dict:
+    """L2 常驻执行器健康 —— 页面必须能显示"离线"。
+
+    2026-10-01 现场(老倪): 我按安全把执行器停掉后, 页面只有「上电 on · 报警 无」(是 42h 前的旧帧),
+    他点回点按钮「没反应」—— 真因(执行器没在跑, FIFO 没人读)页面上一个字都没有。
+    ⇒ 状态里显式给 exec.online/pid/skills/log_age_s, 页面在手动控制台顶部显示。
+    判据同 keepalive: /proc/*/cmdline 的 argv 以 tools/l2_daemon.py 结尾(不靠 pgrep -f, 免自匹配)。
+    """
+    now = time.time()
+    if _EXEC_CACHE["t"] and now - _EXEC_CACHE["t"] < 5.0:
+        return dict(_EXEC_CACHE["v"], cached=True)
+    online, pid = False, None
+    try:
+        for d in os.listdir("/proc"):
+            if not d.isdigit():
+                continue
+            try:
+                with open("/proc/%s/cmdline" % d, "rb") as f:
+                    argv = f.read().split(b"\0")
+            except Exception:
+                continue
+            if any(a.endswith(b"tools/l2_daemon.py") for a in argv[1:]):
+                online, pid = True, int(d)
+                break
+    except Exception:
+        pass
+    skills = None
+    try:
+        with open(os.path.join(_REPO_ROOT, "data/skills/l2_atomic/registry.json"), encoding="utf-8") as f:
+            _r = json.load(f)
+        _l = _r.get("skills") if isinstance(_r, dict) else _r
+        skills = len(_l) if isinstance(_l, list) else None
+    except Exception:
+        pass
+    v = {"online": online, "pid": pid, "skills": skills,
+         "log_age_s": (_age(os.path.getmtime(_L2_LOG)) if os.path.exists(_L2_LOG) else -1.0)}
+    _EXEC_CACHE.update({"t": now, "v": v})
+    return v
 
 
 def _aoi_note_init() -> None:
