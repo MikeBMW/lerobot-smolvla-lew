@@ -282,7 +282,7 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
     <div class="card">
       <h2>⏩ 平动 (走 /move_line)</h2>
       <div class="row"><span class="k">步长</span>
-        <span class="seg" id="sX"><button data-v="5">5</button><button data-v="10" class="on">10</button>
+        <span class="seg" id="sX"><button data-v="1" class="on">1</button><button data-v="2">2</button><button data-v="5">5</button><button data-v="10">10</button>
         <button data-v="20">20</button><button data-v="50">50</button><button data-v="100">100</button></span>
         <span class="k">mm</span></div>
       <div class="pad">
@@ -290,7 +290,7 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
         <button data-skill="L2.forward" data-p="d_mm">⏩ 前进<br><span class="hint">+X</span></button>
         <span class="mid"></span>
         <button data-skill="L2.left" data-p="d_mm">⬅️ 左移<br><span class="hint">+Y</span></button>
-        <span class="mid">步长<b id="stepshow">10</b>mm</span>
+        <span class="mid">步长<b id="stepshow">1</b>mm</span>
         <button data-skill="L2.right" data-p="d_mm">➡️ 右移<br><span class="hint">−Y</span></button>
         <span class="mid"></span>
         <button data-skill="L2.backward" data-p="d_mm">⏪ 后退<br><span class="hint">−X</span></button>
@@ -379,10 +379,11 @@ const $=(s)=>document.querySelector(s);
 // (2026-09-28 老倪: 「8793 这个通道推流到 ECS」)
 const B=(location.pathname.replace(/\/[^/]*$/,'')||'');
 const _u=(u)=>(typeof u==='string'&&u.charAt(0)==='/')?(B+u):u;
-let STEP_MM=10, STEP_DEG=5, STEP_J6=1;   // STEP_J6: 🔩 第 6 轴自转自己的步进档(默认 1° 起步, 首次用最稳)
+let STEP_MM=1, STEP_DEG=5, STEP_J6=1;   // STEP_MM: 2026-09-30 老倪「增加平动 1mm 的按钮, 现在的最小分辨率 5mm 有点大」⇒ 默认 10→1mm
+                                        // STEP_J6: 🔩 第 6 轴自转自己的步进档(默认 1° 起步, 首次用最稳)
 /* 🔐 ARMED 不再写死: 由**服务端授权状态**决定(默认 false=未授权), 见 applyAuth()。
    老倪 2026-09-27: 「页面的授权真动 / 现场安全 / 授权」 —— 默认必须是未授权, 真动要人显式两步确认。 */
-let ARMED=false, AUTH_LEFT=0, ARMWIN=300, AUTH_IP='', AUTH_PENDING=0;
+let ARMED=false, AUTH_LEFT=0, ARMWIN=600, AUTH_IP='', AUTH_PENDING=0;
 function seg(id,cb){document.querySelectorAll('#'+id+' button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#'+id+' button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on'); cb(b.dataset.v);});}

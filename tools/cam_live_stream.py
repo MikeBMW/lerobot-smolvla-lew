@@ -541,9 +541,11 @@ _L2_FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
 # 允许的指令白名单: 技能 → (参数名, 最小, 最大)。**只认这些**, 别的技能(含点位/多阶段技能)
 # 一律拒绝 —— 手动控制区是给"点动"用的, 不是通用技能下发口。
 _CTL_SKILLS = {
-    "L2.forward": ("d_mm", 5, 300), "L2.backward": ("d_mm", 5, 300),
-    "L2.left": ("d_mm", 5, 300), "L2.right": ("d_mm", 5, 300),
-    "L2.lift": ("d_mm", 5, 300), "L2.lower": ("d_mm", 5, 100),
+    # ⚠️ 2026-09-30 老倪: 「增加平动 1mm 的按钮, 现在的最小分辨率 5mm 有点大」⇒ 平动/升降最小步进 5 → 1mm。
+    #    只放开**下界**(细调分辨率), 上界不动(lift/left/right/forward 300mm, lower 100mm/次不变)。
+    "L2.forward": ("d_mm", 1, 300), "L2.backward": ("d_mm", 1, 300),
+    "L2.left": ("d_mm", 1, 300), "L2.right": ("d_mm", 1, 300),
+    "L2.lift": ("d_mm", 1, 300), "L2.lower": ("d_mm", 1, 100),
     "L2.rot_a_pos": ("deg", 1, 30), "L2.rot_a_neg": ("deg", 1, 30),
     "L2.rot_b_pos": ("deg", 1, 30), "L2.rot_b_neg": ("deg", 1, 30),
     "L2.rot_c_pos": ("deg", 1, 30), "L2.rot_c_neg": ("deg", 1, 30),
