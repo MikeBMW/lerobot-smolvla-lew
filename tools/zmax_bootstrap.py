@@ -153,8 +153,11 @@ def fetch_cmd(a, P, dest):
 def smoke(P):
     """状态空间功能自检: 代码能不能导入、关键文件在不在、服务端口通不通。"""
     print("\n状态空间功能自检")
-    py = os.path.join(P["ZMAX_CODE"], "gui-venv311", "bin", "python")
-    py = py if os.path.exists(py) else sys.executable
+    cands = [os.path.join(P["ZMAX_CODE"], "gui-venv311", "bin", "python"),
+             os.environ.get("ZMAX_PY") or "", "/home/ubuntu/lerobot-venv/bin/python",
+             "/home/ubuntu/gui-venv311/bin/python", sys.executable]
+    py = next((c for c in cands if c and os.path.exists(c)), sys.executable)
+    print("  解释器: %s" % py)
     mods = [
         ("左右脑-左脑建模", "lerobot.policies.left_right.modeling_left_right"),
         ("状态空间-规划器(L5)", "lerobot.policies.left_right.state_space.planner"),
