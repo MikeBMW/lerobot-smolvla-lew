@@ -301,12 +301,19 @@ Background check silently swallows exceptions (network down = no notification).
 - `docs_sync.py` → `"version"` meta + `zmax_version`
 - `tools/ci/integrity_check.py` → `EXPECTED_VERSION` (the gate's own constant goes stale silently)
 
-⚠️ **别用单一版本的 `grep` 找同步点** —— 各文件前缀不一致: `version_sync.py` 存的是 `zmax_ver = "5.15.12"`
-(**不带 `v`**), `studio.py`/`docs_sync.py` 是 `"v5.15.12"`, `integrity_check.py` 又只剩 `"v3.2.0"`。
-搜 `v5.15.12` 会**漏掉 version_sync.py** → 打完包.title 对了但版本同步器报旧号。
-**改完全量回读**: 每个文件 `grep -c <新串>` 且 `grep -c <旧串>`(应只剩历史 changelog 注释)。
-若仓库有 `VERSION.md`, 它就是**版本号位置与变更摘要规范的真源** —— 改版前先读它, 按它列的条目逐处改,
-并给版本历史表加一行(只写"做了什么 + 根因", 不写过程)。
+⚠️ **别用单一记法的 `grep` 找同步点 —— 各文件前缀不一致, 而且会随版本演进变化**:
+`version_sync.py` 是 `zmax_ver = "5.16.35"`(**不带 `v`**); `studio.py` / `docs_sync.py` / `update_checker.py` /
+`tools/ci/integrity_check.py` 自 vv5.16.x 起是**双 v** `"vv5.16.35"`(更早是单 v `"v5.15.12"`)。
+按单 v 搜会**整批漏掉**, 结果"包打好、标题/同步器还是旧号"而且**全程不报错**。
+- 仓库里有 `tools/bump_version.py` 就用它: `--to X.Y.Z [--from A.B.C] --summary-file <一行摘要> [--dry]`,
+  一次改完 5 处 + 给 `VERSION.md` 历史表插一行(**改版前先读 `VERSION.md`**, 它是位置与摘要规范的真源)。
+- **工具自己的打印就是判据**: 每处 `旧命中 N → 新命中 M`, **任一处 N=0 就是"一个都没改到"**
+  (记法变了/锚点失配 ⇒ 静默漏同步, 看起来成功)。修法是先把工具的匹配写成
+  "**认版本号不认记法**"的正则(`v{1,2}<ver>` / 从 `QLabel("Z-MAX …")` 取号), 再跑; 旧号探测同理
+  (拿 `Z-MAX v…` 全库扫会扫到 changelog 里的历史老号)。
+- 改完整量回读: 每个文件 `grep -c <新串>` ≥1, `grep -c <精确旧串>` 应只剩历史 changelog 行。
+- 收尾三连: `git commit` → `git tag vvX.Y.Z`(**每版新 tag**, 已发布过的 tag 不许移动) → push 分支与 tag;
+  最后再跑一次 `tools/ci/integrity_check.py` 确认"五处一致"。
 
 **发布前先核分支与打包目录** (2026-09-27 实测事故): **tag 必须打在发布分支(通常 `main`)上**。
 打包命令引用的是**仓库根目录**的路径(`flows/` 等), 打在功能/工作分支上会直接死在 PyInstaller:

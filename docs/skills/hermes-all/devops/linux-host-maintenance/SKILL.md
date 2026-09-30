@@ -161,17 +161,35 @@ WiFi -42dBm/573Mbit/s = 满速档。含 5GHz HE-MCS11/NSS2 才算"好"。
    ⚠️ **权重文件不能直接拷** (单文件 1.29GB): 只生成 `WEIGHTS_MANIFEST.txt` =
    `md5sum + stat -c%s + 路径` 逐行; 小文件 (summary.json / *.jsonl / *.log / 配置 yaml) 才真拷。
    这样"权重在哪、哪个版本、多大"可追溯, 库里不涨一个字节。
+   **本机当场产生的证据** (控制台截图/掩膜图/结果 json/运行日志/报告 json) 统一进 `artifacts_<日期>/evidence/`;
+   **大件** (回合 npz/mp4、训练产物) 留在 `reports/` 与 `stable-wm-cache/`, 只在留档表格里登记路径 ——
+   别为了"归档"把大件拷两份。
 3. **状态文件一起备份**: 编排的 `state.json` (含终态/缺口/每阶段 ok) → 快照目录。
-4. **小版本迭代**: 写一份变更说明文件 → `tools/bump_version.py --to <X.Y.Z> --summary-file <f>`
-   (它会改 update_checker/version_sync/docs_sync/integrity_check/VERSION.md/studio.py) → 回读 `CURRENT_VERSION` 核对。
-5. **提交纪律**: `git add <显式列文件>`, **绝不用 `git add -A`** (会吸进运行态 churn + 别人的未完成改动)。
+4. **小版本迭代**: 写一份变更说明文件 → `tools/bump_version.py --to <X.Y.Z> --from <当前版本> --summary-file <f>`
+   (它会改 studio.py 品牌位+changelog / update_checker / version_sync / docs_sync / integrity_check / VERSION.md 历史行;
+   **`--from` 显式给** —— 自动探测会探到 changelog 里的历史老号)。
+   ⚠️ **判据是它自己打印的 `旧命中 N → 新命中 M`: 任一处 N=0 就是"一个都没改到"** —— 记法/锚点对不上时
+   它**静默不报错, 看着像成功**(如品牌位已改成双 v `vv5.16.35` 而工具还在按单 v 拼死串) ⇒
+   先把工具的匹配改成"**认版本号不认记法**"的正则(`v{1,2}<ver>`、从 `QLabel("Z-MAX …")` 取当前号)再跑;
+   改完逐文件回读 `grep -c <新串>` ≥1, 最后 `tools/ci/integrity_check.py` 要报"五处一致"。
+   五处完整清单 + 文件间记法差异 + `VERSION.md` 历史行规范: 见 `pyqt5-distribution` 的 Version Bump Checklist。
+5. **提交纪律**: `git add <显式列文件>`, **默认别用 `git add -A`** (会吸进运行态 churn + 别人的未完成改动)。
+   要用 `-A` 得先**三证**: `git status --short` 只剩本轮自己的改动 + 双闸全绿(`repo_guard.py --staged` /
+   `secret_scan.py`) + `.gitignore` 已封 `reports/ outputs/ 权重/交付件`。
    暂存后必看 `git diff --cached --stat`, 并对每个文件核大小 (最大应 <1MB; 出现 .pt/.safetensors/视频 → 漏加了 ignore, 先修 .gitignore)。
-6. **push + tag**: `git push origin main --tags` (tag 触发云端 CI 出包, 与本地关机无关, 可以放心打)。
-7. **写交接报告** `reports/关机交接_<日期>.md`, 必含四块:
-   ①关机前状态 (终态/缺口/产物路径/GPU 空闲) ②**开机后需手动恢复的** (自启单元里没有的手工进程 ——
-   如取流服务完整命令行; 远端取流/相机/工控机接口) ③待办优先级 ④本轮代码改动清单。
+6. **push + tag**: `git commit` → `git tag vv<X.Y.Z>` (**每版新 tag, 已发布过的 tag 不许移动**) →
+   `git push origin <分支>` + `git push origin <tag>` (tag 触发云端 CI 出包, 与本地关机无关, 可以放心打)。
+7. **写交接/留档** (两份都要, 都在库里):
+   · `reports/关机交接_<日期>.md` — ①关机前状态 (终态/缺口/产物路径/GPU 空闲) ②**开机后需手动恢复的**
+     (自启单元里没有的手工进程 —— 如取流服务完整命令行; 远端取流/相机/工控机接口) ③待办优先级 ④本轮代码改动清单。
+   · `docs/关机前状态留档_<日期>.md` — 仓库里的**五节**版(**照上一版抄结构**): ①本轮做完的(每条带实证路径)
+     ②没做完的(下轮第一件) ③数据清单(表格: 位置/内容, 大件在此登记) ④环境/机器状态(关机前核过的数字:
+     磁盘/GPU/单元数/端口/时钟) ⑤**下轮启动顺序**(可直接照抄的 bash 块)。只写"做了什么+根因+证据在哪",
+     不复述过程 —— 第④⑤节才是下轮"开机就知道干嘛"的原因。
    **重启后按 §9 逐项核验**；手工进程没自己起来时先读 §10（守护早退），再查服务本身。
-8. **收尾核对**: `sync` → `df -h` → `git status --short` (应只剩运行态 churn) → `git log --oneline -1`。
+8. **收尾核对**: `sync` → `df -h` → `systemctl --failed`(应 0) → `git status --short` (应 0 待推) → `git log --oneline -1`。
+9. **清空转进程, 但不碰 GUI**: 起过却没输入的循环进程(外设缺/流断, 如相机不在位时仍 `--loop` 的检测循环)
+   要 `kill`, 并在留档"机器状态"里写"已停 pid X"; **控制台 GUI 留给用户自己关**(反复重启 GUI 被投诉过)。
 
 **新增生成物顺手加 .gitignore**: 每次训练动态生成的 `config_*_lora_*.yaml`、
 `reports/joint_train_*/` (内含 .pt) 这类必须显式 ignore, 否则下次 `add` 就会把权重拖进库。
