@@ -47,6 +47,38 @@ PATS = {
 }
 
 
+def wire_intact(sim) -> tuple[bool, list[str]]:
+    """按 GUI 同一装配器 (install_direct_act) 把 INTACT 节点接进引擎 — 与 simulink_module 逐行同源。
+
+    GUI 口径: cap=L4 且勾选「🤖 L4 用 INTACT 节点执行」→ IntactRuntime(task='pusht', device='cpu')
+    + install_direct_act(每帧真推理) + attach_intact, 并**关掉 SS_INTACT**(避免 u_ff 槽位重复注入)。
+    """
+    import intact_direct_rollout as _idr  # noqa: PLC0415
+
+    from lerobot.manifold.intact_node import IntactNode, IntactRuntime  # noqa: PLC0415
+
+    msgs: list[str] = []
+    rti = IntactRuntime(task="pusht", device="cpu")
+    nd = IntactNode(horizon=8, runtime=rti)
+    if not getattr(nd.runtime, "trained", False):
+        msgs.append("❌ INTACT 未就绪 (%s) → 保持解析链" % getattr(nd.runtime, "reason", "?"))
+        return False, msgs
+    gf = os.path.join(ROOT, "reports", "intact_goal_frame.npy")
+    stf, why = _idr.resolve_stats()
+    msgs.append(why)
+    if not (os.path.isfile(gf) and os.path.isfile(stf)):
+        msgs.append("❌ 缺目标帧/归一化统计 → 保持解析链")
+        return False, msgs
+    nd.set_goal(np.load(gf))
+    am, asd, _m = _idr.load_stats(stf)
+    rec, stt = _idr.install_direct_act(sim, nd, am, asd, infer_every=1)
+    sim.attach_intact(nd, None)
+    sim._intact_drive = {"node": nd, "rec": rec, "state": stt}
+    os.environ.pop("SS_INTACT", None)          # 防 u_ff 重复注入 (GUI 同口径)
+    msgs.append("🤖 L4 = INTACT 节点直驱装配完成 (每帧 模型动作→env.step)")
+    return True, msgs
+
+
 def run_one(cap: str, steps: int, seed: int) -> dict:
     cfg = CAP_ENV[cap]
     for k in cfg["pop"]:
@@ -63,10 +95,21 @@ def run_one(cap: str, steps: int, seed: int) -> dict:
     sim = RealStateSpaceSim(seed=seed, vision=cfg["vision"], vision_every=1, mode="full",
                             log=lambda *a: logs.append(" ".join(str(x) for x in a)))
     load_s = time.time() - t0
+    wire_msgs: list[str] = []
+    intact_wired = False
+    if cap == "l4":
+        try:
+            intact_wired, wire_msgs = wire_intact(sim)
+        except Exception as e:  # noqa: BLE001
+            wire_msgs = ["❌ INTACT 装配异常: %s: %s" % (type(e).__name__, e)]
     acc = sim.accel
     tr = sim.run(max_steps=steps, cap=cap)
     el = time.time() - t0
     vis = getattr(sim, "_vis", {}) or {}
+    istat = dict(getattr(sim, "_intact_stats", {}) or {})
+    idrv = getattr(sim, "_intact_drive", None) or {}
+    dst = dict(idrv.get("state") or {})            # 直驱通道: state['calls'] = 模型真推理次数
+    intact_calls = int(dst.get("calls", 0) or 0) or int(istat.get("intact_calls", 0) or 0)
     l4 = {}
     for attr in ("_l4_stats", "_intact_stats"):
         d = getattr(sim, attr, None)
@@ -87,10 +130,14 @@ def run_one(cap: str, steps: int, seed: int) -> dict:
         "dist_min_mm": round(float(np.min(dist)) * 1000, 2) if dist else None,
         "dist_last_mm": round(float(dist[-1]) * 1000, 2) if dist else None,
         "yolo_shots": int(vis.get("shot") or 0), "yolo_dets": int(vis.get("n") or 0),
-        "yolo_detect_pct": (round(100.0 * int(vis.get("n") or 0) / int(vis.get("shot") or 1), 1)
-                            if vis.get("shot") else None),
+        "yolo_per_frame": (round(float(vis.get("n") or 0) / float(vis.get("shot") or 1), 2)
+                           if vis.get("shot") else None),
         "n_mlp": int(getattr(acc, "n_mlp", -1)), "n_guard": int(getattr(acc, "n_guard", -1)),
-        "intact_calls": int(l4.get("calls", 0) or 0), "intact_gate_pass": int(l4.get("gate_pass", 0) or 0),
+        "intact_wired": intact_wired, "intact_wire_msgs": wire_msgs,
+        "intact_calls": intact_calls, "intact_drive_state": {k: v for k, v in dst.items()
+                                                             if isinstance(v, (int, float, str, bool))},
+        "intact_u_ff_src": istat.get("u_ff_src", ""),
+        "intact_gate_pass": int(l4.get("gate_pass", 0) or 0),
         "intact_refused": int(l4.get("refused", 0) or 0),
         "model_calls": int(meta.get("calls", 0) or 0) if isinstance(meta.get("calls"), (int, float)) else None,
         "stage_counts": (lambda s: {x: s.count(x) for x in sorted(set(s))})(list((meta.get("rec") or {}).get("stage") or [])),
@@ -116,26 +163,27 @@ def main() -> int:
             print("  ❌ %s" % r["error"], flush=True)
         rows.append(r)
         if "error" not in r:
-            print("  ✅ %s: 步数 %s · done=%s · 终点 %.2fmm · YOLO 检出 %s/%s (%s%%) · MLP真身 %s · "
-                  "INTACT 调用 %s · 墙钟 %ss" % (
+            print("  ✅ %s: 步数 %s · done=%s · 终点 %.2fmm · YOLO %s 帧/%s 检出(每帧 %s) · MLP真身 %s · "
+                  "INTACT 真推理 %s%s · 墙钟 %ss" % (
                       r["cap"], r["steps"], r["done"], r["dist_min_mm"] or -1,
-                      r["yolo_dets"], r["yolo_shots"], r["yolo_detect_pct"],
-                      r["n_mlp"], r["intact_calls"], r["elapsed_s"]), flush=True)
+                      r["yolo_shots"], r["yolo_dets"], r["yolo_per_frame"],
+                      r["n_mlp"], r["intact_calls"],
+                      " (直驱已装配)" if r.get("intact_wired") else "", r["elapsed_s"]), flush=True)
 
     out = {"ts": time.strftime("%F %T"), "seed": a.seed, "steps": a.steps, "rows": rows}
     p = os.path.join(ROOT, "reports", "run_all_models_%s.json" % time.strftime("%Y%m%d_%H%M%S"))
     with open(p, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
     print("\n=== 汇总 (证据: %s) ===" % p)
-    hdr = ("档位", "步数", "done", "终点mm", "YOLO检出", "MLP真身", "INTACT", "墙钟s")
-    print("%-6s %6s %6s %9s %11s %8s %8s %7s" % hdr)
+    print("%-6s %6s %6s %9s %12s %8s %10s %7s" % (
+        "档位", "步数", "done", "终点mm", "YOLO帧/检出", "MLP真身", "INTACT真推理", "墙钟s"))
     for r in rows:
         if "error" in r:
             print("%-6s  ❌ %s" % (r["cap"], r["error"][:70]))
             continue
-        print("%-6s %6s %6s %9s %11s %8s %8s %7s" % (
+        print("%-6s %6s %6s %9s %12s %8s %10s %7s" % (
             r["cap"], r["steps"], r["done"], r["dist_min_mm"],
-            "%s/%s" % (r["yolo_dets"], r["yolo_shots"]), r["n_mlp"], r["intact_calls"], r["elapsed_s"]))
+            "%s/%s" % (r["yolo_shots"], r["yolo_dets"]), r["n_mlp"], r["intact_calls"], r["elapsed_s"]))
     return 0
 
 
