@@ -30,14 +30,16 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12p
 .note{padding:8px 10px;font-size:15px;color:#f0c674;background:#2a2012;
   border-top:1px solid #4b3a1a;line-height:1.5}
 .note b{color:#ffd479}
-/* 📍 号位 1~7 (2026-09-30 老倪「有记录的点就是绿色按钮, 没有记录的点就是灰色按钮」):
-   判据由服务端 /ctl/points 给(示教点库 + 注册表 + 白名单), 页面只画不算。 */
-.slotbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:10px 10px 4px}
-.slotbar button{font-size:17px;font-weight:700;padding:12px 6px;line-height:1.3}
+/* 📍 号位 1~7 (2026-09-30 老倪「有记录的点就是绿色按钮, 没有记录的点就是灰色按钮」;
+   2026-09-30 追加「7个按钮排成一行, 均匀分布」): 面板横跨整行(grid-column:1/-1),
+   7 个按钮等宽均分 1fr —— 判据由服务端 /ctl/points 给, 页面只画不算。 */
+#p_slots{grid-column:1 / -1}
+.slotbar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;padding:10px 10px 4px}
+.slotbar button{font-size:17px;font-weight:700;padding:12px 4px;line-height:1.3;text-align:center}
 .slotbar button.rec{background:#0f3d22;border-color:#2ea043;color:#7ee787}
 .slotbar button.rec:hover:not(:disabled){background:#155a31}
 .slotbar button.norec{background:#161b22;border-color:#2a3038;color:#6e7681;opacity:.8}
-.slotbar button small{display:block;font-size:12px;font-weight:400;opacity:.9;margin-top:4px}
+.slotbar button small{display:block;font-size:12px;font-weight:400;opacity:.9;margin-top:4px;white-space:nowrap}
 .dim{color:#8b949e}
 .ok{color:#3fb950}.wa{color:#d29922}.bad{color:#f85149}
 /* ── 右侧控制台 ── */
