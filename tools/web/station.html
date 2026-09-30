@@ -230,7 +230,11 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
         <button id="b_spt1" onclick="gotoSurfacePt1(this)"
           style="font-size:19px;font-weight:700;border-color:#1f6feb"
           title="回到示教点『侧面点1』(技能 L2.goto_surface_pt1 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 走 L2 收口: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 侧面点1</button>
-        <span id="spt1_msg" style="font-size:13px;opacity:.85"></span></div>
+        <button id="b_spt2" onclick="gotoSurfacePt2(this)"
+          style="font-size:19px;font-weight:700;border-color:#1f6feb"
+          title="回到示教点『侧面点2』(技能 L2.goto_surface_pt2 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 与 侧面点1 同一条路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 侧面点2</button>
+        <span id="spt1_msg" style="font-size:13px;opacity:.85"></span>
+        <span id="spt2_msg" style="font-size:13px;opacity:.85"></span></div>
       <div class="row" style="padding:4px 10px 4px">
         <button onclick="shot(10083)">📸 拍帧 (真拍一次)</button>
         <button onclick="aoiDetect(10083,'s')" style="font-weight:600">🔍 请求检测</button>
@@ -529,6 +533,14 @@ async function gotoPt1(btn){
    → FIFO → 执行器 → 安全裁决); 点位真值 = 示教点库里的 侧面点1(2026-09-30 现场实录)。 */
 async function gotoSurfacePt1(btn){
   return gotoTeachPoint(btn,_spt1,'L2.goto_surface_pt1','『🎯 侧面点1』','#spt1_msg','回到侧面点1');
+}
+/* ═══ 🎯 侧面点2: 回到示教点『侧面点2』(技能 L2.goto_surface_pt2) ═══
+   2026-10-01 老倪: 「记录现在的表面检测的位姿, 侧面点2, 并增加侧面点2的技能,
+   在表面检测窗口下面的侧面点1旁边增加 侧面点2 按钮」。与『🎯 侧面点1』同一份 gotoTeachPoint
+   (不新开通道、不复制闸门); 点位真值 = 示教点库里的 侧面点2(2026-10-01 现场实录)。 */
+let _spt2={t0:0,timer:null};
+async function gotoSurfacePt2(btn){
+  return gotoTeachPoint(btn,_spt2,'L2.goto_surface_pt2','『🎯 侧面点2』','#spt2_msg','回到侧面点2');
 }
 async function gotoTeachPoint(btn,st,skill,label,msgSel,human){
   const spd=parseFloat($('#spd').value||'8');
