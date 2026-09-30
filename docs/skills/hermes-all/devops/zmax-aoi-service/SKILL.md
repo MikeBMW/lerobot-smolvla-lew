@@ -8,6 +8,31 @@ description: Use when 调用产线 AOI 检测服务(10082 金手指/10083 表面
 与 Orin 同网段(192.168.23.x)。跑两份 Flask 程序「Z-MAX 表面检测 AOI 程序 · 优化版 v3」,
 **端口→模型映射**决定检测类型。
 
+## 🆕 表面判据图 (10083 v12.1, 2026-09-30 老倪现场要求)
+
+原话: 「表面检测也要增加判据图, 你要将光模块**整体切割出来**, 调整好**水平状态**; 类似金手指的判据图,
+**只要光模块的部分, 不要背景**; 现在有点倾斜, 你要修正; 增加**判据图 和 整板原图 两个按钮**;
+你要修改工控机的程序, 修改 v12 版本」。
+
+- 工控机 v12.1 新增 `GET /picture?kind=judge` = 只切光模块 + 调平 + 去背景, 定尺 **1600x300**;
+  落盘 `Surface_Judge_W1600_H300_No_*.png`; `/crop_info` 多出 `judge_ok` / `judge_mode` / `judge_rot_deg` /
+  `judge_bbox` / `judge_cover` / `judge_ms` / `judge`(完整 meta); `/last_result` 的 `judge`(人看的) 与
+  `model_input`(模型吃的) **明写区分**。
+- **模型吃的 1280 全幅 letterbox 一字未改** —— 改"人看的图"绝不动"模型吃的图"(沿用金手指 v7/v10 铁律)。
+- 4060 页面(表面格) 两条流: `/aoi_surface.mjpg` = 判据图(`kind=judge`, **本地零加工**) ·
+  `/aoi_surface_raw.mjpg` = 整板原图(低频 `kind=origin`); 按钮「判据图 / 整板原图」; 模型输入看 `/aoi_surface_modelin.png`。
+- 算法/参数/验收数字/失败闸门见 `references/surface-judge-v121.md`; 离线验收脚本 `~/aoi_v4/test_v12_1_judge.py`(21 项)。
+
+## ⚠️ 部署或验收前必做: 先杀干净重复实例(否则"假失败 → 自动回滚")
+
+- 现象: `POST /capture_detect` → **HTTP 500 `图像抓取失败`**, 但同一时刻 `GET /picture?kind=origin&grab=1` → 200 正常。
+- 原因: 相机**独占**, 而工控机上**两个启动机制**都会拉起 AOI 程序 —— 保活任务 `ZMAX_AOI_KeepAlive`(用
+  `venv\Scripts\python.exe`) 与 agent 循环(用 PATH 里的 Python310); 程序启动要 ~10s 才 bind, 这期间端口探测
+  看到的是"没人应答" ⇒ 两个机制各起一份; Windows **SO_REUSEADDR** 让第二份 bind 也"成功", 程序自己的
+  `_already_serving` 探测又太早 ⇒ 两份并存, 但相机只归先抓到的那份, 另一份 `/storage` 照常 200、拍照必 500。
+- 处置: 部署/验收前先 `Stop-Process` 掉所有匹配 `cam_*_10083*`(或 `cam_*_10082*`) 的 python, 只留/只起一份,
+  再打 `POST /capture_detect` 验; 正常态(只剩一份且 `/storage` 200) 不要手动再起第二份。
+
 ## 端点（唯一路由, 无需参数/鉴权）
 
 | 端口 | 模型 | 相机 SN / 型号 |

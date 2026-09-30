@@ -7,6 +7,8 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 # Z-MAX Console — 维护指南
 
+> 📄 相关: `references/live-value-freshness.md`(显示诚实性: 任何标"当前"的值必须过源新鲜度判据, 源停更要标失效+勿据此判安全)。
+
 ## 🔎 数据空间视图(dds_canoe.BusView)顶部搜索
 - 位置: 顶栏(测量组)最右端 = `ed_find` + `lb_find`, 按名筛**信号表**(报文/信号/节点)三组, 不是 Trace(Trace 另有 `ed_search` 只筛帧)。
 - 坑①: 清空搜索时**必须递归取消 hidden**(`_unhide_all`, 根+叶子一起); 只把根 un-hide 会出现“组标题出来了、叶子还藏着”。
