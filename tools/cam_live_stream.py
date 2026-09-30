@@ -777,6 +777,20 @@ def _aoi_auto_status() -> dict:
 _AOI_CAL = {"mode": None, "t": 0.0, "port": 0, "src": "还没读", "raw": {}}
 
 
+def _aoi_modelin_get(suffix: str = "", port: int = 10082):
+    """🆕 v11: 从工控机取**模型实际吃的那张图**(`GET /picture?kind=modelin`)。
+
+    为什么需要: 页面上那格显示的是「判据图」(人看的), 而模型吃的是同帧派生的 960x960 方图
+    (在工控机 %TEMP%, 检测完即删)。老倪问「实际输入给模型的图片长什么样」⇒ 这个口把
+    **喂给 detector.detect() 的同一份像素**无损取回来, 并且 /last_result.model_input_md5
+    与它的像素 md5 逐位对得上(同源硬证据, 不是"看起来像")。
+    """
+    url = "http://192.168.23.23:%d/picture?kind=modelin%s" % (int(port), suffix)
+    req = urllib.request.Request(url, headers={"User-Agent": "zmax-station"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return r.status, r.read(), dict(r.headers)
+
+
 def _aoi_caliber(port: int = 10082, ttl: float = 8.0) -> dict:
     """读工控机的判据口径 (GET /caliber)。读不到就沿用上次值, 并在 src 里如实写"读失败"。"""
     now = time.time()
@@ -2747,6 +2761,25 @@ class Handler(BaseHTTPRequestHandler):
             self._mjpeg("ov_arm")
         elif p == "/overlay/local.mjpg":
             self._mjpeg("ov_local")
+        elif p == "/aoi_modelin.png":
+            # 🆕 v11: 模型**实际吃的那张**(960x960 同帧派生图) 原样转发 —— 无损 PNG,
+            #   像素与喂进 YOLO 的逐位相同; 响应头带 md5/尺寸/编号, 便于与 /last_result 对账。
+            try:
+                _st, _raw, _hd = _aoi_modelin_get()
+                self._send(_st, "image/png", _raw, extra={
+                    "X-Zmax-Modelin-Md5": _hd.get("X-Zmax-Modelin-Md5", ""),
+                    "X-Zmax-Modelin-HW": _hd.get("X-Zmax-Modelin-HW", ""),
+                    "X-Zmax-Modelin-N": _hd.get("X-Zmax-Modelin-N", "")})
+            except Exception as _e:                                               # noqa: BLE001
+                self._send(502, "application/json; charset=utf-8",
+                           _jbytes({"code": 502, "msg": "取模型输入图失败: %s" % str(_e)[:120]}))
+        elif p == "/aoi_modelin_meta":
+            try:
+                _st, _raw, _hd = _aoi_modelin_get("&meta=1")
+                self._send(_st, "application/json; charset=utf-8", _raw)
+            except Exception as _e:                                               # noqa: BLE001
+                self._send(502, "application/json; charset=utf-8",
+                           _jbytes({"code": 502, "msg": str(_e)[:120]}))
         elif p == "/snapshot/arm.jpg":
             self._snapshot("arm")
         elif p == "/snapshot/local.jpg":
@@ -2891,9 +2924,12 @@ class Handler(BaseHTTPRequestHandler):
                    "application/json; charset=utf-8",
                    json.dumps(out, ensure_ascii=False).encode("utf-8"))
 
-    def _send(self, code: int, ctype: str, body: bytes):
+    def _send(self, code: int, ctype: str, body: bytes, extra: dict = None):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        for _k, _v in (extra or {}).items():
+            if _v:
+                self.send_header(_k, _v)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("Access-Control-Allow-Origin", "*")
