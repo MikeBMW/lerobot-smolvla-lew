@@ -244,10 +244,14 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
         <button data-stream="/aoi_surface.mjpg" class="on">判据图</button>
         <button data-stream="/aoi_surface_raw.mjpg">整板原图</button></span></div>
       <div class="note" id="n_aoi_surface"></div>
-      <!-- 🎯 表面检测观察位回点按钮 —— 从左到右按点位序号排: 0 → 1 → 2 → 3
-           (2026-10-01 老倪: 「增加侧面点0的按钮，顺序在侧面点1的前面，按钮 侧面点0 也要放在侧面点1的
-           左侧，你重新排列一下UI布局」) ⇒ 按钮与它右边的结果文字都按 0/1/2/3 同序, 序号直观对应。 -->
+      <!-- 🎯 表面检测观察位回点按钮 —— 最左『准备点』(安全退让位), 其后按序号 0 → 1 → 2 → 3
+           (2026-10-01 老倪: 「增加侧面点0的按钮，顺序在侧面点1的前面…你重新排列一下UI布局」
+            又: 「增加 按钮 准备点，在表面检测的窗口，位置位于 侧面点0的前面」)
+           ⇒ 准备点排在危险点(侧面点0)之前 = 出事时往左第一个就能退; 按钮与其右侧结果文字同序。 -->
       <div class="row" style="padding:6px 10px 2px">
+        <button id="b_ready" onclick="gotoReady(this)"
+          style="font-size:19px;font-weight:700;border-color:#2ea043;color:#3fb950"
+          title="回到示教点『准备点』(技能 L2.goto_ready · 3 段转移: ①就地垂直抬升 50mm ②高位平移到准备点正上方 ③垂直下落 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 与侧面点同一条路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 准备点</button>
         <button id="b_spt0" onclick="gotoSurfacePt0(this)"
           style="font-size:19px;font-weight:700;border-color:#1f6feb"
           title="回到示教点『侧面点0』(技能 L2.goto_surface_pt0 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 与 侧面点1/2/3 同一条路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 侧面点0</button>
@@ -260,6 +264,7 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
         <button id="b_spt3" onclick="gotoSurfacePt3(this)"
           style="font-size:19px;font-weight:700;border-color:#1f6feb"
           title="回到示教点『侧面点3』(技能 L2.goto_surface_pt3 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 与 侧面点1/2 同一条路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 侧面点3</button>
+        <span id="ready_msg" style="font-size:13px;opacity:.85"></span>
         <span id="spt0_msg" style="font-size:13px;opacity:.85"></span>
         <span id="spt1_msg" style="font-size:13px;opacity:.85"></span>
         <span id="spt2_msg" style="font-size:13px;opacity:.85"></span>
@@ -619,6 +624,13 @@ async function gotoPt1(btn){
    2026-10-01 老倪: 「记录当前的侧面点0，增加侧面点0的按钮，顺序在侧面点1的前面，按钮 侧面点0
    也要放在侧面点1的左侧，你重新排列一下UI布局」。与 1/2/3 完全同一份 gotoTeachPoint(不新开通道、
    不复制闸门); 点位真值 = 示教点库 侧面点0(2026-10-01 07:30 现场实录, 6 帧极差 1e-6)。 */
+// ── 🎯 回『准备点』(安全退让位, 2026-10-01 老倪加: 排在危险点侧面点0 左侧) ──
+// 技能是 3 段转移(就地抬50 → 高位平移 → 垂直下落), 不是一次直线: 准备点比侧面点低 118~169mm,
+// 直插等于低空横移/斜插(违反两点转移铁律)。执行器会打印每段落点。
+let _ready={t0:0,timer:null};
+async function gotoReady(btn){
+  return gotoTeachPoint(btn,_ready,'L2.goto_ready','『🎯 准备点』','#ready_msg','回到准备点');
+}
 let _spt0={t0:0,timer:null};
 async function gotoSurfacePt0(btn){
   return gotoTeachPoint(btn,_spt0,'L2.goto_surface_pt0','『🎯 侧面点0』','#spt0_msg','回到侧面点0');

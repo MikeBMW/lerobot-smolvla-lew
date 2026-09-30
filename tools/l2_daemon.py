@@ -84,6 +84,20 @@ def _pose_best():
     return None, None, "none"
 
 
+def _fresh_quat():
+    """现读姿态(直读优先; 缓存必须 <5s)。返回 (quat|None, 源, 缓存年龄s)。
+
+    ⚠️ 为什么不能让 rel 段吃 `_pose["q"]`: 那个缓存只由 state_thread(ssh + docker exec 读 ROS
+    `/robot/tcp_pose`)更新, 它一旦断线就**静默冻住**从不重连 —— 2026-10-01 实测冻了 4.5 小时
+    (停在侧面点1 的朝向 quat 0.7231), 而 rel 段("就地垂直抬 50mm")本该"姿态保持当前"; 吃陈旧
+    缓存 ⇒ 真下发变成**边抬边转 93.7°**。相对运动的目标位姿里, 姿态永远取**现读**。
+    """
+    _p, _q, _src = _pose_best()
+    if _q and len(_q) == 4:
+        return list(_q), _src, (0.0 if _src == "direct" else max(0.0, time.time() - _pose["t"]))
+    return None, _src, None
+
+
 _reg_mtime = [0.0]
 
 
@@ -110,23 +124,36 @@ def log(msg):
         f.write(line + "\n")
 
 def state_thread():
+    """常驻位姿流(ssh + ROS 一次性 echo 循环) → `_pose` 缓存。
+
+    ⚠️ 必须**自己重连**: 2026-10-01 实测这条 ssh 只读流断掉后线程直接结束, `_pose` 静默冻住 4.5 小时,
+    没有任何日志 —— 而 plan_stage 的 rel 段会吃这个缓存 ⇒ 陈旧姿态被当成"当前姿态"下发。
+    现在: 断了就大声记一条 + 5s 后重连; 直读链(`_pose_best`→`_pose_direct`)不受影响。
+    """
     cmd = PRE + "while true; do ros2 topic echo --once /robot/tcp_pose --field pose 2>/dev/null; sleep 0.5; done"
-    p = subprocess.Popen(["ssh", "-o", "BatchMode=yes", HOST, cmd], stdout=subprocess.PIPE, text=True, bufsize=1)
-    buf = []
-    for ln in p.stdout:
-        s = ln.strip()
-        if s.startswith("---"):
-            continue
-        if ":" in s:
-            try:
-                buf.append(float(s.split(":", 1)[1]))
-            except ValueError:
-                continue
-        if len(buf) >= 7:
-            _pose["p"] = buf[:3]
-            _pose["q"] = buf[3:7]
-            _pose["t"] = time.time()
+    while True:
+        try:
+            p = subprocess.Popen(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=15", HOST, cmd],
+                                 stdout=subprocess.PIPE, text=True, bufsize=1)
             buf = []
+            for ln in p.stdout:
+                s = ln.strip()
+                if s.startswith("---"):
+                    continue
+                if ":" in s:
+                    try:
+                        buf.append(float(s.split(":", 1)[1]))
+                    except ValueError:
+                        continue
+                if len(buf) >= 7:
+                    _pose["p"] = buf[:3]
+                    _pose["q"] = buf[3:7]
+                    _pose["t"] = time.time()
+                    buf = []
+            log("⚠️ 位姿常驻流结束(ssh/ROS 断开, 最后更新 %.0fs 前) —— 5s 后重连; 期间 rel 段改走直读" % max(0.0, time.time() - _pose["t"]))
+        except Exception as e:                                                   # noqa: BLE001
+            log("⚠️ 位姿常驻流异常: %s —— 5s 后重连" % str(e)[:80])
+        time.sleep(5)
 
 
 def _dir_label(dx, dy, dz):
@@ -652,12 +679,17 @@ def plan_stage(sk, st, pts, spec, cur):
     if sk.get("ros") == "j6_rot":
         # 🔩 同理: J6 自转是单步(一次一个角度), 带 steps 会静默算错落点 ⇒ 直接拒发
         return {"err": "j6_rot(第6轴自转)是单步技能, 不支持 steps 多阶段; 请去掉 steps"}
+    _qsrc, _qage = "none", None
     if st.get("rel"):
         name = "rel(当前位姿)"
         t = [float(v) for v in cur]
-        q = list(_pose["q"]) if _pose["q"] else None
+        # ⚠️ 姿态必须**现读**(见 _fresh_quat 注释): 相对段本来就该"姿态保持当前",
+        #    吃陈旧缓存 ⇒ 真下发变成边平移边转大角度(2026-10-01 实测 93.7°)。
+        q, _qsrc, _qage = _fresh_quat()
         if not q:
-            return {"err": "位姿缓存未就绪(当前姿态缺)"}
+            return {"err": "现读姿态不可用(源=%s) ⇒ 拒发; 相对段要吃当前朝向, 不发陈旧姿态" % _qsrc}
+        if _qsrc != "direct":
+            log("⚠️ rel 段姿态取自 %s(%.1fs 前) —— 直读失败时的降级; 现场若见转动立即急停" % (_qsrc, _qage or 0.0))
     else:
         name = _point_name(sk, st, spec)
         if name not in pts:
@@ -668,11 +700,11 @@ def plan_stage(sk, st, pts, spec, cur):
             if _qe:
                 return {"err": "点位 %s 的姿态不可用(%s) ⇒ 拒发; 请重录该点" % (name, _qe)}
         else:
-            q = list(_pose["q"]) if _pose["q"] else None
+            q, _qsrc, _qage = _fresh_quat()     # ⚠️ "姿态保持当前"也必须现读, 不吃陈旧缓存
             if q and len(q) != 4:
                 return {"err": "当前姿态四元数有 %d 个分量(应为 4) ⇒ 拒发" % len(q)}
         if not q:
-            return {"err": "位姿缓存未就绪(当前姿态缺)"}
+            return {"err": "现读姿态不可用(源=%s) ⇒ 拒发; 不发陈旧姿态" % _qsrc}
     t[2] += float(st.get("dz_mm", 0.0)) / 1000.0          # base 系竖直偏移(mm): 正=上, 负=下
     # 工具坐标系平移 (生产口径 PoseTranslateLocalOffset, 如插槽口 = 插入位沿工具 Z 退 60mm):
     #   沿**示教姿态自己的**局部 XYZ 轴平移 mm —— 这才对应"沿模块轴向退/进", 不是 base 竖直偏移。
