@@ -86,6 +86,13 @@ for rel in "${SYNC_LIST[@]}"; do
   echo "    ✓ $rel (${sz}KB)"
 done
 
+# ── 2b. 技能全量镜像 (2026-09-30 起: 新工程仓库 MikeBMW/zmax 收全量, 不再只挑关键路径) ──
+echo "  → 技能全量镜像 docs/skills/hermes-all/ ..."
+rsync -a --delete --exclude='__pycache__' --exclude='*.pyc' --exclude='*.log' \
+      --exclude='node_modules/' --exclude='.git/' "$SKILLS_SRC"/ "$REPO_ROOT/docs/skills/hermes-all"/
+find "$REPO_ROOT/docs/skills/hermes-all" -type f -size +300k -delete    # 大图/PDF 模板不进库
+echo "    hermes-all: $(find "$REPO_ROOT/docs/skills/hermes-all" -name SKILL.md | wc -l) 个技能"
+
 # ── 3. 记忆备份 (一点不能丢) ──
 echo "  → 记忆备份..."
 if [ -f "$MEM_SRC/MEMORY.md" ]; then
@@ -150,9 +157,9 @@ else
       return 1
     }
     if _do_push origin; then
-      echo "  ✅ push 完成"
-    elif _do_push https://ghproxy.net/https://github.com/MikeBMW/lerobot-smolvla-lew.git; then
-      echo "  ✅ push 完成 (经 ghproxy)"
+      echo "  ✅ push 完成 (→ MikeBMW/zmax)"
+    elif _do_push https://ghproxy.net/https://github.com/MikeBMW/zmax.git; then
+      echo "  ✅ push 完成 (经 ghproxy, → MikeBMW/zmax)"
     else
       echo "  ❌ push 失败 (直连+ghproxy 均不通) — 本地 commit 已留, 下次 cron 再推"
     fi
