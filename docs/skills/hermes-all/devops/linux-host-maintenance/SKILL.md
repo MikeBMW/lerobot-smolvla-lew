@@ -216,7 +216,20 @@ nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; df -h 
 - `systemctl is-active` 给 `activating` + 反复计数 ⇒ `journalctl -u <unit> -n 20` 看真实原因，不要因为「单元存在」就报正常。
 - 汇报按「本机已起 / 本机还缺 / 外设缺失 / 资源(GPU·磁盘)」四行给，一眼能看完，不写「已恢复正常」。
 
-## 10. 守护脚本的早退会吞掉它后面所有自愈（重启后最常中的一条）
+## 9b. 推流某一格「进程活着但不吐帧」= v4l2 卡死, 按官方启动器重启即可
+
+实测(2026-09-30 重启后): `8793/stats` 里 `local online=true, fps=0.0, age_s=137.6, stalled=true, frames_served=14`;
+进程在、`/dev/video0` 被它占着(`fuser -v`)、dmesg 无 uvc 报错、`ffprobe` 打不开(Device busy) —— 但相机就是不再出新帧。
+⇒ 这类「设备被占 + 帧龄单调增长 + 内核无错」不是硬件掉线, 是取流进程里的 v4l2 抓帧线程卡住。
+**处置: 跑官方启动器换号重启**(它会按端口找旧 pid 先停、再按卡名解析设备):
+```bash
+cd /home/ubuntu/zmax && bash tools/start_station_stream.sh            # 正常重启
+cd /home/ubuntu/zmax && bash tools/start_station_stream.sh --check    # 只看现状(不清)
+```
+复核两格帧号**持续递增** + `8793/station=200`; 实测重启后 `local 15fps frames=3003`(重启前 14 帧冻结)。
+注意 `MAXHUB 顶视相机` 没枚举时 `local2=-1/frames=0` 属**硬件缺失**, 重启无用, 如实报缺。
+
+## 10. 守护脚本的早退会吞掉它后面所有自愈(重启后最常中的一条)
 
 一个守护里有多条自愈分支、又写成 `if bad: … return` 时，**排在前面的那条一坏，后面的自愈永远不执行**。
 实测：`tools/cam_stream_guard.py` 的深度源分支（容器/源文件龄）直接 `return 1`，而「推流没跑就拉起」排在它后面

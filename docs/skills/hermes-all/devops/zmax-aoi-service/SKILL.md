@@ -331,6 +331,29 @@ token **每次现取** → 不依赖 gateway 进程内缓存（gateway 报 99991
 上线包 `http://192.168.23.50:8794/v5/`(旧 v4 URL 仍可用): 两程序 + `upgrade_aoi_v5.ps1`(自检 / 试跑 10084·10085 / `-Apply` 正式升级) + README + sha256。
 离线自测: `cd ~/aoi_v4 && .venv-test/bin/python test_v5_offline.py` → 两路各 5/5。
 
+## 🆕 工控机重启后 10083 表面 AOI 不自己起来 = 计划任务被禁用 (2026-09-30)
+
+症状: 10081/10082 在听、**10083 closed**(`/dev/tcp` 探测), 本机 8793 表面格 `online=false frames=0`;
+`ZMAX_AOI_KeepAlive` 的日志 `zmax_keepalive.log` 停在某个历史时间点且**没有任何新行**。
+
+根因: 计划任务被置为 **已禁用** ⇒ 工控机一重启, 10083 再没人拉(它不像 10082 那样被别的机制带起来)。
+两条取证命令(中文 Windows 下 `schtasks /query /v` 的字段名是中文, 用 `Select-String '状态|上次'` 匹配英文会**空手而归**):
+```powershell
+(Get-ScheduledTask -TaskName ZMAX_AOI_KeepAlive).State                    # Ready=启用 / Disabled=被禁
+(Get-ScheduledTaskInfo -TaskName ZMAX_AOI_KeepAlive) | Select LastRunTime,LastTaskResult
+```
+
+修法(从 4060 走反向通道, 一条命令):
+```bash
+./gui-venv311/bin/python tools/station_cmd.py "schtasks /change /tn ZMAX_AOI_KeepAlive /enable; schtasks /run /tn ZMAX_AOI_KeepAlive" 90
+```
+⚠️ **起服务慢: 实测从 run 到 10083 LISTEN 约 89s**(首抓失败要重连相机) —— 45s 就去看端口会误判成"没起来",
+  然后手搓再起一份(相机独占 → 抢相机/端口占用)。**等 ≥90s 再验**。
+- 验活: `(Get-NetTCPConnection -State Listen | ? {$_.LocalPort -in 10082,10083}).LocalPort` + `GET /storage`=200。
+- keepalive 拉起的正常形态是**两个 python 进程**: venv 解释器(启动壳, 父=cmd) + 它换成的 Python310 实例(**端口属主**)。
+  看见两个别当重复副本杀错 —— 端口属主那个才是活的。
+- 该脚本本身只"动手时才写日志", 所以"日志没有新行"≠"任务没跑"; 判活要看任务 State/LastRunTime + 端口/`/storage`。
+
 ## ⚠️ 两个必踩的坑 (2026-09-27 现场踩过, 改 v5 代码/排障时先看)
 
 **① 取图路由缺"重连再抓" ⇒ 冷启/空闲后稳定 500「抓帧失败」**
