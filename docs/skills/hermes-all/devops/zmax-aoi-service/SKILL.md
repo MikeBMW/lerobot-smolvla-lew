@@ -14,10 +14,19 @@ description: Use when 调用产线 AOI 检测服务(10082 金手指/10083 表面
 **只要光模块的部分, 不要背景**; 现在有点倾斜, 你要修正; 增加**判据图 和 整板原图 两个按钮**;
 你要修改工控机的程序, 修改 v12 版本」。
 
-- 工控机 v12.1 新增 `GET /picture?kind=judge` = 只切光模块 + 调平 + 去背景, 定尺 **1600x300**;
-  落盘 `Surface_Judge_W1600_H300_No_*.png`; `/crop_info` 多出 `judge_ok` / `judge_mode` / `judge_rot_deg` /
-  `judge_bbox` / `judge_cover` / `judge_ms` / `judge`(完整 meta); `/last_result` 的 `judge`(人看的) 与
-  `model_input`(模型吃的) **明写区分**。
+- 工控机 v12.1 **→ v12.2** 新增 `GET /picture?kind=judge` = 只切光模块 + 调平 + 去背景, 定尺 **1400x300**;
+  落盘 `Surface_Judge_W1400_H300_No_*.png`; `/crop_info` 多出 `judge_ok` / `judge_mode` / `judge_rot_deg` /
+  `judge_bbox` / `judge_cover` / `judge_ms` / `judge`(完整 meta, 含 `right_edge_x`/`right_edge_src`/`thick_med`/`band_y`);
+  `/last_result` 的 `judge`(人看的) 与 `model_input`(模型吃的) **明写区分**。
+- **v12.2 两处关键修正**(2026-09-30 像素级反解 + 真机复核):
+  1. **模块右界改为数据驱动认"上边缘竖直台阶"** —— 原来固定用 ROI 右界(1815), 而那儿上下都是 255 无任何边,
+     判据图右端必然出现"切在亮料中间"的断口, 且多带入一块夹具。实测台阶在 **x≈1503**
+     (长条上边缘在此竖直上跳 35px、下边缘下掉 65px、右侧那块高 277px vs 长条 175px、底部磨砂麻点 vs 长条纯 255、
+     并连到带螺钉/贴纸的底座) ⇒ 模块本体止于此。改后模块宽 **1453 → 1156 px**, 右端之后为纯背景。
+     方向性很重要: 只认**向上**的台阶(y_base − y_top ≥ +18px 且持续 ≥8 列), 左端那块更矮的"舌尖"不会误触发。
+  2. **纵向收带**: 掩膜限制在 [上边缘基线 −12, 基线 + 实测中位厚度×1.3] —— 否则 bbox 被那块 277px 的料撑满 300px 高、
+     白留边浪费分辨率。
+  3. 画布 1600→**1400x300**, 缩放 `min(..., 1.0)` **只缩不放**(不插值放大 ⇒ 保像素真实)。
 - **模型吃的 1280 全幅 letterbox 一字未改** —— 改"人看的图"绝不动"模型吃的图"(沿用金手指 v7/v10 铁律)。
 - 4060 页面(表面格) 两条流: `/aoi_surface.mjpg` = 判据图(`kind=judge`, **本地零加工**) ·
   `/aoi_surface_raw.mjpg` = 整板原图(低频 `kind=origin`); 按钮「判据图 / 整板原图」; 模型输入看 `/aoi_surface_modelin.png`。
@@ -25,13 +34,16 @@ description: Use when 调用产线 AOI 检测服务(10082 金手指/10083 表面
 
 ## ⚠️ 部署或验收前必做: 先杀干净重复实例(否则"假失败 → 自动回滚")
 
-- 现象: `POST /capture_detect` → **HTTP 500 `图像抓取失败`**, 但同一时刻 `GET /picture?kind=origin&grab=1` → 200 正常。
+- 现象: `POST /capture_detect` → **HTTP 500 `图像抓取失败`**, 但同一时刻 `GET /picture?kind=judge&grab=1` → 200 正常。
 - 原因: 相机**独占**, 而工控机上**两个启动机制**都会拉起 AOI 程序 —— 保活任务 `ZMAX_AOI_KeepAlive`(用
-  `venv\Scripts\python.exe`) 与 agent 循环(用 PATH 里的 Python310); 程序启动要 ~10s 才 bind, 这期间端口探测
-  看到的是"没人应答" ⇒ 两个机制各起一份; Windows **SO_REUSEADDR** 让第二份 bind 也"成功", 程序自己的
-  `_already_serving` 探测又太早 ⇒ 两份并存, 但相机只归先抓到的那份, 另一份 `/storage` 照常 200、拍照必 500。
-- 处置: 部署/验收前先 `Stop-Process` 掉所有匹配 `cam_*_10083*`(或 `cam_*_10082*`) 的 python, 只留/只起一份,
-  再打 `POST /capture_detect` 验; 正常态(只剩一份且 `/storage` 200) 不要手动再起第二份。
+  `venv\Scripts\python.exe`) 与部署器/agent 侧(用 PATH 里的裸 `python` = Python310); 程序启动要 ~10s 才 bind,
+  这期间端口探测看到的是"没人应答" ⇒ 两个机制各起一份; Windows **SO_REUSEADDR** 让第二份 bind 也"成功"
+  ⇒ 两份并存, 相机只归先抓到的那份。**两份都能收连接**(OS 会在同端口两个 socket 间分流) —— 所以会出现
+  "一部分接口 200、另一部分 500"的诡异组合(实测 judge 流 200 而 origin 抓帧 500), 别据此以为是某个接口的 bug。
+- 处置: 部署/验收前先 `Stop-Process` 掉所有匹配 `cam_*_10083*` 的 python, 只起一份, 并**在同一分钟内立刻抓一帧占住相机**
+  (否则保活/agent 那一分钟内的补起会抢走相机); 正常态(只剩一份且 `/storage` 200) 不要手动再起第二份。
+- 根治方向(未做, 已问用户): 让**只有一个启动者**(给保活或 agent 侧去掉重复启动), 或程序启动时用
+  `SO_EXCLUSIVEADDRUSE`/锁文件独占 ⇒ 第二份 bind 失败即自行退出。
 
 ## 端点（唯一路由, 无需参数/鉴权）
 
