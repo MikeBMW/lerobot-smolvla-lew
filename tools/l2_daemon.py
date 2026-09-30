@@ -888,6 +888,18 @@ def run_stages(sk, spec, chan, pts):
             return "阶段 %d 拒绝: %s" % (i, pl["err"])
         plans.append(pl)
         c = pl["pos"]
+        # 🌍 环境校验(2026-09-30 老倪: 「在任何一次运动中, 学习你的环境, 理解安全边界」):
+        #    每段目标都过一遍 env_model 的**已验证包络**; 默认只记日志(零行为变化),
+        #    设 ZMAX_ENV_GUARD=1 时越界即拒发。模型由 tools/env_model.py + 每 10 分钟 cron 持续学习。
+        try:
+            import env_model
+            env_ok, env_msg = env_model.check_target(pl["pos"])
+        except Exception as _e:                                                  # noqa: BLE001
+            env_ok, env_msg = True, "环境模型不可用(%s)" % str(_e)[:50]
+        log("🌍 环境校验 阶段 %d/%d: %s" % (i, n, env_msg))
+        if not env_ok and os.environ.get("ZMAX_ENV_GUARD") == "1":
+            log("🛡 阶段 %d/%d 拒绝: %s (ZMAX_ENV_GUARD=1)" % (i, n, env_msg))
+            return "阶段 %d 拒绝: %s" % (i, env_msg)
         log("阶段 %d/%d「%s」点=%s pos=(%.4f, %.4f, %.4f) · 预计Δ=(%+.1f, %+.1f, %+.1f)mm %s · 直线 %.0fmm · speed %s · 等待上限 %.0fs"
             % (i, n, st.get("note", ""), pl["name"], pl["pos"][0], pl["pos"][1], pl["pos"][2],
                pl["dx"], pl["dy"], pl["dz"], pl["dir"], pl["lin"], pl["speed"],
@@ -1119,6 +1131,17 @@ def dispatch(reg, spec, chan):
         _dir = _dir_label(dx, dy, dz)
         log("目标 %s: pos=(%.4f, %.4f, %.4f) · Δ=(%+.1f, %+.1f, %+.1f)mm %s · 位姿来源 %s"
             % (sid, x, y, z, dx, dy, dz, _dir, _csrc))
+        # 🌍 环境校验(老倪 2026-09-30「在任何一次运动中, 学习你的环境, 理解安全边界」):
+        #    单步技能也在下发前过一遍 env_model 的已验证包络; 默认只记日志, ZMAX_ENV_GUARD=1 才拦。
+        try:
+            import env_model as _em
+            _eok, _emsg = _em.check_target([x, y, z])
+        except Exception as _e:                                                   # noqa: BLE001
+            _eok, _emsg = True, "环境模型不可用(%s)" % str(_e)[:50]
+        log("🌍 环境校验 %s: %s" % (sid, _emsg))
+        if not _eok and os.environ.get("ZMAX_ENV_GUARD") == "1":
+            log("🛡 %s 拒绝: %s (ZMAX_ENV_GUARD=1)" % (sid, _emsg))
+            return "目标出已验证包络: %s" % _emsg
         if _rot:                       # 旋转: 位置必须不动(Δ≈0), 只报姿态前后 —— 这条日志就是取证
             _dir = _rot["label"]
             log("🔄 %s: 当前位置不动, 姿态 quat [%.4f %.4f %.4f %.4f] → [%.4f %.4f %.4f %.4f]"

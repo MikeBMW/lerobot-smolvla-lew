@@ -248,6 +248,32 @@ def verify(target, frm=None, model=None):
     return ok, "\n".join(out)
 
 
+_CACHE = {"m": None, "t": 0.0}
+
+
+def check_target(pos, strict=False):
+    """给执行器用的**每段环境校验**：目标是否落在已验证包络内。
+
+    只读模型(按 mtime 缓存), 不改任何东西。strict=False ⇒ 调用方只记日志(零行为变化)。
+    """
+    try:
+        mt = os.path.getmtime(OUT)
+        if _CACHE["m"] is None or mt > _CACHE["t"]:
+            _CACHE["m"] = json.load(open(OUT, encoding="utf-8"))
+            _CACHE["t"] = mt
+        m = _CACHE["m"]
+    except Exception as e:                                                       # noqa: BLE001
+        return True, "环境模型不可用(%s) ⇒ 不拦" % str(e)[:60]
+    env = m["envelope"]
+    x, y, z = pos[0], pos[1], pos[2]
+    bad = ["%s=%.4f 越界[%.4f, %.4f]" % (a, v, env[a][0], env[a][1])
+           for a, v in (("x", x), ("y", y), ("z", z)) if not (env[a][0] <= v <= env[a][1])]
+    band = m["free_bands"]["按规矩转移高度_z"]
+    if bad:
+        return False, "⛔ 目标出已验证包络: %s" % "; ".join(bad)
+    return True, "✅ 包络内 z=%.4f (按规矩转移高度=%s)" % (z, band)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["build", "learn", "verify", "zones", "corridors", "rules"])
