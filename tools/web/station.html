@@ -296,8 +296,8 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
     <!-- ── 实时位姿 = 独立控件 (2026-10-01 老倪: 「将实时位姿，也做成一个独立的控件，将 x y z a b c
          横向一排，放在手动控制台的上面吧。宽度要对齐」) —— 随控制台那一栏的卡片宽度(宽度对齐 = 同栏同宽),
          不再用 fixed 悬浮(悬浮会被滚动内容压住/遮挡)。点一下复制全部数值。 -->
-    <div class="card" id="posehud" title="实时位姿 x y z (m) + a b c (°) · ROKAE SDK 直采 (endInRef, 与示教器同口径, 5Hz) · 点击复制全部数值">
-      <h2>🎯 实时位姿 <span class="dim">x y z (m) · a b c (°)</span></h2>
+    <div class="card" id="posehud" title="实时位姿 x y z (mm) + a b c (°) · ROKAE SDK 直采 (endInRef, 与示教器同口径, 5Hz) · 点击复制全部数值">
+      <h2>🎯 实时位姿 <span class="dim">x y z (mm) · a b c (°)</span></h2>
       <div class="posegrid">
         <span class="pv"><i class="k">X</i><b class="v" id="ph_x">—</b></span>
         <span class="pv"><i class="k">Y</i><b class="v" id="ph_y">—</b></span>
@@ -469,7 +469,10 @@ function poseHud(tp){
   const M=(id,v,bad)=>{const e=g(id); if(!e)return; e.textContent=v; e.className='v'+(bad?' bad':'');};
   const S=(id,v)=>{const e=g(id); if(e) e.textContent=v;};
   if(has){
-    ['ph_x','ph_y','ph_z'].forEach((id,i)=>M(id,fmt(tp.xyz[i],4),st));
+    /* ✅ 单位 mm (2026-10-01 老倪: 「我看机器人的状态监控，单位是 mm，而你是 m，你也要将单位改成 mm」)
+       SDK 真值单位是米 ⇒ ×1000 显示毫米; 保留 1 位小数 = 0.1mm, 与原先 m/4 位小数同分辨率(不虚报精度),
+       且比 "0.3966" 更短 ⇒ 6 值横排更松快。 */
+    ['ph_x','ph_y','ph_z'].forEach((id,i)=>M(id,fmt(tp.xyz[i]*1000,1),st));
     const ab=tp.abc_deg||[];
     ['ph_a','ph_b','ph_c'].forEach((id,i)=>M(id,
       (ab.length===3&&ab[i]!==null&&ab[i]!==undefined)?fmt(ab[i],3):'—', st));
@@ -485,7 +488,7 @@ function poseHud(tp){
 function poseCopy(){
   const g=id=>document.getElementById(id);
   const line=(ks,unit)=>ks.map(k=>k+' '+((g('ph_'+k)||{}).textContent||'—')).join('  ')+(unit||'');
-  const t=line(['X','Y','Z'],'  (m)')+'\n'+line(['A','B','C'],'  (°)')+'\n'+(((g('ph_age')||{}).textContent)||'');
+  const t=line(['X','Y','Z'],'  (mm)')+'\n'+line(['A','B','C'],'  (°)')+'\n'+(((g('ph_age')||{}).textContent)||'');
   const ta=document.createElement('textarea');
   ta.value=t; ta.style.position='fixed'; ta.style.top='-1000px';
   document.body.appendChild(ta); ta.select();
@@ -819,12 +822,15 @@ async function poll(){
       +' ('+(s.motion_armed?'服务侧已授权真动':'服务侧未授权=只能演练')+')';
     if(tp.xyz&&tp.xyz[0]!==null&&tp.xyz[0]!==undefined){
       /* 🅰️🅱️🅲 2026-09-30 老倪: 「我能看到机器人的位姿输出, 世界坐标系的 x y z a b c, 你的输出要跟这个值一样」
-         ⇒ 位姿按示教器/产线同口径显示 x y z (m) + a b c (度, SDK 原生 p6[3..5], endInRef)。 */
+         ⇒ 位姿按示教器/产线同口径显示 x y z + a b c (度, SDK 原生 p6[3..5], endInRef)。
+         2026-10-01 老倪: 「我看机器人的状态监控，单位是 mm，而你是 m，你也要将单位改成 mm」
+         ⇒ 显示单位统一 mm(×1000, 1 位小数) + abc 度; 真源文件本身仍是米, 只改显示, 不动数据口径。 */
       const _ab=tp.abc_deg||[];
       const _abRow=(_ab.length===3&&_ab[0]!==null&&_ab[0]!==undefined)
         ? '<br>A '+fmt(_ab[0],3)+'°   B '+fmt(_ab[1],3)+'°   C '+fmt(_ab[2],3)+'°'
         : '';
-      $('#tcp').innerHTML='X '+fmt(tp.xyz[0],4)+'   Y '+fmt(tp.xyz[1],4)+'   Z '+fmt(tp.xyz[2],4)+_abRow;
+      $('#tcp').innerHTML='X '+fmt(tp.xyz[0]*1000,1)+'   Y '+fmt(tp.xyz[1]*1000,1)+'   Z '+fmt(tp.xyz[2]*1000,1)
+        +' <span class="hint">mm</span>'+_abRow;
       $('#tcp').className='big'+(tp.stale?' bad':'');
     }else{$('#tcp').textContent='读不到位姿';$('#tcp').className='big bad';}
     /* ── 右上角 HUD (同一次轮询的数据, 不额外请求) ── */
@@ -834,7 +840,7 @@ async function poll(){
     const _qs=(tp.quat||[]).map(v=>fmt(v,3)).join(', ');
     $('#tcp2').innerHTML=(tp.stale
       ? '<span class="bad">⚠ 位姿源已静止 '+fmt(tp.file_age_s,1)+'s（ROKAE SDK 直采文件龄 >10s, 判定失效 —— 上面数字是最后一帧, 勿当实时位姿）</span>'
-      : '源 '+((tp.src||'')||'—')+' · 帧龄 '+fmt(tp.age_s,2)+'s · 口径 '+((tp.frame_id||'—'))+' xyz+abc')
+      : '源 '+((tp.src||'')||'—')+' · 帧龄 '+fmt(tp.age_s,2)+'s · 口径 '+((tp.frame_id||'—'))+' xyz(mm)+abc(°)')
       +' · abc=SDK 原生 p6[3:5]（与示教器同口径） · 四元数 '+(_qs||'—');
     $('#armstate').innerHTML=(s.motion_armed
       ? '服务侧 <span class="ok">已开 --ctl-motion</span>：授权后才真的动臂。'
