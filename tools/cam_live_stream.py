@@ -765,6 +765,37 @@ def _aoi_detect(port: int = 10082, wait_s: float = 2.5) -> dict:
     return out
 
 
+def _aoi_last_result(port: int = 10082) -> dict:
+    """🔎 读工控机 GET /last_result(最近一次检测的判决) —— **只读, 不拍照、不检测**。
+
+    2026-09-30 老倪: 「在请求检测按钮旁边, 增加 最后结果 按钮, 实现 /last_result 功能, 最终得有结果啊」
+      · 与 /api/aoi/detect 的区别: detect 要 POST 触发产线相机拍照; 这个只 GET 把结果取回来;
+      · 结果里带工控机那一帧的时间 t, 这里再算一个 age_s(帧龄) —— 页面必须显示"照片是什么时候拍的";
+      · 工控机说"尚无检测结果"(404) 时如实回报(不编判决), 并提示先点「请求检测」。
+    """
+    import json as _json
+    import urllib.request as _ur
+    out = {"ok": False, "port": int(port), "cmd": "GET /last_result", "fetched_at": time.time()}
+    try:
+        with _ur.urlopen("http://192.168.23.23:%d/last_result" % int(port), timeout=12) as r:
+            d = _json.loads(r.read().decode("utf-8", "ignore"))
+        out["ok"] = True
+        out["last_result"] = d
+        if isinstance(d.get("t"), (int, float)) and d.get("t"):
+            out["age_s"] = round(time.time() - float(d["t"]), 1)
+        out["msg"] = ("最近一次检测: 判决 %s · 缺陷 %s 处 · 耗时 %sms · 检测序号 %s"
+                      % (d.get("verdict"), d.get("count"), d.get("ms"), d.get("n")))
+    except Exception as e:                                                        # noqa: BLE001
+        _code = getattr(e, "code", None)
+        if _code == 404:
+            out["msg"] = "工控机还没有出过结果(HTTP 404 尚无检测结果) —— 先点「🔍 请求检测」, 等 2 秒再点这个"
+        elif _code:
+            out["msg"] = "工控机 /last_result 返回 HTTP %s" % _code
+        else:
+            out["msg"] = "连不上工控机 %s (10082 上的进程在跑吗?): %s" % ("192.168.23.23", str(e)[:120])
+    return out
+
+
 def _aoi_auto_status() -> dict:
     return {str(p): bool(_AOI_AUTO.get(p)) for p in (10082, 10083)}
 
@@ -2825,6 +2856,16 @@ class Handler(BaseHTTPRequestHandler):
             with _AOI_LOCK:
                 payload["aoi"] = {str(k): dict(v) for k, v in _AOI_INFO.items()}
             self._send(200, "application/json; charset=utf-8", _jbytes(payload))
+        elif p in ("/api/aoi/last_result", "/aoi/last_result"):
+            # 🧾 2026-09-30: 页面「最后结果」按钮 → 工控机 GET /last_result(只读)
+            _p = 10082
+            for _kv in (self.path.split("?", 1)[1] if "?" in self.path else "").split("&"):
+                if _kv.startswith("port="):
+                    try:
+                        _p = int(_kv.split("=", 1)[1])
+                    except ValueError:
+                        _p = 10082
+            self._send(200, "application/json; charset=utf-8", _jbytes(_aoi_last_result(_p)))
         elif p == "/aoi/status":
             with _AOI_LOCK:
                 d = {str(k): dict(v) for k, v in _AOI_INFO.items()}

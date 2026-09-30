@@ -113,12 +113,51 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       <div class="row" style="padding:4px 10px 2px">
         <button onclick="shot(10082)">📸 拍一帧</button>
         <button onclick="aoiDetect(10082)" style="font-weight:600">🔍 请求检测</button>
+        <button onclick="aoiLastResult(10082)" style="font-weight:600">🧾 最后结果</button>
+        <span id="aoi_lr_msg" style="margin-left:8px;font-size:12px;opacity:.85"></span>
         <span id="aoi_det_msg" style="margin-left:8px;font-size:12px;opacity:.85"></span>
         <script>
         /* 2026-09-28 老倪: 「增加一个请求按钮, 发出正常的检测命令, 工控机本地也可以保存图片」
            走本服务 POST /api/aoi/detect → 转发工控机产线正常命令 POST /capture_detect
            (相机拍照 + 后台 YOLO); 工控机自己把原图落盘(saved_incoming)。
            结果整段 JSON 打在下面 <pre> 里 —— 可选中复制, 不弹窗、不截断。 */
+        /* 2026-09-30 老倪: 「在请求检测按钮旁边, 增加 最后结果 按钮, 实现 /last_result 功能, 最终得有结果啊」
+           本服务 GET /api/aoi/last_result → 转发工控机 GET /last_result(只读: 不拍照、不检测)。
+           显示判决/缺陷数/耗时/检测序号 + **拍照时间与帧龄**(老倪硬要求) + 模型输入图/判据图链接 + 原始 JSON(可复制)。 */
+        async function aoiLastResult(port){
+          const m=document.getElementById('aoi_lr_msg'); m.textContent='⏳ 读取工控机 /last_result …';
+          try{
+            const t0=performance.now();
+            const r=await fetch(_u('/api/aoi/last_result?port='+port+'&t='+Date.now()));
+            const j=await r.json(), d=j.last_result||{};
+            document.getElementById('aoi_lr_box').style.display='block';
+            const ng=(d.verdict==='NG');
+            document.getElementById('aoi_lr_head').innerHTML=
+              (j.ok===true?(ng?'❌ <b style="color:#ff6b6b">NG · 有缺陷</b>':'✅ <b style="color:#3fb950">OK · 无缺陷</b>')
+                          :'⚠️ 没拿到判决')
+              +'<span style="font-size:13px;opacity:.85"> · 缺陷 '+((d.count===undefined)?'—':d.count)+' 处</span>';
+            document.getElementById('aoi_lr_meta').textContent=
+              '检测序号 '+((d.n===undefined)?'—':d.n)
+              +' · 拍照时间 '+((d.t)?new Date(d.t*1000).toLocaleTimeString():'—')
+              +((j.age_s===undefined)?'':(' · 帧龄 '+j.age_s+'s'))
+              +' · 耗时 '+((d.ms===undefined)?'—':d.ms)+'ms'
+              +' · 类型 '+((d.detect_type===undefined)?'—':d.detect_type)
+              +' · 本次读取 '+((performance.now()-t0)/1000).toFixed(1)+'s';
+            const _bn=function(s){ return s? String(s).split('\\').pop() : '—'; };
+            document.getElementById('aoi_lr_imgs').innerHTML=
+              '模型实际吃: <a href="'+_u('/aoi_modelin.png')+'" target="_blank" style="color:#7ee787">'+_bn(d.model_input)+'</a>'
+              +' &nbsp;·&nbsp; 判据图: <a href="'+_u('/snapshot/aoi_gold.jpg')+'" target="_blank" style="color:#7ee787">'+_bn(d.judge)+'</a>';
+            document.getElementById('aoi_lr_pre').textContent=JSON.stringify(j,null,1);
+            m.textContent=(j.ok===true?'✅ ':'❌ ')+(j.msg||'');
+          }catch(e){ m.textContent='❌ 读取失败: '+e; }
+        }
+        function aoiCopy(id,btn){
+          const el=document.getElementById(id); if(!el) return;
+          try{ navigator.clipboard.writeText(el.textContent).then(function(){
+                 const t=btn.textContent; btn.textContent='✅ 已复制';
+                 setTimeout(function(){ btn.textContent=t; },1200); }); }
+          catch(e){ btn.textContent='复制失败(请手动选中)'; }
+        }
         async function aoiDetect(port){
           const m=document.getElementById('aoi_det_msg'), o=document.getElementById('aoi_det_out');
           m.textContent='⏳ 已发出检测命令, 等判决…'; o.style.display='block'; o.textContent='';
@@ -135,6 +174,15 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
         <pre id="aoi_det_out" style="display:none;margin:4px 10px 8px;padding:8px;max-height:220px;overflow:auto;
              background:#0b1018;color:#cfe3ff;font-size:11px;line-height:1.45;border-radius:6px;
              white-space:pre-wrap;word-break:break-all;user-select:text"></pre>
+        <div id="aoi_lr_box" style="display:none;margin:4px 10px 8px;padding:8px;background:#0d1420;border:1px solid #21304a;border-radius:6px">
+          <div id="aoi_lr_head" style="font-size:16px"></div>
+          <div id="aoi_lr_meta" style="font-size:12px;opacity:.85;margin-top:3px"></div>
+          <div id="aoi_lr_imgs" style="font-size:12px;margin-top:3px"></div>
+          <button onclick="aoiCopy('aoi_lr_pre',this)" style="margin-top:6px;font-size:12px">📋 复制 JSON</button>
+          <pre id="aoi_lr_pre" style="margin:6px 0 0;padding:8px;max-height:240px;overflow:auto;
+               background:#0b1018;color:#cfe3ff;font-size:11px;line-height:1.45;border-radius:6px;
+               white-space:pre-wrap;word-break:break-all;user-select:text"></pre>
+        </div>
         <label class="arm" style="font-size:15px;color:#8b949e">
           <input type="checkbox" id="auto82" style="width:18px;height:18px" checked>
           <span>自动取景(没照片时现拍一张)</span></label></div></div>

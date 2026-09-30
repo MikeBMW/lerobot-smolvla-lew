@@ -752,7 +752,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.16.31")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.16.32")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11276,7 +11276,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.31 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.32 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11284,9 +11284,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.31 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.32 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.16.32: 8793 工位总览页新增「🧾 最后结果」按钮 = /last_result 功能(2026-09-30)  老倪: 「@app.route("/last_result") http://10.163.146.78:8793/station 在请求检测按钮旁边, 增加 最后结果 按钮, 实现 /last_result 功能, 最终得有结果啊」  - 服务端 tools/cam_live_stream.py 新增 _aoi_last_result(port): 只 GET 工控机 /last_result,   **不拍照、不检测**(与要 POST 触发相机的 /api/aoi/detect 分开, 这条只加在 do_GET);   返回带 fetched_at + age_s(帧龄); 工控机 404(尚无结果)时如实回报并提示先点「请求检测」。 - 路由: GET /api/aoi/last_result?port=10082 (8791/8793 两个端口都能用; 页面同源, 不跨网不跨域)。 - 页面 tools/web/station.html: 「🔍 请求检测」右边新增「🧾 最后结果」按钮 + 结果卡片:   判决(OK 绿 / NG 红) · 缺陷 N 处 · 检测序号 · **拍照时间 + 帧龄** · 耗时 ms · 检测类型 ·   模型实际吃的那张图(/aoi_modelin.png, 可点开) · 判据图(/snapshot/aoi_gold.jpg, 可点开) ·   原始 JSON(可选中复制 + 📋 复制按钮)。 - 页面是 mtime 热读, 改完刷新即生效; Python 路由需要重启 cam_live_stream(已重启并验过:   8791/stats 200 · 8793/station 200 · 两端口 API 200)。
         # v5.16.31: AOI v12: 把「模型到底吃哪张图」做成看得见、对得上(2026-09-30)  老倪: 「10082代码哪里调用 YOLO 模型, 我看看实际输入给模型的图片, 和 YOLO 模型的返回值」  代码位置(工控机 D:\xspace\ultralytics_AOI\):   · 模型实例: cam_finger_10082_work_v12.py 第 58 行 detector = YoloDetector()   · 调用点  : 第 807 行 result = detector.detect(topview_path, detect_type='gf')  (检测 worker 线程内)   · 影子对照: 第 832 行 detector.detect(shadow_path, ...) = 判据图压 960 再跑一遍(前 10 张)   · 输入图  : %TEMP%\zmax_main_960_No_<帧号>.png —— 同一帧原图经"模板法规整裁剪"派生出的 960x960(与 v6/v7 逐位同口径),               检测完即删; 判据图 Finger_TopView_W900_H332_*.png 是给人看的, 模型不吃它   · 返回值  : result = {'detections': [...], 'count': N, ...} -> 落进 /last_result  新增(可验证, 不是"看起来像"):   · GET /picture?kind=modelin  = 把**喂进 YOLO 的那份像素**无损 PNG 取回来(帧号/尺寸/md5 在响应头)   · GET /picture?kind=modelin&meta=1 = {n, hw, md5, src, fed_to, note}   · 4060 转发: http://10.163.146.78:8791/aoi_modelin.png (+ /aoi_modelin_meta)   · /last_result 增加 model_input / model_input_kind / model_input_md5 / shadow / verdict_shadow   · 同源硬证据: 取回图的像素 md5 == /last_result.model_input_md5 (实测 5d9b8458… 三方一致)  顺带修掉的不一致/隐患:   · /crop_info.model_input_file 还写着判据图(v8 遗留) ⇒ 改成真实的 960 临时图 + judge_file 单列; grab 不再覆盖成空   · 检测队列上限 3(挤压丢最旧) + 跳过"文件已不在"的项 + _sweep_temp 不清队列里在等的图   · 【送检】日志改成打印真实文件名+存在性(v11 那行用了未定义变量, 离线测试抓到)
         # v5.16.30: AOI v10 上线 + 反向通道事故收尾(2026-09-30)  起因(老倪): 「Finger_ModelIn_W960_H960_No_26549.png 工控机检测的这个就不要了; 模型用的是这个图片, 保留下面的图片 Finger_TopView_W900_H332_No_26549.png; 你确定一下模型使用的是不是 topview」  结论(实测): - 改前模型吃的**不是** topview: 是 Finger_ModelIn_W960_H960_*(960 方图, 即训练口径); TopView 只是看/存档。 - 现在(10082 上线 v10): **只落一张图** = Finger_TopView_W900_H332_*(判据图); Finger_ModelIn_* 不再产出,   历史文件按上限(0)自动清掉; 模型吃**同帧派生的 960x960 方图**(与 v6/v7 逐位同口径 ⇒ 召回不变),   写 %TEMP% 且检测完即删; /last_result 明写 model_input / model_input_kind / judge / topview, 一看就知道谁吃哪张。 - 影子对照片(判据图压 960x960 再喂一次)前 10 张自动跑, 两口径结果都进 /last_result, 判决取并集(不漏判)。  事故与根因(我的锅, 已修): 1) v8 试让模型**直接吃 900x332 判据图** ⇒ 工控机 app 里检测卡死(CPU 空转、几分钟不返回、incoming 不落图、    %TEMP% 堆 90+ 临时图); 同一张图换 venv 解释器单独跑 0.7s ⇒ 该口径在工控机运行环境里不可用, v9 改回派生 960。 2) 一条清理 %TEMP% 的命令在工控机上挂住 ⇒ 反向通道被堵死 20+ 分钟(agent 循环是"一问一答+串行+**无超时**",    watchdog/keepalive 只看进程在不在 ⇒ 不会自愈)。现场重启工控机恢复。    · keepalive rev6: 杀掉"挂在 zmax_cmd.ps1 上超过 10 分钟"的子进程(自愈, 已发布到 8794 静态目录)    · 今后经通道下发的命令一律用 Start-Job + Wait-Job -Timeout 包裹, 不给通道无界等待 3) v9 把临时图写在 GrabAndSaveImage 里 ⇒ "只看一眼"的 grab(页面 0.5s 一次)每次也写 2 张却没人删,    实测 9 分钟堆 2180 张。v10: 只有 save=True(真检测才入队)才写临时图 + 每次真检测先 _sweep_temp() 清残留。    实测: TEMP 残留 25 → 0, 判决 1611ms, 目录只剩判据图。 4) 部署器加固: http_get 保留 HTTP 状态码(原来走异常路径丢码 ⇒ 认不出"合法 404 尚无检测结果" ⇒ 首帧推理慢就    假失败并**误回滚**); 验收判据只看 --only 指定的那一路(另一路仅报状态, 10083 自己抽风不再误触发回滚)。  交付: cam_finger_10082_work_v10.py(v10) + test_v10_temp_leak.py(离线全绿, 含"grab 不写临时图"回归点)       + tools/aoi_remote_deploy.py(--only/合法404/判据口径) + zmax_keepalive.ps1 rev6
         # v5.16.29: v5.16.29 — 工控机金手指 topview 改成「判据图」口径(AOI 程序 v7) 老倪: 「工控机的金手指…点击请求检测后, 在工控机保存的 topview图片, 不是我在判据图的样子; 改成判据图的样子」 · 差在哪(实测): 工控机保存/送检的是 960x960 方图(1455x70 条带纵向拉 13.7 倍), 网页判据图是 900x332(原比例+纵向×2+反倾角+定尺) ⇒ 两张完全不同。 · 工控机程序 v7: 落盘/展示的 topview 改判据图口径(过曝带切除+只留金手指条+列裁死白列+短边×2+按实测倾角反旋+定尺900x332), 口径从 4060 侧 aoi_exposure_fix 逐条移植; 模型输入**逐位不变**(仍 960x960 送检, 另存 Finger_ModelIn_*), /last_result 同时报 topview(人看的) 与 model_input(模型吃的); /crop_info 出 judge 台账; 渲染失败自动回退并打警告。 · 现场证据: 工控机侧文件自检 saved_topview=900x332 ✅; 工控机 ?kind=crop(900x332) vs 网页判据图帧 → 灰度均值 188.1/188.1, r=0.9847(行剖面 0.9971) ✅; 离线对同源原图 r=0.9973 ✅; 模型输入仍是 960x960, 检测回执正常(count/verdict/ms) ✅。 · 顺带修好被卡死的反向通道(否则推不上去): ①hub 没托管 → 新增 zmax-agent-hub.service; ②队列在 /tmp 被 fs.protected_regular 拒写 → 运行态搬到 ~/zmax_data/agent_hub/; ③两端 token 不一致(工控机带 ZMAX_AOI_KeepAlive) → hub 支持多 token。实测通道恢复(回执 DESKTOP-NV6ATND / nt authority\system)。 · 交付件: docs/deliver/v7/ (程序+口径模块+离线测试+SHA256) · reports/aoi/topview_judge_v7_20260929.md · 新工具 tools/station_cmd.py(给工控机发一条命令并取回执)。
