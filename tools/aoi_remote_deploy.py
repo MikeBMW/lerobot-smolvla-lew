@@ -155,8 +155,15 @@ def verify(port, test_capture=True):
         ok &= chk("/last_result 判决通道", st == 200 or legal404,
                   ("200 " if st == 200 else "404-尚无(在等/推理慢) ") + body[:60].decode("utf-8", "replace"))
     n_before = _stable_total()          # 取基准: 等检测线程落盘稳定(见 _stable_total 注释)
-    st, img = http_get("http://%s:%d/picture?kind=origin&grab=1" % (ILO, port), timeout=60)
-    ok &= chk("grab=1 出图", st == 200 and len(img) > 10000, "%d 字节" % len(img))
+    st, img = 0, b""
+    for _try in range(5):      # 2026-09-30 踩坑: 服务刚重启/相机未热身时**首抓会返回错误体**(实测 46B)
+        st, img = http_get("http://%s:%d/picture?kind=origin&grab=1" % (ILO, port), timeout=60)
+        if st == 200 and len(img) > 10000:
+            break
+        log("      grab=1 第 %d 次没出图 (HTTP %s / %dB) → 4s 后重试" % (_try + 1, st, len(img)))
+        time.sleep(4)
+    ok &= chk("grab=1 出图", st == 200 and len(img) > 10000,
+              "%d 字节" % len(img) + ("" if len(img) > 10000 else "  错误体: " + img[:140].decode("utf-8", "replace")))
     n_after = files_total(port)
     ok &= chk("grab 不落盘(files_total 不增)", n_after is not None and n_before == n_after,
               "%s→%s" % (n_before, n_after))
@@ -211,6 +218,15 @@ def main():
         subprocess.run(["cp", "-f", src, dst], check=True)
         log("① 已发布 %s (%d B, %s…)" % (name, os.path.getsize(dst), sha256(dst)[:8]))
 
+    # ②备 备份现役 —— **必须在下载覆盖之前**(2026-09-30 踩坑: 原来备份放在下载之后 ⇒ .bak 记的是
+    #   刚上线的新文件 ⇒ ⑥ 回滚=把新文件盖回自己(空操作) ⇒ "自动回滚"这条安全网一直是假的,
+    #   而我会以为它兜住了。现在: 先备份、带时间戳(永不被后续覆盖)、回滚指定用这一份。
+    _BK = time.strftime("%Y%m%d_%H%M%S")
+    log("②备 备份现役(下载覆盖之前 · 标记 %s)" % _BK)
+    remote("cd D:\\xspace\\ultralytics_AOI; foreach($f in '%s','%s'){ if(Test-Path $f)"
+           "{ $t = $f + '.bak_%s'; Copy-Item $f $t -Force; \"backup $f -> $t\" } else { \"no such $f\" } }"
+           % (pair[0][2], pair[1][2], _BK), wait=60, label="backup")
+
     # ② 工控机下载 + SHA256 核对
     dl = ("cd D:\\xspace\\ultralytics_AOI; "
           "foreach($f in '%s','%s'){ iwr \"http://%s:%d/v6/$f\" -OutFile $f -UseBasicParsing -TimeoutSec 60 }; "
@@ -236,10 +252,7 @@ def main():
         log("--dry: 到此为止 (文件已就位, 服务未动)")
         return 0
 
-    # ③ 备份现役
-    log("③ 备份现役程序为 .bak")
-    remote("cd D:\\xspace\\ultralytics_AOI; foreach($f in '%s','%s'){ if(Test-Path $f){ Copy-Item $f ($f + '.bak') -Force; "
-           "\"backup $f\" } else { \"no such $f\" } }" % (FILENAME_10082, FILENAME_10083), wait=60, label="backup")
+    # ③ (已废弃) 备份不在这里做 —— 下载之前已备份, 见 ②备; 在下载之后备份等于备份新文件
 
     if a.no_restart:
         log("--no-restart: 文件已换, 服务未重启")
@@ -270,9 +283,10 @@ def main():
 
     # ⑥ 失败 → 回滚
     if not ok_all:
-        log("⑥ 验收失败 → 用 .bak 回滚")
-        remote("cd D:\\xspace\\ultralytics_AOI; foreach($f in '%s','%s'){ if(Test-Path ($f + '.bak')){ Copy-Item ($f + '.bak') $f -Force; "
-               "\"rolled back $f\" } }" % (FILENAME_10082, FILENAME_10083), wait=60, label="rollback")
+        log("⑥ 验收失败 → 回滚到本次部署前的备份 (.bak_%s)" % _BK)
+        remote("cd D:\\xspace\\ultralytics_AOI; foreach($f in '%s','%s'){ $t = $f + '.bak_%s'; "
+               "if(Test-Path $t){ Copy-Item $t $f -Force; \"rolled back $f <- $t\" } else { \"NO BACKUP(该文件本轮之前不存在) $f\" } }"
+               % (FILENAME_10082, FILENAME_10083, _BK), wait=60, label="rollback")
         log("   " + start_pair().strip().replace("\n", " / "))
         for port, _src, _name in pair:
             ok, detail = verify(port, test_capture=False)
