@@ -896,6 +896,8 @@ def run_stages(sk, spec, chan, pts):
         cur, csrc = [0.0, 0.0, 0.0], "none(非运动步, 无需位姿)"
     log("当前位姿(来源 %s): (%.4f, %.4f, %.4f)" % (csrc, cur[0], cur[1], cur[2]))
     plans, c = [], list(cur)
+    # 🧗 运动段计数(2026-10-01 碰撞事故: 多段"设计出来的转移"才校验爬升; 单击回点位不动)
+    _n_motion = sum(1 for _s in steps if _s.get("op") not in ("service", "gripper"))
     for i, st in enumerate(steps, 1):
         if st.get("op") == "service":
             # 服务步 (如里萨如力控搜索): 本机不下发运动, 由驱动自己动作 —— 计划阶段只做前置校验
@@ -928,6 +930,31 @@ def run_stages(sk, spec, chan, pts):
             env_ok, env_msg = env_model.check_target(pl["pos"])
         except Exception as _e:                                                  # noqa: BLE001
             env_ok, env_msg = True, "环境模型不可用(%s)" % str(_e)[:50]
+        # 🛡🛡 爬升闸(2026-10-01 碰撞事故, 见 docs/INCIDENT-20261001-traverse-height-collision.md)
+        #   事故实况: 多段转移把"高位横移"高度写成与起点无关的绝对量(目标点 z+180mm) ⇒ 臂从起点再抬 217mm
+        #   到 z=0.549 横移 194mm ⇒ 撞(日志里环境校验还写着"✅ 包络内")。现场规矩: 升高不要超过 10cm。
+        #   ⚠️ 环境包络校验**不能**替代本闸 —— 包络由历史运动数据拟合, 只代表"臂去过哪儿", 不代表"那儿没东西"。
+        #   只对**多段设计转移**(>=2 个运动段)硬拦; 单段直发(老倪日常单击回点位)只吼不拦 ⇒ 零行为变化。
+        if _n_motion >= 2 and pl.get("pos") and cur:
+            try:
+                _climb = (float(pl["pos"][2]) - float(cur[2])) * 1000.0
+                _lim = float(spec.get("climb_limit_mm", st.get("climb_limit_mm", 100.0)))
+                _allow = float(spec.get("allow_climb_mm", 0.0) or 0.0)
+                if _climb > max(_lim, _allow) + 1e-6:
+                    log("🛡🛡 阶段 %d/%d 拒发: 相对计划起点抬升 %.0fmm > 上限 %.0fmm 「现场规矩: 升高不要超过 10cm」"
+                        " —— 横移高度必须相对当前高度有界, 不能写成与起点无关的绝对量(如\"目标点z+180\")。"
+                        " 现场目视确认净空后, 请求带 allow_climb_mm=%.0f 才放行。" % (i, n, _climb, _lim, _climb))
+                    return "阶段 %d 拒发: 抬升 %.0fmm 超 %.0fmm 上限(需 allow_climb_mm 显式放行)" % (i, _climb, _lim)
+                log("🧗 阶段 %d/%d 抬升检查: 相对计划起点 %+.0fmm · 上限 %.0fmm ✅" % (i, n, _climb, _lim))
+            except Exception as _e:                                              # noqa: BLE001
+                log("🧗 阶段 %d/%d 抬升检查跳过(%s)" % (i, n, str(_e)[:40]))
+        elif pl.get("pos") and cur:
+            try:
+                _climb = (float(pl["pos"][2]) - float(cur[2])) * 1000.0
+                if _climb > 100.0:
+                    log("⚠️ 单段直发抬升 %.0fmm 超 10cm 规矩(未拦, 你日常单击回点位用; 若是设计出来的转移请改多段)" % _climb)
+            except Exception:                                                    # noqa: BLE001
+                pass
         log("🌍 环境校验 阶段 %d/%d: %s" % (i, n, env_msg))
         if not env_ok and os.environ.get("ZMAX_ENV_GUARD") == "1":
             log("🛡 阶段 %d/%d 拒绝: %s (ZMAX_ENV_GUARD=1)" % (i, n, env_msg))

@@ -31,7 +31,9 @@ def main() -> int:
     ap.add_argument("--no-climb", action="store_true",
                     help="省掉阶段1(当前已在高位时用) ⇒ 只 2 段: 高位平移到目标正上方 → 垂直下落。"
                          "2026-10-01 现场: 停在 0.583(比准备点高 214mm)要回撤 ⇒ 再抬 50mm 会到 0.633(逼近横梁/包络上限 0.6987)")
-    ap.add_argument("--traverse-dz", type=float, default=60.0, help="阶段2 目标点正上方的高度 mm")
+    ap.add_argument("--traverse-dz", type=float, default=50.0,
+                    help="阶段2 目标点正上方的高度 mm · 🛡 2026-10-01 碰撞教训: 必须相对目标点就近有界(默认 50), "
+                         "禁止 180 这类绝对量 —— 它会让臂从起点凭空再抬 200mm+ 顶到横梁风险区")
     ap.add_argument("--descent-guard-mm", type=float, default=100.0, help="阶段3 允许的下降量 mm")
     ap.add_argument("--z-floor-point", default=None,
                     help="技能级 z 硬红线的参考点(低于此点 z 一律拒发)。默认不设; 本用例应给**起点/准备点**而不是目标点 —— "
@@ -45,7 +47,7 @@ def main() -> int:
     if a.point not in pts:
         print("❌ 点位『%s』不在示教点库 —— 先录点" % a.point); return 2
     p = pts[a.point]["pos"]
-    print("点位 %s pos=(%.6f, %.6f, %.6f) ⇒ 段1 抬 %.0fmm · 段2 到 z=%.4f(点位+%.0f) · 段3 垂直下落 %.0fmm"
+    print("点位 %s pos=(%.6f, %.6f, %.6f) ⇒ 段1 抬 %.0fmm · 段2 到 z=%.4f(点位+%.0f, ⚠️≤100mm) · 段3 垂直下落 %.0fmm"
           % (a.point, p[0], p[1], p[2], a.climb, p[2] + a.traverse_dz / 1000.0, a.traverse_dz, a.traverse_dz))
 
     sk = {

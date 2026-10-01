@@ -848,39 +848,26 @@ async function poll(){
   try{
     if(!s) throw 0;
     const r=s.robot||{}, tp=s.tcp||{};
-    /* 🛠 执行器健康(老倪 2026-10-01: 「上电 on 报警 无」看着正常却不动 ⇒ 必须显示真正拦在哪) */
+    /* 🧭 一行动作状态(老倪 2026-10-01: 「你现在显示这些啥意思？太复杂，智能显示1行，简单明了」)
+       原来 #robot(上电/报警) + #robot2(急停/碰撞/帧龄) + 执行器 三处各写一长串, 其中 #robot 与 #robot2
+       都会打"⚠ 下面是旧值…" ⇒ 同一句话出现两遍。现在: 一行说清「能不能动 + 为什么」, 细节(帧龄秒数/
+       技能数/pid)一律不显示; 数据旧≠不能动, 但必须让人知道这行是旧的。 */
     try{
-      const ex=s.exec||{};
-      $('#execline').innerHTML=(ex.online
-        ? '<span class="ok">✅ 执行器在线</span> · '+(ex.skills!=null?ex.skills+' 个技能':'技能数未知')+' · pid '+ex.pid
-        : '<span class="bad">⛔ 执行器离线 —— 按钮点了不会动(回点/平动/夹爪/旋转全部发不出去)</span>'
-          +'<span class="hint"> · 保活 cron 每 5 分钟自动拉起; 急着用就让 Hermes 手动拉</span>');
+      const ex=s.exec||{}, _stale=(typeof r.age_s==='number'&&r.age_s>10);
+      const _ago=(r.age_s>=3600?Math.round(r.age_s/3600)+'小时':(r.age_s>=60?Math.round(r.age_s/60)+'分钟':Math.round(r.age_s||0)+'秒'));
+      let _L;
+      if(!ex.online)        _L='<span class="bad">🔴 不能动：执行器离线（按钮点了不会动）</span>';
+      else if(r.estop)      _L='<span class="bad">🔴 不能动：急停按下</span>';
+      else if(r.collision)  _L='<span class="bad">🔴 不能动：碰撞报警</span>';
+      else if(r.power&&r.power!=='on') _L='<span class="bad">🔴 不能动：未上电</span>';
+      else if(_stale)       _L='<span class="wa">🟡 能动 · 但状态数据旧（'+_ago+'前），仅供参考</span>';
+      else                  _L='<span class="ok">🟢 正常 · 上电 · 无报警 · 执行器在线</span>';
+      if(r.has_error) _L+='<span class="hint"> · 报警: '+(((r.controller_error_logs||[]).join(' | '))||r.error_code||'')+'</span>';
+      $('#robot').innerHTML=_L;
+      $('#robot2').innerHTML=''; $('#execline').innerHTML='';
     }catch(_e){}
-    $('#robot').innerHTML=(typeof r.age_s==='number'&&r.age_s>10
-      ? '<span class="bad">⚠ 下面是旧值('+fmt(r.age_s,1)+'s 前), 不代表现在: </span>':'')
-      + (r.operation&&r.operation!=='idle'
-        ?'<span class="wa">🔄 移动中 </span>':'')
-      +'上电 '+(r.power==='on'?'<span class="ok">on</span>':'<span class="bad">'+(r.power||'?')+'</span>')
-      +' · 运行 <span class="'+(r.operation==='idle'?'ok':'wa')+'">'+(r.operation||'?')+'</span>'
-      +' · 报警 '+(r.has_error?'<span class="bad">有 '+(r.error_code||'')+'</span>':'<span class="ok">无</span>');
-    const _ce=r.controller_error_logs||[];
-    if(r.has_error){
-      const _bridge=(!(_ce.length)&&(r.error_context||'')==='wait_until_idle');
-      $('#robot').innerHTML+='<div class="hint" style="margin-top:4px">'
-        +(_bridge
-          ? '⚠ 这是<b>我们桥自己记的超时标记</b>(等机械臂 30s 没回 idle), 控制器侧无报警; '
-            +'按现场规矩<b>不要重发同一条指令</b>, 手动点一下别的轴或重新上电即可清除。'
-          : '控制器报警详情: '+_ce.join(' | '))
-        +'<br>'+(r.error_reason||'')+'</div>';
-    }
     /* 🛡 诚实性(2026-09-30): 急停/碰撞 来自控制器状态源, 实测帧龄 33 小时 ⇒ **停更的"无急停"不能当
        "现在没有急停"**。超 10s 就把结论标失效, 明确写"勿据此判安全"(它正是「真动前三查」的依据)。 */
-    const _rStale=(typeof r.age_s==='number'&&r.age_s>10);
-    $('#robot2').innerHTML=(_rStale
-      ? '<span class="bad">⚠ 控制器状态源已静止 '+fmt(r.age_s,1)+'s ⇒ 下面「急停/碰撞」是最后一帧的旧值, 勿据它判安全(现场以示教器/急停按钮为准)</span>'
-        +' · 旧值: 急停 '+(r.estop?'<b>有</b>':'无')+' · 碰撞 '+(r.collision?'<b>有</b>':'无')
-      : '急停 '+(r.estop?'<b>有</b>':'无')+' · 碰撞 '+(r.collision?'<b>有</b>':'无')+' · 状态帧龄 '+fmt(r.age_s,2)+'s')
-      +' ('+(s.motion_armed?'服务侧已授权真动':'服务侧未授权=只能演练')+')';
     /* 🅰️🅱️🅲 位姿显示只有一处 = 上面「🎯 实时位姿」独立卡片 (单位 mm, abc 度, 带帧龄/stale 红框),
        与本次轮询同一份数据, 不额外请求。2026-10-01 老倪: 「授权真动 下面…显示重复了, 将下面的显示先删掉」
        ⇒ 原先控制台里那份 #tcp/#tcp2 已删; 那段 JS 也一起删 —— 元素没了还写它, null 会打断后面
