@@ -14571,9 +14571,12 @@ class SimulinkModule(QWidget):
         return "", "note"
 
     def _l5_lines_from_state(self, st: dict) -> list:
-        """状态 → 画布三行文案 (阶段进度/标注批次/训练阶段)"""
+        """状态 → 文案。⚠️ 2026-10-01 老倪: 「simulink画布 L5运行中, 这几个字, 太丑了,
+        在下面终端显示信息就可以了, 赶紧删掉」⇒ **画布上不再画任何 L5 文字**(一律返回 []),
+        同一份文案只在**内容变化时**写一次下面终端(1s 轮询不会刷屏)。
+        想恢复画布文字: 把 `return []` 换回原组装(源码在 git 历史里)。"""
         if not st:
-            return ["L5 闭环: 未启动 — 点 ▶运行 启动", "(自动标注 6 路 → L2/L3/L4 监督 → 训练)"]
+            return []
         done = st.get("stages_done") or []
         cur = st.get("stage") or "-"
         badge = {"running": "运行中", "done": "已完成", "failed": "失败",
@@ -14595,7 +14598,14 @@ class SimulinkModule(QWidget):
             v = (st.get("results") or {}).get(k)
             if v:
                 l3 = "%s: %s" % (k, "OK" if v.get("ok") else (v.get("reason") or "失败"))
-        return [str(l1)[:64], str(l2)[:64], str(l3 or r.get("reason") or "")[:64]]
+        _txt = " | ".join([x for x in (str(l1), str(l2), str(l3 or r.get("reason") or "")) if x])[:220]
+        try:
+            if _txt and _txt != getattr(self, "_l5_last_log", None):
+                self._l5_last_log = _txt
+                self._log("🧿 " + _txt)          # ← 只看下面终端 (内容变了才写一行)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return []                                # ← 画布节点上不再画这几行字
 
     # ── 🚩 L5 反馈常显通道 (2026-09-28 老倪第 3 次投诉「点击运行还是没反馈」) ──
     # 判据: 点 ▶运行 的**那一刻**就要看得见 (不依赖 2s 轮询); 三处同显, 全部非阻塞:
@@ -14623,7 +14633,28 @@ class SimulinkModule(QWidget):
             return None
 
     def _l5_banner_show(self, text, kind="note"):
-        """把 L5 状态铺到画布正上方大横幅 (高对比; 不吃鼠标事件, 不弹模态框 → 不阻塞)"""
+        """L5 状态**只写下面终端**, 画布上不再铺大字横幅。
+
+        ⚠️ 2026-10-01 老倪: 「simulink画布 L5运行中, 这几个字, 太丑了, 在下面终端显示信息就可以了,
+        赶紧删掉」⇒ 原实现是 viewport 上的 15pt 粗体 QLabel 大字(盖在图上面), 已改为只 _log()。
+        保留函数名与签名 ⇒ 调用点一处不用改; 要恢复横幅就还原这一段(源码在 git 历史里)。"""
+        try:
+            if not text:
+                return False
+            self._log("🎬 " + str(text))          # ← 下方终端
+            self._l5_banner_on = False
+            try:
+                _lab = getattr(self, "_l5_banner_lab", None)
+                if _lab is not None:
+                    _lab.hide()
+            except Exception:                                                   # noqa: BLE001
+                pass
+            return True
+        except Exception:                                                       # noqa: BLE001
+            return False
+
+    def _l5_banner_show_canvas_disabled(self, text, kind="note"):
+        """(旧实现, 已停用) 把 L5 状态铺到画布正上方大横幅"""
         try:
             if not text:
                 return False
