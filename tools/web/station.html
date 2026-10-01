@@ -40,8 +40,16 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12p
 .slotbar button.rec:hover:not(:disabled){background:#155a31}
 .slotbar button.norec{background:#161b22;border-color:#2a3038;color:#6e7681;opacity:.8}
 .slotbar button small{display:block;font-size:12px;font-weight:400;opacity:.9;margin-top:4px;white-space:nowrap}
-/* 🧭 空间1~7 用同一套 .slotbar 网格(与号位对齐), 只把标题染蓝以区分两排 */
-#p_spaces .ttl{color:#79c0ff}
+/* 🧭 空间1~7 (老倪 2026-10-01: 「改成跟号位1~7一样的样式, 包括按钮大小, 颜色用黄色背景, 排列整齐」)
+   —— 尺寸/内边距/字号与 .slotbar button 逐项一致(不是目测, 是同一组数值), 只换**黄色**配色。 */
+#p_spaces .ttl{color:#e3b341}
+#spacebar button{font-size:17px;font-weight:700;padding:12px 4px;line-height:1.3;text-align:center;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#spacebar button.rec{background:#d29922;border-color:#e3b341;color:#241c00}       /* 已记: 实心黄 */
+#spacebar button.rec:hover:not(:disabled){background:#e3b341}
+#spacebar button.norec{background:#2b2410;border-color:#6b5a1e;color:#d9b64a}     /* 未记: 暗黄(不是灰) */
+#spacebar button.norec:hover{background:#3a3016}
+#spacebar button small{display:block;font-size:12px;font-weight:400;opacity:.95;margin-top:4px;white-space:nowrap}
 .dim{color:#8b949e}
 .ok{color:#3fb950}.wa{color:#d29922}.bad{color:#f85149}
 /* ── 右侧控制台 ── */
@@ -1274,7 +1282,7 @@ async function loadSpaces(){
             ? ('空间'+s.no+' · 点位 '+s.point+' 已记录'+(s.pos?(' ('+s.pos.join(', ')+')'):'')
                +' · '+(s.at||'')+' · 独立空间点, 不下发动作(只显示/记录)')
             : ('未记录: 空间点库没有 '+s.point+' —— 在下面「📝 记住此点」里选 '+s.no+' 号, 把当前 TCP 真值记进去'))
-        +'">'+(s.no)+'<small>'+(s.recorded?'✅ 已记':'⛔ 未记')+'</small></button>').join('');
+        +'">空间'+(s.no)+'<small>'+(s.recorded?'✅ 已记':'⛔ 未记')+'</small></button>').join('');
       bar.querySelectorAll('button[data-space]').forEach(b=>{
         b.onclick=()=>{ const s=j.spaces.find(x=>x.no==b.dataset.space);
           $('#space_msg').textContent=(s&&s.recorded)
