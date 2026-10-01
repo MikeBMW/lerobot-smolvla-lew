@@ -30,7 +30,14 @@ import scene_overlay as SO   # noqa: E402
 ENV = os.path.expanduser("~/.hermes/.env")
 API = "https://api.deepseek.com/chat/completions"
 MODEL = os.environ.get("ZMAX_L5_VLM", "deepseek-v4-flash")   # 视觉档
-MAXTOK = 9000
+# 🔧 2026-10-01 (老倪: 「L5自主安全打开」+ 远程操作不动): 原来写死 9000 —— 实测**一张 64x64 灰图都要 122s**,
+#   真实 4 路拼图(960x754) 更是 >300s ⇒ 慢层每轮超时 ⇒ 落"降级裁决(不安全)" ⇒ 执行器 fail-closed 拒发
+#   ⇒ 现场现象就是"点了半天不动"。安全裁决只要一个小 JSON(≈150 token), 9000 纯属浪费 ⇒ 默认降到 500, 可用
+#   env ZMAX_L5_VLM_MAXTOK 覆盖。
+# 实测(2026-10-01): 500 太小 —— deepseek-v4-flash 是**推理型**, 500 token 会被 reasoning 吃光 ⇒
+# content 为空 ⇒ 慢层落降级裁决(不安全) ⇒ 拒发。2000 = 推理 + 小 JSON 都够, 实测 14~20s/轮
+# (9000 时 >600s 超时)。可用 env ZMAX_L5_VLM_MAXTOK 覆盖。
+MAXTOK = int(os.environ.get("ZMAX_L5_VLM_MAXTOK", "2000"))
 
 
 def key() -> str:

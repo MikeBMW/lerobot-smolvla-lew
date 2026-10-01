@@ -137,7 +137,10 @@ def main() -> int:
         img, alpha, info = gsplat.rasterization(
             params["means"], params["quats"], params["scales"], torch.sigmoid(params["opacities"]),
             col, viewmats=vm, Ks=K, width=W, height=H, sh_degree=(a.sh_degree if sh_flag else None),
-            packed=True, near_plane=0.01, backgrounds=torch.ones(1, 3, device=dev))
+            # 🔧 2026-10-01: 不传 backgrounds —— gsplat 要求 (B,H,W,C), 传错会
+            #   "assert backgrounds.shape == image_dims + (channels,)"。不传=按 alpha 在黑底合成,
+            #   是 3DGS 标准做法(训练用 L1+alpha 合成, 不受底色影响)。
+            packed=True, near_plane=0.01)
         return img[0].permute(2, 0, 1).clamp(0, 1), info
 
     @torch.no_grad()

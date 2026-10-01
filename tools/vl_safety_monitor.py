@@ -43,6 +43,13 @@ IMGDIR = Path(os.path.expanduser("~/zmax_data/vl_safety"))
 LOG = Path(os.path.expanduser("~/zmax_data/vl_safety_log.jsonl"))
 CAMS = [("arm", "臂上相机(随工具)"), ("local", "笔记本相机(全局)"),
         ("local2", "MAXHUB顶视"), ("depth", "深度图(伪彩,近=亮)")]
+# 🔧 2026-10-01 (老倪「L5自主安全打开」+「点了不动」根因): 可缺席视角在长时间无帧时**从拼图剔除**。
+#   实测: MAXHUB 顶摄物理不在位(/dev/video4 不存在) ⇒ 快照接口仍返回**冻结的旧帧** ⇒ 拼图里每轮
+#   都有一格 141s 陈旧画面 ⇒ 慢层每轮判 "顶视相机丢帧 ⇒ 不安全" ⇒ 所有动作 fail-closed 拒发。
+#   关键视角(arm/local)不剔除 —— 它们缺了本来就该拒发, 仍放进拼图让模型看见并如实说。
+STALE_S = float(os.environ.get("ZMAX_VL_CAM_STALE_S", "30"))
+REQUIRED_CAMS = {"arm", "local"}
+OPTIONAL_CAMS = {"local2", "depth"}
 FRESH_S = 600.0          # 裁决保鲜: 超过这个秒数视为过期 ⇒ 拒发
 TILE = (480, 360)
 
@@ -94,6 +101,7 @@ def build_mosaic(frames: dict) -> tuple[np.ndarray, dict]:
     ages = {}
     st = _stats()
     tiles = []
+    absent = []
     for name, lab in CAMS:
         b = frames.get(name)
         im = cv2.imdecode(np.frombuffer(b, np.uint8), cv2.IMREAD_COLOR) if b else None
@@ -108,25 +116,34 @@ def build_mosaic(frames: dict) -> tuple[np.ndarray, dict]:
         fr = (st.get("frames") or st).get(name) or {}            # /stats 帧条目是顶层键
         a = fr.get("age_s") if isinstance(fr.get("age_s"), (int, float)) else fr.get("src_ts_age_s")
         ages[name] = round(float(a), 2) if isinstance(a, (int, float)) else None
+        if name in OPTIONAL_CAMS and (frames.get(name) is None
+                                      or (ages[name] is not None and ages[name] > STALE_S)):
+            absent.append(name)          # 可缺席视角无帧/过期 ⇒ 剔除并如实记录(不参与判定)
+            continue
         if ages[name] is not None:
             cv2.putText(im, "%.1fs" % ages[name], (TILE[0] - 78, 19), cv2.FONT_HERSHEY_SIMPLEX,
                         0.5, (0, 220, 255), 1)
         tiles.append(im)
     rows = [np.hstack(tiles[i:i + 2]) for i in (0, 2)]
+    _W = max(r.shape[1] for r in rows)          # 剔了格子后各行宽度可能不等 ⇒ 补黑边再竖拼
+    rows = [np.pad(r, ((0, 0), (0, _W - r.shape[1]), (0, 0))) for r in rows]
     body = np.vstack(rows)
     hdr = np.zeros((34, body.shape[1], 3), np.uint8)
-    cv2.putText(hdr, "Z-MAX VL SAFETY  " + time.strftime("%F %T") + "  TCP z=0.1104m",
-                (8, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 255, 255), 2)
-    return np.vstack([hdr, body]), ages
+    _cap = "Z-MAX VL SAFETY  " + time.strftime("%F %T") + "  TCP z=0.1104m"
+    if absent:                                   # 画面自带状态: 哪几路缺席, 不靠人猜(老倪: 画面自身要标状态)
+        _cap += "   [缺席: " + ",".join(absent) + "]"
+    cv2.putText(hdr, _cap, (8, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 255, 255), 2)
+    return np.vstack([hdr, body]), ages, absent
 
 
 def run_once(feishu=False, save_img=True) -> dict:
     t0 = time.time()
     frames = {n: _grab(n) for n, _ in CAMS}
-    mosaic, ages = build_mosaic(frames)
+    mosaic, ages, absent = build_mosaic(frames)
     ok, enc = cv2.imencode(".jpg", mosaic, [int(cv2.IMWRITE_JPEG_QUALITY), 86])
     h, w = mosaic.shape[:2]
     rec = {"ts": time.time(), "ts_str": time.strftime("%F %T"), "frames_age_s": ages,
+           "views_absent": absent,          # 🔧 缺席视角如实记录(执行器/页面可读, 不伪造"都正常")
            "mosaic_wh": [w, h], "model": None, "latency_s": None}
     # 🎯 本次待执行动作(执行层排队时写入): 让 VL 只判"这一个动作", 而不是泛泛判画面
     #    没有意图时退回泛判(安全侧不变, 只是判得粗)。

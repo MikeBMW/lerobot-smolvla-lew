@@ -1599,7 +1599,10 @@ def _ctl_move(req: dict) -> dict:
     #   口径: 页面档位 8/60/200/500 + 可自己填数字; 上限定 1000(相对量, 线性实测 ≈0.0999mm/s 每单位,
     #   即 speed=1000 ≈ 100mm/s) —— 真正的物理上限由控制器自己的关节限速兜, 这里只挡住"填错量级"。
     #   实测基线: speed=60 → 腕部 10° 花 ~10s (~1°/s), 所以想快 5 倍就用 300。
-    want_real = bool(req.get("arm")) and bool(_CTL["motion"])
+    # 🔐 2026-10-01 修正(老倪: 「手机远程解除授权不好用」): 原来这里读 _CTL["motion"] —— 那个标志只在
+    #   启动时按 --ctl-motion 设一次, **撤销后不会变** ⇒ 撤销只写进授权对象(执行器 epoch 会拦住),
+    #   页面与这里的判断却永远显示"已授权"。现在统一改读**真源** _auth_info()["armed"](窗口内 且 未撤销)。
+    want_real = bool(req.get("arm")) and bool(_auth_info().get("armed"))
     if want_real and not _auth_info()["armed"]:
         # 🔐 现场安全: 真动必须由人显式授权(且授权未过期)。拒绝时**明确告诉怎么授权**, 不给含糊的失败。
         _win = float(_CTL_AUTH["window"]) / 60.0
@@ -1826,7 +1829,7 @@ def _ctl_status() -> dict:
     now = time.time()
     _d_dead, _d_dead_s = _depth_src_dead()
     return {
-        "motion_armed": bool(_CTL["motion"]),
+        "motion_armed": bool(_auth_info().get("armed")),   # 🔐 真源(窗口内且未撤销), 不再用启动时的静态标志
         "robot": _robot_status(st, now),
         # 🦾 位姿真值: 走 SDK 直采文件 (老的 tcp_pose.json 是死数据, 已不读)
         "tcp": _rokae_pose(),
@@ -3424,6 +3427,42 @@ class Handler(BaseHTTPRequestHandler):
                         if on else "🔒 已撤销授权: 现在点方向键只算目标, 机械臂不会动"})
         elif p in ("/ctl/move", "/api/ctl/move"):
             out = _ctl_move(body if isinstance(body, dict) else {})
+        elif p in ("/ctl/gs_map", "/api/ctl/gs_map"):
+            # 🧭 3DGS 建图 (老倪 2026-10-01): GET=状态 / POST 一次=启动后台自动跑点建图(空间1→7)。
+            #   跑点走既有授权+收口链; 采集/训练在 tools/gs_map_run.py; 状态文件让页面轮询。
+            import glob as _g
+            stf = os.path.expanduser("~/zmax_data/gs_map/status.json")
+            if self.command == "POST":
+                try:
+                    _b = json.loads((self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}").decode("utf-8"))
+                except Exception:                                                     # noqa: BLE001
+                    _b = {}
+                if (_b.get("action") or "start") == "status":
+                    pass                                    # 取状态 ⇒ 落到下面统一返回
+                else:
+                    _log = os.path.expanduser("~/zmax_data/gs_map/run.log")
+                    os.makedirs(os.path.dirname(_log), exist_ok=True)
+                    subprocess.Popen(["bash", "-lc",
+                                      "cd %s && nohup /home/ubuntu/gs-venv/bin/python tools/gs_map_run.py >> %s 2>&1 &"
+                                      % (_REPO_ROOT, _log)],
+                                     start_new_session=True)
+                    return self._send(200, "application/json", json.dumps(
+                        {"ok": True, "msg": "已启动后台自动跑点建图(空间1→7) —— 进度见本卡片", "log": _log}, ensure_ascii=False))
+            try:
+                _st = json.load(open(stf, encoding="utf-8"))
+            except Exception:                                                         # noqa: BLE001
+                _st = {"running": False, "status_line": "还没有跑过建图", "step": "idle"}
+            if _g.glob(os.path.expanduser("~/zmax_data/gs_assets/*/renders/holdout_00.png")):
+                _st["image_url"] = "/gs_render.png?t=__T__"
+            return self._send(200, "application/json", json.dumps(_st, ensure_ascii=False))
+        elif p == "/gs_render.png":
+            import glob as _g
+            _rend = sorted(_g.glob(os.path.expanduser("~/zmax_data/gs_assets/*/renders/holdout_00.png")))
+            if not _rend:
+                return self._send(404, "text/plain", "no render yet")
+            with open(_rend[-1], "rb") as _f:
+                _d = _f.read()
+            return self._send(200, "image/png", _d, {"Cache-Control": "no-store"})
         elif p in ("/ctl/record_point", "/api/ctl/record_point"):
             # 📝 把当前 TCP 真值记成号位示教点(零运动, 不需要真动授权; 只允许 slot1~slot7)。
             #    2026-09-30 老倪: 「4 5 6 号位, 你能自己实现记录么？」 ⇒ 现场点动到位后一键记住。
