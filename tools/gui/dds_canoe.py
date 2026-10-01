@@ -104,6 +104,18 @@ def _rel(t0, t):
         return "—"
 
 
+def _f3(v):
+    """纯数值格式化 — **不能**用 _num(): 那个把负值当"缺测"返回 '—',
+    会吃掉 -0.233 这种完全正常的坐标/tcp_path 数值。
+
+    🆕 2026-10-01: 实测 live.json 里 ss_plan.tcp_path[1] = -0.2334 被显示成 '—' ⇒ 加这个。
+    """
+    try:
+        return ("%.3f" % float(v)).rstrip("0").rstrip(".")
+    except Exception:                                                           # noqa: BLE001
+        return str(v)
+
+
 class BarDelegate(QStyledItemDelegate):
     """CANoe 的 Bar 列: 实心蓝条 = 实测值 / 设计值, 0 或无量纲不画。"""
 
@@ -453,7 +465,7 @@ class BusView(QWidget):
         self.btn_dt = self._sm_btn("Δt", "Time 列切「与同话题上一帧的时间差」(CANoe Δt)",
                                    self._toggle_dt, checkable=True)
         self.ed_search = QLineEdit()
-        self.ed_search.setPlaceholderText("🔍 过滤 (话题名 / 类型, 支持子串)")
+        self.ed_search.setPlaceholderText("🔎 搜索话题 (如 ss_plan) → 命中帧置顶并高亮")
         self.ed_search.setFont(QFont(MONO, 9))
         self.ed_search.setFixedWidth(320)
         self.ed_search.setStyleSheet(f"QLineEdit {{ background:{C_BG}; color:{C_WHITE};"
@@ -465,10 +477,13 @@ class BusView(QWidget):
         head.addWidget(self._sm_btn("🗑 清屏", "只清 Trace 视图, 不动 trace.jsonl 原始记录", self._clear_trace))
         head.addWidget(self._sm_btn("📤 导出 CSV", "导出当前 Trace 表(Excel 可开)", self.export_trace))
 
-        self.tb = QTableWidget(0, 9)
+        self.tb = QTableWidget(0, 10)
         self.tb.setHorizontalHeaderLabels(
-            ["Time", "Name", "Object Type", "Classification", "Probability [%]", "Sender Name",
-             "Sender Id", "Tracking Id", "Group"])
+            # 🆕 2026-10-01 老倪: 「trace里得实时显示数值啊…不是静态的变量, 是动态的数据, 给我高亮显示出来」
+            #   ⇒ 第 2 列「实时值」= live.json 里该话题的 fields 压成一行, 值变了变绿(动态), 没变灰;
+            #   「搜索之后就在 trace 窗口里置顶」⇒ 命中关键词的话题帧永远排在最上面 + 整行高亮。
+            ["Time", "实时值 · 边跑边变", "Name", "Object Type", "Classification", "Probability [%]",
+             "Sender Name", "Sender Id", "Tracking Id", "Group"])
         self.tb.setStyleSheet(
             f"QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:none; gridline-color:#21262d;"
             f" font-family:{MONO}; font-size:10pt; }}"
@@ -482,8 +497,10 @@ class BusView(QWidget):
         self.tb.setShowGrid(True)
         self.tb.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         th = self.tb.horizontalHeader()
-        for i, w in ((0, 160), (2, 180), (3, 160), (4, 140), (5, 260), (6, 170), (7, 140), (8, 120)):
+        for i, w in ((0, 120), (1, 430), (2, 210), (3, 150), (4, 120), (5, 110),
+                     (6, 200), (7, 150), (8, 110), (9, 100)):
             th.setSectionResizeMode(i, QHeaderView.Interactive)  # 🐛 同上(卡死根因)
+            self.tb.setColumnWidth(i, w)
             self.tb.setColumnWidth(i, w)
         th.setSectionResizeMode(1, QHeaderView.Stretch)
         self.tb.itemClicked.connect(self._on_trace_click)
@@ -860,6 +877,57 @@ class BusView(QWidget):
         except Exception:                                                        # noqa: BLE001
             return None
 
+    @staticmethod
+    def _digest_vals(dg):
+        """trace 帧 digest → 「键=数值」一行 (回退用)。
+
+        为什么不能 json.loads: trace.jsonl 里的 digest 是**截断**存的(~200 字),
+        直接 loads 会抛; 而且 -1.0 在本仓 = 该字段缺测, 不该占视觉名额。
+        """
+        import re as _re
+        s = str(dg or "")
+        if not s:
+            return ""
+        out = []
+        for k, v in _re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"\s*:\s*(-?\d+\.?\d*(?:[eE][-+]?\d+)?)', s):
+            try:
+                f = float(v)
+            except Exception:                                                   # noqa: BLE001
+                continue
+            if f == -1.0:                                    # -1 = 缺测(本仓约定)
+                continue
+            out.append("%s=%s" % (k, _f3(f)))
+            if len(out) >= 4:
+                break
+        if out:
+            return " · ".join(out)
+        return "全缺测(-1)" if ":" in s else ""
+
+    def _live_vals(self, lt):
+        """live.json 的 fields → 一行可读**实时值**。
+
+        🆕 2026-10-01 老倪: 「trace里得实时显示数值啊…不是静态的变量, 是动态的数据」。
+        长序列(如 tcp_path 330 个数)压成「首3 …(N)」; 缺测(-1)照原样显示, 绝不装成 0。
+        """
+        f = (lt or {}).get("fields") or {}
+        if not isinstance(f, dict) or not f:
+            return ""
+        out = []
+        for k in ("goal_xyz", "tcp_pose6", "end_xyzabc", "tcp_path", "joints_path", "start_joints",
+                  "xyz", "pose", "action", "state", "end_err_mm", "n_points", "plan_code",
+                  "gate_same_source", "hz", "count", "latency_ms", "frame_age_s"):
+            if k not in f or len(out) >= 3:
+                continue
+            v = f.get(k)
+            if isinstance(v, (list, tuple)):
+                hd = " ".join(_f3(x) for x in v[:3])          # ⚠️ 不能用 _num: 它把负值当缺测
+                out.append("%s=[%s%s]" % (k, hd, (" …(%d)" % len(v)) if len(v) > 3 else ""))
+            elif isinstance(v, float):
+                out.append("%s=%s" % (k, _f3(v)))
+            elif isinstance(v, (int, str, bool)):
+                out.append("%s=%s" % (k, v))
+        return " · ".join(out)[:150]
+
     def _fill_trace(self, force=False):
         sig = self._trace_sig()
         if not force and sig == getattr(self, "_trace_sig_last", None):
@@ -882,10 +950,14 @@ class BusView(QWidget):
         for r in rows:
             prev_t[r.get("topic")] = r.get("t")
         rows = rows[::-1]                                    # 最新在顶
-        if self._filter:
-            f = self._filter
-            rows = [r for r in rows if f in str(r.get("topic", "")).lower()
-                    or f in str(r.get("type", "")).lower()]
+        # 📌 2026-10-01 老倪: 「搜索之后, 就在 trace 窗口里置顶」⇒ 命中关键词的话题**整段提到最上面**
+        #   (不再隐藏其它帧 —— 置顶即可, 其它帧还在下面, 不丢信息)
+        _pin = (self._filter or "").strip().lower()
+        if _pin:
+            _hit = [r for r in rows if _pin in str(r.get("topic", "")).lower()
+                    or _pin in str(r.get("type", "")).lower()]
+            if _hit:                                          # 有命中才重排(没命中就别乱动)
+                rows = _hit + [r for r in rows if r not in _hit]
         topics = self._topics()
         self.tb.setUpdatesEnabled(False)
         self.tb.setRowCount(min(len(rows), 150))
@@ -903,8 +975,13 @@ class BusView(QWidget):
             else:
                 tt = _rel(self._t0, t)
             score = live_t.get("score")
+            _vkey = "%s|%s" % (topic, str(rec.get("n", "")))
+            vals = self._live_vals(live_t) or self._digest_vals(rec.get("digest"))
+            _prev = (getattr(self, "_lv_last", {}) or {}).get(topic)
+            _changed = bool(vals) and vals != _prev and vals != "—"
             cells = [
                 tt,
+                vals if vals else "—",
                 topic,
                 str(rec.get("type", "—")),
                 str(live_t.get("verdict", "—")),
@@ -918,22 +995,35 @@ class BusView(QWidget):
                 str(rec.get("n", "—")),
                 str(live_t.get("qos") or "—"),
             ]
+            _hitrow = bool(_pin) and (_pin in topic.lower() or _pin in str(rec.get("type", "")).lower())
             for c, txt in enumerate(cells):
                 item = QTableWidgetItem(str(txt))
-                item.setFont(QFont(MONO if c in (0, 1, 5, 7) else UI, 10))
+                item.setFont(QFont(MONO if c in (0, 1, 3, 7, 9) else UI, 10))
                 if c == 0:
                     item.setForeground(QColor(C_BLUE))
-                elif c == 1:
+                elif c == 1:                                           # 🆕 实时值列
+                    item.setForeground(QColor(C_GREEN if _changed else C_GRAY))
+                    item.setToolTip("实时值(来自 live.json fields)\n"
+                                    + ("本次刷新有变化 ⇒ 动态数据" if _changed else "与上一帧相同"))
+                elif c == 2:
                     item.setToolTip(topic)
-                elif c == 4:
+                elif c == 5:
                     try:
                         v = float(score) * 100
                         item.setForeground(QColor(C_GREEN if v >= 99 else C_YELLOW if v > 0 else C_GRAY))
                     except Exception:                                        # noqa: BLE001
                         pass
-                if r % 2:                                              # 质检: 整行变灰让半张表"褪色" ⇒ 改浅底斑马纹
+                if _hitrow:                                            # 📌 置顶命中: 整行高亮
+                    item.setBackground(QColor("#1b2c1e") if c == 1 else QColor("#16202b"))
+                    if c == 1:
+                        item.setForeground(QColor("#7ee787"))
+                elif r % 2:                                            # 质检: 斑马纹
                     item.setBackground(QColor("#12171e"))
                 self.tb.setItem(r, c, item)
+            if _vkey:
+                lv = getattr(self, "_lv_last", None) or {}
+                lv[topic] = vals
+                self._lv_last = lv
         self.tb.setUpdatesEnabled(True)
 
     def _fill_loop(self):
@@ -992,7 +1082,7 @@ class BusView(QWidget):
         self._fill_detail()
 
     def _on_trace_click(self, it):
-        top = self.tb.item(it.row(), 1)
+        top = self.tb.item(it.row(), 2)
         if top is not None:
             self._sel_kind, self._sel_obj = "topic", top.text()
             self._fill_detail()
