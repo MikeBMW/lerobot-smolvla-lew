@@ -1272,6 +1272,39 @@ async function recSpace(){
   }catch(e){ m.textContent='⛔ 请求失败: '+e; }
   b.disabled=false;
 }
+let SPACE_BUSY=false, SPACE_OVER=0;
+/* 🖱 老倪 2026-10-01: 「我要开始运动了, 停下来时我会点击未记的空间点按钮, 这时你要记录,
+   记好了就变成已记状态」 —— 点**未记**按钮 = 记录当前 TCP 真值(零运动, 连采 6 帧判静止);
+   点**已记**按钮 = 8 秒内再点一次确认覆盖(与号位同一口径, 防手滑改掉在用的点)。 */
+async function clickSpace(n){
+  if(SPACE_BUSY){ $('#space_msg').textContent='⏳ 上一次记录还在进行, 等它完'; return; }
+  const bar=$('#spacebar'), m=$('#space_msg');
+  const btn=bar.querySelector('button[data-space="'+n+'"]');
+  const rec=((bar.dataset.sig)||'').charAt(n-1)==='1';
+  if(rec && Date.now()-SPACE_OVER>8000){
+    SPACE_OVER=Date.now();
+    m.innerHTML='⚠️ <b>空间'+n+' 已有记录</b> —— 覆盖会改掉已用的空间点; 8 秒内再点一次确认覆盖';
+    return;
+  }
+  SPACE_OVER=0; SPACE_BUSY=true;
+  const old=btn?btn.innerHTML:'';
+  if(btn){ btn.disabled=true; btn.innerHTML='⏳<small>记录中…</small>'; }
+  m.textContent='⏳ 连采 6 帧判静止(约 4~15s, 臂必须停稳) —— 正在记录 空间'+n+'…';
+  try{
+    const j=await post('/ctl/record_point',{name:'space'+n,note:'页面点未记空间点即记录(8793)'},45000);
+    if(j.ok){
+      m.innerHTML='✅ <b>空间'+n+' 已记录</b> · pos=('+j.pos.map(x=>Number(x).toFixed(4)).join(', ')+')'
+        +' · '+j.n_samples+' 帧 · 极差 '+(Number(j.spread_pos_m)*1e6).toFixed(1)+'µm'
+        +(j.overwrote?' · <b>已覆盖旧值</b>':'');
+      bar.dataset.sig='';                       // 强制重建 ⇒ 该按钮立刻变黄「已记」
+      await loadSpaces();
+    }else{
+      m.innerHTML='⛔ 空间'+n+' 记录失败: '+(j.msg||'未知');
+      if(btn){ btn.disabled=false; btn.innerHTML=old; }
+    }
+  }catch(e){ m.innerHTML='⛔ 请求失败: '+e; if(btn){ btn.disabled=false; btn.innerHTML=old; } }
+  SPACE_BUSY=false;
+}
 async function loadSpaces(){
   try{
     const j=await getj('/ctl/points?t='+Date.now(),8000);
@@ -1283,21 +1316,19 @@ async function loadSpaces(){
       bar.innerHTML=j.spaces.map(s=>
         '<button data-space="'+s.no+'" class="'+(s.recorded?'rec':'norec')+'"'
         +' title="'+(s.recorded
-            ? ('空间'+s.no+' · 点位 '+s.point+' 已记录'+(s.pos?(' ('+s.pos.join(', ')+')'):'')
-               +' · '+(s.at||'')+' · 独立空间点, 不下发动作(只显示/记录)')
-            : ('未记录: 空间点库没有 '+s.point+' —— 在下面「📝 记住此点」里选 '+s.no+' 号, 把当前 TCP 真值记进去'))
+            ? ('空间'+s.no+' 已记录'+(s.pos?(' ('+s.pos.join(', ')+')'):'')
+               +' · '+(s.at||'')+' · 再点一次(8 秒内)可确认覆盖')
+            : ('未记录 —— **点这个按钮就把当前 TCP 真值记成 空间'+s.no+'**(零运动, 连采 6 帧判静止; 臂停稳再点)'))
         +'">空间'+(s.no)+'<small>'+(s.recorded?'✅ 已记':'⛔ 未记')+'</small></button>').join('');
       bar.querySelectorAll('button[data-space]').forEach(b=>{
-        b.onclick=()=>{ const s=j.spaces.find(x=>x.no==b.dataset.space);
-          $('#space_msg').textContent=(s&&s.recorded)
-            ? ('空间'+b.dataset.space+' · pos=('+(s.pos||[]).map(v=>Number(v).toFixed(4)).join(', ')+') · '+(s.at||''))
-            : ('空间'+b.dataset.space+' 还没有记录'); };
+        b.onclick=()=>clickSpace(parseInt(b.dataset.space,10));   // 🖱 点未记=记录; 点已记=两击确认覆盖
       });
     }
     $('#m_spaces').textContent='已记 '+j.green_spaces+'/'+j.n_spaces+' · 判据 空间点库(独立)';
     $('#n_spaces').innerHTML='<b style="color:#7ee787">绿</b> = 已记录 · <b style="color:#8b949e">灰</b> = 未记录。'
       +'与上面 1~7 号位<b>互不影响</b>, 存 <span style="font-family:ui-monospace">'+j.space_points_file+'</span>。'
-      +'点位只做显示/记录, 不触发任何动作。';
+      +'<b>点灰色按钮 = 记录当前位置</b>(记完自动变黄「已记」); 点黄色按钮 = 8 秒内再点一次确认覆盖。'
+      +'记录是零运动(只读 TCP 真值 + 落盘), 不触发任何动作, 也不需要真动授权。';
   }catch(e){}
 }
 loadSpaces(); setInterval(loadSpaces,10000);
