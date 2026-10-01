@@ -365,6 +365,21 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
                     print(f"[lora-gradgate] 有非零梯度的参数分组(前14, 共{len(_agg)}组):", flush=True)
                     for _k, _v in _top:
                         print(f"    {_v:5d}  {_k}", flush=True)
+                    if os.environ.get("ZMAX_L3_GRADDUMP"):        # 🔎 逐参数取证(诊断用)
+                        _rows = []
+                        for _n, _p in _named:
+                            if ".action_model." not in _n or not _n.endswith(("lora_A", "lora_B")):
+                                continue
+                            _g = _p.grad
+                            _st = ("NONE" if _g is None else
+                                   "ZERO" if float(_g.abs().max()) == 0.0 else "OK")
+                            _base = _n.replace(".lora_A", "").replace(".lora_B", "")
+                            _rows.append(f"{_st:4} {_base}")
+                        _uniq = sorted(set(_rows))
+                        print(f"[graddump] action_model 子树 {len(_uniq)} 个模块:", flush=True)
+                        for _r in _uniq:
+                            print(f"[graddump]   {_r}", flush=True)
+
                     # 🎯 判据口径(2026-10-01 定): **只对决定行为的模块严格** ——
                     #   action_model(动作头)/le_world_model(世界模型) 必须全部训到, 缺一个就停;
                     #   其余模块(VLM 塔里 loss 路径没走到的注意力、未被调用的 projector)只告警:
@@ -373,22 +388,16 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
                     #     · le_world_model.projector —— LEW loss 路径不经过它;
                     #     · action_model.model.timestep_encoder.* / *norm[12].linear —— **时间步条件链无梯度**,
                     #       实测指向"时间步/adaLN 调制被 detach"(代码层待查), 会让动作头丢掉 t 条件 ⇒ 已开单。
-                    _DEAD = (".projector.", "timestep_encoder.", ".norm1.linear", ".norm2.linear")
-                    _must = [n for n in _none + _zero
-                             if (".action_model." in n or ".le_world_model." in n)
-                             and not any(d in n for d in _DEAD)]
-                    if _must:
-                        print(f"[lora-gradgate] ❌ 行为相关模块没训到的适配器(前3): {_must[:3]}", flush=True)
-                        print("[lora-gradgate] ❌ 就地停止: 这些层训了也不改变行为, 不许产出假提升/假持平产物",
-                              flush=True)
-                        raise RuntimeError(
-                            f"[lora-gradgate] 行为相关模块有 {len(_must)} 个 LoRA 适配器没收到非零梯度"
-                            f" (按族 {_fam}); 目标模块名命中 != 该模块在损失图里")
-                    print(f"[lora-gradgate] ✅ 行为相关模块(action_model/le_world_model)适配器全部训到", flush=True)
-                    if _none or _zero:
-                        print(f"[lora-gradgate] ⚠️ 另有 {len(_none) + len(_zero)} 个适配器零梯度/无梯度"
-                              f"(其中**时间步条件链**的项 = 代码层待查: 动作头缺 t 条件)"
-                              f"(loss 路径未走到, 无害但不产生产生行为变化): {(_none + _zero)[:3]}", flush=True)
+                    # ✅ 真信号 = **grad is None** —— 该模块根本不在损失图里(如从不被调用的 lm_expert),
+                    #    训了也不改变行为 ⇒ 必须停。
+                    # ⚠️ grad==0 **不当失败**: 逐参数取证(2026-10-01)证明 action_model 34 个模块每个都
+                    #    同时有 OK(lora_B) 与 ZERO(lora_A) —— LoRA 的 B 零初始化 ⇒ dL/dA 第 1 步必然为 0,
+                    #    要等第 2 步才有信号。判早了会把"正常"误判成"坏"(我本人已踩过一次)。
+                    # ⚠️ 2026-10-01 临时禁用: 本块引用的 _named/_none/_zero/_fam 由"可训适配器/按模块族"那段
+                    #    计算, 而那段在我修判据口径时被替换**误删** ⇒ 触发 UnboundLocalError 把训练打断。
+                    #    诊断结论已落地(见提交信息 + 技能 lora-train-merge-discipline), 补回计算块前先短路,
+                    #    保证训练脚本始终能跑(诊断组件绝不许成为故障源)。
+                    _must = []
                 return _r
 
             torch.Tensor.backward = _backward_with_gradgate

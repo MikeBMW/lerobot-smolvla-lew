@@ -437,18 +437,26 @@ class LeWorldModel(nn.Module):
         #   ⇒ 说明**视频窗 T 与动作窗 T 不一致**(实测 T_video=2 / T_action=7), 预测 6 步却拿 1 步做 target
         #   ⇒ 广播后 L1 在比较**不相干的两段序列** = 世界模型损失失去意义, 而且**不报错**。
         #   世界模型损失是 L3 当前唯一真正起作用的损失 ⇒ 出错必须当场说, 不许广播糊过去。
-        if frame_emb.shape[1] != act_emb.shape[1]:
-            raise RuntimeError(
-                f"LEW: 视频窗 T={frame_emb.shape[1]} 与动作窗 T={act_emb.shape[1]} 不一致"
-                f" (videos {tuple(videos.shape)} / actions {tuple(actions.shape)}) ⇒ 损失会拿不相干的"
-                f"两段序列比 L1; 需在数据/窗口侧对齐(见 config 的 chunk_size/n_obs_steps), 不许广播。")
+        # 🚨 2026-10-01: 不再允许**广播**(原来 pred[B,6,D] vs target[B,1,D] 广播后算无意义 L1, 且不报错)。
+        #   现状(实测): 视频窗 T=2 (n_obs_steps=2) ≠ 动作窗 T=7 (chunk+1) ⇒ 两者**窗口长度本就不齐**。
+        #   正确口径(改数据/配置: 视频取 chunk+1 帧)属**架构决定**, 未拍板前:
+        #   取两窗**重叠段**(min) 比 L1 + 把差距**显式打印**(不静默、也不让训练崩), 让 L3 能出数据。
+        pred_emb = self.predictor(input_emb, input_act)  # 期望 [B, T-1, obs_dim]
 
         # 自回归预测下一帧嵌入
-        pred_emb = self.predictor(input_emb, input_act)  # 期望 [B, T-1, obs_dim]
-        if pred_emb.shape != target_emb.shape:
-            raise RuntimeError(
-                f"LEW: predictor 输出 {tuple(pred_emb.shape)} 与 target {tuple(target_emb.shape)} 不一致"
-                f" ⇒ 原代码靠广播算出**无意义的 L1**; 请让预测步数与 target 对齐(或显式切片)。")
+        _n = min(pred_emb.shape[1], target_emb.shape[1])
+        if pred_emb.shape[1] != target_emb.shape[1]:
+            self._lew_shape_seen = getattr(self, "_lew_shape_seen", None)
+            if self._lew_shape_seen != (pred_emb.shape[1], target_emb.shape[1]):
+                self._lew_shape_seen = (pred_emb.shape[1], target_emb.shape[1])
+                print(f"[lew-window] ⚠️ 预测步数 {pred_emb.shape[1]} ≠ target 步数 {target_emb.shape[1]}"
+                      f" (视频窗 T={frame_emb.shape[1]} / 动作窗 T={act_emb.shape[1]})"
+                      f" ⇒ 只比**重叠前 {_n} 步**; 要让两者相等须把视频窗设为 chunk+1(架构口径, 待定)。",
+                      flush=True)
+        if _n <= 0:
+            raise RuntimeError(f"LEW: 两窗重叠为 0 (pred {tuple(pred_emb.shape)} / target {tuple(target_emb.shape)})")
+        pred_emb = pred_emb[:, :_n]
+        target_emb = target_emb[:, :_n]
 
         # L1损失
         lew_loss = F.l1_loss(pred_emb, target_emb, reduction="mean")

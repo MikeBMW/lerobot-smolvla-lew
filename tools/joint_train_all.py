@@ -152,7 +152,7 @@ def build_stages(a) -> list:
                        "ZMAX_LORA_TARGETS": ",".join(l3_targets),
                        # lm_expert: smolvla_lew 的 forward **一次都不调用**它(实测无梯度=完全不在损失图里),
                        #   挂上去只会白占 2.78M 参数并制造"注入 256 层"的假象 ⇒ 明确排除。
-                       "ZMAX_LORA_EXCLUDE": "vision_model,lm_expert",
+                       "ZMAX_LORA_EXCLUDE": "vision_model,lm_expert,projector",
                        "ZMAX_LORA_OUT": os.path.join(mroot, "lora_l3_init.pt")})
     post3 = []
     pre3 = [{"cmd": gen3, "cwd": ROOT, "env": l3_env,
