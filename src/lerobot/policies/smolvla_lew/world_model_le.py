@@ -432,9 +432,24 @@ class LeWorldModel(nn.Module):
         target_emb = frame_emb[:, 1:, :]   # [B, T-1, obs_dim]
         input_act = act_emb[:, :-1, :]      # [B, T-1, obs_dim]
         
+        # 🚨 2026-10-01 (老倪「按建议来」): 这里原来**直接 L1 且允许广播** ✗
+        #   实测被 torch 警告: pred [4,1,192] vs target ... 反过来 pred [B,6,192] vs target [B,1,192]
+        #   ⇒ 说明**视频窗 T 与动作窗 T 不一致**(实测 T_video=2 / T_action=7), 预测 6 步却拿 1 步做 target
+        #   ⇒ 广播后 L1 在比较**不相干的两段序列** = 世界模型损失失去意义, 而且**不报错**。
+        #   世界模型损失是 L3 当前唯一真正起作用的损失 ⇒ 出错必须当场说, 不许广播糊过去。
+        if frame_emb.shape[1] != act_emb.shape[1]:
+            raise RuntimeError(
+                f"LEW: 视频窗 T={frame_emb.shape[1]} 与动作窗 T={act_emb.shape[1]} 不一致"
+                f" (videos {tuple(videos.shape)} / actions {tuple(actions.shape)}) ⇒ 损失会拿不相干的"
+                f"两段序列比 L1; 需在数据/窗口侧对齐(见 config 的 chunk_size/n_obs_steps), 不许广播。")
+
         # 自回归预测下一帧嵌入
-        pred_emb = self.predictor(input_emb, input_act)  # [B, T-1, obs_dim]
-        
+        pred_emb = self.predictor(input_emb, input_act)  # 期望 [B, T-1, obs_dim]
+        if pred_emb.shape != target_emb.shape:
+            raise RuntimeError(
+                f"LEW: predictor 输出 {tuple(pred_emb.shape)} 与 target {tuple(target_emb.shape)} 不一致"
+                f" ⇒ 原代码靠广播算出**无意义的 L1**; 请让预测步数与 target 对齐(或显式切片)。")
+
         # L1损失
         lew_loss = F.l1_loss(pred_emb, target_emb, reduction="mean")
         
