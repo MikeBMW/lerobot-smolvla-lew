@@ -1653,15 +1653,7 @@ def _ctl_status() -> dict:
     _d_dead, _d_dead_s = _depth_src_dead()
     return {
         "motion_armed": bool(_CTL["motion"]),
-        "robot": {
-            "ok": bool(st.get("success")),
-            "power": st.get("power_state", ""), "operation": st.get("operation_state", ""),
-            "has_error": st.get("has_error"), "error_code": st.get("error_code", ""),
-            "error_reason": st.get("error_reason", ""), "error_context": st.get("error_context", ""),
-            "controller_error_logs": st.get("controller_error_logs") or [],
-            "estop": st.get("estop_detected"), "collision": st.get("collision_detected"),
-            "age_s": _age(st.get("t")),
-        },
+        "robot": _robot_status(st, now),
         # 🦾 位姿真值: 走 SDK 直采文件 (老的 tcp_pose.json 是死数据, 已不读)
         "tcp": _rokae_pose(),
         "motion": _motion_state(),
@@ -1717,6 +1709,61 @@ def _exec_health() -> dict:
          "log_age_s": (_age(os.path.getmtime(_L2_LOG)) if os.path.exists(_L2_LOG) else -1.0)}
     _EXEC_CACHE.update({"t": now, "v": v})
     return v
+
+
+def _robot_status(st: dict, now: float) -> dict:
+    """三查(上电/运行/报警) —— 优先走**直连活路**, 话题缓存只兜底。
+
+    2026-10-01 老倪: 「我在现场，怎么还是43小时的数据，赶快更新啊」。
+    根因: 页面三查只读 Orin 的 /robot_status 话题缓存 (robot_status.json), 而该发布者 09-29 起不再
+    通告端点 ⇒ 文件停在 09-29 13:46。而直连采样器 (rokae_tcp_sampler → 192.168.23.160, 5Hz)
+    一直新鲜 ⇒ 上电/运行取 SDK 原生, 报警取**控制器日志**(带时间戳的真值, 不推测"无碰撞")。
+    报警 id: 13013 = 急停触发 · 13036/30400 = 检测到碰撞/关节力矩超限触发安全停止。
+    """
+    ds, dst = {}, 0.0
+    try:
+        _p = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/state.json")
+        if os.path.exists(_p):
+            ds = _read_json(_p, {}) or {}
+            dst = float(ds.get("ts") or 0.0)
+    except Exception:                                                 # noqa: BLE001
+        ds, dst = {}, 0.0
+    if dst > 0 and (now - dst) < 30.0:                                # 直连新鲜 ⇒ 以它为准
+        al = ds.get("last_alarm") or {}
+        al_age = None
+        try:
+            if al.get("ts"):
+                al_age = now - time.mktime(time.strptime(str(al["ts"]), "%Y-%m-%d %H:%M:%S"))
+        except Exception:                                             # noqa: BLE001
+            al_age = None
+        just = (al_age is not None and 0 <= al_age < 180)             # 3 分钟内的报警才算"当前"
+        aid = int(al.get("id") or 0)
+        return {
+            "ok": True, "src": "rokae_direct(192.168.23.160 · SDK 直读)",
+            "power": ds.get("power") or "", "operation": ds.get("op") or "",
+            "mode": ds.get("mode") or "",
+            "has_error": bool(just), "error_code": (str(aid) if just else ""),
+            "error_reason": (al.get("content") or "" if just else ""),
+            "error_context": ("controller_log" if just else ""),
+            "controller_error_logs": ([al.get("content") or ""] if just else []),
+            "estop": bool(just and aid == 13013),                     # 急停触发
+            "collision": bool(just and aid in (13036, 30400)),        # 碰撞/安全停止
+            "last_alarm": al or None, "last_alarm_age_s": al_age,     # 页面可展示"最近报警"(历史, 不当当前)
+            "last_collision": ds.get("last_collision") or None,       # 上一次碰撞(安全停止) —— 老倪: 记住每一次碰撞
+            "last_estop": ds.get("last_estop") or None,
+            "recent": ds.get("recent") or [],
+            "age_s": now - dst,
+        }
+    return {                                                          # 兜底: 旧话题缓存(会标旧值)
+        "ok": bool(st.get("success")), "src": "topic_cache(09-29 起停更)",
+        "power": st.get("power_state", ""), "operation": st.get("operation_state", ""),
+        "has_error": st.get("has_error"), "error_code": st.get("error_code", ""),
+        "error_reason": st.get("error_reason", ""), "error_context": st.get("error_context", ""),
+        "controller_error_logs": st.get("controller_error_logs") or [],
+        "estop": st.get("estop_detected"), "collision": st.get("collision_detected"),
+        "last_alarm": None, "last_alarm_age_s": None,
+        "age_s": _age(st.get("t")),
+    }
 
 
 def _aoi_note_init() -> None:

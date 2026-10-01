@@ -853,16 +853,25 @@ async function poll(){
        都会打"⚠ 下面是旧值…" ⇒ 同一句话出现两遍。现在: 一行说清「能不能动 + 为什么」, 细节(帧龄秒数/
        技能数/pid)一律不显示; 数据旧≠不能动, 但必须让人知道这行是旧的。 */
     try{
-      const ex=s.exec||{}, _stale=(typeof r.age_s==='number'&&r.age_s>10);
+      /* 直连源 2s 一帧 ⇒ 超 30s 才叫旧(原 10s 是按已死的话题缓存定的) */
+      const ex=s.exec||{}, _stale=(typeof r.age_s==='number'&&r.age_s>30);
       const _ago=(r.age_s>=3600?Math.round(r.age_s/3600)+'小时':(r.age_s>=60?Math.round(r.age_s/60)+'分钟':Math.round(r.age_s||0)+'秒'));
       let _L;
       if(!ex.online)        _L='<span class="bad">🔴 不能动：执行器离线（按钮点了不会动）</span>';
       else if(r.estop)      _L='<span class="bad">🔴 不能动：急停按下</span>';
       else if(r.collision)  _L='<span class="bad">🔴 不能动：碰撞报警</span>';
       else if(r.power&&r.power!=='on') _L='<span class="bad">🔴 不能动：未上电</span>';
-      else if(_stale)       _L='<span class="wa">🟡 能动 · 但状态数据旧（'+_ago+'前），仅供参考</span>';
-      else                  _L='<span class="ok">🟢 正常 · 上电 · 无报警 · 执行器在线</span>';
+      else if(_stale)       _L='<span class="wa">🟡 状态源旧（'+_ago+'前）· 不能确认现场状态</span>';
+      else                  _L='<span class="ok">🟢 正常 · 上电 · 无新报警 · 执行器在线</span>';
       if(r.has_error) _L+='<span class="hint"> · 报警: '+(((r.controller_error_logs||[]).join(' | '))||r.error_code||'')+'</span>';
+      /* 📟 历史(不当当前): 控制器日志真值 —— 老倪要"记住每一次碰撞"(什么时候/撞的哪里) */
+      if(r.last_collision&&r.last_collision.ts){
+        const _c=r.last_collision, _t=String(_c.ts).slice(11,16);
+        const _j=(String(_c.content).match(/关节\[\s*(\d+)/)||[])[1];
+        _L+='<span class="hint"> · 上次碰撞 '+_t+(_j?(' 关节'+_j):'')+'（安全停止, 日志#'+_c.id+'）</span>';
+      }else if(r.last_alarm&&r.last_alarm.content){
+        _L+='<span class="hint"> · 最近报警 '+String(r.last_alarm.ts||'').slice(11,16)+' '+String(r.last_alarm.content).slice(0,18)+'</span>';
+      }
       $('#robot').innerHTML=_L;
       $('#robot2').innerHTML=''; $('#execline').innerHTML='';
     }catch(_e){}
