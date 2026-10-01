@@ -1643,6 +1643,98 @@ def _rokae_pose() -> dict:
     }
 
 
+COLLISION_LEDGER = os.path.expanduser("~/zmax_data/collision_points.json")
+
+
+def _collisions(limit: int = 80) -> list:
+    """🔴 碰撞点台账 (2026-10-01 老倪: 「增加技能, 记录所有碰撞点…显示在右上角实时位姿下面, 紧挨着,
+    红色字体, 小窗口, 高度与实时位姿一样, 可以拖动显示所有碰撞点, 最上面显示最新的」)。
+
+    数据源: 控制器报警日志缓存 `state.json.recent`(rokae_tcp_sampler 1Hz 采, 原生 #30400/#13036)
+            + 撞后**立刻**采到的 TCP 位姿真值(SDK 直采)。
+    口径(不编): 只有「撞后 90s 内」首次看到该条目才采位姿 —— 碰撞会触发柔顺停止, 臂停住 ⇒ 那时的位姿≈碰撞点;
+    更早的历史条目采不到位姿 ⇒ 如实记 "位姿未采到", 不拿现在的位姿冒充过去。
+    #13036(RSC)与 #30400(力矩超限)常是同一次碰撞的两行 ⇒ 5s 内配对, 只留一行。
+    """
+    import re
+    led = []
+    try:
+        if os.path.exists(COLLISION_LEDGER):
+            led = json.load(open(COLLISION_LEDGER, encoding="utf-8")) or []
+    except Exception:
+        led = []
+    have = {x.get("ts") for x in led}
+    stj = _read_json(os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/state.json"), {}) or {}
+    now = time.time()
+    new = []
+    for r in (stj.get("recent") or []):
+        try:
+            rid = int(r.get("id"))
+        except Exception:
+            continue
+        ts = str(r.get("ts") or "")
+        if not ts or ts in have or rid not in (30400, 13036):
+            continue
+        new.append((ts, rid, str(r.get("content") or "")))
+    # #13036 若 5s 内有 #30400 ⇒ 同一次碰撞, 丢掉 RSC 那行
+    keep = []
+    for ts, rid, content in new:
+        if rid == 13036:
+            try:
+                t0 = time.mktime(time.strptime(ts, "%Y-%m-%d %H:%M:%S"))
+            except Exception:
+                t0 = 0
+            _pool = [(t1, r1) for t1, r1, _ in new if r1 == 30400] + \
+                    [(str(x.get("ts")), int(x.get("code") or 0)) for x in led if int(x.get("code") or 0) == 30400]
+            if any(abs(t0 - time.mktime(time.strptime(t1, "%Y-%m-%d %H:%M:%S"))) <= 5
+                   for t1, r1 in _pool):
+                continue
+        keep.append((ts, rid, content))
+    for ts, rid, content in keep:
+        joint = ""
+        m = re.search(r"关节\[(\d+)\s*\]", content) or re.search(r"(\d)\s*轴关节传动力矩", content)
+        if m:
+            joint = "J" + m.group(1)
+        tor = lim = None
+        m = re.search(r"测量值为\s*([\d.]+)\s*Nm.*?限定力矩\s*([\d.]+)\s*Nm", content)
+        if m:
+            tor, lim = float(m.group(1)), float(m.group(2))
+        pose, note = {}, ""
+        try:
+            tstamp = time.mktime(time.strptime(ts, "%Y-%m-%d %H:%M:%S"))
+        except Exception:
+            tstamp = 0
+        if tstamp and (now - tstamp) <= 90:
+            pj = _read_json(ROKAE_TCP_JSON, {}) or {}
+            if pj.get("x") is not None and (now - float(pj.get("ts") or 0)) <= 10:
+                pose = {k: round(float(pj[k]), 5) for k in ("x", "y", "z", "rx", "ry", "rz")
+                        if pj.get(k) is not None}
+        if not pose:
+            note = "位姿未采到(撞后>90s才看到该条目)"
+        led.append({"ts": ts, "code": rid, "joint": joint, "torque": tor, "limit": lim,
+                    "content": content[:180], "pose": pose, "pose_note": note})
+        have.add(ts)
+    if new:
+        try:
+            led = sorted(led, key=lambda x: str(x.get("ts") or ""), reverse=True)
+            tmp = COLLISION_LEDGER + ".tmp"
+            json.dump(led, open(tmp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            os.replace(tmp, COLLISION_LEDGER)
+        except Exception:
+            pass
+    led = sorted(led, key=lambda x: str(x.get("ts") or ""), reverse=True)
+    # 读时去重(幂等): #13036 与前后的 #30400 是同一次碰撞 ⇒ 只留 #30400 那行(带力矩数值)
+    def _sec(x):
+        try:
+            return time.mktime(time.strptime(str(x.get("ts")), "%Y-%m-%d %H:%M:%S"))
+        except Exception:
+            return 0.0
+    _t304 = [_sec(x) for x in led if int(x.get("code") or 0) == 30400]
+    led = [x for x in led
+           if not (int(x.get("code") or 0) == 13036 and any(abs(_sec(x) - t) <= 5 for t in _t304))]
+    return led[:limit]
+
+
 def _ctl_status() -> dict:
     """页面 1.5s 轮询用的一把抓状态: 三查 + TCP 位姿 + 最近运动 + 各路源心跳。"""
     st = _read_json(ROBOT_STATUS_JSON, {}) or {}
@@ -1665,6 +1757,7 @@ def _ctl_status() -> dict:
         "server_time": now,
         "labels": dict(_CAM_LABEL),
         "exec": _exec_health(),      # 🛠 执行器在不在(页面显示; 离线时按钮点了不动)
+        "collisions": _collisions(),  # 🔴 碰撞点台账(右上角实时位姿下面那张红字卡片)
     }
 
 

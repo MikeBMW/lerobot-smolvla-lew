@@ -99,6 +99,23 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
 #posehud.stale{border-color:#f85149;box-shadow:inset 0 0 0 1px #f85149}
 #posehud.copied{border-color:#3fb950}
 #posehud .dim{color:#8b949e;font-size:11px;font-weight:400}
+/* ── 碰撞点台账 (2026-10-01 老倪: 「记录所有碰撞点…显示在实时位姿下面紧挨着, 红色字体, 小窗口,
+   高度与实时位姿一样, 可以拖动显示所有碰撞点, 最上面显示最新的」) */
+#collhud{border-color:rgba(248,81,73,.55);cursor:default;display:flex;flex-direction:column;
+  min-height:86px;overflow:hidden}
+aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
+#collhud .dim{color:#8b949e;font-size:11px;font-weight:400}
+.colllist{flex:1;min-height:40px;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;touch-action:pan-y;margin-top:4px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-variant-numeric:tabular-nums;font-size:12px;line-height:1.45;color:#f85149}
+.colllist .ci{padding:2px 0;border-bottom:1px dashed rgba(248,81,73,.22);cursor:copy;
+  white-space:pre-wrap;word-break:break-all}
+.colllist .ci:last-child{border-bottom:none}
+.colllist .ci b{color:#ff7b72}
+.colllist .cg{color:#8b949e}
+.colllist::-webkit-scrollbar{width:8px}
+.colllist::-webkit-scrollbar-thumb{background:#f8514955;border-radius:4px}
 #posehud .posegrid{display:flex;flex-wrap:nowrap;align-items:baseline;justify-content:space-between;
   gap:6px;margin-top:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -320,6 +337,13 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       </div>
       <div class="hint" id="ph_age">读位姿中…</div>
     </div>
+    <!-- ── 🔴 碰撞点台账 (2026-10-01 老倪: 「增加技能，记录所有碰撞点…显示在实时位姿下面，紧挨着，
+         红色字体，可以拖动显示所有碰撞点，最上面显示最新的」) —— 数据来自控制器报警日志(原生 #30400/#13036)
+         + 撞后采到的 TCP 位姿真值; 高度由 JS 与上面「🎯 实时位姿」卡片对齐。点一条可复制。 -->
+    <div class="card" id="collhud" title="控制器报警日志里的每一次碰撞: 时间 · 关节 · 力矩/限定 · 当时的 TCP 位姿 · 最新在最上 · 可滚动/拖动 · 点一条复制">
+      <h2>🔴 碰撞点台账 <span class="dim" id="coll_n"></span></h2>
+      <div class="colllist" id="coll_list"><div class="cg">读取中…</div></div>
+    </div>
     <div class="card">
       <h2>🕹 手动控制台</h2>
       <!-- 🛠 2026-10-01 老倪: 「上电 on 报警 无…要是不能动，你得显示信息」⇒ 手动控制台顶部
@@ -517,6 +541,33 @@ function poseCopy(){
 (function(){ const h=document.getElementById('posehud');
   if(h) h.addEventListener('click',poseCopy); })();
 function _btns(on){document.querySelectorAll('button[data-skill]').forEach(b=>b.disabled=!on);}
+/* 🔴 碰撞点台账渲染 (老倪 2026-10-01): 红字 · 最新在最上 · 高度与「🎯 实时位姿」卡片一致 · 可滚动 */
+function paintColl(cs){
+  const box=document.getElementById('collhud'), list=document.getElementById('coll_list');
+  if(!box||!list) return;
+  const ph=document.getElementById('posehud');
+  if(ph&&ph.offsetHeight>40) box.style.height=ph.offsetHeight+'px';   /* 同栏同高 */
+  cs=cs||[];
+  const n=document.getElementById('coll_n');
+  if(n) n.textContent=cs.length?('共 '+cs.length+' 次 · 最新在最上'):'';
+  if(!cs.length){ list.innerHTML='<div class="cg">暂无记录</div>'; return; }
+  list.innerHTML=cs.map(function(c){
+    const p=c.pose||{};
+    const pos=(p.x!==undefined&&p.x!==null)
+      ? ('('+Number(p.x).toFixed(4)+', '+Number(p.y).toFixed(4)+', '+Number(p.z).toFixed(4)+')')
+      : '<span class="cg">位姿未采到</span>';
+    const tr=(c.torque!=null)?(' · '+Number(c.torque).toFixed(2)+'/'+Number(c.limit).toFixed(2)+'Nm'):'';
+    const nt=(c.pose_note?('\n  〔'+c.pose_note+'〕'):'');
+    return '<div class="ci" title="点一下复制这条记录"><b>'+String(c.ts||'').slice(5)+'</b> '
+      + (c.joint||'?') + ' · #' + c.code + tr + '\n  ' + pos + nt + '</div>';
+  }).join('');
+  list.querySelectorAll('.ci').forEach(function(el){
+    el.onclick=function(){
+      try{ navigator.clipboard.writeText(el.innerText); el.style.background='rgba(63,185,80,.15)';
+           setTimeout(function(){ el.style.background=''; },400); }catch(_e){}
+    };
+  });
+}
 function paintArm(){
   const b=$('#armbar'), on=ARMED;
   b.classList.toggle('on',on);
@@ -848,6 +899,7 @@ async function poll(){
   try{
     if(!s) throw 0;
     const r=s.robot||{}, tp=s.tcp||{};
+    try{ paintColl(s.collisions); }catch(_e){}
     /* 🧭 一行动作状态(老倪 2026-10-01: 「你现在显示这些啥意思？太复杂，智能显示1行，简单明了」)
        原来 #robot(上电/报警) + #robot2(急停/碰撞/帧龄) + 执行器 三处各写一长串, 其中 #robot 与 #robot2
        都会打"⚠ 下面是旧值…" ⇒ 同一句话出现两遍。现在: 一行说清「能不能动 + 为什么」, 细节(帧龄秒数/
