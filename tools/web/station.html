@@ -1325,7 +1325,7 @@ async function loadSpaces(){
       });
     }
     $('#m_spaces').textContent='已记 '+j.green_spaces+'/'+j.n_spaces+' · 判据 空间点库(独立)';
-    $('#n_spaces').innerHTML='<b style="color:#7ee787">绿</b> = 已记录 · <b style="color:#8b949e">灰</b> = 未记录。'
+    $('#n_spaces').innerHTML='<b style="color:#e3b341">黄</b> = 已记录 · <b style="color:#6b5a1e">暗黄</b> = 未记录。'
       +'与上面 1~7 号位<b>互不影响</b>, 存 <span style="font-family:ui-monospace">'+j.space_points_file+'</span>。'
       +'<b>点灰色按钮 = 记录当前位置</b>(记完自动变黄「已记」); 点黄色按钮 = 8 秒内再点一次确认覆盖。'
       +'记录是零运动(只读 TCP 真值 + 落盘), 不触发任何动作, 也不需要真动授权。';
