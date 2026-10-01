@@ -1642,7 +1642,58 @@ def chan_watchdog():
             _spawn_chan(force=True)
 
 
+def _single_instance():
+    """🔒 单实例锁 —— 2026-10-01 实况: 曾同时有 3 个执行器抢同一个 FIFO,
+    命令被某个已卡死的实例吃掉, 界面显示「已下发」而臂不动, 排查了一小时。
+    规则: **新实例赢** —— 拿到锁的活着, 老实例礼貌退场(避免两个实例分食命令)。"""
+    import fcntl, signal
+    lf = os.path.expanduser("~/zmax_data/l2_daemon.lock")
+    try:
+        fd = os.open(lf, os.O_RDWR | os.O_CREAT, 0o644)
+    except Exception as e:
+        log("⚠️ 单实例锁打不开(%s) — 继续启动, 不阻塞生产" % e)
+        return
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        try:
+            old = int((os.read(fd, 32) or b"0").split(b"\n")[0] or 0)
+        except Exception:
+            old = 0
+        log("🔒 已有执行器在跑(pid=%s) ⇒ 请它退场, 本实例接管(防多实例抢 FIFO)" % old)
+        if old and old != os.getpid():
+            try:
+                os.kill(old, signal.SIGTERM)
+            except Exception:
+                pass
+            for _ in range(30):
+                time.sleep(0.1)
+                try:
+                    os.kill(old, 0)
+                except Exception:
+                    break
+            else:
+                try:
+                    os.kill(old, signal.SIGKILL)
+                except Exception:
+                    pass
+        try:
+            os.close(fd)
+            fd = os.open(lf, os.O_RDWR | os.O_CREAT, 0o644)
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except Exception as e:
+            log("⚠️ 接管锁失败(%s) — 继续启动" % e)
+            return
+    try:
+        os.ftruncate(fd, 0)
+        os.write(fd, ("%d\n" % os.getpid()).encode())
+    except Exception:
+        pass
+    # ⚠️ fd 故意不关: 关了锁就释放了, 单实例保护随之失效
+
+
 def main():
+    _single_instance()
     if os.path.exists(FIFO):
         os.unlink(FIFO)
     os.mkfifo(FIFO)
