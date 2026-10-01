@@ -35,6 +35,7 @@ import argparse
 import base64
 import hashlib
 import json
+import shutil
 import math
 import os
 import re
@@ -753,6 +754,58 @@ def _ctl_record_point(body: dict) -> dict:
         except OSError:
             pass
     return _out
+
+
+def _ctl_clear_point(body: dict) -> dict:
+    """🗑 清除一个**空间点**(老倪 2026-10-01: 「已经记录时, 再次点击, 就是清除这个记录」)。
+
+    只允许空间点 ``space1..space7`` —— 号位点位被 ``L2.slotN`` 技能引用, 清掉会让在用的回点失效,
+    不在页面上开这个口子(要清号位走 tools 显式操作)。
+    零运动(不碰机械臂); 删前把原值备份到 ``/tmp/space_points.cleared_*.json`` +
+    追加一行到 ``~/zmax_data/space_points_removed.jsonl`` (可追溯/可恢复), 再原子替换库文件。
+    """
+    name = str((body or {}).get("name") or "").strip()
+    if name not in set(_SPACE_SLOTS.values()):
+        return {"ok": False, "code": 400,
+                "msg": "只允许清除空间点 %s (收到 %r)" % ("/".join(sorted(_SPACE_SLOTS.values())), name)}
+    dry = bool((body or {}).get("dry"))
+    _p = os.path.join(_REPO_ROOT, "data/skills/l2_atomic/space_points.json")
+    try:
+        with open(_p, encoding="utf-8") as _f:
+            st = json.load(_f)
+    except Exception as _e:                                                   # noqa: BLE001
+        return {"ok": False, "msg": "空间点库读不到: %s" % str(_e)[:80]}
+    pts = st.get("points") or {}
+    if name not in pts:
+        return {"ok": False, "code": 404, "msg": "%s 本来就没有记录, 无需清除" % name}
+    old = pts[name]
+    out = {"ok": True, "name": name, "dry": dry, "cleared_pos": old.get("pos"),
+           "cleared_at": old.get("recorded_at"), "removed": False}
+    if dry:
+        return out
+    try:
+        _bak = "/tmp/space_points.cleared_%s_%s.json" % (name, time.strftime("%m%d_%H%M%S"))
+        shutil.copy(_p, _bak)
+        with open(os.path.expanduser("~/zmax_data/space_points_removed.jsonl"), "a", encoding="utf-8") as _f:
+            _f.write(json.dumps({"ts": time.time(), "ts_str": time.strftime("%F %T"), "name": name,
+                                 "removed": old, "by": str((body or {}).get("by") or ""), "backup": _bak},
+                                ensure_ascii=False) + "\n")
+        pts.pop(name, None)
+        st["points"] = pts
+        st["updated_at"] = time.strftime("%F %T")
+        _tmp = _p + ".tmp"
+        with open(_tmp, "w", encoding="utf-8") as _f:
+            json.dump(st, _f, ensure_ascii=False, indent=1)
+        os.replace(_tmp, _p)
+    except Exception as _e:                                                   # noqa: BLE001
+        return {"ok": False, "msg": "清除失败: %s" % str(_e)[:100]}
+    out.update({"removed": True, "backup": _bak})
+    try:
+        print("[清除空间点] %s ← 原 pos=(%.4f, %.4f, %.4f) · 备份 %s"
+              % (name, old["pos"][0], old["pos"][1], old["pos"][2], _bak), flush=True)
+    except Exception:                                                         # noqa: BLE001
+        pass
+    return out
 
 
 def _read_json(path: str, default=None):
@@ -3375,6 +3428,10 @@ class Handler(BaseHTTPRequestHandler):
             # 📝 把当前 TCP 真值记成号位示教点(零运动, 不需要真动授权; 只允许 slot1~slot7)。
             #    2026-09-30 老倪: 「4 5 6 号位, 你能自己实现记录么？」 ⇒ 现场点动到位后一键记住。
             out = _ctl_record_point(body if isinstance(body, dict) else {})
+        elif p in ("/ctl/clear_point", "/api/ctl/clear_point"):
+            # 🗑 清除一个空间点(老倪 2026-10-01: 「已经记录时, 再次点击, 就是清除这个记录」)。
+            #    只收 space1~7; 零运动; 删前备份 + 留痕(space_points_removed.jsonl)。
+            out = _ctl_clear_point(body if isinstance(body, dict) else {})
         elif p in ("/boxes/delete", "/api/boxes/delete"):
             # 🗑 删除选中的叠加框(操作者点选后)
             out = _boxes_edit(str((body or {}).get("cam") or "arm"),

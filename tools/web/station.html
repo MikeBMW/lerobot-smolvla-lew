@@ -1281,9 +1281,26 @@ async function clickSpace(n){
   const bar=$('#spacebar'), m=$('#space_msg');
   const btn=bar.querySelector('button[data-space="'+n+'"]');
   const rec=((bar.dataset.sig)||'').charAt(n-1)==='1';
-  if(rec && Date.now()-SPACE_OVER>8000){
-    SPACE_OVER=Date.now();
-    m.innerHTML='⚠️ <b>空间'+n+' 已有记录</b> —— 覆盖会改掉已用的空间点; 8 秒内再点一次确认覆盖';
+  if(rec){                                   // 已记 ⇒ 再点一次 = **清除**(老倪 2026-10-01)
+    if(Date.now()-SPACE_OVER>8000){
+      SPACE_OVER=Date.now();
+      m.innerHTML='⚠️ <b>空间'+n+' 已有记录</b> —— 再点一次就<b>清除</b>这个记录(清掉变未记, 可以重新记)';
+      return;
+    }
+    SPACE_OVER=0; SPACE_BUSY=true;
+    m.textContent='🗑 正在清除 空间'+n+' …';
+    try{
+      const j2=await post('/ctl/clear_point',{name:'space'+n,by:'页面点已记空间点(8793)'},20000);
+      if(j2.ok){
+        m.innerHTML='🗑 <b>已清除 空间'+n+'</b>'
+          +(j2.cleared_pos?(' · 原 pos=('+j2.cleared_pos.map(v=>Number(v).toFixed(4)).join(', ')+')'):'')
+          +' —— 现在变未记, 可以重新记';
+        bar.dataset.sig=''; await loadSpaces();
+      }else{
+        m.innerHTML='⛔ 清除失败: '+(j2.msg||'未知');
+      }
+    }catch(e){ m.innerHTML='⛔ 清除请求失败: '+e; }
+    SPACE_BUSY=false;
     return;
   }
   SPACE_OVER=0; SPACE_BUSY=true;
@@ -1317,7 +1334,7 @@ async function loadSpaces(){
         '<button data-space="'+s.no+'" class="'+(s.recorded?'rec':'norec')+'"'
         +' title="'+(s.recorded
             ? ('空间'+s.no+' 已记录'+(s.pos?(' ('+s.pos.join(', ')+')'):'')
-               +' · '+(s.at||'')+' · 再点一次(8 秒内)可确认覆盖')
+               +' · '+(s.at||'')+' · **再点一次就清除这个记录**(8 秒内两次点击)')
             : ('未记录 —— **点这个按钮就把当前 TCP 真值记成 空间'+s.no+'**(零运动, 连采 6 帧判静止; 臂停稳再点)'))
         +'">空间'+(s.no)+'<small>'+(s.recorded?'✅ 已记':'⛔ 未记')+'</small></button>').join('');
       bar.querySelectorAll('button[data-space]').forEach(b=>{
@@ -1327,7 +1344,7 @@ async function loadSpaces(){
     $('#m_spaces').textContent='已记 '+j.green_spaces+'/'+j.n_spaces+' · 判据 空间点库(独立)';
     $('#n_spaces').innerHTML='<b style="color:#e3b341">黄</b> = 已记录 · <b style="color:#6b5a1e">暗黄</b> = 未记录。'
       +'与上面 1~7 号位<b>互不影响</b>, 存 <span style="font-family:ui-monospace">'+j.space_points_file+'</span>。'
-      +'<b>点灰色按钮 = 记录当前位置</b>(记完自动变黄「已记」); 点黄色按钮 = 8 秒内再点一次确认覆盖。'
+      +'<b>点暗黄按钮 = 记录当前位置</b>(记完自动变黄「已记」); <b>点黄色按钮 = 清除这个记录</b>(8 秒内再点一次确认)。'
       +'记录是零运动(只读 TCP 真值 + 落盘), 不触发任何动作, 也不需要真动授权。';
   }catch(e){}
 }
