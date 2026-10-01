@@ -64,8 +64,12 @@ def collect() -> dict:
             "infer": {"on": bool(inf.get("online")), "device": inf.get("device"),
                       "last_ms": inf.get("last_ms"), "n": inf.get("infer_count")},
             "cams": cams,
-            "tcp_pose": (pose or {}).get("tcp") or (pose or {}).get("pose"),
-            "pose_ts": (pose or {}).get("ts") or (pose or {}).get("time"),
+            # 实测 latest.json 是**平铺**键: {ts, t, x, y, z, rx, ry, rz, qx..qw, frame, joint}
+            "tcp_pose": None if not pose else [round(float(pose[k]), 5) for k in ("x", "y", "z", "rx", "ry", "rz")
+                                               if isinstance(pose.get(k), (int, float))] or None,
+            "pose_ts": (pose or {}).get("ts"),
+            "pose_age_s": (round(time.time() - float(pose["ts"]), 2)
+                           if pose and isinstance(pose.get("ts"), (int, float)) else None),
         },
     }
 
