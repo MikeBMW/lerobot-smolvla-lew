@@ -44,7 +44,9 @@ def main() -> int:
     lst = reg["skills"] if isinstance(reg, dict) and isinstance(reg.get("skills"), list) else reg
     skill = {
         "id": SID, "name": NAME, "icon": "🎯", "ros": "line_abs", "quat": "taught",
-        "point": POINT, "point_locked": True, "group": "安全位", "speed_max": 150,
+        # 🏃 技能级限速: 面板填的速度到这里封顶(老倪 2026-10-01「速度有些慢, 我调整速度到200了」
+        #    ⇒ 原来 150 把他填的 200 截掉了, 现在放到 200 让面板设置生效; 要更快就改这里 + 重注册)
+        "point": POINT, "point_locked": True, "group": "安全位", "speed_max": 200,
         "param": {},
         "guard": {"max_lin_mm": 1200.0, "z_floor_point": POINT, "z_floor_offset_mm": 0},
         "steps": [
