@@ -291,7 +291,7 @@ class BusView(QWidget):
         #    可搜: 话题 key(ss_plan) · 全名(zmax/ss_plan) · 类型(zmax::SSPlan) · 节点名 · 层名。
         self._find_saved = None                  # 清空时还原各组展开状态
         self.ed_find = QLineEdit()
-        self.ed_find.setPlaceholderText("🔎 搜索信号表 (试: ss_plan)")
+        self.ed_find.setPlaceholderText("🔎 搜索 (信号表 + Trace 置顶)")
         self.ed_find.setFont(QFont(MONO, 10))
         self.ed_find.setFixedWidth(230)
         self.ed_find.setClearButtonEnabled(True)
@@ -341,6 +341,13 @@ class BusView(QWidget):
     def _apply_find(self):
         try:
             q = (self.ed_find.text() or "").strip().lower()
+            # 🆕 2026-10-01 老倪实测: 他把关键词打在**这个框**(顶部全局框), Trace 自己的框是空的
+            #   ⇒ Trace 完全不反应 = 「我搜索 plan 了, 啥都没有」。让两个框等效: 这里也置顶 Trace。
+            self._filter = q
+            try:
+                self._fill_trace(force=True)
+            except Exception:                                                   # noqa: BLE001
+                pass
             n_hit = n_all = 0
             if not q:                            # 清空 ⇒ **整树复位**(根+叶子全部取消隐藏),
                 self._unhide_all()               #    否则组显示出来了、叶子还藏着(实测踩过)
@@ -473,7 +480,7 @@ class BusView(QWidget):
         self.btn_dt = self._sm_btn("Δt", "Time 列切「与同话题上一帧的时间差」(CANoe Δt)",
                                    self._toggle_dt, checkable=True)
         self.ed_search = QLineEdit()
-        self.ed_search.setPlaceholderText("🔎 搜索话题 (如 ss_plan) → 命中帧置顶并高亮")
+        self.ed_search.setPlaceholderText("📌 Trace 置顶: 输入话题 (如 ss_plan)")
         self.ed_search.setFont(QFont(MONO, 9))
         self.ed_search.setFixedWidth(320)
         self.ed_search.setStyleSheet(f"QLineEdit {{ background:{C_BG}; color:{C_WHITE};"
@@ -871,7 +878,7 @@ class BusView(QWidget):
             self.lb_clock.setText("%d:%02d:%02d" % (el // 3600, (el % 3600) // 60, el % 60))
         self.lb_stamp.setText("拍照 %s" % _hhmmss(live.get("ts")))
         try:                                    # 中段读数(质检: 顶栏 733px 死区)
-            self.lb_mid.setText("Trace %d 行 · 过滤 %s · Δt %s · 帧龄 %s · 闭环 %s"
+            self.lb_mid.setText("Trace %d 行 · 📌置顶 %s · Δt %s · 帧龄 %s · 闭环 %s"
                                 % (self.tb.rowCount(), ("'%s'" % self._filter) if self._filter else "关",
                                    "开" if self._dt_mode else "关",
                                    _num((live.get("topics") or {}).get(
