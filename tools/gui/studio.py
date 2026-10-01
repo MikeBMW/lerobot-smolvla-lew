@@ -11752,7 +11752,30 @@ class StudioMainWindow(QMainWindow):
         self.stack.addWidget(ArchitectureModule())
 
         root.addWidget(self.stack, 1)
-        central.setLayout(root)
+        # 📊 vv5.16.36 (2026-10-01 老倪「硬件/在役模型版本/推理训练状态/3DGS 资产都推到 8796 服务,
+        #   放在窗口左下角, 用红绿灯·状态条·进度条, 不要占太大面积, 不要很多文字, 我要看状态」):
+        #   左下角常驻状态面板 — 独立文件 tools/gui/status_panel.py (420x68, 两行极小面积),
+        #   这里只挂载 + 兜底(导入/构造失败都不影响控制台启动)。
+        try:
+            _pn_dir = os.path.dirname(os.path.abspath(__file__))
+            if _pn_dir not in sys.path:
+                sys.path.insert(0, _pn_dir)
+            from status_panel import StatusPanel as _StatusPanel
+            self.status_panel = _StatusPanel(self)
+            _wrap = QVBoxLayout()
+            _wrap.setContentsMargins(0, 0, 0, 0)
+            _wrap.setSpacing(0)
+            _wrap.addLayout(root, 1)
+            _pn_row = QHBoxLayout()
+            _pn_row.setContentsMargins(0, 0, 0, 0)
+            _pn_row.setSpacing(0)
+            _pn_row.addWidget(self.status_panel)
+            _pn_row.addStretch(1)
+            _wrap.addLayout(_pn_row, 0)
+            central.setLayout(_wrap)
+        except Exception as _e:
+            print("[status_panel] 左下角状态面板挂载失败: %r" % (_e,))
+            central.setLayout(root)
 
         # 系统层级点击映射 (2026-08-08 老倪: 三层系统 — SYS2顶/SYS1中(含VLA-T+Z-Flow)/SYS0底)
         self.layer_map = {
