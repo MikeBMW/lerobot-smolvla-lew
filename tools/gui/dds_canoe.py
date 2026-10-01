@@ -513,12 +513,13 @@ class BusView(QWidget):
         self.tb.setShowGrid(True)
         self.tb.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         th = self.tb.horizontalHeader()
-        for i, w in ((0, 150), (1, 215), (2, 430), (3, 150), (4, 120), (5, 110),
-                     (6, 200), (7, 150), (8, 110), (9, 100)):
+        for i, w in ((0, 130), (1, 165), (2, 430), (3, 110), (4, 120), (5, 90),
+                     (6, 90), (7, 80), (8, 80), (9, 200)):
             th.setSectionResizeMode(i, QHeaderView.Interactive)  # 🐛 同上(卡死根因)
             self.tb.setColumnWidth(i, w)
-            self.tb.setColumnWidth(i, w)
-        th.setSectionResizeMode(1, QHeaderView.Stretch)
+        th.setSectionsMovable(False)
+        self._col_user = set()
+        th.sectionResized.connect(self._on_col_resized)      # 🖱 用户拖过 ⇒ 以后不再自动适配
         self.tb.itemClicked.connect(self._on_trace_click)
         lay.addWidget(self.tb, 1)
         return box
@@ -922,6 +923,32 @@ class BusView(QWidget):
             return " · ".join(out)
         return "全缺测(-1)" if ":" in s else ""
 
+    def _on_col_resized(self, idx, _old, _new):
+        """🖱 用户手动拖过某列 ⇒ 记下来, 后续自动适配不再覆盖它。"""
+        try:
+            u = set(getattr(self, "_col_user", None) or set())
+            u.add(int(idx))
+            self._col_user = u
+        except Exception:                                                       # noqa: BLE001
+            pass
+
+    def _fit_name_col(self, names):
+        """Name 列默认**按内容适配**(老倪 2026-10-01: 「name 这列太宽了, 默认适配一下宽度」)。
+
+        用 QFontMetrics 真量宽度(192DPI 下 pt 字形的实际像素宽 ≠ 1x, 必须量不能猜) + 24px 内边距,
+        夹在 90~340; 用户拖过(在 _col_user 里)就不动。
+        ⚠️ 绝不用 `ResizeToContents` —— 高频表逐格量列宽会烧 CPU(实测 81%), 这是本文件记过的坑。
+        """
+        if 1 in (getattr(self, "_col_user", None) or set()):
+            return
+        try:
+            from PyQt5.QtGui import QFontMetrics                     # noqa: PLC0415
+            fm = QFontMetrics(QFont(MONO, 10))
+            ws = [fm.horizontalAdvance(str(x)) for x in names if x] or [0]
+            self.tb.setColumnWidth(1, max(90, min(340, max(ws) + 24)))
+        except Exception:                                                       # noqa: BLE001
+            pass
+
     def _live_doc(self):
         """读 live.json(1s 缓存) —— 值列/固定行都自己取数, 不依赖上层是否喂过 self._live。"""
         now = time.time()
@@ -1007,6 +1034,20 @@ class BusView(QWidget):
         self._fill_trace(force=True)
 
     def _set_trace_header(self, mode=None):
+        """设置表头。🖱 2026-10-01: **表头没变就不要重设** —— setHorizontalHeaderLabels
+        会把各列宽度复位 ⇒ 用户拖动过的列宽下一次刷新就被抹掉(表现=拖动不了)。"""
+        mode = mode or getattr(self, "_mode", "fixed")
+        _labs = (["Time", "Name", "实时值 · 边跑边变", "分类", "hz 实测/设计", "count",
+                  "帧龄 (s)", "QoS", "lamp", "备注"] if mode == "fixed" else
+                 ["Time", "Name", "实时值 · 边跑边变", "Object Type", "Classification",
+                  "Probability [%]", "Sender Name", "Sender Id", "Tracking Id", "Group"])
+        if _labs == getattr(self, "_hdr_last", None):
+            return
+        self.tb.setHorizontalHeaderLabels(_labs)
+        self._hdr_last = _labs
+        return
+
+    def _set_trace_header0(self, mode=None):
         mode = mode or getattr(self, "_mode", "fixed")
         if mode == "fixed":
             self.tb.setHorizontalHeaderLabels(
@@ -1041,6 +1082,7 @@ class BusView(QWidget):
             return (hit, str(k))
 
         items.sort(key=_rank)
+        self._fit_name_col([str(t.get("topic") or k) for k, t in items])   # 📏 Name 列按内容适配
         n_hit = sum(1 for k, t in items if pin and (pin in str(t.get("topic") or k).lower()
                                                     or pin in str(t.get("type") or "").lower()))
         if pin:
@@ -1126,6 +1168,7 @@ class BusView(QWidget):
                 rows = _hit + [r for r in rows if r not in _hit]
             self._mark_search(len(_hit), _pin)                 # 🆕 搜索框自己报命中数
         topics = self._topics()
+        self._fit_name_col([str(x.get("topic", "")) for x in rows[:150]])    # 📏 Name 列按内容适配
         self.tb.setUpdatesEnabled(False)
         self.tb.setRowCount(min(len(rows), 150))
         for r, rec in enumerate(rows[:150]):

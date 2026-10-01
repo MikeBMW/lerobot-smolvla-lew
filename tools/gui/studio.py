@@ -11276,7 +11276,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX vv5.16.35 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.35 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11284,7 +11284,7 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX vv5.16.35 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.35 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
         # vv5.16.35: 新增「运行所有模型」四档取证工具 + L4 档 INTACT 真推理装配口径修复(2026-09-30) 老倪: 「从zmax获取最新版代码开始，你先打开控制台，运行所有模型」  一、新工具 tools/run_all_models.py: 一条命令把 L2/L3/L4/L5 四档各真跑 N 步, 逐层落证据(步数/done/终点mm/YOLO 出帧数与检出数/前馈 MLP 真身次数/INTACT 真推理次数/墙钟), 报告 reports/run_all_models_<ts>.json; 档位开关与 GUI 勾选框逐条等价(L2=默认视觉 · L3=SS_L3=1 · L4=SS_USE_MLP=1+直驱装配 · L5=planner/认知头)。  二、修坑(根因): headless 跑 L4 档时只设 SS_INTACT=1 ⇒ sim._intact_node 为 None, u_ff 槽位静默回退 analytic, 计数 0 且无任何报错 ⇒ 会被误判成「模型没跑」。改为照 GUI 同一装配器接线: IntactRuntime(task='pusht', device='cpu') + IntactNode(horizon=8) + set_goal(reports/intact_goal_frame.npy) + intact_direct_rollout.install_direct_act(sim, nd, a_mean, a_std, infer_every=1) + sim.attach_intact(nd, None), 并 pop SS_INTACT(否则 u_ff 槽位重复注入, 历史实测 33mm 滑脱); 计数读直驱通道 sim._intact_drive['state']['calls'](u_ff 通道的 _intact_stats['intact_calls'] 是另一个桶, 读错桶恒为 0)。  三、实测证据(本轮真跑出来的): L4 档 150 帧 INTACT 真推理 150/150(每帧 模型动作→env.step) + 前馈 MLP 真身 150/150 · L2/L3/L5 各 150 帧/300 检出(每帧 2 目标 peg+OPT_Gold) · L3 档 SmolVLA+LEW(ckpt outputs/train/smolvla_lew_v10_1h/checkpoints/004000)真执行接入 · 本地推理服务 8790 两个头 infer_count 0→1(96.7ms, 6 维动作+yaw) · SAM3 开放词汇分割 1471ms(掩膜+分数) · L5 视觉 DeepSeek 真源 http:deepseek-flash 1253ms · 本地 VLM Qwen2.5-VL-3B 18.6s。  四、口径(诚实标注): L4 直驱 120 步插入 54.5mm(解析链对照 21.8mm)、L2 收口闸否决 113/采纳 7、任务未完成 —— 与离线判闸一致, 属模型能力问题非接线问题; YOLO 吃的是引擎渲染帧, 非真机画面(产线 USB 网卡不在位)。  五、技能沉淀: zmax-console/references/run-all-models.md(档位 env 对照表 / 读错计数桶等 6 条坑 / /tmp/zmax_nav_cmd 控制台命令通道用法:ss_canvas·ss_run·l5_status·l5_interact)。
