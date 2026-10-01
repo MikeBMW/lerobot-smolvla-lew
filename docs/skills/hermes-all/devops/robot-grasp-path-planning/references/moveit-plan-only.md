@@ -84,3 +84,35 @@ FK(真机关节角)  vs  真 /robot/tcp_pose
 分三段: ①它跑没跑起来(容器/镜像/日志) ②它能不能规划(`plan_code` / 路点数 / 终点误差)
 ③**它现在能不能当真轨迹**(同源闸结论)。未过闸就明说"架构上该由它出, 但当前出不来真轨迹",
 并交代替代折线的真实身份(示教位姿 + 真机 TCP 推得), 不冒充规划结果。
+
+## 7. 规划输出在哪 / xyzabc 怎么取 / action 接口的真相
+用户会问「我要看到 `moveit_msgs/action/MoveGroup` 这个 topic, 我要在数据空间里看到它输出的
+x y z a b c —— 在哪里? 搜什么?」。三个"位置"指的是同一件事, 但现在只有前两条在真跑:
+
+| 出口 | 位置 | 状态 |
+|---|---|---|
+| 文件 | 宿主 `~/zmax_moveit_plan/live_plan_latest.json`(= 容器 `/ws/plans/`, 同一份) + `live_plan.jsonl` 历史流 | 每 3s 覆写一轮, **在用** |
+| DDS | 话题 `zmax/ss_plan` —— 数据空间页搜索框搜 **`ss_plan`**(索引: 话题 key / 全名 / 类型 / 节点名 / 层名) | **在用**(镜像) |
+| action | 容器内域 42: `/move_action`(`moveit_msgs/action/MoveGroup`) + `/execute_trajectory`, 服务端都是 `/move_group` | **Action clients: 0 —— 开着没人调** |
+
+- 🔴 **规划结果不走 topic**: action 的 result 经 `.../get_result` **服务**返回(内容 = 关节轨迹 `RobotTrajectory`);
+  topic 上只有 `/_action/feedback`(`*_FeedbackMessage`, 内容是 state/pipeline_stage)与 `/_action/status`
+  ⇒ **逐点 xyzabc 永远不在 action topic 上**, 在那找是白找。
+- 🔴 **域不是 0**: 规划容器用独立 `ROS_DOMAIN_ID=42` ⇒ 在默认域里 `ros2 topic/action list` 全空,
+  会得出"根本没有 action"的假结论; action 的 topic 还要加 `--include-hidden-topics` 才列得出来。
+- plan 文件里现成的量(取数先看这些, 别自己重算): `goal_xyz` `goal_quat`(目标位姿) · `joints_path`(6/点) · `n_points` ·
+  `plan_code` · `end_err_mm` · `fk_start_pos_err_mm` · `gate_same_source` + `gate_reason` · `plan_time_s` · `tcp_path`。
+- 🔴 **`tcp_path` 每点只有 3 个数(x y z), 姿态被生产者切掉了**: 生产端是
+  `"tcp_path": [v for row in tcp for v in row[:3]]`, 而它调的 `fk()` **已经返回 7 个数**(x y z qx qy qz qw)
+  ⇒ 姿态本来就算了, 只是没上报。要看逐点 `a b c` 就只改这一处(6/点: x y z a b c, 米/弧度, 与真机 `tcp_out` 同口径),
+  `ss_daemon` → `SSPlan` → 数据空间面板**原样透传、一行不用动**; 但 DDS 字段名/类型一变,
+  发布端与订阅端必须**同时重启**(不同步就一条都收不到) ⇒ 和别的 GUI 改动攒成一批重启。
+- 现成取证探针(仓库内, 别每次现写): `tools/fk_pose_probe.py`(逐路点 FK → x y z a b c 表) ·
+  `tools/fk_quat_angle.py`(四元数夹角核末点姿态)。跑法: `docker cp` 进容器 +
+  `bash -lc 'source /opt/ros/humble/setup.bash; export ROS_DOMAIN_ID=42; python3 …'`;
+  起点用真关节(不要 IK 猜), `RobotState` 从 `moveit_msgs.msg` 导入(`sensor_msgs.msg` 里没有)。
+- 🔴 **比姿态用四元数夹角, 绝不用 RPY 三元组**: RPY 不唯一(同一姿态有多组解) ⇒ 直接比 a/b/c 会得出完全错误的结论
+  (实测按 RPY 比"差 25°", 按四元数夹角只有 **2.29°**、位置差 **4.86mm** ⇒ 规划其实是合格的)。
+  报告里位置差(mm)、姿态差(deg)、终点误差(`end_err_mm`)三者对齐着写, 别只给一个。
+- 末点姿态差也要看:`end_err_mm` **只量位置** ⇒ 位置 5mm 而姿态差 40° 的规划照样能过 ——
+  抓取类任务两个都要报。

@@ -68,6 +68,16 @@ grep -rn '未接入\|S3 前\|占位' tools/gui/state_space_sim_real.py
 5. 自检只测**形状/有限性** → 全零 chunk 也算通过 (必须有"非零 + 非常量 + 随观测变化"判据 + 零动作硬闸)。
 6. 输入是**合成/占位数据** (npz 无渲染帧 → 造运动序列) 却当成真实感知。
 7. 用**占位数值**冒充真实输出 (写死 conf 0.99 / 抄真值当检测结果) —— 老倪红线第一条。
+8. **接口开着但没人调 (0 客户端的孤立服务/action)**: 服务端在、类型对、名字能列出来 —— 但**没有任何调用方**。
+   实测 MoveIt 的 `/move_action` (moveit_msgs/action/MoveGroup) 与 `/execute_trajectory` 都挂着服务端，
+   而 `Action clients` 均为 **0** ⇒ 这条出口是空跑的；真正的规划输出走的是 JSON 文件 + DDS 镜像。
+   查法: `ros2 action list -t --include-hidden-topics` → `ros2 action info <名>` (看 clients/servers 计数)。
+   ⇒ 报口径时三样都要给: **接口在哪 · 谁在真跑 · 哪条只是留着的出口**; 只说"action 有输出"就是把旁路当主线。
+
+🔴 **判"接口/节点不存在"之前先核 ROS 域**：域不对会让存在的实体**全部凭空消失** (假阴性)。
+实测同一个容器里 `ROS_DOMAIN_ID=42`，在默认域 0 下扫也是"空"，结论"没有 action"完全错。
+凡是要下"不存在/没接"的结论，先 `echo $ROS_DOMAIN_ID` 对齐域；**action 类话题还默认隐藏，
+必须加 `--include-hidden-topics`**，否则拿 `ros2 topic list` 的反面结论同样不可信。
 
 ## 接入下一级前的硬约束 (先量化再动手)
 

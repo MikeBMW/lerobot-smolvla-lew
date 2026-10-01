@@ -177,6 +177,11 @@ metadata:
 | 参考点只看"静止≥N 秒" | 起始位姿立刻冒出假 P1, 同姿态重复停顿重复打点 | 加"离上一点 ≥20mm"的位移门限 |
 | 折线点不抽稀/不设上限 | 渲染拖死、线成糊团 | 空间间隔 >2mm 才留, 上限 ~1500 点 |
 | 把 MoveIt 规划出的轨迹直接当真机轨迹 | 画面对不上真机 | 先过同源闸: `FK(真关节)` vs 真 `/robot/tcp_pose` < 5mm 才敢用 |
+| 在 `moveit_msgs/action/MoveGroup` 的 *topic* 上找规划出来的 xyzabc | 找不到, 误判"规划没输出" | 结果走 `.../get_result` **服务**, topic 上只有 `/_action/feedback`(state/pipeline_stage) 与 `/_action/status`; 逐路点 xyzabc 在 plan 文件的 `tcp_path` 里 |
+| 在默认域里列规划容器的 action/service | 全空 ⇒ 误判"没有 action" | 规划容器是独立 `ROS_DOMAIN_ID=42`; 且 action 的 topic 默认隐藏, 要 `ros2 topic list -t --include-hidden-topics` |
+| 用 RPY 三元组比两个姿态 | 假差异(实测按 RPY 比出差 25°, 四元数夹角只有 2.29°) | 姿态一律用四元数夹角 `2*acos(|dot(q1,q2)|)`; 报告同时给位置差(mm)与姿态差(deg) |
+| 以为 plan 文件里逐点 a b c 现成可用 | 只有 x y z | 生产端写的是 `row[:3]`(而 `fk()` 返回 x y z qx qy qz qw) ⇒ 姿态被切掉; 放开这一处即可, 下游透传不用改, 但改 DDS 字段要发布端+订阅端同时重启 |
+| 探针 `from sensor_msgs.msg import RobotState` | ImportError | `RobotState` 在 `moveit_msgs.msg` |
 | 新 DDS 话题只改了类型和发布端 | `live.json` 里 `count:0 / lamp:black`, 或窗口看不到 | 5 处都要改(见 §5d), 并重建 busdb.json + 重启 ss/pobe 两个服务 |
 | 新话题上线了但界面上找不到 | 以为是没发出去 | 先算**面板可见行数**(viewport/行高)再算排序: 纯字母序会把新名排到第 12+ 行 → 改「活跃(hz>0)在前」 |
 | 镜像了轨迹但看不到那几个数 | Trace 列只有话题/类型/判决 | 探针给该话题写**一行 digest 摘要**(n / 终点误差 / 同源闸), 详情面板单列; 长序列字段要折叠, 否则占满字段名额 |

@@ -9,6 +9,58 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 > 📄 相关: `references/live-value-freshness.md`(显示诚实性: 任何标"当前"的值必须过源新鲜度判据, 源停更要标失效+勿据此判安全)。
 
+## 🧷 8793 页左栏新增面板(老倪 2026-10-01「大小、宽度一点都不一样」)
+
+**左栏是 CSS 网格(`.grid{grid-template-columns:repeat(3,minmax(0,1fr))}`)**, 面板默认只占 **1/3 宽**。
+要和整行面板一样宽/一样大, CSS 里必须**照抄**这一行: `#p_<id>{grid-column:1 / -1}`
+(例: `#p_slots` 有, 新增的 `#p_spaces` 漏了 ⇒ 按钮 166px vs 55px, 老倪一眼看出)。
+
+**验收口径(不靠目测)**: 用浏览器实测两排的 `getBoundingClientRect()` + `getComputedStyle()` **逐项对比**:
+面板宽 / 网格容器宽 / 按钮 w×h / 每列宽数组 / fontSize / padding / fontWeight / lineHeight / gap,
+全部相等才算改好。实测合格样例: 面板 1241=1241 · 按钮 166×68=166×68 · 7 列 [166×7]=[166×7] ·
+字号 17px · padding `12px 4px` · 字重 700 · 行高 22.1px · gap 10px。
+
+**配色按系列分**: 号位=绿(`#0f3d22`底/`#2ea043`边/`#7ee787`字), 空间1~7=黄(`#d29922`底/`#e3b341`边/
+`#241c00`字; 未记用暗黄 `#2b2410`/`#6b5a1e`/`#d9b64a` —— **不要用灰**, 老倪要整排黄色系)。
+
+- 🧭 **空间1~7 独立空间点(2026-10-01)**: 页面左下角、号位面板正下方; 与号位**互不影响**的另一套点,
+  存 `data/skills/l2_atomic/space_points.json`(号位是 `taught_points.json`)。记录: 页面选号 +
+  「✅ 记为该空间点」→ `POST /ctl/record_point {name:'spaceN'}` → `record_l2_point.py --store space`
+  (号位走默认 `--store taught`)。服务端 `/ctl/points` 同时带出 `slots` 与 `spaces`(绿=`ready`, 
+  空间绿=`recorded`, 空间点**没有下发技能**, 只显示/记录)。新增点位白名单在 `_POINT_RECORD_ALLOW`。
+- 🔴 **VL 慢层的"关"是带到期时间的**: `~/zmax_data/vl_guard_off.json {enabled,until,by,note}`,
+  `until` 到点**自动恢复**安全闸(常被忽略 ⇒ "昨天明明关了")。现场表现: 每段动作都要等视觉大模型
+  裁决 ~25~30s, 日志一行行慢慢走、**不报错** ⇒ 现场看到的是"不动也不报错"。
+  老倪现场指令「别等VL」⇒ 改 `until`(如 now+4h)即可**热生效, 不用重启执行器**;
+  日志会出现「🛡 VL 安全闸: 已关闭 ⇒ 本条直接放行」。**快层 0.2s 遮挡反射保留, 任何授权都越不过它**。
+- 🔴 **技能级速度上限会静默压掉页面设置**: 页面送 speed=200, 但 registry 里 `L2.slotN` 写着
+  `speed_max=150` ⇒ 实际下发 150(实测 ROS 请求 `speed=150.0`)。改 registry `speed_max` **热生效**
+  (执行器每轮热读 registry, 不用重启)。排查链: 页面 speed 参数 → 技能 `speed_max` → ROS 请求里的数字。
+- ⚡ **记点必须本地直读真值文件, 不能每次 SSH 出去采样(2026-10-01)**: 原 `record_l2_point.py` 连采 6 帧
+  是 6 次 `ssh tashan@192.168.23.66 "ros2 topic echo --once /robot/tcp_pose"` ⇒ 一次 1~2s ⇒ 记一个点
+  十几秒(老倪: 「局域网, 点完 500ms 内要有反应」)。改成读**同源**的本地文件
+  `~/zmax_data/rokae_sdk/tcp_out/tcp_direct_<日期>.jsonl`(5Hz, 由 rokae_tcp_sampler 订阅
+  `/robot/tcp_pose` 后写盘) + `latest.json`: 读末尾 ~1s 窗口算均值/极差 ⇒ **端到端 21~28ms**。
+  守据必留(不满足就退回 SSH 慢路, 绝不猜): 最新帧龄 >2s(采样器卡死) · xyzw/pos ≈0(会话陈旧坏值) ·
+  窗口帧数 <4。**旧路只能当 fallback**, 不当默认。
+- 🔴 **现场报"点了半天没反应"先查页是否刷新**: 页面 JS 是内联在 HTML 里的, `/station` 虽然 `_send` 已带
+  `Cache-Control: no-store`, 但**早已打开的标签页仍跑旧 JS**(旧版点未记按钮只弹提示、不发请求)。
+  判据: 服务端日志里没有对应的 `[记录点]`/请求行 ⇒ 请求根本没到 ⇒ 教他 Ctrl+F5 一次, 而不是改后端。
+
+- 🔴 **"MoveIt 规划起点与实时位姿对不上"的根因: tap 的 `jpos` 是冻住的(2026-10-01)**
+  现象: 数据空间 `ss_plan` 的 `tcp_path[0]`/起点 xyz 与 8793 实时位姿卡差几百 mm(实测 343.9 / 366.8mm),
+  但两者时间戳同一刻。取证(同一刻读两路真值源, 只读):
+  · tap `~/zmax_ss_remote/state_*.jsonl` : `tcp` (605.8, -107.5, 190.8)mm ↔ tcp_out `latest.json` `xyz` 完全一致(差 0.0mm) ⇒ **位姿链路没问题**;
+  · 但**关节不一致**: tap `jpos` = (-0.1695, 0.4354, -1.8779, 1.9238, 1.9359, -2.4137)(多次读取**一字不变** ⇒ 冻住)
+    vs tcp_out `joint` = (-0.3788, 0.0561, -2.2648, 5.0707, 0.2159, -4.51)(在变);
+  · `moveit_plan_req.py` 把 tap 的 `jpos` 直接当 `start_joints` 喂给 MoveIt ⇒ 规划起点不是真机姿态
+    ⇒ 规划器**自己就在报** `fk_start_pos_err_mm`(366.8mm) — 这个字段就是这条同源闸, 现场用它判。
+  待办(未定论, 别猜): 用容器 FK 判哪个关节源对 —— 关节名带前缀 `XMS5-R800-W4G3B4C_joint_N`,
+  FK link 名 = `tool0`, 规划器自己就是在域 42 调的 `/compute_fk`; 注意 `bash -lc` 里传 JSON 参数必须
+  `shlex.quote`(空格会拆参 ⇒ JSONDecodeError), 且 **ROS_DOMAIN_ID 必须显式 export**。
+- 🔎 同源闸字段速查: `fk_start_pos_err_mm`(规划起点 vs 请求时刻真 TCP, 越大越说明起点不是真机姿态) ·
+  `end_err_mm`(规划终点 vs goal_xyz, 规划器收敛误差, 几 mm 正常) · `gate_same_source`(0=未过闸)。
+
 ## 🔎 数据空间视图(dds_canoe.BusView)顶部搜索
 - 位置: 顶栏(测量组)最右端 = `ed_find` + `lb_find`, 按名筛**信号表**(报文/信号/节点)三组, 不是 Trace(Trace 另有 `ed_search` 只筛帧)。
 - 坑①: 清空搜索时**必须递归取消 hidden**(`_unhide_all`, 根+叶子一起); 只把根 un-hide 会出现“组标题出来了、叶子还藏着”。
@@ -16,6 +68,22 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 - 坑③: 可搜文本 = 各列文字 + tooltip + column0 的 `Qt.UserRole`(话题 key/类型常藏在里面) ⇒ `ss_plan` / `zmax/ss_plan` / `zmax::SSPlan` 三种写法都能命中。
 - 无 GUI 环境验证: `QT_QPA_PLATFORM=offscreen` + `gui-venv311/bin/python` 起 `build_view(None, standalone=True)`, 显式 `v.reload(force_tree=True)` 再跑 1.8s 事件循环后树才建出来(只 processEvents() 得 0 条)。
 - 数据空间里的名字对照: MoveIt 规划输出 = `ss_plan`(`zmax/ss_plan`, `zmax::SSPlan`); 状态空间引擎动作 = `ss_action`; 搜 `moveit` 还能命中画布节点「🧭 MoveIt 运动规划 · SDK 直驱桥(Orin)」与连线信号。
+- 🔴 **两个搜索框必须联动(2026-10-01 现场事故)**: 老倪报「我搜索 plan 了, 啥都没有」——
+  子智能体看**现场截图**才发现: 他把关键词打在**顶部全局框**(`ed_find`), Trace 自己的框(`ed_search`)是空的,
+  状态栏当时写着「过滤 关」= 铁证。**症状是"没反应", 不是"没数据"**(Trace 10 行满着, `ss_plan` 就在里面)。
+  ⇒ 修法: `_apply_find` 里同步 `self._filter` + `_fill_trace(force=True)`(两框等效) + 标签区分
+  (「🔎 搜索 (信号表 + Trace 置顶)」vs「📌 Trace 置顶: 输入话题」)。
+  **纪律: 用户报"搜了/点了没反应"先抓屏看他真实操作的位置, 别按自己以为的那个入口改;**
+  同一界面多处搜索/入口, 要么联动要么标签明确到不会认错。
+- 🐛 **`_fill_trace` 的"签名没变就 return"性能优化会吃掉搜索**: 搜索必须 `_fill_trace(force=True)`,
+  否则 1 秒内刚填过 ⇒ 打字搜索**根本不重填** (表现就是"搜了没反应")。任何"用户输入驱动"的刷新一律 force。
+- 🐛 **值列/固定行自己取数, 不依赖 `self._live` 被喂过**: 冷启动/离屏时 `self._live` 为空 ⇒
+  实时值列退化成 digest 的「全缺测(-1)」(digest 是截断 JSON)。新增 `_live_doc()/_live_topics()/_live_fields()`
+  直读 `live.json`(1s 缓存)。另: **显示真实数值一律用 `_f3()` 纯格式化**, 别用 `_num()` —— 后者把负值当"缺测"返回 `—`,
+  会吃掉 `-0.233` 这种完全正常的坐标。
+- 📌 **Trace 默认「固定行」模式(老倪 2026-10-01「滚动看着太累, 默认不滚动」)**: 一行一个话题、位置不动、
+  只有 Time(测量时间)+实时值在变; 值刚变化=绿/未变=灰; 列序固定 `Time|Name|实时值|分类|hz 实测/设计|count|帧龄|QoS|lamp|备注`;
+  工具条 `📌 固定行 ⇄ ▶ 滚动` 可切(滚动模式=原帧流, 表头随模式切换)。搜索命中话题**置顶+整行高亮**, 搜索框边缘报命中数(绿/红)。
 
 > 📌 refs: veh-id-system,ssh-remote-gpu,config-center-excel,relay-middleware,simulink-id-and-skill-tokens,wsl-display-links,simulink-flow-json,gui-navigation,devflow-panel-pdf-2026-08-15,gui-debug-and-crash-forensics
 > 🐛 「断点进不去」不是代码没跑: 先 `ss -ltnp | grep 5678` —— **无监听 = 控制台是非调试模式**(studio.py 只在 `ZMAX_DEBUG=1` 时 listen), 要用 `ZMAX_DEBUG=1` 起或 F5「🚀 全新调试进程」;

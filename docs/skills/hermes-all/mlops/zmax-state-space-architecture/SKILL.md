@@ -390,3 +390,6 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
 - tools/gui/node_logic_dialog.py (_load_source 源码展示优先级)
 - tools/ss_verify_trained.py (训练权重替换验证)
 - tools/gen_insert_video.py (真机同构: YOLO detect_3d 解算写 obs[36:39])
+- 数据空间(DDS 总线)的信号表与关键词、MoveIt 规划/action 取数地图（含"域是 42""action 话题默认隐藏"
+  "规划结果走 get_result 服务不走话题""`tcp_path` 只存 x y z""姿态比对只能用四元数夹角"）
+  → `references/dds-bus-signal-map-and-moveit-action.md`
