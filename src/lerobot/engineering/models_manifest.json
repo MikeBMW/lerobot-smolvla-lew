@@ -1,0 +1,132 @@
+{
+  "schema": "zmax-models-manifest/1",
+  "note": "在役/候选模型版本真源 (逐条实测落盘, 不编造)。status_hub 读本文件 + 每条 probe 的真实探针, 生成 /status/all 的 models[]。state: in_service=在役 / candidate=候选(已训未切指针) / untrained=未训。version 为 unknown = 无版本证据(如实标注, 不编)。",
+  "updated": "2026-10-01",
+  "layers": {
+    "L5": [
+      {
+        "name": "DeepSeek 视觉规划 (L5 大模型主路)",
+        "version": "deepseek-vl",
+        "state": "in_service",
+        "artifact": "src/lerobot/policies/left_right/state_space/scene_vlm.py",
+        "source": "canvas:flows/state_space_obs.json#n_dsvl",
+        "note": "云端 API (deepseek-flash / V4.1-Flash Vision, 本机 key 已配); 输出 data/scene_state.json + ~/zmax_data/vl_safety.json",
+        "probe": { "type": "file_fresh", "path": "~/zmax_data/vl_safety.json", "max_age_s": 600 }
+      }
+    ],
+    "L4": [
+      {
+        "name": "INTACT-JEPA 意图-动作 (在役稳定指针)",
+        "version": "intact_l4_current",
+        "state": "in_service",
+        "artifact": "/home/ubuntu/stable-wm-cache/checkpoints/intact_l4_current",
+        "source": "models/active_models.json#L4",
+        "note": "官方加载器认文件夹(config.json + 恰好一个 weights.pt 软链); 4060 侧推理服务 127.0.0.1:8790 (l4_mani_predictor_v5 / l4_yaw_head_grasp_dz_v2)",
+        "probe": { "type": "http_counter", "url": "http://127.0.0.1:8790/health", "field": "infer_count" }
+      },
+      {
+        "name": "INTACT 世界模型 光模块插入 v6+LoRA",
+        "version": "v20261001-r200",
+        "state": "candidate",
+        "artifact": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_200/weights_epoch_1.pt",
+        "source": "reports/joint_train_20261001_161938/stages.jsonl#L4",
+        "note": "200 步 LoRA (r8/α16) 续训, 基座冻结; 真机验证通过前不切在役指针",
+        "probe": { "type": "none" }
+      },
+      {
+        "name": "流形专家预测器 (JEPA: 潜空间→流形→动作)",
+        "version": "unknown",
+        "state": "in_service",
+        "artifact": "src/lerobot/manifold/predictor_layer.py",
+        "source": "canvas:flows/state_space_obs.json#ssmani_exp",
+        "note": "画布专家节点; 权重/版本无独立版本证据 ⇒ version=unknown",
+        "probe": { "type": "none" }
+      },
+      {
+        "name": "阶段专家 MOE · 7 专家 + 先验门控路由",
+        "version": "unknown",
+        "state": "in_service",
+        "artifact": "checkpoints/stage_moe/moe.pt",
+        "source": "canvas:flows/state_space_obs.json#ss_moe",
+        "note": "画布标注「在役 (2026-09-26)」; 产物无版本号 ⇒ version=unknown",
+        "probe": { "type": "none" }
+      }
+    ],
+    "L3": [
+      {
+        "name": "SmolVLA+LEW 长程规划 (在役运行时 ckpt)",
+        "version": "smolvla_lew_v10_1h/004000",
+        "state": "in_service",
+        "artifact": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model",
+        "source": "models/active_models.json#L3",
+        "note": "与 state_space_sim_real.py 的 SS_L3_CK 默认值同源 (引擎真跑的就是它)。inferring 为**代理信号** = 状态空间引擎动作节拍 (zmax/ss_action 主题 age_s), 非 L3 层独立推理计数 (系统中无该计数, 如实标注)",
+        "probe": { "type": "json_age", "path": "/home/ubuntu/zmax_data/dataspace/live.json", "pointer": "topics.ss_action.age_s", "max_age_s": 3 }
+      },
+      {
+        "name": "SmolVLA+LEW 长程规划 LoRA (7帧窗口)",
+        "version": "v20261001-r6",
+        "state": "candidate",
+        "artifact": "outputs/train/smolvla_lew_lora_200_r6/checkpoints/last/pretrained_model",
+        "source": "reports/joint_train_20261001_161938/stages.jsonl#L3",
+        "note": "200 步 / 537.8s · 7帧窗口 LoRA; 未切在役指针",
+        "probe": { "type": "none" }
+      },
+      {
+        "name": "L3 长程序列规划器 TaskPlanner",
+        "version": "unknown",
+        "state": "in_service",
+        "artifact": "src/lerobot/policies/left_right/state_space/planner.py",
+        "source": "canvas:flows/state_space_obs.json#ssllm",
+        "note": "画布在役节点 (规则回退可跑); 无版本号 ⇒ unknown",
+        "probe": { "type": "none" }
+      },
+      {
+        "name": "Flow-Matching Action Head (DiT) / SmolVLM 视觉编码器",
+        "version": "unknown",
+        "state": "in_service",
+        "artifact": "src/lerobot/policies/smolvla_lew/action_head.py",
+        "source": "canvas:flows/state_space_obs.json#ssdec+ssvlm",
+        "note": "L3 Encoder/Decoder 画布节点; 随 L3 ckpt 同源, 无独立版本号",
+        "probe": { "type": "none" }
+      }
+    ],
+    "L2": [
+      {
+        "name": "YOLO 检测 + 2D→3D 解算 (真机域在役)",
+        "version": "v20261001-annot",
+        "state": "in_service",
+        "artifact": "models/yolo_peg_live.pt",
+        "source": "models/active_models.json#L2 + canvas:flows/state_space_obs.json#ssyolo",
+        "note": "软链指针 → 真机域标定权重; 旁路服务 ss-yolo-bypass 逐帧出 yolo_detections.json",
+        "probe": { "type": "file_fresh", "path": "/home/ubuntu/zmax_data/ss_bypass/yolo_detections.json", "max_age_s": 10 }
+      },
+      {
+        "name": "SAM3 开放词汇分割 (官方权重 09-29 落地 + 适配器)",
+        "version": "v20261001-annot_v1",
+        "state": "candidate",
+        "artifact": "outputs/sam3_finetune/annot_v1/lora_adapter/adapter_model.safetensors",
+        "source": "models/sam3_hf + outputs/sam3_finetune/annot_v1/meta.json",
+        "note": "官方权重 848M 落地 2026-09-29; 适配器 8.42MB / 540 步 / 12 epoch, 未切在役",
+        "probe": { "type": "http_ts", "url": "http://127.0.0.1:8796/health", "field": "last_serve_ts", "max_age_s": 60 }
+      },
+      {
+        "name": "状态空间小模型组 (前馈/估计/预测/校正)",
+        "version": "unknown",
+        "state": "in_service",
+        "artifact": "src/lerobot/policies/left_right/state_space/parallel.py",
+        "source": "canvas:flows/state_space_obs.json#ssff+ssest+sspred+ssinnov",
+        "note": "画布节点 ⚡前馈加速器 FeedforwardAccelerator / 🔮自适应状态估计器 AdaptiveStateEstimator / 📈先验动力学预测器 (dynamics.py) / 🧪状态校正器 (cognition.py); 无版本号 ⇒ unknown",
+        "probe": { "type": "json_counter", "path": "/home/ubuntu/zmax_data/ss_bypass/status.json", "pointer": "layer_calls.perception", "window_s": 6 }
+      },
+      {
+        "name": "外观质量检测 AOI (金手指/端面)",
+        "version": "unknown",
+        "state": "in_service",
+        "artifact": "canvas:flows/state_space_obs.json#ssaoi",
+        "source": "canvas:flows/state_space_obs.json#ssaoi",
+        "note": "工控机侧只读服务 192.168.23.23:10082; 本机仅调用, 无本机版本号 ⇒ unknown",
+        "probe": { "type": "none" }
+      }
+    ]
+  }
+}

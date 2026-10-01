@@ -313,6 +313,29 @@ def cmd_serve(a) -> int:
     else:
         load_model(verbose=True)
 
+    # ── GET /status/all 支撑 (状态聚合; 逻辑在 src/lerobot/engineering/status_hub.py) ──
+    SERVED = {"n": 0, "last_ts": 0.0}                 # /seg 真实调用计数 (供 /health 与 inferring 探针读)
+    _hub: dict = {"mod": None}
+
+    def _status_hub():
+        if _hub["mod"] is None:
+            from lerobot.engineering import status_hub as _sh
+            _sh.start()                                  # 后台 1s 刷新快照 ⇒ 请求只读缓存
+            _hub["mod"] = _sh
+        return _hub["mod"]
+
+    def _status_fallback(e):
+        """status_hub 不可用时的降级契约 (字段齐全, 绝不 500)。"""
+        return {"ts": time.time(),
+                "hw": {"gpu": {"util": 0, "mem_used_mb": 0, "mem_total_mb": 0, "temp_c": 0, "name": "unknown"},
+                       "cpu": {"util": 0, "cores": 0, "load1": 0.0},
+                       "mem": {"used_gb": 0.0, "total_gb": 0.0},
+                       "disk": {"used_gb": 0, "total_gb": 0, "pct": 0}},
+                "models": [], "training": {"active": False, "layer": "", "name": "", "version": "",
+                                           "step": 0, "total": 0, "pct": 0, "eta_s": 0,
+                                           "speed_s_per_step": 0.0},
+                "assets": [], "err": "status_hub: %s: %s" % (type(e).__name__, str(e)[:160])}
+
     class H(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -328,14 +351,22 @@ def cmd_serve(a) -> int:
             pass
 
         def do_GET(self):
+            if self.path.startswith("/status/all"):
+                # 状态聚合 (硬件/模型/训练/3DGS 资产) —— 只读快照(<50ms), 不碰分割链路
+                try:
+                    self._send(200, _status_hub().snapshot())
+                except Exception as e:                                       # noqa: BLE001
+                    self._send(200, _status_fallback(e))                     # 降级也必须 200, 绝不 500
+                return
             import torch
             if self.path.startswith("/health"):
                 vram = (torch.cuda.memory_allocated() / 1e9) if torch.cuda.is_available() else 0
                 self._send(200, {"ok": True, "model_dir": SAM3_DIR, "loaded": SEG.model is not None,
                                  "dtype": SEG.dtype_name, "size": SAM3_SIZE, "vram_gb": round(vram, 2),
-                                 "load_s": SEG.load_s, "min_area_px": MIN_AREA_PX})
+                                 "load_s": SEG.load_s, "min_area_px": MIN_AREA_PX,
+                                 "served": SERVED["n"], "last_serve_ts": SERVED["last_ts"]})
             else:
-                self._send(404, {"ok": False, "err": "只有 GET /health 与 POST /seg"})
+                self._send(404, {"ok": False, "err": "只有 GET /health, GET /status/all 与 POST /seg"})
 
         def do_POST(self):
             if not self.path.startswith("/seg"):
@@ -361,6 +392,8 @@ def cmd_serve(a) -> int:
                 seg = segment(img, req.get("texts") or [], threshold=float(req.get("threshold", 0.5)),
                               mask_threshold=float(req.get("mask_threshold", 0.5)),
                               boxes=req.get("boxes"), box_labels=req.get("box_labels"))
+                SERVED["n"] += 1                     # 真实分割调用计数 (inferring 探针的真源)
+                SERVED["last_ts"] = time.time()
                 out = []
                 for it in seg["instances"]:
                     d3 = mask_3d(it["mask"], cam) if req.get("three_d") and cam == "arm" else None
@@ -377,7 +410,11 @@ def cmd_serve(a) -> int:
                                  "tb": traceback.format_exc()[-800:]})
 
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), H)
-    print("[sam3] 分割服务已起: http://127.0.0.1:%d  (GET /health · POST /seg {cam|image_path|image_b64, texts[]})" % a.port)
+    try:                                                       # 预热状态聚合缓存 (首个 /status/all 也 <50ms)
+        _status_hub()
+    except Exception as e:                                     # noqa: BLE001
+        print("[sam3] status_hub 预热失败(不影响 /health /seg): %s: %s" % (type(e).__name__, e))
+    print("[sam3] 分割服务已起: http://127.0.0.1:%d  (GET /health · GET /status/all · POST /seg {cam|image_path|image_b64, texts[]})" % a.port)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
