@@ -108,11 +108,18 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
 .colllist{flex:1;min-height:40px;overflow-y:auto;-webkit-overflow-scrolling:touch;
   overscroll-behavior:contain;touch-action:pan-y;margin-top:4px;
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  font-variant-numeric:tabular-nums;font-size:12px;line-height:1.45;color:#f85149}
-.colllist .ci{padding:2px 0;border-bottom:1px dashed rgba(248,81,73,.22);cursor:copy;
-  white-space:pre-wrap;word-break:break-all}
+  font-variant-numeric:tabular-nums;font-size:12px;line-height:1.5;color:#f85149}
+/* 7 列: 时间 + X Y Z A B C —— 列宽固定, 与上面「🎯 实时位姿」同一套字体/数字格式(mm, 度),
+   放在右上角就是为了用眼睛把「撞在哪」和「现在在哪」上下对着看 */
+.colllist .ch,.colllist .ci{display:grid;grid-template-columns:60px repeat(3,1fr) repeat(3,1.18fr);
+  gap:4px;align-items:baseline}
+.colllist .ch{color:#8b949e;font-size:10px;padding-bottom:2px;border-bottom:1px solid rgba(248,81,73,.35)}
+.colllist .ci{padding:1px 0;border-bottom:1px dashed rgba(248,81,73,.18);cursor:copy}
 .colllist .ci:last-child{border-bottom:none}
-.colllist .ci b{color:#ff7b72}
+.colllist .ci .tm{color:#8b949e;font-size:11px}
+.colllist .ci .v{text-align:right}
+.colllist .ci .na{color:#6e7681;text-align:right}
+.colllist .ci:hover{background:rgba(248,81,73,.10)}
 .colllist .cg{color:#8b949e}
 .colllist::-webkit-scrollbar{width:8px}
 .colllist::-webkit-scrollbar-thumb{background:#f8514955;border-radius:4px}
@@ -541,29 +548,38 @@ function poseCopy(){
 (function(){ const h=document.getElementById('posehud');
   if(h) h.addEventListener('click',poseCopy); })();
 function _btns(on){document.querySelectorAll('button[data-skill]').forEach(b=>b.disabled=!on);}
-/* 🔴 碰撞点台账渲染 (老倪 2026-10-01): 红字 · 最新在最上 · 高度与「🎯 实时位姿」卡片一致 · 可滚动 */
+/* 🔴 碰撞点台账渲染 (老倪 2026-10-01 二次定调: 「碰撞点要显示 x y z a b c 位置与实时位姿对应,
+   放在右上角就是要用眼睛看, 对比体型的。你显示那么多没必要」)
+   ⇒ 每行只有: 时间 + X Y Z A B C (mm / 度, 与上面「🎯 实时位姿」同一刻度同一数字格式, 上下对着看);
+   关节/力矩/报错码这些细节全塞进 tooltip, 不占眼睛。位姿缺项就画 — (不编)。 */
 function paintColl(cs){
   const box=document.getElementById('collhud'), list=document.getElementById('coll_list');
   if(!box||!list) return;
   const ph=document.getElementById('posehud');
-  if(ph&&ph.offsetHeight>40) box.style.height=ph.offsetHeight+'px';   /* 同栏同高 */
+  if(ph&&ph.offsetHeight>40) box.style.height=ph.offsetHeight+'px';
   cs=cs||[];
   const n=document.getElementById('coll_n');
   if(n) n.textContent=cs.length?('共 '+cs.length+' 次 · 最新在最上'):'';
-  if(!cs.length){ list.innerHTML='<div class="cg">暂无记录</div>'; return; }
-  list.innerHTML=cs.map(function(c){
-    const p=c.pose||{};
-    const pos=(p.x!==undefined&&p.x!==null)
-      ? ('('+Number(p.x).toFixed(4)+', '+Number(p.y).toFixed(4)+', '+Number(p.z).toFixed(4)+')')
-      : '<span class="cg">位姿未采到</span>';
-    const tr=(c.torque!=null)?(' · '+Number(c.torque).toFixed(2)+'/'+Number(c.limit).toFixed(2)+'Nm'):'';
-    const nt=(c.pose_note?('\n  〔'+c.pose_note+'〕'):'');
-    return '<div class="ci" title="点一下复制这条记录"><b>'+String(c.ts||'').slice(5)+'</b> '
-      + (c.joint||'?') + ' · #' + c.code + tr + '\n  ' + pos + nt + '</div>';
+  const cells=function(p){
+    const has=(p&&p.x!==undefined&&p.x!==null);
+    if(!has) return [0,1,2,3,4,5].map(function(){return '<span class="na">—</span>';}).join('');
+    const v=[Number(p.x)*1000,Number(p.y)*1000,Number(p.z)*1000];
+    const d=[p.rx,p.ry,p.rz].map(function(r){return (r===undefined||r===null)?null:Number(r)*180/Math.PI;});
+    return v.map(function(x){return '<span class="v">'+x.toFixed(1)+'</span>';}).join('')
+      + d.map(function(x){return x===null?'<span class="na">—</span>':'<span class="v">'+x.toFixed(1)+'</span>';}).join('');
+  };
+  const head='<div class="ch"><span>时间</span><span class="v">X</span><span class="v">Y</span>'
+    +'<span class="v">Z</span><span class="v">A</span><span class="v">B</span><span class="v">C</span></div>';
+  list.innerHTML=head+cs.map(function(c){
+    const tip='#'+c.code+' · '+(c.joint||'?')
+      +(c.torque!=null?(' · '+Number(c.torque).toFixed(2)+'/'+Number(c.limit).toFixed(2)+'Nm'):'')
+      +(c.pose_note?('\n'+c.pose_note):'')+(c.content?('\n'+c.content):'');
+    return '<div class="ci" title="'+tip.replace(/"/g,'')+'"><span class="tm">'
+      +String(c.ts||'').slice(11,19)+'</span>'+cells(c.pose||{})+'</div>';
   }).join('');
   list.querySelectorAll('.ci').forEach(function(el){
     el.onclick=function(){
-      try{ navigator.clipboard.writeText(el.innerText); el.style.background='rgba(63,185,80,.15)';
+      try{ navigator.clipboard.writeText(el.innerText); el.style.background='rgba(63,185,80,.16)';
            setTimeout(function(){ el.style.background=''; },400); }catch(_e){}
     };
   });

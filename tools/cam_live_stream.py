@@ -1704,13 +1704,14 @@ def _collisions(limit: int = 80) -> list:
             tstamp = time.mktime(time.strptime(ts, "%Y-%m-%d %H:%M:%S"))
         except Exception:
             tstamp = 0
-        if tstamp and (now - tstamp) <= 90:
+        # 采集窗口 90s → 300s (2026-10-01: 08:51:21 那次因为窗口太窄漏了位姿)
+        if tstamp and (now - tstamp) <= 300:
             pj = _read_json(ROKAE_TCP_JSON, {}) or {}
             if pj.get("x") is not None and (now - float(pj.get("ts") or 0)) <= 10:
                 pose = {k: round(float(pj[k]), 5) for k in ("x", "y", "z", "rx", "ry", "rz")
                         if pj.get(k) is not None}
         if not pose:
-            note = "位姿未采到(撞后>90s才看到该条目)"
+            note = "位姿未采到(发现该条目时已超 300s / 位姿源不新鲜)"
         led.append({"ts": ts, "code": rid, "joint": joint, "torque": tor, "limit": lim,
                     "content": content[:180], "pose": pose, "pose_note": note})
         have.add(ts)
