@@ -486,7 +486,39 @@ class Painter:
                   "行带组③ 执行层 · 验证层 · 可视化层"]
 
     def rows_abs(self):
-        return [(self.c.y0 - 40, 3336.0), (3336.0, 6126.0), (6126.0, self.c.y1 + 40)]
+        """3 个行带组的 y 切点 —— **从行带之间的空白自动推导**(不写死坐标, 未来画布改版也成立)。
+
+        候选切点 = 相邻行带之间的空档中点; 在其中选 2 个使 3 组节点数最均衡 (每组 ≥5 个节点)。
+        """
+        import itertools
+        bands = self.c.bands
+        cands = []
+        for i in range(len(bands) - 1):
+            g0 = bands[i]["y"] + bands[i]["h"]
+            g1 = bands[i + 1]["y"]
+            if g1 - g0 >= 40:
+                cands.append((g0 + g1) * 0.5)
+        top, bot = self.c.y0 - 40, self.c.y1 + 40
+
+        def cnt(y0, y1):
+            return sum(1 for n in self.c.boxes if y0 <= n["y"] + n["h"] * 0.5 <= y1)
+
+        if len(cands) >= 2:
+            N = len(self.c.boxes) / 3.0
+            best = None
+            for a, b in itertools.combinations(sorted(cands), 2):
+                groups = [(top, a), (a, b), (b, bot)]
+                ks = [cnt(*g) for g in groups]
+                if min(ks) < 5:
+                    continue
+                cost = sum(((k - N) / max(1.0, N)) ** 2 for k in ks)
+                if best is None or cost < best[0]:
+                    best = (cost, groups)
+            if best:
+                return best[1]
+        med = sorted(n["y"] + n["h"] * 0.5 for n in self.c.boxes)
+        return [(top, med[len(med) // 3]), (med[len(med) // 3], med[2 * len(med) // 3]),
+                (med[2 * len(med) // 3], bot)]
 
     def row_boxes(self, ri: int):
         ry0, ry1 = self.rows_abs()[ri]
