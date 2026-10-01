@@ -1,0 +1,19 @@
+[Unit]
+Description=Z-MAX 实况推送 (手机页 ss3d_live.json → ECS 站点根)
+Documentation=仓库 tools/ss3d_live_push.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/zmax
+EnvironmentFile=-/home/ubuntu/zmax_data/secrets/zmax.env
+Environment=SS3D_PUSH_INTERVAL=1.0
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/ss3d_live_push.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/ubuntu/zmax_data/logs/ss3d_live_push.log
+StandardError=append:/home/ubuntu/zmax_data/logs/ss3d_live_push.log
+
+[Install]
+WantedBy=multi-user.target
