@@ -7,6 +7,7 @@
   · _demo_node_output — ▶运行 演示播放: 打印引擎真实算出的该节点 out
 """
 import inspect
+import os
 import sys
 import time
 
@@ -107,10 +108,17 @@ def _demo_node_output(module, node, ctx):
     # 🎯 2026-09-03 老倪: ▶运行 播放轮转到「🎯 YOLO 目标检测」时, 展示真实采样值
     #   (detect_3d 已由 _real_yolo_sense_once 真执行, conf/3D 模型真输出) — 不用
     #   引擎帧 conf -- (引擎无 YOLO 模型)。无缓存(采样失败/无节点)才落回 dw 帧。
-    if match_node(name) == "ss_yolo" and _YOLO_CACHE.get("det3d"):
+    # 🐛 2026-10-01: `_YOLO_CACHE` 住在 nodes/library.py (2026-09-28 从 node_logic.py 拆分时
+    #   本函数没跟着搬) — 直接引用会 NameError, 而 GUI 的单步/播放外层是 try/except ⇒ 静默失效。
+    #   惰性取一次 (顺带兼容 library 尚未导入时)。
+    try:
+        from .nodes.library import _YOLO_CACHE as _YC
+    except Exception:                                                    # noqa: BLE001
+        _YC = {}
+    if match_node(name) == "ss_yolo" and _YC.get("det3d"):
         try:
-            d3 = _YOLO_CACHE.get("det3d") or {}
-            d2 = _YOLO_CACHE.get("det2d") or {}
+            d3 = _YC.get("det3d") or {}
+            d2 = _YC.get("det2d") or {}
             parts = [f"{k}=[{v[0]:.3f},{v[1]:.3f},{v[2]:.3f}]"
                      + (f" conf={d2[k]['conf']:.2f}" if k in d2 else "")
                      for k, v in sorted(d3.items())]
