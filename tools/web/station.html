@@ -61,6 +61,23 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12p
 .zmd.g_ca .dot{background:#d29922}
 .zmd.g_un{border-color:#1c2229}
 .zmd.g_un .vr,.zmd.g_un .ly{color:#6e7681}
+/* 短模型名 (≤9 字, 与 status_panel.py 的 short_name 同一套规则) */
+.zmd .nm{color:#e6edf3;font-size:10.5px;font-weight:600;white-space:nowrap;flex:0 0 auto}
+.zmd .more{color:#6e7681;font-size:10px;flex:0 0 auto}
+.zmd.zsec{background:#0f141a}
+.zmd.zsec .nm{color:#a9b4c0;font-weight:400}
+/* 点按展开的全部模型明细 (手机没有 hover ⇒ 点一下整条) */
+#zs_models{cursor:pointer}
+#zs_more{display:none;border-top:1px dashed #21262d;margin-top:3px;padding-top:4px}
+#zs_more.on{display:block}
+.zdrow{display:flex;gap:6px;align-items:baseline;font-size:10.5px;line-height:1.5;
+  white-space:nowrap;overflow:hidden}
+.zdrow b{color:#8b949e;font-weight:700;flex:0 0 auto}
+.zdrow em{font-style:normal;color:#e6edf3;font-weight:600;flex:0 0 auto;min-width:5.6em}
+.zdrow .zdv{color:#c9d1d9;font-family:ui-monospace,Menlo,Consolas,monospace;max-width:18ch;
+  overflow:hidden;text-overflow:ellipsis;flex:0 0 auto}
+.zdrow i{font-style:normal;flex:0 0 auto}
+.zdrow .zdn{color:#6e7681;overflow:hidden;text-overflow:ellipsis}
 /* 训练 chip + 进度条 (只在真在训练时出现) */
 .ztrain{display:flex;align-items:center;gap:4px;padding:1px 7px;border-radius:9px;
   border:1px solid #4b3a1a;background:#2a2012;color:#f0c674;max-width:100%}
@@ -240,8 +257,9 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
       <span class="trk"><i class="fil" id="zs_disk_f"></i></span>
       <span class="val" id="zs_disk_v">—</span></div>
   </div>
-  <div class="zrow" id="zs_models"><span class="zmd g_un"><i class="dot"></i>
-    <b class="ly">状态源…</b></span></div>
+  <div class="zrow" id="zs_models" title="点一下展开全部模型明细 (层/短名/完整版本/状态/完整名)">
+    <span class="zmd g_un"><i class="dot"></i><b class="ly">状态源…</b></span></div>
+  <div id="zs_more"></div>
 </div>
 <main>
   <section class="grid">
@@ -1602,38 +1620,83 @@ loadSpaces(); setInterval(loadSpaces,10000);
   /* ── 行2: 模型圆点 + 层标 + 极短版本 + ⚡推理中 ; 训练进度条 ; 3DGS 版本 ──
      版本号上游为 unknown 的模型(如实未采到版本)按层**合到一个 chip**: 每个模型仍各占
      一个 Ø8px 圆点(颜色按状态), 只是不重复印层标/空版本 ⇒ 省一半宽度。 */
+  /* 短模型名 — 与 tools/gui/status_panel.py 的 short_name() **同一套规则**(两处显示必须一致):
+     ① 去括号说明 ② 去 "L3 " 层前缀 ③ 取第一个 ASCII 型号词(遇 '+' 截断) ④ 长词查表
+     ⑤ 带 LoRA / 世界模型 等限定词 → -L / -WM 后缀(同层可区分) ⑥ 全中文取前 4 汉字; 全程 ≤9 字
+     (老倪 2026-10-01: 「L2 L3 L4 的模型名字要显示出来, 现在的 v1001 也不知道是哪个模型」) */
+  var _ALIAS = {"taskplanner":"TaskPlan", "flow-matching":"FlowMatch", "smolvla":"SmolVLA",
+                "intact-jepa":"INTACT", "deepseek":"DeepSeek"};
+  var _MODS = [[/世界模型|\bWM\b/i, "-WM"], [/lora/i, "-L"]];
+  function sn(name){
+    var s = String(name == null ? "" : name).trim();
+    if (!s) return "?";
+    s = s.replace(/[(（][\s\S]*$/, "").trim();
+    s = s.replace(/^L\d+\s+/, "").trim();
+    var m = s.match(/[A-Za-z][A-Za-z0-9._+\-]+/);
+    if (m){
+      var base = m[0].split("+")[0].replace(/[._-]+$/, "");
+      base = _ALIAS[base.toLowerCase()] || base;
+      for (var i = 0; i < _MODS.length; i++){
+        if (_MODS[i][0].test(s) && base.length + _MODS[i][1].length <= 9){ base += _MODS[i][1]; break; }
+      }
+      return base.slice(0, 9);
+    }
+    var c = s.match(/[\u4e00-\u9fff]{2,}/);
+    return c ? c[0].slice(0, 4) : (s.slice(0, 9) || "?");
+  }
+
+  /* 模型行: **按层聚合** —— 每层一个 chip = 灯 + 层标 + 短模型名 + 极短版本 + ⚡推理中 + 其余计数(+N);
+     该层**另有真实版本号**的模型(通常是候选)各给一个不带层标的小 chip(否则 13 条一行放不下)。
+     完整名/完整版本/状态/训练 step 全在 tooltip, 手机点一下整条展开「全部模型」明细。 */
   function renderModels(d){
-    var ms = (d && d.models) || [], out = [], groups = {}, gorder = [];
+    var ms = (d && d.models) || [], out = [];
+    var ORDER = ["L2", "L3", "L4", "L5"], by = {}, keys = [];
     ms.forEach(function(m){
-      if (m && m.version && m.version !== "unknown"){
-        out.push('<span class="zmd ' + scls(m.state) + '" title="'
-          + esc((m.layer||"") + " · " + (m.name||"") + " · " + m.version + " · " + (m.state||"")
-                + (m.inferring ? " · 推理中" : "")) + '">'
-          + '<i class="dot"></i><b class="ly">' + esc(m.layer||"") + '</b>'
+      if (!m) return;
+      var ly = m.layer || "?";
+      if (!by[ly]){ by[ly] = []; keys.push(ly); }
+      by[ly].push(m);
+    });
+    keys.sort(function(a, b){
+      var ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
+      return ((ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)) || (a < b ? -1 : (a > b ? 1 : 0));
+    });
+    function full(m){
+      return (m.layer || "") + " · " + (m.name || "") + " · " + (m.version || "")
+           + " · " + (m.state || "") + (m.inferring ? " · 推理中" : "");
+    }
+    keys.forEach(function(ly){
+      var arr = by[ly], prim = null;
+      ["in_service", "candidate", "untrained"].some(function(st){
+        for (var i = 0; i < arr.length; i++){ if (arr[i].state === st){ prim = arr[i]; return true; } }
+        return false;
+      });
+      prim = prim || arr[0];
+      var rest = arr.filter(function(x){ return x !== prim; });
+      var shown = rest.filter(function(x){ return x.version && x.version !== "unknown"; });
+      var hidden = rest.length - shown.length;
+      out.push('<span class="zmd ' + scls(prim.state) + '" title="' + esc(full(prim))
+        + (arr.length > 1 ? ("　(本层共 " + arr.length + " 个模型)") : "") + '">'
+        + '<i class="dot"></i><b class="ly">' + esc(ly) + '</b>'
+        + '<b class="nm">' + esc(sn(prim.name)) + '</b>'
+        + '<b class="vr">' + esc(sv(prim.version)) + '</b>'
+        + (prim.inferring ? '<i class="inf">⚡</i>' : '')
+        + (hidden > 0 ? '<b class="more">+' + hidden + '</b>' : '')
+        + '</span>');
+      shown.forEach(function(m){
+        out.push('<span class="zmd zsec ' + scls(m.state) + '" title="' + esc(full(m)) + '">'
+          + '<i class="dot"></i><b class="nm">' + esc(sn(m.name)) + '</b>'
           + '<b class="vr">' + esc(sv(m.version)) + '</b>'
           + (m.inferring ? '<i class="inf">⚡</i>' : '') + '</span>');
-      } else if (m){
-        var ly = m.layer || "?";
-        if (!groups[ly]) { groups[ly] = []; gorder.push(ly); }
-        groups[ly].push(m);
-      }
-    });
-    gorder.sort().forEach(function(ly){
-      var arr = groups[ly];
-      out.push('<span class="zmd g_un" title="'
-        + esc(ly + " · 版本未采到: " + arr.map(function(m){
-              return (m.name||"") + (m.inferring ? "(推理中)" : "");
-            }).join(" / ")) + '">'
-        + '<b class="ly">' + esc(ly) + '</b>'
-        + arr.map(function(m){ return '<i class="dot" style="background:' + dotc(m.state) + '"></i>'; }).join("")
-        + '</span>');
+      });
     });
     /* 训练行: 在跑 ⇒ 层 + 版本 + 进度条 + %; 没在跑 ⇒ 绝不空着, 显示「上次训练」(老倪 2026-10-01:
        「手机还是看不到训练模型的状态」—— 真因是训练刚好跑完 training.active=false/step 0/0 就空了)。 */
     var t = (d && d.training) || {};
     if (t.active){
       out.push('<span class="ztrain" title="'
-        + esc("训练中 " + (t.layer||"") + " · " + (t.name||"") + " · step " + (t.step|0) + "/" + (t.total|0)
+        + esc("训练中 " + (t.layer||"") + " · " + (t.name||"") + " · " + (t.version||"")
+              + " · step " + (t.step|0) + "/" + (t.total|0)
               + " · ETA " + eta(t.eta_s) + " · " + (t.speed_s_per_step||0) + "s/step"
               + (t.note ? " · " + t.note : "")) + '">🎓'
         + '<b>' + esc(t.layer||"") + '</b>'
@@ -1655,13 +1718,25 @@ loadSpaces(); setInterval(loadSpaces,10000);
     var gs = ((d && d.assets) || []).filter(function(a){ return a && a.kind === "3DGS"; });
     if (gs.length){
       var a = gs[gs.length - 1];
-      out.push('<span class="zgs" title="' + esc((a.name||"") + " · " + (a.path||"")) + '">'
+      out.push('<span class="zgs" title="' + esc((a.name||"") + " · " + (a.version||"") + " · " + (a.path||"")) + '">'
         + '3DGS <b>' + esc(sv(a.version)) + '</b></span>');
     }
     var box = $("zs_models");
     if (box){
       var html = out.join("");
       if (box.getAttribute("data-h") !== html){ box.innerHTML = html; box.setAttribute("data-h", html); }
+    }
+    /* 点按展开: 手机没有 hover ⇒ 全部模型(层+短名+完整版本+状态+完整名) 一行条 */
+    var det = $("zs_more");
+    if (det){
+      var lines = (ms || []).map(function(m){
+        return '<div class="zdrow"><b>' + esc(m.layer||"?") + '</b> <em>' + esc(sn(m.name)) + '</em> '
+             + '<span class="zdv">' + esc(m.version || "—") + '</span> '
+             + '<i style="color:' + dotc(m.state) + '">' + esc(m.state || "?") + '</i>'
+             + (m.inferring ? ' <i class="inf">⚡</i>' : '')
+             + '<span class="zdn">' + esc(m.name || "") + '</span></div>';
+      }).join("");
+      if (det.getAttribute("data-h") !== lines){ det.innerHTML = lines; det.setAttribute("data-h", lines); }
     }
   }
 
@@ -1688,6 +1763,15 @@ loadSpaces(); setInterval(loadSpaces,10000);
       box.innerHTML = '<span class="zmd g_un"><i class="dot"></i><b class="ly">状态源离线</b></span>';
       box.setAttribute("data-h", "off");
     }
+  }
+
+  /* 点按展开/收起「全部模型明细」(手机没有 hover ⇒ 点整条模型行) */
+  var mrow = $("zs_models");
+  if (mrow){
+    mrow.addEventListener("click", function(){
+      var det = $("zs_more");
+      if (det) det.classList.toggle("on");
+    });
   }
 
   var busy = false;

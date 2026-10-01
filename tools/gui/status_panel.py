@@ -18,10 +18,10 @@
     "training":{"active","layer","name","version","step","total","pct","eta_s","speed_s_per_step"},
     "assets":  [{"kind":"3DGS","name","version","path"}] }
 
-形态 (两行, 总 420x68 px):
+形态 (两行, 总 560x68 px):
   第1行  GPU/CPU/内存/磁盘: Ø8 灯 + 名称 + 迷你状态条(40x7) + 3~4 字符数值   ... 右端 通信灯
-  第2行  模型: Ø8 灯 + 层标签(L2..) + 极短版本 + 推理(▲)/训练(◐)标记;
-         训练中额外一条进度条(74x7) + %;  末尾 3DGS v<版本>
+  第2行  每层一个 chip: Ø8 灯 + 层标(L2..) + **短模型名(≤9字)** + 极短版本 + 同层计数(+N);
+         推理中=青环 · 训练中=黄弧;   训练进度条(40x7)+% 与 3DGS v<版本> 落在第 1 行右半
 颜色语义: 绿=在役&健康 · 黄=候选或忙 · 红=异常/未训练 · 灰=未知(含服务不可达)
 
 运行/自检:
@@ -102,7 +102,52 @@ def short_ver(v):
     if (len(parts) > 1 and 1 <= len(parts[-1]) <= 8 and len(parts[0]) >= 4
             and any(c.isdigit() for c in parts[0])):
         v = parts[-1]            # 头像版本号(v1001 / v20261001)才换成尾巴; 'deepseek-vl' 这类保持原名
+    if len(v) > 9:              # 太长: 下划线目录名只留末段 (intact_l4_current -> current)
+        seg = [x for x in v.split("_") if x]
+        if len(seg) > 1:
+            v = seg[-1]
     return v or "—"
+
+
+# ---- 短模型名 (2026-10-01 老倪: 「L2 L3 L4 的模型名字要显示出来, 现在的 v1001 也不知道是哪个模型」) ----
+# 只从 name 字段**真实提取/缩写**, 不编造。≤9 字符。同层多个模型必须能互相区分。
+_NAME_ALIAS = {                 # 长型号的固定缩写 (都是 name 里真实出现的词)
+    "taskplanner": "TaskPlan",
+    "flow-matching": "FlowMatch",
+    "smolvla+lew": "SmolVLA",
+    "intact-jepa": "INTACT",
+    "deepseek": "DeepSeek",
+}
+_NAME_MOD = (                   # 名里的限定词 → 后缀 (同层区分: INTACT vs INTACT-WM)
+    (re.compile(r"世界模型|\bWM\b", re.I), "-WM"),
+    (re.compile(r"lora", re.I), "-L"),
+)
+
+
+def short_name(name):
+    """name 字段 → ≤9 字短名。规则(一致、可读、可复算):
+      ① 去括号说明  ② 去 "L3 " 层前缀  ③ 取第一个 ASCII 型号词(遇 '+' 截断)
+      ④ 长词查 _NAME_ALIAS; 仍超 9 字按 9 字截断
+      ⑤ 名带 LoRA / 世界模型 等限定词 → 加 -L / -WM 后缀(同层可区分)
+      ⑥ 全中文名 → 取前 4 个汉字
+    """
+    s = str(name or "").strip()
+    if not s:
+        return "?"
+    s = re.sub(r"[(（].*$", "", s).strip()                       # ① 去括号
+    s = re.sub(r"^L\d+\s+", "", s).strip()                       # ② 去层前缀
+    m = re.search(r"[A-Za-z][A-Za-z0-9._+\-]{1,}", s)            # ③ 第一个 ASCII 词
+    if m:
+        base = m.group(0).split("+")[0].rstrip("._-")            # SmolVLA+LEW -> SmolVLA
+        base = _NAME_ALIAS.get(base.lower(), base)
+        for rx, suf in _NAME_MOD:                                # ⑤ 限定词后缀
+            if rx.search(s) and (len(base) + len(suf)) <= 9:
+                base += suf
+                break
+        return base[:9]
+    c = re.search(r"[\u4e00-\u9fff]{2,}", s)                     # ⑥ 全中文
+    return (c.group(0)[:4] if c else (s[:9] or "?"))
+
 
 
 # ============================================================
@@ -144,7 +189,7 @@ class _Fetcher(QThread):
 # 面板
 # ============================================================
 class StatusPanel(QWidget):
-    W, H = 420, 68
+    W, H = 560, 68
     POLL_MS = 1000
     MAX_CHIPS = 4
 
@@ -309,11 +354,13 @@ class StatusPanel(QWidget):
             prim = prim or ms[0]
             chips.append({"layer": ly, "state": str(prim.get("state") or ""),
                           "version": prim.get("version"), "inferring": any(bool(x.get("inferring")) for x in ms),
-                          "n": len(ms), "in_service": any(str(x.get("state")) == "in_service" for x in ms)})
+                          "n": len(ms), "in_service": any(str(x.get("state")) == "in_service" for x in ms),
+                          "name": short_name(prim.get("name")), "full": str(prim.get("name") or "")})
         if not chips:
             # 读不到/服务不可达 ⇒ 占位灰灯 (行形状不变, 一眼看出"没数据"而不是"没这一层")
             chips = [{"layer": ly, "state": "", "version": "", "inferring": False,
-                      "n": 0, "in_service": False, "placeholder": True} for ly in LAYER_ORDER]
+                      "n": 0, "in_service": False, "placeholder": True, "name": "", "full": ""}
+                     for ly in LAYER_ORDER]
         return chips
 
     def _assets(self):
@@ -345,11 +392,12 @@ class StatusPanel(QWidget):
         L.append("内存 %s/%s GB · 磁盘 %s/%s GB (%s%%)" % (
             mem.get("used_gb", "—"), mem.get("total_gb", "—"),
             dsk.get("used_gb", "—"), dsk.get("total_gb", "—"), dsk.get("pct", "—")))
-        L.append("模型 (%d):" % len(self._models()))
+        L.append("模型 (%d):  (短名 ≤9 字, 缩自 name 真值)" % len(self._models()))
         for m in self._models():
-            L.append("  [%s] %s · %s · %s%s" % (
-                m.get("layer", "?"), m.get("name", "?"), m.get("version", "?"),
-                m.get("state", "?"), " · 推理中" if m.get("inferring") else ""))
+            L.append("  [%s] %-9s · %s · %s（%s）%s" % (
+                m.get("layer", "?"), short_name(m.get("name")), m.get("version", "?"),
+                m.get("name", "?"), m.get("state", "?"),
+                " · 推理中" if m.get("inferring") else ""))
         t = self._training()
         if t.get("active"):
             L.append("训练中: [%s] %s · %s · %s/%s (%s%%) · eta %ss · %s s/step" % (
@@ -383,6 +431,8 @@ class StatusPanel(QWidget):
         f_lb.setPixelSize(10)
         f_sm = QFont(MONO)
         f_sm.setPixelSize(11)
+        f_name = QFont(UI)                  # 短模型名 (2026-10-01 加: 层标和版本号都看不出是哪个模型)
+        f_name.setPixelSize(10)
         f_ver = QFont(MONO)
         f_ver.setPixelSize(10)
         f_num = QFont(MONO)
@@ -394,17 +444,17 @@ class StatusPanel(QWidget):
 
         row1, gpu, cpu, mem, dsk = self._rows()
         y1 = 6.0
-        gw = 98.0
+        gw = 88.0
         for i, (cap, val) in enumerate(row1):
             x0 = 6.0 + i * gw
             col = QColor(tone(val))
             self._lamp(p, x0 + 5, y1 + 16, col, val is not None)
             p.setPen(QColor(C_GRAY))
             p.setFont(f_lb)
-            p.drawText(QRectF(x0 + 11, y1, 21, 32), Qt.AlignVCenter | Qt.AlignLeft,
-                       QFontMetrics(f_lb).elidedText(cap, Qt.ElideRight, 21))
+            p.drawText(QRectF(x0 + 11, y1, 25, 32), Qt.AlignVCenter | Qt.AlignLeft,
+                       QFontMetrics(f_lb).elidedText(cap, Qt.ElideRight, 25))
             # 迷你状态条
-            bx, bw, bh = x0 + 34, 34, 7
+            bx, bw, bh = x0 + 37, 26, 7
             by = y1 + 16 - bh / 2.0
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(TRACK))
@@ -414,20 +464,27 @@ class StatusPanel(QWidget):
                 p.drawRoundedRect(QRectF(bx, by, max(3.0, bw * min(1.0, max(0.0, val / 100.0))), bh), 3.5, 3.5)
             p.setPen(QColor(C_WHITE if val is not None else C_DIM))
             p.setFont(f_num)
-            p.drawText(QRectF(x0 + 70, y1, 24, 32), Qt.AlignVCenter | Qt.AlignRight, _txt(val))
+            p.drawText(QRectF(x0 + 62, y1, 23, 32), Qt.AlignVCenter | Qt.AlignRight, _txt(val))
 
-        # 通信灯 (绿=最近取数成功; 灰=服务不可达/读失败)
-        fresh = self._age is not None and (time.time() - self._age) < max(3.0, self.POLL_MS / 1000.0 * 3)
-        self._lamp(p, w - 9, y1 + 16, QColor(C_GREEN if fresh else C_DIM), fresh)
-
-        # ---- 第 2 行 ----
+        # ---- 第 2 行: 每层一个 chip = 灯 + 层标 + **短模型名** + 极短版本 ----
+        # (老倪 2026-10-01: 「L2 L3 L4 的模型名字要显示出来, 现在的 v1001 也不知道是哪个模型」)
         y2, cy2 = h - 28.0, h - 11.0
         vs = self._chips()
-        agg = len(vs) > self.MAX_CHIPS
-        n_chips = self.MAX_CHIPS + (1 if agg else 0)
-        chipw = 55.0 if agg else 64.0
-        for i, m in enumerate(vs[:self.MAX_CHIPS]):
-            x = 6.0 + i * chipw
+        fm_sm, fm_nm, fm_ver = QFontMetrics(f_sm), QFontMetrics(f_name), QFontMetrics(f_ver)
+
+        def _chip_w(m, with_cnt):
+            ly = str(m.get("layer", "?"))[:3]
+            nm = str(m.get("name") or "")
+            vr = short_ver(m.get("version")) if m.get("version") else "—"
+            w_ly, w_nm, w_vr = fm_sm.width(ly), fm_nm.width(nm), fm_ver.width(vr)
+            cnt = fm_ver.width("+%d" % max(0, int(m.get("n") or 1) - 1)) + 4 if (with_cnt and int(m.get("n") or 1) > 1) else 0
+            return 12 + w_ly + 4 + (w_nm + 4 if w_nm else 0) + w_vr + cnt, w_ly, w_nm, w_vr
+
+        x_end = w - 20.0                       # 右端给通信灯留位
+        with_cnt = sum(_chip_w(m, True)[0] + 8 for m in vs) + 4 <= x_end
+        x = 4.0
+        for m in vs:
+            cw, w_ly, w_nm, w_vr = _chip_w(m, with_cnt)
             st = str(m.get("state", ""))
             col = QColor(STATE_COLOR.get(st, C_DIM))
             self._lamp(p, x + 6, cy2, col, st in STATE_COLOR)
@@ -442,29 +499,38 @@ class StatusPanel(QWidget):
                 p.drawEllipse(QRectF(x - 0.5, cy2 - 6.5, 13, 13))
             p.setPen(QColor(C_WHITE))
             p.setFont(f_sm)
-            ly = str(m.get("layer", "?"))[:3] or "?"
-            p.drawText(QRectF(x + 14, y2, 14, 34), Qt.AlignVCenter | Qt.AlignLeft, ly)
-            p.setPen(QColor(C_GRAY))
+            p.drawText(QRectF(x + 13, y2, w_ly, 34), Qt.AlignVCenter | Qt.AlignLeft,
+                       str(m.get("layer", "?"))[:3] or "?")
+            cx = x + 13 + w_ly + 4
+            if w_nm:                            # 短模型名 (最要紧的一格)
+                p.setPen(QColor(C_GRAY))
+                p.setFont(f_name)
+                p.drawText(QRectF(cx, y2, w_nm, 34), Qt.AlignVCenter | Qt.AlignLeft, str(m.get("name") or ""))
+                cx += w_nm + 4
+            p.setPen(QColor(C_DIM))
             p.setFont(f_ver)
-            vw = int(chipw - 32)
-            p.drawText(QRectF(x + 29, y2, vw, 34), Qt.AlignVCenter | Qt.AlignLeft,
-                       QFontMetrics(f_ver).elidedText(short_ver(m.get("version")), Qt.ElideRight, vw))
-        if agg:
-            n_rest = sum(int(r.get("n") or 1) for r in vs[self.MAX_CHIPS:])
-            x = 6.0 + self.MAX_CHIPS * chipw
-            worst = C_GREEN if any(r.get("in_service") for r in vs[self.MAX_CHIPS:]) else C_DIM
-            self._lamp(p, x + 6, cy2, QColor(worst), True)
-            p.setPen(QColor(C_GRAY))
-            p.setFont(f_sb)
-            p.drawText(QRectF(x + 14, y2, chipw - 16, 34), Qt.AlignVCenter | Qt.AlignLeft,
-                       "×%d" % n_rest)
+            p.drawText(QRectF(cx, y2, w_vr, 34), Qt.AlignVCenter | Qt.AlignLeft,
+                       short_ver(m.get("version")) if m.get("version") else "—")
+            cx += w_vr
+            if with_cnt and int(m.get("n") or 1) > 1:       # 其余同层模型: 计数聚合
+                p.setPen(QColor(C_DIM))
+                p.setFont(f_ver)
+                p.drawText(QRectF(cx + 4, y2, 26, 34), Qt.AlignVCenter | Qt.AlignLeft,
+                           "+%d" % (int(m.get("n") or 1) - 1))
+            x += cw + 8
 
-        # 训练进度条 + %
-        tx = 6.0 + n_chips * chipw + 6.0
-        bar_w = 44.0
+        # 通信灯 (绿=最近取数成功; 灰=服务不可达/读失败)
+        fresh = self._age is not None and (time.time() - self._age) < max(3.0, self.POLL_MS / 1000.0 * 3)
+        self._lamp(p, w - 9, cy2, QColor(C_GREEN if fresh else C_DIM), fresh)
+
+        # ---- 训练进度条 + %  /  3DGS 资产版本 (都落在**第 1 行右半**, 把第 2 行整行让给模型名) ----
+        yt = y1 + 16.0                          # 第 1 行中线
+        tx = 6.0 + 4.0 * gw + 6.0               # 4 个硬件条的右边界 + 6
+        bar_w = 40.0
         pct_x = tx + bar_w + 3.0
         pct_w = 26.0
         t = self._training()
+        pct_end = tx + 14.0
         if t.get("active"):
             pct = _num(t.get("pct"))
             if pct is None:
@@ -473,7 +539,7 @@ class StatusPanel(QWidget):
                 except Exception:
                     pct = None
             bw, bh = bar_w, 7
-            by = cy2 - bh / 2.0
+            by = yt - bh / 2.0
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(TRACK))
             p.drawRoundedRect(QRectF(tx, by, bw, bh), 3.5, 3.5)
@@ -481,12 +547,11 @@ class StatusPanel(QWidget):
                 p.setBrush(QColor(C_CYAN))
                 p.drawRoundedRect(QRectF(tx, by, max(3.0, bw * min(1.0, max(0.0, pct / 100.0))), bh), 3.5, 3.5)
             p.setPen(QColor(C_WHITE if pct is not None else C_DIM))
-            p.setFont(f_sb)
-            p.drawText(QRectF(pct_x, y2, pct_w, 34), Qt.AlignVCenter | Qt.AlignRight, _txt(pct))
+            p.setFont(f_num)
+            p.drawText(QRectF(pct_x, y1, pct_w, 32), Qt.AlignVCenter | Qt.AlignRight, _txt(pct))
+            pct_end = pct_x + pct_w
         else:
-            self._lamp(p, tx + 5, cy2, QColor(C_DIM), False)
-            pct_x = tx + 14.0
-            pct_w = 8.0
+            self._lamp(p, tx + 5, yt, QColor(C_DIM), False)
 
         # 3DGS 资产 (末尾, 极短)
         assets = [a for a in self._assets() if str(a.get("kind", "")).upper() == "3DGS"]
@@ -496,13 +561,11 @@ class StatusPanel(QWidget):
             label = "3DGS ×%d %s" % (len(assets), ver)
         p.setFont(f_ver)
         xr = w - 6.0
-        room = max(24.0, xr - (pct_x + pct_w + 8.0))
+        room = max(24.0, xr - (pct_end + 8.0))
         label = QFontMetrics(f_ver).elidedText(label, Qt.ElideRight, int(room))
         tw = QFontMetrics(f_ver).width(label)
         p.setPen(QColor(C_BLUE_A if assets else C_DIM))
-        p.drawText(QRectF(xr - tw, y2, tw, 34), Qt.AlignVCenter | Qt.AlignRight, label)
-        if room >= 44.0:                       # 挤不下时省掉灯, 只留标签
-            self._lamp(p, xr - tw - 8, cy2, QColor(C_GREEN if assets else C_DIM), bool(assets))
+        p.drawText(QRectF(xr - tw, y1, tw, 32), Qt.AlignVCenter | Qt.AlignRight, label)
 
     def _is_training_layer(self, layer):
         t = self._training()
@@ -561,9 +624,9 @@ def _selftest(shot=None):
         ok = ok and bool(cond)
         res.append("%s %s%s" % ("✓" if cond else "✗", name, (" :: " + str(extra)) if extra else ""))
 
-    # 1) 面积红线
+    # 1) 面积红线 (2026-10-01: 加模型短名 ⇒ 宽 420→560, 高不变 68)
     pn = StatusPanel(poll=False)
-    chk("面积 ≤ 420x90 px", pn.width() <= 420 and pn.height() <= 90, "%dx%d" % (pn.width(), pn.height()))
+    chk("面积 ≤ 560x90 px", pn.width() <= 560 and pn.height() <= 90, "%dx%d" % (pn.width(), pn.height()))
 
     # 2) 颜色阈值
     chk("阈值 69→绿", tone(69) == C_GREEN)
@@ -585,6 +648,27 @@ def _selftest(shot=None):
     chk("L2 chip 取在役模型版本", short_ver(l2["version"]) == "annot" and l2["state"] == "in_service", l2)
     chk("L2 chip 标记推理中", l2["inferring"] is True)
 
+    # 2d) 短模型名 (老倪 2026-10-01: 「L2 L3 L4 的模型名字要显示出来, 现在的 v1001 也不知道是哪个模型」)
+    chk("短名 ≤9 字", all(1 <= len(c["name"]) <= 9 for c in ch), [c["name"] for c in ch])
+    chk("短名可读: L2 YOLO/SAM3", short_name(REAL["models"][0]["name"]) == "YOLO"
+        and short_name(REAL["models"][1]["name"]) == "SAM3",
+        [short_name(REAL["models"][0]["name"]), short_name(REAL["models"][1]["name"])])
+    chk("短名: SmolVLA / INTACT / DeepSeek",
+        [short_name(REAL["models"][4]["name"]), short_name(REAL["models"][8]["name"]),
+         short_name(REAL["models"][12]["name"])] == ["SmolVLA", "INTACT", "DeepSeek"])
+    chk("全中文名 → 汉字短名", short_name("流形专家预测器 (JEPA: 潜空间→流形→动作)") == "流形专家"
+        and short_name("状态空间小模型组 (前馈/估计/预测/校正)") == "状态空间")
+    chk("层标前缀被去掉", short_name("L3 长程序列规划器 TaskPlanner") == "TaskPlan")
+    chk("同层两个 INTACT 能区分",
+        short_name("INTACT-JEPA 意图-动作 (在役稳定指针)") == "INTACT"
+        and short_name("INTACT 世界模型 光模块插入 v6+LoRA") == "INTACT-WM",
+        [short_name("INTACT-JEPA 意图-动作 (在役稳定指针)"),
+         short_name("INTACT 世界模型 光模块插入 v6+LoRA")])
+    chk("两个 SmolVLA 能区分",
+        short_name("SmolVLA+LEW 长程规划 (在役运行时 ckpt)") == "SmolVLA"
+        and short_name("SmolVLA+LEW 长程规划 LoRA (7帧窗口)") == "SmolVLA-L")
+    chk("chip 带短名(非空)", all(c["name"] and c["name"] != "?" for c in ch), [c["name"] for c in ch])
+
     # 3) 正常载荷: 渲染不崩 + 有内容
     pn.feed(DEMO)
     img = pn.grab().toImage()
@@ -604,13 +688,13 @@ def _selftest(shot=None):
         pn.grab().save(shot.replace(".png", "_degraded.png"))
     chk("降级 tooltip 明写不可达", "不可达" in pn.toolTip())
 
-    # 4b) 多模型(6 个) → 聚合位渲染不崩, 仍 ≤420 宽
+    # 4b) 多模型(6 个) → 聚合位渲染不崩, 仍 ≤560 宽
     many = json.loads(json.dumps(DEMO))
     many["models"] = many["models"] + [{"layer": "L6", "name": "x2", "version": "v9", "state": "in_service", "inferring": True},
                                        {"layer": "L7", "name": "x3", "version": "v8", "state": "candidate", "inferring": False}]
     pn.feed(many)
     pn.grab()
-    chk("6 模型走聚合位不崩", pn.width() == 420)
+    chk("6 模型走聚合位不崩", pn.width() == 560)
     if shot:
         pn.grab().save(shot.replace(".png", "_many.png"))
 
@@ -642,7 +726,7 @@ def _selftest(shot=None):
     return 0 if ok else 1
 
 
-def _live_shot(path, url, seconds):
+def _live_shot(path, url, seconds, scale=1):
     app = QApplication.instance() or QApplication(sys.argv[:1])
     pn = StatusPanel(url=url)
     pn.show()
@@ -650,9 +734,17 @@ def _live_shot(path, url, seconds):
     while time.time() - t0 < float(seconds):
         app.processEvents()
         time.sleep(0.05)
-    pn.grab().save(path)
-    print("shot=%s url=%s data=%s err=%s tooltip=%s" % (
-        path, url, "ok" if isinstance(pn._obj, dict) else "none", pn._err, pn.toolTip().replace("\n", " | ")))
+    img = pn.grab().toImage()
+    if int(scale) > 1:                      # 放大截图取证 (老倪要 4x 看清层+短名+版本)
+        img = img.scaled(img.width() * int(scale), img.height() * int(scale),
+                         Qt.IgnoreAspectRatio, Qt.FastTransformation)
+    img.save(path)
+    print("shot=%s scale=%sx size=%dx%d url=%s data=%s err=%s" % (
+        path, scale, img.width(), img.height(), url,
+        "ok" if isinstance(pn._obj, dict) else "none", pn._err))
+    print("title/短名: %s" % " | ".join("%s %s %s" % (c["layer"], c["name"], short_ver(c["version"]))
+                                        for c in pn._chips()))
+    print("tooltip=%s" % pn.toolTip().replace("\n", " | "))
     pn.shutdown()
     return 0 if isinstance(pn._obj, dict) else 3
 
@@ -662,13 +754,14 @@ def main():
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--shot", default="")
     ap.add_argument("--live-shot", default="")
+    ap.add_argument("--scale", type=int, default=1, help="截图放大倍数 (4 = 4x 取证)")
     ap.add_argument("--url", default=DEFAULT_URL)
     ap.add_argument("--seconds", type=float, default=3.0)
     a = ap.parse_args()
     if a.selftest:
         return _selftest(a.shot or None)
     if a.live_shot:
-        return _live_shot(a.live_shot, a.url, a.seconds)
+        return _live_shot(a.live_shot, a.url, a.seconds, a.scale)
     print(__doc__)
     return 0
 
