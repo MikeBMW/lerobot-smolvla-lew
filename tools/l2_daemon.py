@@ -236,7 +236,9 @@ def _load_points():
     """点位库: 演示学习轨迹点 + L2 传授点库 (同名以传授点库为准)"""
     pts = {}
     for _pf in ("data/skills/l2_muscle/光模块_抓放_演示学习_v1.json",
-                "data/skills/l2_atomic/taught_points.json"):
+                "data/skills/l2_atomic/taught_points.json",
+                # 🚀 2026-10-01: 老倪现场记的「空间1~7」(8793 空间点控件写这个库), 供 L2.goto_spaceN 用
+                "data/skills/l2_atomic/space_points.json"):
         try:
             with open(os.path.join(REPO, _pf), encoding="utf-8") as _f:
                 pts.update(json.load(_f).get("points", {}))
@@ -705,7 +707,16 @@ def plan_stage(sk, st, pts, spec, cur):
                 return {"err": "当前姿态四元数有 %d 个分量(应为 4) ⇒ 拒发" % len(q)}
         if not q:
             return {"err": "现读姿态不可用(源=%s) ⇒ 拒发; 不发陈旧姿态" % _qsrc}
-    t[2] += float(st.get("dz_mm", 0.0)) / 1000.0          # base 系竖直偏移(mm): 正=上, 负=下
+    # 🛡 2026-10-01 老倪现场两条转移规矩: ①就地垂直抬升 ②水平移动(**高度不变**) ③到目标 XY 正上方 ④垂直下落。
+    #   keep_z 段 = 目标 XY/姿态取自点位, 但 z 用**当前**高度(+dz_mm) ⇒ "横移高度相对计划起点有界",
+    #   不会写成"点位 z + 200"那种与起点无关的绝对量(那种写法必然撞「升高≤10cm」上限)。
+    #   ⚠️ 只有显式写 keep_z 的段走这条路 ⇒ 现有技能行为零变化。
+    if st.get("keep_z"):
+        _kz = float(cur[2]) + float(st.get("dz_mm", 0.0)) / 1000.0
+        log("🧭 横移保持当前高度(keep_z): 点位 z=%.4f → 采用当前 z=%.4f%+.0fmm" % (t[2], _kz, float(st.get("dz_mm", 0.0))))
+        t[2] = _kz
+    else:
+        t[2] += float(st.get("dz_mm", 0.0)) / 1000.0      # base 系竖直偏移(mm): 正=上, 负=下
     # 工具坐标系平移 (生产口径 PoseTranslateLocalOffset, 如插槽口 = 插入位沿工具 Z 退 60mm):
     #   沿**示教姿态自己的**局部 XYZ 轴平移 mm —— 这才对应"沿模块轴向退/进", 不是 base 竖直偏移。
     lm = st.get("local_mm")
@@ -736,10 +747,19 @@ def plan_stage(sk, st, pts, spec, cur):
         if t[2] < floor - 1e-6:
             _bel = (floor - t[2]) * 1000.0
             _al = spec.get("allow_below_mm")
-            if _al is None or float(_al) < _bel:
-                return {"err": "目标 z=%.4f 低于下限 %s%+.0fmm=%.4f (低了 %.1fmm; 确需下压请带 allow_below_mm)"
+            # 🛡 2026-10-01 老倪现场(空间1~7 记在空中)"从下方进场"修正:
+            #   z_floor 的本意 = **绝不下压到参考点以下**(攻进夹具), 而"就地垂直抬升"是**远离地面**的方向,
+            #   它不可能碰到下方的夹具 ⇒ 目标虽仍低于下限, 但该段是上升(dz>0)时**放行**并留日志。
+            #   反例不受影响: 任何下降段(含多段转移的最后落地)dz<=0 ⇒ 照样按原样拦。
+            if dz > 0.5:
+                log("🛡 z_floor 放行(纯上升段): 目标 z=%.4f 仍低于 %s%+.0fmm=%.4f, 但本段 Δz=+%.1fmm 只升不降"
+                    % (t[2], zf, _off, floor, dz))
+            elif _al is None or float(_al) < _bel:
+                return {"err": "目标 z=%.4f 低于下限 %s%+.0fmm=%.4f (低了 %.1fmm) —— 若你是要「先抬到该点高度再横移」, "
+                               "请就地抬升到该点高度以上再点; 确需下压到点位以下请带 allow_below_mm"
                         % (t[2], zf, _off, floor, _bel), "pos": t, "dz": dz}
-            log("⚠️ z_floor 被 allow_below_mm=%.1f 显式放行: 目标低于槽位点 %.1fmm" % (float(_al), _bel))
+            else:
+                log("⚠️ z_floor 被 allow_below_mm=%.1f 显式放行: 目标低于槽位点 %.1fmm" % (float(_al), _bel))
     # 🛡 "先解锁再拔" 硬守卫 (2026-09-20 老倪现场提醒 + 产线口径):
     #   光模块插到位后**锁扣是锁住的**, 直接沿轴退 = 硬拽锁扣(可能伤模块/夹具)。
     #   产线做法: 合爪 force30 夹住后面**绿色环** → 沿工具轴退 15mm 解锁 → 再退 120mm 拔出。

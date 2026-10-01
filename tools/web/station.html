@@ -347,6 +347,14 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
          **独立记录**: 点「记住此点」把当前 TCP 真值记成 空间N, 存 space_points.json, 与号位互不影响。 -->
     <div class="panel" id="p_spaces"><div class="cap"><span class="ttl">🧭 空间 1~7 (独立空间点)</span>
       <span class="meta" id="m_spaces">…</span></div>
+      <div class="row" style="padding:6px 10px 0;align-items:center;gap:10px">
+        <span class="k">模式:</span>
+        <span class="seg" id="spacemode">
+          <button data-m="mark" class="on" onclick="setSpaceMode('mark')">✏️ 标记模式</button>
+          <button data-m="move" onclick="setSpaceMode('move')">🚀 运动模式</button>
+        </span>
+        <span id="space_mode_hint" style="font-size:13px;color:#8b949e"></span>
+      </div>
       <div class="slotbar" id="spacebar"></div>
       <div class="row" style="padding:6px 10px 0">
         <span class="k">📝 记住此点(把当前 TCP 真值记成空间点 · 零运动):</span>
@@ -1265,7 +1273,7 @@ async function recSpace(){
         +j.pos.map(x=>Number(x).toFixed(4)).join(', ')+') · '+j.n_samples+' 帧 · 极差 '
         +(Number(j.spread_pos_m)*1e6).toFixed(1)+'µm'+(j.overwrote?' · <b>已覆盖旧值</b>':'');
       $('#spacebar').dataset.sig='';               // 强制重建 ⇒ 该空间按钮立刻变绿
-      loadSpaces();
+      loadSpaces(); setSpaceMode('mark');
     }else{
       m.textContent='⛔ '+(j.msg||'记录失败');
     }
@@ -1276,8 +1284,28 @@ let SPACE_BUSY=false, SPACE_OVER=0;
 /* 🖱 老倪 2026-10-01: 「我要开始运动了, 停下来时我会点击未记的空间点按钮, 这时你要记录,
    记好了就变成已记状态」 —— 点**未记**按钮 = 记录当前 TCP 真值(零运动, 连采 6 帧判静止);
    点**已记**按钮 = 8 秒内再点一次确认覆盖(与号位同一口径, 防手滑改掉在用的点)。 */
+/* 🚀 空间点模式 (老倪 2026-10-01): 标记模式=点记/再点清; 运动模式=点已记的点⇒自动走过去。
+   ⚠️ 运动模式复用号位的 gotoTeachPoint ⇒ 同一套授权闸(需先🔓授权真动)+限流+FIFO+执行器+安全裁决,
+   **不新开任何下发通道**; 被守卫拒发时把原文原因摆在按钮旁(不许"点了没反应")。 */
+let SPACE_MODE='mark'; const SPACE_TRACK={};
+function setSpaceMode(m){
+  SPACE_MODE=m;
+  document.querySelectorAll('#spacemode button').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
+  $('#space_mode_hint').textContent = (m==='move')
+    ? '运动模式: 点已记的点 = 自动走过去(需先🔓授权真动); 目标比当前高时, 先就地抬升到该点高度以上再点(升高≤10cm规矩)'
+    : '标记模式: 点未记 = 记录当前位姿; 点已记 = 再点一次清除该记录';
+  const bar=$('#spacebar'); if(bar&&bar.dataset.sig) loadSpaces();
+}
 async function clickSpace(n){
-  if(SPACE_BUSY){ $('#space_msg').textContent='⏳ 上一次记录还在进行, 等它完'; return; }
+  const bar0=$('#spacebar'), m0=$('#space_msg');
+  const rec0=((bar0.dataset.sig)||'').charAt(n-1)==='1';
+  if(SPACE_MODE==='move'){                      // 🚀 运动模式: 不改记录, 只走过去
+    if(!rec0){ m0.innerHTML='⛔ <b>空间'+n+' 还没记</b> —— 运动模式需要先有目标位姿(切回✏️标记模式记一下)'; return; }
+    const b0=bar0.querySelector('button[data-space="'+n+'"]');
+    gotoTeachPoint(b0, SPACE_TRACK, 'L2.goto_space'+n, '空间'+n, '#space_msg', '去空间'+n+'点');
+    return;
+  }
+  if(SPACE_BUSY){ m0.textContent='⏳ 上一次记录还在进行, 等它完'; return; }
   const bar=$('#spacebar'), m=$('#space_msg');
   const btn=bar.querySelector('button[data-space="'+n+'"]');
   const rec=((bar.dataset.sig)||'').charAt(n-1)==='1';
