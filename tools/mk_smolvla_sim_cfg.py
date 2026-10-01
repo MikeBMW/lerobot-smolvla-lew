@@ -32,6 +32,25 @@ def main():
 
     cfg["dataset"]["repo_id"] = DS
     cfg["dataset"]["root"] = DS
+    # 🎯 2026-10-01 老倪「按你的建议来 · 所有模型都要有梯度 · 要结果」:
+    #   LEW(世界模型)损失原来 pred=6 步 vs target=1 步 ⇒ 只能比 1 步(实测 lew_loss≈0.0006, 等于没训)。
+    #   原因: 视频窗 T=2 而动作窗 T=7(chunk 6+1)。对齐口径 = 视频取 **chunk+1 = 7 帧**
+    #   [t, t+1, ..., t+6], 与 predictor 的 6 步预测一一对应; 帧距按数据集 fps(实测 25) = 0.24s,
+    #   与 6 步动作块时长一致。SSD_VIDEO_WINDOW=0 可退回原口径。
+    try:
+        import json as _json
+        _fps = _json.load(open(os.path.join(DS, "meta", "info.json"), encoding="utf-8")).get("fps", 25)
+    except Exception:
+        _fps = 25
+    _n = int(os.environ.get("SSD_VIDEO_WINDOW", "7"))
+    # 🎯 真正生效的口径是**策略自己的**: DatasetConfig 不认 delta_timestamps(实测 DecodingError),
+    #   而模型侧 num_video_frames 决定视频窗, n_obs_steps 决定观测帧数;
+    #   ⚠️ 世界模型 pos_embedding 是按 num_frames 学的参数 ⇒ 改这里必须重训(不能热启)。
+    if _n > 1:
+        cfg["policy"]["num_video_frames"] = _n
+        cfg["policy"]["n_obs_steps"] = _n
+        print("   🎯 视频窗对齐: num_video_frames=n_obs_steps=%d (0~%.3fs @ %sfps, 需重训 pos_embedding)" % (_n, (_n - 1) / float(_fps), _fps))
+
     # ★ 2026-09-26 老倪: "gpu训练负载不能小于一半" —— 原 4 workers 导致 GPU 等数据掉到 0%
     #   32 核机器 → 提到 12 workers + prefetch 8（CPU 侧并行, 不增显存）
     import os as _o
@@ -44,7 +63,12 @@ def main():
     cfg["output_dir"] = a.outdir
     cfg["job_name"] = os.path.basename(a.outdir)
     cfg["policy"]["device"] = "cuda"
-    cfg["policy"]["pretrained_path"] = os.path.join(REPO, "outputs/train/smolvla_lew_v10/checkpoints/last/pretrained_model")
+    _base = os.path.join(REPO, "outputs/train/smolvla_lew_v10/checkpoints/last/pretrained_model")
+    # 🎯 窗口 ≠2 时用**重建过 pos_embedding** 的那份副本(原始 ckpt 的 pos_embedding 是 2 帧, 直接加载会
+    #    size mismatch —— 实测确认这就是"视频窗一直没对齐"的真因); 不变更原始 ckpt。
+    _win7 = os.path.join(REPO, "outputs/train/smolvla_lew_v10_win7/pretrained_model")
+    cfg["policy"]["pretrained_path"] = _win7 if (int(os.environ.get("SSD_VIDEO_WINDOW", "7")) > 1
+                                                 and os.path.isdir(_win7)) else _base
     if not os.path.isdir(cfg["policy"]["pretrained_path"]):
         print("⚠️ 续训权重不在: %s → 去掉 pretrained_path(从基座起)" % cfg["policy"]["pretrained_path"])
         cfg["policy"].pop("pretrained_path", None)
