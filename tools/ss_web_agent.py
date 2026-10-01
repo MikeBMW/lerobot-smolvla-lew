@@ -36,7 +36,8 @@ def main() -> int:
     ap.add_argument("--list", action="store_true", help="能力清单")
     ap.add_argument("--once", action="store_true", help="拉一轮 web 提示词")
     ap.add_argument("--watch", action="store_true", help="常驻监听")
-    ap.add_argument("--interval", type=float, default=5.0)
+    ap.add_argument("--interval", type=float, default=0.3,
+                    help="中转轮询节奏(秒); 手机端往返延迟的主导项 —— 5.0 会让每次操作白等最多 5s")
     ap.add_argument("--seconds", type=float, default=0.0)
     ap.add_argument("--status", action="store_true", help="通道计数")
     a = ap.parse_args()

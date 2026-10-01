@@ -318,7 +318,9 @@ class WebAgentBridge:
         self._save_state({"last_batch": len(done)})
         return {"ok": True, "processed": done, "cursor": self.cursor, "pending": got.get("pending", 0)}
 
-    def watch(self, interval: float = 5.0, seconds: float = 0.0):
+    def watch(self, interval: float = 0.3, seconds: float = 0.0):
+        # 老倪 2026-10-01「手机操作太慢, 反馈不及时」⇒ 实测往返 = 本循环的 sleep + 执行 + 页面 250ms 轮询。
+        # 原 5.0s 是**主导项**: 平均 2.5s / 最坏 5s 无谓等待(中转是一次小 HTTP, 0.3s 节奏 ≈ 3 req/s 无压力)。
         t0 = time.time()
         print(f"🌐 L5 Web 智能体桥 监听中 (每 {interval:.0f}s · {self.relay}/agent/prompt · 只读功能白名单)",
               flush=True)
