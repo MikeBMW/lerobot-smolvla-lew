@@ -34,6 +34,10 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12p
    2026-09-30 追加「7个按钮排成一行, 均匀分布」): 面板横跨整行(grid-column:1/-1),
    7 个按钮等宽均分 1fr —— 判据由服务端 /ctl/points 给, 页面只画不算。 */
 #p_slots{grid-column:1 / -1}
+/* 🧭 空间1~7 面板同样横跨整行 —— 2026-10-01 老倪: 「号位控件跟空间大小、宽度一点都不一样」
+   🐛 根因: 左栏是 CSS 网格(3 列), 号位面板有 grid-column:1/-1 横跨整行, 我漏给空间面板写这行 ⇒
+   它只占 1/3 宽 ⇒ 按钮尺寸/宽度全不一样。**新增同行面板必须照抄这一行**。 */
+#p_spaces{grid-column:1 / -1}
 .slotbar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;padding:10px 10px 4px}
 .slotbar button{font-size:17px;font-weight:700;padding:12px 4px;line-height:1.3;text-align:center}
 .slotbar button.rec{background:#0f3d22;border-color:#2ea043;color:#7ee787}
