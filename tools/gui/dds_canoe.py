@@ -460,7 +460,15 @@ class BusView(QWidget):
     def _trace_panel(self):
         """CANoe 的 Trace 面板: 整宽 + 自带工具条(刷新/清除/暂停/Δt/搜索/导出)"""
         box, lay, head = self._panel("📋 Trace — 总线帧流 (最新在顶 · 测量时间)", C_GREEN)
-        self.btn_pause = self._sm_btn("⏸ 暂停", "暂停/恢复 Trace 滚动(数据照收, 只冻结视图)",
+        # 🆕 2026-10-01 老倪: 「默认是 topic 固定, 时间变动; 现在的滚动模式看着太累了, 默认不滚动」
+        self._mode = "fixed"
+        self.btn_mode = self._sm_btn("📌 固定行",
+                                     "显示模式 ⇄ 「📌 固定行」(默认: 一行一个话题, 位置不动, 只有时间/数值在变)"
+                                     " / 「▶ 滚动」(帧流, 最新在顶)",
+                                     self._toggle_mode, checkable=True)
+        self.btn_mode.setChecked(True)
+        head.addWidget(self.btn_mode)
+        self.btn_pause = self._sm_btn("⏸ 暂停", "暂停/恢复 Trace 刷新(数据照收, 只冻结视图)",
                                       self._toggle_pause, checkable=True)
         self.btn_dt = self._sm_btn("Δt", "Time 列切「与同话题上一帧的时间差」(CANoe Δt)",
                                    self._toggle_dt, checkable=True)
@@ -482,7 +490,8 @@ class BusView(QWidget):
             # 🆕 2026-10-01 老倪: 「trace里得实时显示数值啊…不是静态的变量, 是动态的数据, 给我高亮显示出来」
             #   ⇒ 第 2 列「实时值」= live.json 里该话题的 fields 压成一行, 值变了变绿(动态), 没变灰;
             #   「搜索之后就在 trace 窗口里置顶」⇒ 命中关键词的话题帧永远排在最上面 + 整行高亮。
-            ["Time", "实时值 · 边跑边变", "Name", "Object Type", "Classification", "Probability [%]",
+            # 🆕 2026-10-01 老倪: 「时间第一列, name第二列」+「默认 topic 固定、时间变动, 不要滚动」
+            ["Time", "Name", "实时值 · 边跑边变", "Object Type", "Classification", "Probability [%]",
              "Sender Name", "Sender Id", "Tracking Id", "Group"])
         self.tb.setStyleSheet(
             f"QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:none; gridline-color:#21262d;"
@@ -497,7 +506,7 @@ class BusView(QWidget):
         self.tb.setShowGrid(True)
         self.tb.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         th = self.tb.horizontalHeader()
-        for i, w in ((0, 120), (1, 430), (2, 210), (3, 150), (4, 120), (5, 110),
+        for i, w in ((0, 150), (1, 215), (2, 430), (3, 150), (4, 120), (5, 110),
                      (6, 200), (7, 150), (8, 110), (9, 100)):
             th.setSectionResizeMode(i, QHeaderView.Interactive)  # 🐛 同上(卡死根因)
             self.tb.setColumnWidth(i, w)
@@ -906,12 +915,8 @@ class BusView(QWidget):
             return " · ".join(out)
         return "全缺测(-1)" if ":" in s else ""
 
-    def _live_fields(self, key):
-        """直接读 live.json 取该话题的 fields(1s 缓存)。
-
-        🐛 2026-10-01 实测: 冷启动/离屏时 self._live 为空 ⇒ 值列退化成 digest 的「全缺测(-1)」,
-        老倪看到的仍然是"没有数值"。值列必须**自己取数**, 不能依赖上层是否喂过 self._live。
-        """
+    def _live_doc(self):
+        """读 live.json(1s 缓存) —— 值列/固定行都自己取数, 不依赖上层是否喂过 self._live。"""
         now = time.time()
         c = getattr(self, "_lvf_cache", None)
         if not c or (now - c[0]) > 1.0:
@@ -921,7 +926,19 @@ class BusView(QWidget):
             except Exception:                                                   # noqa: BLE001
                 c = (now, (c[1] if c else {}))
             self._lvf_cache = c
-        tp = (c[1] or {}).get("topics") or {}
+        return c[1] or {}
+
+    def _live_topics(self):
+        """live.json → topics 字典(1s 缓存)"""
+        return (self._live_doc().get("topics") or {})
+
+    def _live_fields(self, key):
+        """直接读 live.json 取该话题的 fields(1s 缓存)。
+
+        🐛 2026-10-01 实测: 冷启动/离屏时 self._live 为空 ⇒ 值列退化成 digest 的「全缺测(-1)」,
+        老倪看到的仍然是"没有数值"。值列必须**自己取数**, 不能依赖上层是否喂过 self._live。
+        """
+        tp = self._live_topics()
         return ((tp.get(key) or tp.get("zmax/" + str(key)) or {}).get("fields") or {})
 
     def _mark_search(self, n, q):
@@ -973,7 +990,104 @@ class BusView(QWidget):
                 out.append("%s=%s" % (k, v))
         return " · ".join(out)[:150]
 
+    def _toggle_mode(self, _checked=False):
+        """📌 固定行 ⇄ ▶ 滚动 (老倪 2026-10-01: 默认固定行, 滚动看着太累)"""
+        self._mode = "roll" if getattr(self, "_mode", "fixed") == "fixed" else "fixed"
+        self.btn_mode.setText("📌 固定行" if self._mode == "fixed" else "▶ 滚动")
+        self.btn_mode.setChecked(self._mode == "fixed")
+        self._trace_sig_last = None
+        self._lv_last = {}
+        self._fill_trace(force=True)
+
+    def _set_trace_header(self, mode=None):
+        mode = mode or getattr(self, "_mode", "fixed")
+        if mode == "fixed":
+            self.tb.setHorizontalHeaderLabels(
+                ["Time", "Name", "实时值 · 边跑边变", "分类", "hz 实测/设计", "count",
+                 "帧龄 (s)", "QoS", "lamp", "备注"])
+        else:
+            self.tb.setHorizontalHeaderLabels(
+                ["Time", "Name", "实时值 · 边跑边变", "Object Type", "Classification",
+                 "Probability [%]", "Sender Name", "Sender Id", "Tracking Id", "Group"])
+
+    def _fill_trace_fixed(self, force=False):
+        """📌 固定行模式(默认): 一行一个话题, **位置不动**, 只有时间/数值在变。
+
+        老倪 2026-10-01: 「默认是 topic 固定, 时间变动; 现在的滚动模式, 看着太累了, 默认不是滚动」。
+        行序: 搜索命中(置顶关键词)最前 → 其余按话题名; 缺测(-1)一律显式写 '—', 不装 0。
+        """
+        tp = self._live_topics()
+        self._set_trace_header("fixed")
+        if not tp:
+            self.tb.setRowCount(1)
+            self.tb.setItem(0, 0, QTableWidgetItem("—"))
+            self.tb.setItem(0, 1, QTableWidgetItem("读不到 live.json (总线未运行 / 数据空间未启动)"))
+            return
+        pin = (self._filter or "").strip().lower()
+        items = list(tp.items())
+
+        def _rank(kv):
+            k, t = kv
+            nm = str(t.get("topic") or k).lower()
+            ty = str(t.get("type") or "").lower()
+            hit = 0 if (pin and (pin in nm or pin in ty)) else 1
+            return (hit, str(k))
+
+        items.sort(key=_rank)
+        n_hit = sum(1 for k, t in items if pin and (pin in str(t.get("topic") or k).lower()
+                                                    or pin in str(t.get("type") or "").lower()))
+        if pin:
+            self._mark_search(n_hit, pin)
+        self.tb.setUpdatesEnabled(False)
+        self.tb.setRowCount(len(items))
+        lv = getattr(self, "_lv_last", None) or {}
+        for r, (k, t) in enumerate(items):
+            f = (t.get("fields") or {}) or self._live_fields(k)
+            ts = f.get("ts")
+            try:
+                tt = time.strftime("%H:%M:%S", time.localtime(float(ts))) if ts else "—"
+            except Exception:                                                   # noqa: BLE001
+                tt = "—"
+            age = t.get("age_s")
+            vals = self._live_vals({"fields": f}) or self._digest_vals(t.get("digest"))
+            prev = lv.get("__fixed__" + str(k))
+            changed = bool(vals) and vals != "—" and vals != prev
+            lv["__fixed__" + str(k)] = vals
+            hz, hzd = t.get("hz"), t.get("hz_design")
+            _h = ("%s / %s" % (_f3(hz), _f3(hzd))) if (isinstance(hz, (int, float)) and hz >= 0) else "—"
+            nm = str(t.get("topic") or k)
+            _is_hit = bool(pin) and (pin in nm.lower() or pin in str(t.get("type") or "").lower())
+            cells = [tt, nm, vals or "—", str(t.get("verdict") or "—"), _h,
+                     str(t.get("count", "—")),
+                     (_f3(age) if isinstance(age, (int, float)) and age >= 0 else "—"),
+                     str(t.get("qos") or "—"), str(t.get("lamp") or "—"), str(t.get("lamp_reason") or "")[:28]]
+            for c, txt in enumerate(cells):
+                item = QTableWidgetItem(str(txt))
+                item.setFont(QFont(MONO if c in (0, 1, 2, 4, 5, 6) else UI, 10))
+                if c == 0:
+                    item.setForeground(QColor(C_BLUE))
+                elif c == 1:
+                    item.setForeground(QColor("#7ee787" if _is_hit else C_WHITE))
+                    item.setToolTip(str(t.get("type") or "") + "  ·  " + str(t.get("lamp_reason") or ""))
+                elif c == 2:
+                    item.setForeground(QColor("#7ee787" if (changed or _is_hit) else C_GRAY))
+                    item.setToolTip("实时值 (live.json fields)\n"
+                                    + ("★ 刚变化 ⇒ 动态数据在跑" if changed else "与上次相同"))
+                elif c == 3:
+                    item.setForeground(QColor(C_GREEN if str(txt) == "ok" else
+                                              C_RED if str(txt) in ("fail", "error") else C_YELLOW))
+                if _is_hit:
+                    item.setBackground(QColor("#1b2c1e") if c == 2 else QColor("#16202b"))
+                elif r % 2:
+                    item.setBackground(QColor("#12171e"))
+                self.tb.setItem(r, c, item)
+        self._lv_last = lv
+        self.tb.setUpdatesEnabled(True)
+
     def _fill_trace(self, force=False):
+        if getattr(self, "_mode", "fixed") == "fixed":         # 📌 默认固定行(不滚动)
+            return self._fill_trace_fixed(force=force)
+        self._set_trace_header("roll")
         sig = self._trace_sig()
         if not force and sig == getattr(self, "_trace_sig_last", None):
             return self.tb.rowCount()            # 文件没动 ⇒ 不重建(卡顿根因就是这里每秒重建)
@@ -1031,8 +1145,8 @@ class BusView(QWidget):
             _changed = bool(vals) and vals != _prev and vals != "—"
             cells = [
                 tt,
-                vals if vals else "—",
                 topic,
+                vals if vals else "—",
                 str(rec.get("type", "—")),
                 str(live_t.get("verdict", "—")),
                 _num(score * 100 if isinstance(score, (int, float)) and score >= 0 else -1, 1)
@@ -1051,12 +1165,13 @@ class BusView(QWidget):
                 item.setFont(QFont(MONO if c in (0, 1, 3, 7, 9) else UI, 10))
                 if c == 0:
                     item.setForeground(QColor(C_BLUE))
-                elif c == 1:                                           # 🆕 实时值列
+                elif c == 1:                                           # 话题名
+                    item.setToolTip(topic)
+                    item.setForeground(QColor(C_WHITE))
+                elif c == 2:                                           # 🆕 实时值列
                     item.setForeground(QColor(C_GREEN if _changed else C_GRAY))
                     item.setToolTip("实时值(来自 live.json fields)\n"
                                     + ("本次刷新有变化 ⇒ 动态数据" if _changed else "与上一帧相同"))
-                elif c == 2:
-                    item.setToolTip(topic)
                 elif c == 5:
                     try:
                         v = float(score) * 100
@@ -1064,8 +1179,8 @@ class BusView(QWidget):
                     except Exception:                                        # noqa: BLE001
                         pass
                 if _hitrow:                                            # 📌 置顶命中: 整行高亮
-                    item.setBackground(QColor("#1b2c1e") if c == 1 else QColor("#16202b"))
-                    if c == 1:
+                    item.setBackground(QColor("#1b2c1e") if c == 2 else QColor("#16202b"))
+                    if c == 2:
                         item.setForeground(QColor("#7ee787"))
                 elif r % 2:                                            # 质检: 斑马纹
                     item.setBackground(QColor("#12171e"))
@@ -1132,7 +1247,7 @@ class BusView(QWidget):
         self._fill_detail()
 
     def _on_trace_click(self, it):
-        top = self.tb.item(it.row(), 2)
+        top = self.tb.item(it.row(), 1)
         if top is not None:
             self._sel_kind, self._sel_obj = "topic", top.text()
             self._fill_detail()
