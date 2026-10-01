@@ -14,9 +14,12 @@ if (!hash_equals($TOKEN, (string)$tok)) {
     http_response_code(403); echo json_encode(['ok'=>false,'err'=>'bad_token']); exit;
 }
 $f = basename((string)($_GET['f'] ?? ''));
-$ALLOW = ['ss3d_live.json', 'ss_traj_full.json'];
-if (!in_array($f, $ALLOW, true)) {
-    http_response_code(400); echo json_encode(['ok'=>false,'err'=>'file_not_allowed','allow'=>$ALLOW]); exit;
+$ALLOW = ['ss3d_live.json', 'ss_traj_full.json'];          // 原白名单 (不动)
+$ALLOW_GLOB = ['canvas_*.pdf'];                             // 只加: 状态空间画布全图 PDF (canvas_<版本>.pdf / canvas_latest.pdf)
+$ok_glob = false;
+foreach ($ALLOW_GLOB as $pat) { if (fnmatch($pat, $f)) { $ok_glob = true; break; } }
+if (!in_array($f, $ALLOW, true) && !$ok_glob) {
+    http_response_code(400); echo json_encode(['ok'=>false,'err'=>'file_not_allowed','allow'=>array_merge($ALLOW,$ALLOW_GLOB)]); exit;
 }
 $body = file_get_contents('php://input');
 if ($body === false || $body === '') { http_response_code(400); echo json_encode(['ok'=>false,'err'=>'empty_body']); exit; }

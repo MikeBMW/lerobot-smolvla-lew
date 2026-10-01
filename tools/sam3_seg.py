@@ -339,18 +339,43 @@ def cmd_serve(a) -> int:
     class H(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
+        def _send_raw(self, code: int, ctype: str, body: bytes, extra: dict | None = None):
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            for k, v in (extra or {}).items():
+                self.send_header(k, v)
+            self.end_headers()
+            if self.command != "HEAD":          # HEAD 只回头 (curl -I 可用)
+                self.wfile.write(body)
+
         def _send(self, code: int, obj):
             b = json.dumps(obj, ensure_ascii=False).encode()
             self.send_response(code)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(b)))
             self.end_headers()
-            self.wfile.write(b)
+            if self.command != "HEAD":
+                self.wfile.write(b)
 
         def log_message(self, *args):                                        # 静音(别刷屏)
             pass
 
         def do_GET(self):
+            # ── 画布全图 PDF 只读路由 (逻辑在 src/lerobot/engineering/canvas_publish.py) ──
+            # GET /canvas.pdf → 最新版矢量 PDF; GET /canvas/version → {version,ts,nodes,links,md5}
+            if self.path.split("?")[0].startswith("/canvas"):
+                try:
+                    from lerobot.engineering import canvas_publish as _cp
+                    r = _cp.serve_route(self.path)
+                except Exception as e:                                       # noqa: BLE001
+                    r = (500, "application/json; charset=utf-8",
+                         json.dumps({"ok": False, "err": "canvas_publish: %s: %s"
+                                     % (type(e).__name__, str(e)[:160])}, ensure_ascii=False).encode(),
+                         {})
+                if r is not None:
+                    self._send_raw(r[0], r[1], r[2], r[3])
+                    return
             if self.path.startswith("/status/all"):
                 # 状态聚合 (硬件/模型/训练/3DGS 资产) —— 只读快照(<50ms), 不碰分割链路
                 try:
@@ -366,7 +391,10 @@ def cmd_serve(a) -> int:
                                  "load_s": SEG.load_s, "min_area_px": MIN_AREA_PX,
                                  "served": SERVED["n"], "last_serve_ts": SERVED["last_ts"]})
             else:
-                self._send(404, {"ok": False, "err": "只有 GET /health, GET /status/all 与 POST /seg"})
+                self._send(404, {"ok": False, "err": "只有 GET /health, GET /status/all, GET /canvas.pdf, GET /canvas/version 与 POST /seg"})
+
+        def do_HEAD(self):                        # HEAD 复用 GET (只回头, 不写 body)
+            self.do_GET()
 
         def do_POST(self):
             if not self.path.startswith("/seg"):
