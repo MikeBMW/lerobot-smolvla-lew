@@ -608,8 +608,11 @@ class BusView(QWidget):
         self._fill_trace()
 
     def _on_filter(self, txt):
+        """🐛 2026-10-01 修: 原来调 _fill_trace() 没带 force ⇒ 只要 trace.jsonl 签名没变
+        (1 秒内刚填过) 就直接 return ⇒ 老倪「我搜索 plan 了, 啥都没有」= 搜索框没反应的真根因。
+        搜索必须**立即重填**。"""
         self._filter = (txt or "").strip().lower()
-        self._fill_trace()
+        self._fill_trace(force=True)
 
     def _clear_trace(self):
         self.tb.setRowCount(0)
@@ -903,6 +906,48 @@ class BusView(QWidget):
             return " · ".join(out)
         return "全缺测(-1)" if ":" in s else ""
 
+    def _live_fields(self, key):
+        """直接读 live.json 取该话题的 fields(1s 缓存)。
+
+        🐛 2026-10-01 实测: 冷启动/离屏时 self._live 为空 ⇒ 值列退化成 digest 的「全缺测(-1)」,
+        老倪看到的仍然是"没有数值"。值列必须**自己取数**, 不能依赖上层是否喂过 self._live。
+        """
+        now = time.time()
+        c = getattr(self, "_lvf_cache", None)
+        if not c or (now - c[0]) > 1.0:
+            try:
+                with open(LIVE, encoding="utf-8") as f:
+                    c = (now, json.load(f))
+            except Exception:                                                   # noqa: BLE001
+                c = (now, (c[1] if c else {}))
+            self._lvf_cache = c
+        tp = (c[1] or {}).get("topics") or {}
+        return ((tp.get(key) or tp.get("zmax/" + str(key)) or {}).get("fields") or {})
+
+    def _mark_search(self, n, q):
+        """搜索框边缘报命中: 绿=有命中(o), 红=0 命中 — 省得把"没反应"当成"没数据"。
+
+        🆕 2026-10-01 老倪: 「我搜索 plan 了, 啥都没有」⇒ 搜索框自身给出命中数 + 建议关键词。
+        """
+        try:
+            if not q:
+                self.ed_search.setStyleSheet(
+                    f"QLineEdit {{ background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER};"
+                    f" border-radius:4px; padding:4px 8px; }}")
+                self.ed_search.setToolTip("🔎 搜索话题 → 命中帧置顶并高亮 (试: ss_plan / ss_action / ss_state)")
+                return
+            col = C_GREEN if n else C_RED
+            self.ed_search.setStyleSheet(
+                f"QLineEdit {{ background:{C_BG}; color:{C_WHITE}; border:2px solid {col};"
+                f" border-radius:4px; padding:3px 7px; }}")
+            self.ed_search.setToolTip(("命中 %d 帧 · 已置顶并高亮" % n) if n else
+                                      "本窗口 0 命中 —— 关键词不在 DDS 总线名里。\n"
+                                      "可用: ss_plan(规划,含 xyzabc) / ss_action(动作) / ss_state(状态) / "
+                                      "ss_calib(标定) / ss_diag(诊断) / link_value / hw_state / heartbeat。\n"
+                                      "注: ROS 的 /move_action 不在本总线(trace 只镜像 zmax/*)。")
+        except Exception:                                                       # noqa: BLE001
+            pass
+
     def _live_vals(self, lt):
         """live.json 的 fields → 一行可读**实时值**。
 
@@ -958,6 +1003,7 @@ class BusView(QWidget):
                     or _pin in str(r.get("type", "")).lower()]
             if _hit:                                          # 有命中才重排(没命中就别乱动)
                 rows = _hit + [r for r in rows if r not in _hit]
+            self._mark_search(len(_hit), _pin)                 # 🆕 搜索框自己报命中数
         topics = self._topics()
         self.tb.setUpdatesEnabled(False)
         self.tb.setRowCount(min(len(rows), 150))
@@ -976,6 +1022,10 @@ class BusView(QWidget):
                 tt = _rel(self._t0, t)
             score = live_t.get("score")
             _vkey = "%s|%s" % (topic, str(rec.get("n", "")))
+            if not (live_t or {}).get("fields"):                 # 上层没喂 self._live ⇒ 自己取
+                _f = self._live_fields(key)
+                if _f:
+                    live_t = dict(live_t or {}, fields=_f)
             vals = self._live_vals(live_t) or self._digest_vals(rec.get("digest"))
             _prev = (getattr(self, "_lv_last", {}) or {}).get(topic)
             _changed = bool(vals) and vals != _prev and vals != "—"
