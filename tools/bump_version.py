@@ -67,9 +67,10 @@ def main() -> int:
         print("❌ 探测不到旧版本号")
         return 2
     ov = "v" + old
-    # 🐛 2026-09-30: 品牌位(QLabel/窗口标题/CURRENT_VERSION/docs_sync/integrity)一律 **vv** 记法;
-    #   写回统一用 nv_brand, 匹配用 v{1,2} 正则 ⇒ 单 v 时代的老检出也能平滑升级。
-    nv_brand = "vv" + a.to
+    # 🐛 2026-10-01 口径统一 (老倪: 「tag 有双 v 拼写错误」): 品牌位一律 **单 v** (`Z-MAX v5.17.0`),
+    #   与 git tag `v5.17.0` 逐字一致 ⇒ `git describe` 输出与界面/关于框显示不再打架。
+    #   匹配仍用 v{1,2} 正则 (认版本号不认记法) ⇒ vv5.16.x 时代的老检出也能平滑升级到单 v。
+    nv_brand = nv
     if old == a.to:
         print("❌ 新版本号与现有相同")
         return 2

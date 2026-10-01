@@ -752,7 +752,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX vv5.16.35")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.17.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11276,7 +11276,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.16.35 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.17.0 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11284,9 +11284,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.16.35 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.17.0 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.17.0: 节点执行链修复(runtime.py 补 import os + _YOLO_CACHE 改从 nodes.library 惰性取 —— 2026-09-28 拆包时漏搬, 任何节点经文档化入口都 NameError 被 GUI try/except 静默吞掉) + 真动撤销改读授权真源 _auth_info().armed(原来读启动时静态标志, 撤销后页面永远显示已授权) + VL 慢层 MAXTOK 9000→可配默认2000(9000 时 4 路拼图 >300s 超时⇒降级裁决⇒fail-closed 拒发) + VL 拼图剔除缺席/过期视角并如实标注 + 3DGS 自动跑点建图通道(/ctl/gs_map, 走既有授权+收口链) + 工位状态看板(无训练时显示上次训练) + 画布矢量 PDF 发布; 版本记法统一回单 v(原 vv 是笔误, 与 tag 打架)
         # vv5.16.35: 新增「运行所有模型」四档取证工具 + L4 档 INTACT 真推理装配口径修复(2026-09-30) 老倪: 「从zmax获取最新版代码开始，你先打开控制台，运行所有模型」  一、新工具 tools/run_all_models.py: 一条命令把 L2/L3/L4/L5 四档各真跑 N 步, 逐层落证据(步数/done/终点mm/YOLO 出帧数与检出数/前馈 MLP 真身次数/INTACT 真推理次数/墙钟), 报告 reports/run_all_models_<ts>.json; 档位开关与 GUI 勾选框逐条等价(L2=默认视觉 · L3=SS_L3=1 · L4=SS_USE_MLP=1+直驱装配 · L5=planner/认知头)。  二、修坑(根因): headless 跑 L4 档时只设 SS_INTACT=1 ⇒ sim._intact_node 为 None, u_ff 槽位静默回退 analytic, 计数 0 且无任何报错 ⇒ 会被误判成「模型没跑」。改为照 GUI 同一装配器接线: IntactRuntime(task='pusht', device='cpu') + IntactNode(horizon=8) + set_goal(reports/intact_goal_frame.npy) + intact_direct_rollout.install_direct_act(sim, nd, a_mean, a_std, infer_every=1) + sim.attach_intact(nd, None), 并 pop SS_INTACT(否则 u_ff 槽位重复注入, 历史实测 33mm 滑脱); 计数读直驱通道 sim._intact_drive['state']['calls'](u_ff 通道的 _intact_stats['intact_calls'] 是另一个桶, 读错桶恒为 0)。  三、实测证据(本轮真跑出来的): L4 档 150 帧 INTACT 真推理 150/150(每帧 模型动作→env.step) + 前馈 MLP 真身 150/150 · L2/L3/L5 各 150 帧/300 检出(每帧 2 目标 peg+OPT_Gold) · L3 档 SmolVLA+LEW(ckpt outputs/train/smolvla_lew_v10_1h/checkpoints/004000)真执行接入 · 本地推理服务 8790 两个头 infer_count 0→1(96.7ms, 6 维动作+yaw) · SAM3 开放词汇分割 1471ms(掩膜+分数) · L5 视觉 DeepSeek 真源 http:deepseek-flash 1253ms · 本地 VLM Qwen2.5-VL-3B 18.6s。  四、口径(诚实标注): L4 直驱 120 步插入 54.5mm(解析链对照 21.8mm)、L2 收口闸否决 113/采纳 7、任务未完成 —— 与离线判闸一致, 属模型能力问题非接线问题; YOLO 吃的是引擎渲染帧, 非真机画面(产线 USB 网卡不在位)。  五、技能沉淀: zmax-console/references/run-all-models.md(档位 env 对照表 / 读错计数桶等 6 条坑 / /tmp/zmax_nav_cmd 控制台命令通道用法:ss_canvas·ss_run·l5_status·l5_interact)。
         # vv5.16.34: 8793 页表面检测窗口下面加『🎯 侧面点1』技能按钮 + 新示教点『侧面点1』现场实录(2026-09-30)  老倪: 「记录一下这个位姿, http://10.163.146.78:8793/station 在侧面检测, 增加一个技能 侧面点1 的按钮, 放在侧面检测窗口的下面, 类似 技能 返回 金手指点1 的技能」  一、示教点『侧面点1』(现场实录, 与 8793 页面同一真值源): pos=(0.404639,-0.450586,0.526237) m · quat(xyzw)=(0.7231227,0.0272530,-0.0364400,0.6892190) · frame=base_link · 源=ROKAE SDK 直读 endInRef · 判据: 6 帧采样 pos 极差 0.0 m / quat 极差 1e-06、帧龄 0.5s ⇒ 静止且非陈旧全 0 坏值。  二、新技能 L2.goto_surface_pt1: ros=line_abs + quat="taught"(位置+姿态都回示教点) + point="侧面点1" + point_locked + guard.dz_down_limit_mm=20 ⇒ 点位写死在技能定义里, 页面/接口都改不了点位。  三、8793/station: 按钮放在『🔍 表面检测(工控机 10083)』那一格的画面/说明下面(在 拍帧/请求检测/最后结果 那一行之上); 实现上把回点逻辑抽成通用 gotoTeachPoint(), 『🎯 点1』与『🎯 侧面点1』同一份实现 ⇒ 不新开通道、不复制闸门。  四、服务端白名单 _CTL_ABS_SKILLS 增加该技能(只加技能 id)。  五、新工具: tools/record_point_sdk.py(从页面同源 SDK 源录点, 帧龄>2s / 位置范数≈0 / pos 极差>1e-4m 三重闸, 写库前留痕+备份) · tools/register_surface_pt1_skill.py(幂等注册)。  六、验收(全程未授权=零下发): dry-run 受理 DRY-RUN(未下发) 且目标 pos/quat 与示教点逐位一致; POST /ctl/move arm=1 → 403 拒; arm=0 → 演练; 页面真点按钮 → "⛔ 未授权: 只算了目标…"; DOM 次序实测 图→说明→[侧面点1行]→[拍帧行]。
         # vv5.16.33: 表面(10083)通道升到 v12 状态 + 8793 页表面检测窗口加「请求检测 / 最后结果」两按钮(2026-09-30)  老倪: 「现在给工控机的10083通道, 也要增加 请求检测 最后结果 两个按钮, 源代码也要更新成 v12版本的状态,        也要帮我做好 表面检测的 launch.json debug启动配置, 在 8793/station 表面检测 窗口下面增加按钮, 类比金手指检测」  一、10083 表面程序: cam_surface_10083_work_v6.py → cam_surface_10083_work_v12.py(VERSION=v12, 33185 B)    · 与金手指 v12 对齐: /last_result 明写 model_input / model_input_kind / model_input_md5 / judge / verdict_topview;    · 新增 GET /picture?kind=modelin(内存里那份**喂进模型的像素**, 无损 PNG + X-Zmax-Modelin-Md5/HW/N 头);    · /crop_info 增加 model_input_file / model_input_kind / model_input_md5 / judge_file(grab 不覆盖成空);    · 检测队列加上限(挤压丢最旧) + worker 跳过"文件已不在"的项;    · 顺手修隐患: 原 525-526 行 ci/lr 复制写在 return 之后(不可达) ⇒ /picture?meta=1 分支会 NameError;    · 表面本来就是全幅检测(letterbox 1280 保比例, 不拉伸) ⇒ 模型吃的 = 人看的同一张, 这点与金手指不同, 已在字段里写明。  二、8793/station 表面检测窗口下加两个按钮(与金手指同款): 🔍 请求检测 / 🧾 最后结果    · 服务端: /api/aoi/detect?port=10083(等待时间按 10083 放宽) · /aoi_surface_modelin.png + _meta 转发;    · 页面: aoiDetect/aoiLastResult 参数化(金手指 tag='', 表面 tag='s'), 各自出自己那格 + 可复制 JSON。  三、修真 bug: 点「请求检测」报的是**上一帧**的判决(老倪会当成结果不对)    · 原因: 服务器干等固定秒数; 表面单帧推理 8.7~11.4s, 到点还没出新结果 ⇒ 把上一次的当本次报出来;    · 改法: POST 前先记检测序号 n, POST 后轮询直到 n 变化才算"这一次" ⇒ out.fresh; 没等到就明说"这是上一次";    · 404(工控机还没有任何结果, 冷启第一次)不再当失败, 继续等。  四、表面检测 launch.json(VSCode)配置已做好并下发到工控机    · ① 10082 金手指 (v12) · ② 10083 表面 (v12)(program=cam_surface_10083_work_v12.py) · ③ 离线 ab_check_defect_v2;    · 均 PYTHONUNBUFFERED=1 + PYTHONIOENCODING=utf-8 + justMyCode:false; 工控机 py_compile 退出码 0。  五、实测证据(当场跑出来的)    · 表面 v12 真检测: 检测 #1/#2/#4 判决 OK · 缺陷 0 处 · 推理 8.7~11.4s(housing) · 图 Surface_Letterbox_W1280_H1280_No_*;    · 同源硬证据: 8791 /aoi_surface_modelin.png 解出来的像素 md5 == 工控机 /last_result.model_input_md5 == e6a53e234673cb93378785b49dfcf39c;    · 页面两个按钮真点过: 🧾 最后结果(判决/序号/帧龄/耗时/图链接/可复制 JSON) · 🔍 请求检测(真触发检测并等到新序号);    · 发现并清掉**两个** cam_surface 实例(venv python + 系统 Python310 各一个, 抢相机) —— 这是 500 的一个来源;    · 表面相机(SN D265250099)偶发"开启采集失败 / Grab 抓取帧失败": 工控机程序自己重连重抓一次, 页面再自动重试一次(不是 v12 引入的)。  六、现场状态: 工控机 10082/10083 均已停(等老倪自己在 VSCode 里跑); 只有 ZMAX_Agent(反向通道) 保留。
@@ -11810,7 +11811,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v1.0.4  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.17.0  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13204,7 +13205,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v1.0.1</b> · 多模态动作专家<br>
+<b>Z-MAX v5.17.0</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
