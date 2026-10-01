@@ -1004,8 +1004,10 @@ def run_stages(sk, spec, chan, pts):
         _to = _stage_timeout(st, pl["lin"], pl.get("speed", spec.get("speed", 60)))
         if not chan_send(pl["call"], _intent_desc(pl.get("name", "阶段"), pl.get("dx", 0.0), pl.get("dy", 0.0),
                                                   pl.get("dz", 0.0), "直线 %.0fmm" % (pl.get("lin") or 0))):
-            log("🛑 阶段 %d/%d 下发被拦(见上一条: 命令通道不可用 或 VL 安全闸拒发) → 中止剩余阶段(绝不重发)" % (i, n))
-            return "🛑 阶段 %d 下发被拦: 通道不可用或 VL 安全闸拒发" % i
+            # 🧭 把"被哪一层拦、为什么"原样带出去给界面(老倪: 点了必须出结果, 别只说"通道不可用或VL拒发")
+            _why = _block_msg()
+            log("🛑 阶段 %d/%d 下发被拦 → 中止剩余阶段(绝不重发) · %s" % (i, n, _why))
+            return "🛑 阶段 %d 下发被拦: %s" % (i, _why)
         log("已下发 阶段 %d/%d %s → %s · Δ=(%+.1f, %+.1f, %+.1f)mm %s · 直线 %.0fmm · 等到位上限 %.0fs"
             % (i, n, st.get("note", ""), pl["name"], pl["dx"], pl["dy"], pl["dz"], pl["dir"], pl["lin"], _to))
         ok, err, psrc = wait_arrive(pl["pos"], float(st.get("tol_mm", 2.0)), _to)
