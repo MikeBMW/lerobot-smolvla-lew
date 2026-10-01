@@ -27,7 +27,14 @@ import sys
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(REPO, "data", "skills", "l2_atomic", "taught_points.json")
+# 📍号位库(默认) / 🧭空间点库(老倪 2026-10-01「空间1~空间7 独立记录」) —— 两库分开, 互不影响
+OUT_TAUGHT = os.path.join(REPO, "data", "skills", "l2_atomic", "taught_points.json")
+OUT_SPACE = os.path.join(REPO, "data", "skills", "l2_atomic", "space_points.json")
+OUT = OUT_TAUGHT                 # main() 按 --store 覆盖
+
+
+def _store_path(store):
+    return OUT_SPACE if str(store or "").strip().lower() == "space" else OUT_TAUGHT
 CONTAINER = os.environ.get("ZMAX_TAP_CONTAINER", "ss-remote-tap")
 NUM = re.compile(r"-?\d+\.?\d*(?:e-?\d+)?")
 
@@ -48,7 +55,7 @@ def sample(n=6, timeout=8):
 
 
 def parse_args(argv):
-    name, desc, samples, dry, js = None, "", 6, False, False
+    name, desc, samples, dry, js, store = None, "", 6, False, False, "taught"
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -65,6 +72,9 @@ def parse_args(argv):
         elif a in ("--samples", "-s"):
             i += 1
             samples = max(4, int(argv[i]))
+        elif a in ("--store",):
+            i += 1
+            store = argv[i].strip().lower()
         elif a in ("-h", "--help"):
             print(__doc__)
             sys.exit(0)
@@ -74,11 +84,13 @@ def parse_args(argv):
             elif not desc:
                 desc = a
         i += 1
-    return name, desc, samples, dry, js
+    return name, desc, samples, dry, js, store
 
 
 def main():
-    name, desc, samples, dry, js = parse_args(sys.argv[1:])
+    global OUT
+    name, desc, samples, dry, js, store = parse_args(sys.argv[1:])
+    OUT = _store_path(store)                       # 🧭 space1..7 落 space_points.json, 不碰号位库
     if not name:
         print("用法: python3 tools/record_l2_point.py <点位名> [说明]")
         return 2
@@ -113,7 +125,9 @@ def main():
         store = json.load(open(OUT, encoding="utf-8"))
     except Exception:
         store = {"version": "v1",
-                 "note": "L2 示教绝对点位 (按真机 /robot/tcp_pose 实测记录, 供 line_abs 回点)",
+                 "note": ("L2 示教绝对点位 (按真机 /robot/tcp_pose 实测记录, 供 line_abs 回点)"
+                          if OUT == OUT_TAUGHT else
+                          "空间点 1~7 (老倪 2026-10-01: 与号位独立的 7 个空间点; 按真机 /robot/tcp_pose 实测记录)"),
                  "frame": "base_link", "points": {}}
     had = name in (store.get("points") or {})
     entry = {
@@ -129,7 +143,7 @@ def main():
     if not dry:
         os.makedirs(os.path.dirname(OUT), exist_ok=True)
         if os.path.exists(OUT):
-            bak = "/tmp/taught_points.pre_%s_%s.json" % (name, time.strftime("%m%d_%H%M%S"))
+            bak = "/tmp/%s.pre_%s_%s.json" % (os.path.basename(OUT), name, time.strftime("%m%d_%H%M%S"))
             shutil.copy(OUT, bak)
             print("备份: %s" % bak)
         store.setdefault("points", {})[name] = entry

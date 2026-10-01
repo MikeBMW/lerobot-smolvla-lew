@@ -40,6 +40,8 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12p
 .slotbar button.rec:hover:not(:disabled){background:#155a31}
 .slotbar button.norec{background:#161b22;border-color:#2a3038;color:#6e7681;opacity:.8}
 .slotbar button small{display:block;font-size:12px;font-weight:400;opacity:.9;margin-top:4px;white-space:nowrap}
+/* 🧭 空间1~7 用同一套 .slotbar 网格(与号位对齐), 只把标题染蓝以区分两排 */
+#p_spaces .ttl{color:#79c0ff}
 .dim{color:#8b949e}
 .ok{color:#3fb950}.wa{color:#d29922}.bad{color:#f85149}
 /* ── 右侧控制台 ── */
@@ -326,6 +328,24 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
       </div>
       <div class="row" style="padding:0 10px 4px"><span id="slot_msg" style="font-size:13px;opacity:.9"></span></div>
       <div id="n_slots" style="padding:4px 10px 10px;font-size:14px;color:#8b949e;line-height:1.5"></div>
+    </div>
+
+    <!-- 🧭 空间 1~7 (2026-10-01 老倪: 「左下角示教点控件下面, 再用一个控件显示 空间1~空间7,
+         位置排布与上面的1号位到7号位对齐」) —— 与号位共用同一套 .slotbar 7 列网格 ⇒ 天然对齐;
+         **独立记录**: 点「记住此点」把当前 TCP 真值记成 空间N, 存 space_points.json, 与号位互不影响。 -->
+    <div class="panel" id="p_spaces"><div class="cap"><span class="ttl">🧭 空间 1~7 (独立空间点)</span>
+      <span class="meta" id="m_spaces">…</span></div>
+      <div class="slotbar" id="spacebar"></div>
+      <div class="row" style="padding:6px 10px 0">
+        <span class="k">📝 记住此点(把当前 TCP 真值记成空间点 · 零运动):</span>
+        <span class="seg" id="sRecSpace">
+          <button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button>
+          <button data-v="4">4</button><button data-v="5">5</button><button data-v="6">6</button>
+          <button data-v="7">7</button></span>
+        <button id="recspacebtn" onclick="recSpace()" style="font-size:16px;font-weight:700" title="把机械臂当前 TCP 位姿记成该空间点: 服务端连采 6 帧判静止(极差 &gt;1e-4m 拒记), 写 data/skills/l2_atomic/space_points.json —— 与号位库分开, 互不影响">✅ 记为该空间点</button>
+        <span id="space_msg" style="font-size:13px;opacity:.9"></span>
+      </div>
+      <div id="n_spaces" style="padding:4px 10px 10px;font-size:14px;color:#8b949e;line-height:1.5"></div>
     </div>
   </section>
   <aside>
@@ -1210,5 +1230,64 @@ poll(); setInterval(poll,1500);
   }, 250);
 })();
 loadSlots(); setInterval(loadSlots,10000);
+
+/* ── 🧭 空间 1~7 (2026-10-01 老倪): 与号位**独立的** 7 个空间点, 互不影响 ──────────
+   排布照抄号位(同一个 .slotbar 7 列网格); 绿=已记 / 灰=未记; 按钮点了不出动作, 只回显位姿。 */
+let REC_SPACE=null, REC_SPACE_PENDING=0;
+seg('sRecSpace',v=>{REC_SPACE=parseInt(v,10);
+  $('#space_msg').textContent='已选 空间'+REC_SPACE+' → 点右边「✅ 记为该空间点」';});
+async function recSpace(){
+  const m=$('#space_msg'), b=$('#recspacebtn');
+  if(!REC_SPACE){ m.textContent='先选要记的空间号(1~7)'; return; }
+  const known=(($('#spacebar').dataset.sig)||'').charAt(REC_SPACE-1)==='1';
+  if(known && Date.now()-REC_SPACE_PENDING>8000){
+    REC_SPACE_PENDING=Date.now();
+    m.innerHTML='⚠️ <b>空间'+REC_SPACE+'已有记录</b> —— 覆盖会改掉已用的空间点; 8 秒内再点一次确认覆盖';
+    return;
+  }
+  REC_SPACE_PENDING=0; b.disabled=true; m.textContent='⏳ 连采 6 帧判静止(约 4~15s, 臂不能动)…';
+  try{
+    const j=await post('/ctl/record_point',{name:'space'+REC_SPACE,note:'页面🧭记空间点(8793)'},40000);
+    if(j.ok){
+      m.innerHTML=(j.dry?'(演练,未落盘) ':'✅ ')+'空间'+REC_SPACE+' 已记录 · pos=('
+        +j.pos.map(x=>Number(x).toFixed(4)).join(', ')+') · '+j.n_samples+' 帧 · 极差 '
+        +(Number(j.spread_pos_m)*1e6).toFixed(1)+'µm'+(j.overwrote?' · <b>已覆盖旧值</b>':'');
+      $('#spacebar').dataset.sig='';               // 强制重建 ⇒ 该空间按钮立刻变绿
+      loadSpaces();
+    }else{
+      m.textContent='⛔ '+(j.msg||'记录失败');
+    }
+  }catch(e){ m.textContent='⛔ 请求失败: '+e; }
+  b.disabled=false;
+}
+async function loadSpaces(){
+  try{
+    const j=await getj('/ctl/points?t='+Date.now(),8000);
+    if(!j||!j.ok||!j.spaces) return;
+    const bar=$('#spacebar'); if(!bar) return;
+    const sig=j.spaces.map(s=>s.recorded?'1':'0').join('');
+    if(bar.dataset.sig!==sig){
+      bar.dataset.sig=sig;
+      bar.innerHTML=j.spaces.map(s=>
+        '<button data-space="'+s.no+'" class="'+(s.recorded?'rec':'norec')+'"'
+        +' title="'+(s.recorded
+            ? ('空间'+s.no+' · 点位 '+s.point+' 已记录'+(s.pos?(' ('+s.pos.join(', ')+')'):'')
+               +' · '+(s.at||'')+' · 独立空间点, 不下发动作(只显示/记录)')
+            : ('未记录: 空间点库没有 '+s.point+' —— 在下面「📝 记住此点」里选 '+s.no+' 号, 把当前 TCP 真值记进去'))
+        +'">'+(s.no)+'<small>'+(s.recorded?'✅ 已记':'⛔ 未记')+'</small></button>').join('');
+      bar.querySelectorAll('button[data-space]').forEach(b=>{
+        b.onclick=()=>{ const s=j.spaces.find(x=>x.no==b.dataset.space);
+          $('#space_msg').textContent=(s&&s.recorded)
+            ? ('空间'+b.dataset.space+' · pos=('+(s.pos||[]).map(v=>Number(v).toFixed(4)).join(', ')+') · '+(s.at||''))
+            : ('空间'+b.dataset.space+' 还没有记录'); };
+      });
+    }
+    $('#m_spaces').textContent='已记 '+j.green_spaces+'/'+j.n_spaces+' · 判据 空间点库(独立)';
+    $('#n_spaces').innerHTML='<b style="color:#7ee787">绿</b> = 已记录 · <b style="color:#8b949e">灰</b> = 未记录。'
+      +'与上面 1~7 号位<b>互不影响</b>, 存 <span style="font-family:ui-monospace">'+j.space_points_file+'</span>。'
+      +'点位只做显示/记录, 不触发任何动作。';
+  }catch(e){}
+}
+loadSpaces(); setInterval(loadSpaces,10000);
 </script></body></html>
 

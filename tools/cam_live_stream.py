@@ -621,7 +621,12 @@ _CTL_ABS_SKILLS = {
 #   页面自己判会出现"以为自己能发"的假绿(点位真值在执行器侧的示教点库, 页面读不到)。
 _POINT_SLOTS = {1: "slot1", 2: "slot2", 3: "slot3", 4: "slot4", 5: "slot5", 6: "slot6", 7: "slot7"}
 # 📝 允许"记住此点"写入的点位名(白名单): 只号位 —— 防手误把别的点名写坏/写歪。
-_POINT_RECORD_ALLOW = set(_POINT_SLOTS.values())
+# 🧭 空间 1~7 (老倪 2026-10-01: 「示教点控件下面再加一个控件, 空间1~空间7, 与1号位到7号位对齐」):
+#    与号位**完全独立**的一套点 —— 存 data/skills/l2_atomic/space_points.json, 互不影响;
+#    没有下发技能(只做显示+记录), 绿=已记 / 灰=未记。
+_SPACE_SLOTS = {1: "space1", 2: "space2", 3: "space3", 4: "space4",
+                5: "space5", 6: "space6", 7: "space7"}
+_POINT_RECORD_ALLOW = set(_POINT_SLOTS.values()) | set(_SPACE_SLOTS.values())
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -636,6 +641,16 @@ def _taught_points() -> dict:
         except Exception:                                                     # noqa: BLE001
             pass
     return pts
+
+
+def _space_points() -> dict:
+    """🧭 空间点库(与号位库分开) —— 页面只读。"""
+    try:
+        with open(os.path.join(_REPO_ROOT, "data/skills/l2_atomic/space_points.json"),
+                  encoding="utf-8") as _f:
+            return json.load(_f).get("points", {}) or {}
+    except Exception:                                                         # noqa: BLE001
+        return {}
 
 
 def _registry_skill_ids() -> set:
@@ -666,8 +681,20 @@ def _ctl_points() -> dict:
             "at": str(_pd.get("at") or _pd.get("ts_str") or _pd.get("updated_at") or "") if _rec else "",
             "whitelisted": _sid in _abs_skills(),
         })
+    _sp = _space_points()
+    _sout = []
+    for _no, _p in sorted(_SPACE_SLOTS.items()):
+        _pd2, _rec2 = (_sp.get(_p) or {}), (_p in _sp)
+        _pos2 = _pd2.get("pos")
+        _sout.append({"no": _no, "name": "空间%d" % _no, "point": _p, "recorded": bool(_rec2),
+                      "pos": [round(float(v), 4) for v in _pos2] if (_rec2 and _pos2) else None,
+                      "at": str(_pd2.get("recorded_at") or "") if _rec2 else "",
+                      "spread_pos_m": _pd2.get("spread_pos_m")})
     return {"ok": True, "slots": out, "green": sum(1 for _s in out if _s["ready"]), "n": len(out),
-            "points_file": "data/skills/l2_atomic/taught_points.json"}
+            "points_file": "data/skills/l2_atomic/taught_points.json",
+            "spaces": _sout, "n_spaces": len(_sout),
+            "green_spaces": sum(1 for _s in _sout if _s["recorded"]),
+            "space_points_file": "data/skills/l2_atomic/space_points.json"}
 
 
 def _ctl_record_point(body: dict) -> dict:
@@ -682,14 +709,15 @@ def _ctl_record_point(body: dict) -> dict:
     name = str((body or {}).get("name") or "").strip()
     if name not in _POINT_RECORD_ALLOW:
         return {"ok": False, "code": 400,
-                "msg": "只允许号位点位 %s (收到 %r)" % ("/".join(sorted(_POINT_RECORD_ALLOW)), name)}
+                "msg": "只允许号位/空间点位 %s (收到 %r)" % ("/".join(sorted(_POINT_RECORD_ALLOW)), name)}
     dry = bool((body or {}).get("dry"))
     try:
         _ns = max(4, min(12, int((body or {}).get("samples") or 6)))
     except (TypeError, ValueError):
         _ns = 6
     cmd = [sys.executable or "python3", os.path.join(_REPO_ROOT, "tools", "record_l2_point.py"),
-           "--name", name, "--samples", str(_ns), "--json"]
+           "--name", name, "--samples", str(_ns), "--json",
+           "--store", ("space" if name.startswith("space") else "taught")]   # 🧭 空间点走独立库
     _note = str((body or {}).get("note") or "").strip()
     if _note:
         cmd += ["--desc", _note]
