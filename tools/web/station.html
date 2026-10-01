@@ -30,6 +30,57 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12p
 .note{padding:8px 10px;font-size:15px;color:#f0c674;background:#2a2012;
   border-top:1px solid #4b3a1a;line-height:1.5}
 .note b{color:#ffd479}
+/* ══ ⚙️ 状态条 (2026-10-01 老倪: 「这里怎么没有版本号硬件状态等信息」) ══════════════
+   口径: 极小面积 · 红绿灯 · 手机竖屏可读 · 不横向滚动 · 数据源取不到就整体变灰(静默)。
+   数据源 = https://datadrive.world/zmax_status.json (本机 8796/status/all 由
+   tools/publish_status.py 推上公网) —— 手机访问不到 127.0.0.1, 必须走公网。 */
+#zstat{display:flex;flex-direction:column;gap:3px;padding:5px 8px;background:#0b1017;
+  border-bottom:1px solid #21262d;font-size:11.5px;line-height:1.25;
+  font-variant-numeric:tabular-nums}
+/* 取不到数据 ⇒ 整体变灰(灰度滤镜一次管掉全部颜色: 条/点/字) */
+#zstat.zdim{filter:grayscale(1);opacity:.55}
+.zrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.zrow.zbar4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.zm{display:flex;align-items:center;gap:5px;min-width:0}
+.zm .lbl{color:#8b949e;white-space:nowrap;flex:0 0 auto}
+.zm .trk{position:relative;flex:1 1 0;min-width:16px;height:7px;border-radius:4px;
+  background:#21262d;overflow:hidden}
+.zm .fil{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:4px;background:#3fb950;
+  transition:width .4s linear,background-color .3s}
+.zm .val{color:#c9d1d9;white-space:nowrap;flex:0 0 auto}
+/* 模型 chip: Ø8px 圆点 + 层标 + 极短版本 + 推理标记 */
+.zmd{display:flex;align-items:center;gap:4px;padding:1px 6px 1px 5px;border-radius:9px;
+  border:1px solid #21262d;background:#11161d;min-width:0;max-width:100%;line-height:1.25}
+.zmd .dot{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:#6e7681;display:block}
+.zmd .ly{color:#8b949e;font-size:10.5px;font-weight:700;flex:0 0 auto}
+.zmd .vr{color:#c9d1d9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:12ch;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;font-weight:400}
+.zmd .inf{color:#3fb950;font-size:10px;flex:0 0 auto}
+.zmd i{font-style:normal}
+.zmd.g_in .dot{background:#3fb950}
+.zmd.g_ca .dot{background:#d29922}
+.zmd.g_un{border-color:#1c2229}
+.zmd.g_un .vr,.zmd.g_un .ly{color:#6e7681}
+/* 训练 chip + 进度条 (只在真在训练时出现) */
+.ztrain{display:flex;align-items:center;gap:4px;padding:1px 7px;border-radius:9px;
+  border:1px solid #4b3a1a;background:#2a2012;color:#f0c674;max-width:100%}
+.ztrain .trk{position:relative;width:44px;height:6px;border-radius:4px;background:#4b3a1a;overflow:hidden;flex:0 0 auto}
+.ztrain .fil{position:absolute;left:0;top:0;bottom:0;width:0;background:#e3b341;border-radius:4px}
+.ztrain b{font-weight:700}
+/* 上次训练 (训练跑完时的空态兜底): 灰底 + 绿勾/红叉, 同样极少文字 */
+.zlast{display:flex;align-items:center;gap:4px;padding:1px 7px;border-radius:9px;
+  border:1px solid #21262d;background:#11161d;color:#8b949e;max-width:100%;white-space:nowrap}
+.zlast i{font-style:normal;color:#6e7681;font-size:10.5px;flex:0 0 auto}
+.zlast b{font-weight:700;color:#c9d1d9;font-size:10.5px;flex:0 0 auto}
+.zlast .vr{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:400;max-width:12ch;
+  overflow:hidden;text-overflow:ellipsis}
+.zlast .zok{color:#3fb950}.zlast .zbad{color:#f85149}
+/* 3DGS 资产版本 */
+.zgs{display:flex;align-items:center;gap:4px;color:#8b949e;white-space:nowrap;
+  padding:1px 6px;border-radius:9px;border:1px solid #21262d;background:#11161d}
+.zgs b{color:#c9d1d9;font-weight:600;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px}
+@media(max-width:430px){#zstat{font-size:11px;gap:4px;padding:5px 8px}
+  .zrow{gap:6px}.zrow.zbar4{gap:6px}.zm{gap:4px}}
 /* 📍 号位 1~7 (2026-09-30 老倪「有记录的点就是绿色按钮, 没有记录的点就是灰色按钮」;
    2026-09-30 追加「7个按钮排成一行, 均匀分布」): 面板横跨整行(grid-column:1/-1),
    7 个按钮等宽均分 1fr —— 判据由服务端 /ctl/points 给, 页面只画不算。 */
@@ -147,6 +198,22 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
 #posehud .hint{margin-top:3px}
 /* 📱 窄屏(手机): 字缩小保证仍是横向一排, 不换行、不截断数字 */
 @media (max-width:820px){#posehud .posegrid{gap:3px} #posehud .pv .v{font-size:12px} #posehud .pv .k{font-size:10px}}
+/* 📱 2026-10-01 (老倪: 「我要远程操作 / 手机远程控制」) —— 手机竖屏断点。
+   原来 .slotbar 固定 7 列(390px 屏上每格≈50px, 空间点/号位按钮点不准), 碰撞台账 7 列同理。
+   手机改成 4 列 + 加大触控高度; 提示文字让位给控件; 内边距收紧把可视区让给内容。 */
+@media (max-width:560px){
+  main{padding:6px;gap:8px}
+  header{padding:8px 10px}
+  header h1{font-size:15px}
+  header .hint{display:none}
+  .panel .cap .ttl{font-size:12px}
+  .slotbar{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:8px 6px 4px}
+  .pad{grid-template-columns:repeat(3,1fr);gap:6px}
+  .rot2{grid-template-columns:1fr 1fr;gap:6px}
+  .rot{grid-template-columns:1fr auto auto;gap:6px}
+  .colllist .ch,.colllist .ci{grid-template-columns:34px repeat(3,1fr) repeat(3,1fr);font-size:11px}
+  button,.slotbar button,.pad button{padding:10px 6px;font-size:13px;min-height:40px}
+}
 </style></head><body>
 <header>
   <h1>🛰 工位总览</h1>
@@ -155,8 +222,45 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
   <span class="warnbar" id="warn" style="display:none"></span>
   <span class="clk" id="clk"></span>
 </header>
+<!-- ⚙️ 状态条: 硬件 / 模型版本+推理中 / 训练进度 / 3DGS 版本 (老倪: 极小面积 · 红绿灯 · 只给数字)
+     数据源 = https://datadrive.world/zmax_status.json ← 本机 8796/status/all 由 tools/publish_status.py 每分钟推 -->
+<div id="zstat" class="zdim"
+     title="数据源 https://datadrive.world/zmax_status.json (本机 8796/status/all, 每分钟推)">
+  <div class="zrow zbar4">
+    <div class="zm" id="zs_gpu"><span class="lbl">GPU</span>
+      <span class="trk"><i class="fil" id="zs_gpu_f"></i></span>
+      <span class="val" id="zs_gpu_v">—</span></div>
+    <div class="zm" id="zs_cpu"><span class="lbl">CPU</span>
+      <span class="trk"><i class="fil" id="zs_cpu_f"></i></span>
+      <span class="val" id="zs_cpu_v">—</span></div>
+    <div class="zm" id="zs_mem"><span class="lbl">内存</span>
+      <span class="trk"><i class="fil" id="zs_mem_f"></i></span>
+      <span class="val" id="zs_mem_v">—</span></div>
+    <div class="zm" id="zs_disk"><span class="lbl">磁盘</span>
+      <span class="trk"><i class="fil" id="zs_disk_f"></i></span>
+      <span class="val" id="zs_disk_v">—</span></div>
+  </div>
+  <div class="zrow" id="zs_models"><span class="zmd g_un"><i class="dot"></i>
+    <b class="ly">状态源…</b></span></div>
+</div>
 <main>
   <section class="grid">
+    <!-- 🧭 3DGS 建图 (老倪 2026-10-01): 「左上角单独窗口, 宽度相当于 机器人臂+笔记本相机+MAXHUB顶摄 的总和,
+         高度你自己适配, 生成场景的下面是原来的摄像头窗口」⇒ grid-column:1/-1 = 整行三格之和; 高度自适应(max-height)。
+         跑点走号位同一条授权+收口链; 采集用 gs_capture, 训练用 gs_train(真值位姿, 不用 COLMAP)。 -->
+    <div class="panel" id="p_gsmap" style="grid-column:1/-1">
+      <div class="cap"><span class="ttl">🧭 3DGS 建图 (自动跑点 空间1→7)</span>
+        <span class="meta" id="m_gsmap">读状态…</span></div>
+      <div class="row" style="padding:6px 10px 0;gap:10px;align-items:center">
+        <button id="gsrunbtn" onclick="gsMapRun()" style="font-size:16px;font-weight:700"
+          title="机械臂按 空间1→7 顺序自动运行, 每点自动采画面, 跑完用真值位姿训 3DGS; 需先🔓授权真动, 走号位同一条链路">▶ 开始建图</button>
+        <span id="gs_msg" style="font-size:13px;opacity:.9">点「▶ 开始建图」= 自动跑 空间1→7 并采集建图</span>
+      </div>
+      <div style="padding:8px 10px 10px">
+        <img id="gs_img" alt="3DGS 场景" style="width:100%;max-height:52vh;object-fit:contain;background:#0d1117;border:1px solid #30363d;border-radius:6px;display:none">
+        <div id="gs_ph" style="padding:22px;text-align:center;color:#8b949e;font-size:14px;border:1px dashed #30363d;border-radius:6px">还没有训练好的场景 —— 点「▶ 开始建图」</div>
+      </div>
+    </div>
     <div class="panel"><div class="cap"><span class="ttl">🦾 机器人臂上 D405</span>
       <span class="meta" id="m_arm">…</span></div>
       <img id="i_arm" data-mode="snap" data-src="/snapshot/overlay_arm.jpg" data-every="800"></div>
@@ -1273,7 +1377,25 @@ async function recSpace(){
         +j.pos.map(x=>Number(x).toFixed(4)).join(', ')+') · '+j.n_samples+' 帧 · 极差 '
         +(Number(j.spread_pos_m)*1e6).toFixed(1)+'µm'+(j.overwrote?' · <b>已覆盖旧值</b>':'');
       $('#spacebar').dataset.sig='';               // 强制重建 ⇒ 该空间按钮立刻变绿
-      loadSpaces(); setSpaceMode('mark');
+      loadSpaces(); setSpaceMode('mark'); authSync(); setInterval(authSync, 4000);
+
+/* 🔄 授权状态同步 (2026-10-01 老倪: 「我在飞书端远程点 立即撤销授权, 你怎么不同步呢? 要同步远程监控操作」)
+   根因: 授权按钮是按**本地**变量 ARMED 渲染的 ⇒ 远端(手机/飞书)页面若状态旧, 点"撤销"实际会发 on:true ⇒ 反而授权 10 分钟。
+   现在每 4 秒从服务端真源(/station/status 的 ctl.motion_armed)对齐 ⇒ 任一端的操作, 其它端 4 秒内同步显示。 */
+async function authSync(){
+  try{
+    const d = await (await fetch('/station/status')).json();
+    const on = !!(d.ctl && d.ctl.motion_armed);
+    if(on === window.ARMED) return;
+    window.ARMED = on;
+    if(typeof ARMED !== 'undefined'){ try{ ARMED = on; }catch(e){} }
+    const t = document.getElementById('armtxt');
+    if(t) t.textContent = on ? '🔒 立即撤销授权' : '🔓 授权真动';
+    const m = document.getElementById('msg');
+    if(m){ m.textContent = on ? '⚠️ 授权真动中(别端授权, 本端点方向键会真动臂)' : '🔒 已撤销授权: 现在点方向键不会动臂';
+           m.className = on ? 'wa' : ''; }
+  }catch(e){}
+}
     }else{
       m.textContent='⛔ '+(j.msg||'记录失败');
     }
@@ -1295,6 +1417,29 @@ function setSpaceMode(m){
     ? '运动模式: 点已记的点 = 自动走过去(需先🔓授权真动); 目标比当前高时, 先就地抬升到该点高度以上再点(升高≤10cm规矩)'
     : '标记模式: 点未记 = 记录当前位姿; 点已记 = 再点一次清除该记录';
   const bar=$('#spacebar'); if(bar&&bar.dataset.sig) loadSpaces();
+}
+async function gsMapRun(){
+  const m=$('#gs_msg'); m.textContent='⏳ 启动中…';
+  try{
+    const r=await fetch('/ctl/gs_map',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'start',by:'页面建图按钮(8793)'})});
+    const j=await r.json();
+    m.textContent = j.ok ? ('✅ '+(j.msg||'已启动')) : ('⛔ '+(j.msg||'启动失败'));
+    gsMapPoll();
+  }catch(e){ m.textContent='⛔ 启动请求失败: '+e; }
+}
+async function gsMapPoll(){
+  try{
+    const j=await (await fetch('/ctl/gs_map',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'status'})})).json();
+    $('#m_gsmap').textContent = j.status_line || '…';
+    if(j.image_url){
+      const im=$('#gs_img'); im.style.display='block'; $('#gs_ph').style.display='none';
+      im.onload=()=>{ const ph=$('#gs_ph'); if(ph) ph.style.display='none'; };
+      im.src = j.image_url.replace('__T__', String(Date.now()));
+    }
+    if(j.running) $('#msg').textContent = '🧭 建图进行中: '+(j.status_line||'');
+  }catch(e){}
 }
 async function clickSpace(n){
   const bar0=$('#spacebar'), m0=$('#space_msg');
@@ -1377,5 +1522,189 @@ async function loadSpaces(){
   }catch(e){}
 }
 loadSpaces(); setInterval(loadSpaces,10000);
-</script></body></html>
+</script>
+<script>
+/* ══ ⚙️ 状态条 (硬件 / 模型版本+推理中 / 训练进度 / 3DGS 版本) ═══════════════════════
+   2026-10-01 老倪: 「https://datadrive.world/st/station?k=zmax-live 这里怎么没有版本号硬件状态等信息」。
+   数据源 = **公网** https://datadrive.world/zmax_status.json
+            (本机 127.0.0.1:8796/status/all 由 tools/publish_status.py 每分钟推上站点根)。
+   ⚠️ 绝不能写成 127.0.0.1 —— 手机访问不到本机, 那样页面永远是灰的。
+   ⚠️ 取不到(404/断网/超时/坏 JSON) ⇒ 整体变灰 + 静默: 不弹窗、不 console.error、不卡页。
+   5s 轮询; 页面不可见时跳过(手机切后台不费电)。 */
+(function(){
+  "use strict";
+  var U = "https://datadrive.world/zmax_status.json";
+  var root = document.getElementById("zstat");
+  if (!root) return;
+  var C = {ok:"#3fb950", wa:"#d29922", bad:"#f85149", dim:"#6e7681"};
+  var $ = function(id){ return document.getElementById(id); };
+  var pct = function(x){ x = Number(x); if(!isFinite(x)) x = 0; return Math.max(0, Math.min(100, x)); };
+  var col = function(p){ return p < 70 ? C.ok : (p <= 90 ? C.wa : C.bad); };
+  var esc = function(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){
+      return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]; }); };
+
+  /* 极短版本号:
+       v20261001-r6                              -> v1001-r6
+       smolvla_lew_v10_1h/004000                 -> …/004000          (带路径取末段)
+       intact_goal_optical_insert_v6lora_600     -> v6lora_600        (取尾部批次段)
+       config_smolvla_lew_lora_600_600.yaml      -> lora_600          (去扩展名+压掉重复数字段)
+       v20261001-574772c8                        -> v1001-574772…     (无批次段 → 12 字截断) */
+  function sv(v){
+    if (!v || v === "unknown") return "—";
+    var s = String(v), had = false;
+    if (s.indexOf("/") >= 0) { s = s.split("/").filter(Boolean).pop() || s; had = true; }
+    s = s.replace(/^v?20\d{2}/, "v");                 /* v2026 1001 -> v1001 */
+    if (s.length > 12){
+      s = s.replace(/\.(yaml|yml|json|py|pt|pth|ckpt|safetensors)$/i, "");
+      var p = s.split("_"), t = null;
+      for (var n = 3; n >= 2 && !t; n--){
+        if (p.length >= n){
+          var seg = [], tmp = p.slice(-n);
+          tmp.forEach(function(x){ if (seg[seg.length - 1] !== x) seg.push(x); });   /* 600_600 -> 600 */
+          var c = seg.join("_");
+          if (c.length <= 12 && /\d/.test(c)) t = c;
+        }
+      }
+      if (!t){ var m = s.match(/([a-z_]+\d+)$/i); if (m && m[1].length >= 6) t = m[1]; }
+      if (t) s = t;
+    }
+    if (had) s = "…/" + s;
+    return s.length > 12 ? s.slice(0, 12) + "…" : s;
+  }
+  function scls(s){ return s === "in_service" ? "g_in" : (s === "candidate" ? "g_ca" : "g_un"); }
+  function dotc(s){ return s === "in_service" ? C.ok : (s === "candidate" ? C.wa : C.dim); }
+  function eta(t){
+    t = Math.round(Number(t) || 0);
+    if (t <= 0) return "—";
+    return t < 60 ? (t + "s") : (t < 3600 ? (Math.round(t/60) + "min")
+           : (Math.floor(t/3600) + "h" + String(Math.round((t%3600)/60)).padStart(2,"0")));
+  }
+
+  /* ── 行1: 四个迷你状态条 (绿<70% / 黄70~90% / 红>90%) + 3~4字数值 ── */
+  function bar(id, p, title){
+    var f = $("zs_" + id + "_f"), v = $("zs_" + id + "_v"), w = $("zs_" + id);
+    if (!f || !v) return;
+    var q = pct(p);
+    f.style.width = q + "%";
+    f.style.background = col(q);
+    v.textContent = Math.round(q) + "%";
+    v.style.color = (q >= 70) ? col(q) : "#c9d1d9";
+    if (w && title) w.title = title;
+  }
+  function clearBars(){
+    ["gpu","cpu","mem","disk"].forEach(function(k){
+      var f = $("zs_" + k + "_f"), v = $("zs_" + k + "_v");
+      if (f) f.style.width = "0%";
+      if (v) { v.textContent = "—"; v.style.color = "#c9d1d9"; }
+    });
+  }
+
+  /* ── 行2: 模型圆点 + 层标 + 极短版本 + ⚡推理中 ; 训练进度条 ; 3DGS 版本 ──
+     版本号上游为 unknown 的模型(如实未采到版本)按层**合到一个 chip**: 每个模型仍各占
+     一个 Ø8px 圆点(颜色按状态), 只是不重复印层标/空版本 ⇒ 省一半宽度。 */
+  function renderModels(d){
+    var ms = (d && d.models) || [], out = [], groups = {}, gorder = [];
+    ms.forEach(function(m){
+      if (m && m.version && m.version !== "unknown"){
+        out.push('<span class="zmd ' + scls(m.state) + '" title="'
+          + esc((m.layer||"") + " · " + (m.name||"") + " · " + m.version + " · " + (m.state||"")
+                + (m.inferring ? " · 推理中" : "")) + '">'
+          + '<i class="dot"></i><b class="ly">' + esc(m.layer||"") + '</b>'
+          + '<b class="vr">' + esc(sv(m.version)) + '</b>'
+          + (m.inferring ? '<i class="inf">⚡</i>' : '') + '</span>');
+      } else if (m){
+        var ly = m.layer || "?";
+        if (!groups[ly]) { groups[ly] = []; gorder.push(ly); }
+        groups[ly].push(m);
+      }
+    });
+    gorder.sort().forEach(function(ly){
+      var arr = groups[ly];
+      out.push('<span class="zmd g_un" title="'
+        + esc(ly + " · 版本未采到: " + arr.map(function(m){
+              return (m.name||"") + (m.inferring ? "(推理中)" : "");
+            }).join(" / ")) + '">'
+        + '<b class="ly">' + esc(ly) + '</b>'
+        + arr.map(function(m){ return '<i class="dot" style="background:' + dotc(m.state) + '"></i>'; }).join("")
+        + '</span>');
+    });
+    /* 训练行: 在跑 ⇒ 层 + 版本 + 进度条 + %; 没在跑 ⇒ 绝不空着, 显示「上次训练」(老倪 2026-10-01:
+       「手机还是看不到训练模型的状态」—— 真因是训练刚好跑完 training.active=false/step 0/0 就空了)。 */
+    var t = (d && d.training) || {};
+    if (t.active){
+      out.push('<span class="ztrain" title="'
+        + esc("训练中 " + (t.layer||"") + " · " + (t.name||"") + " · step " + (t.step|0) + "/" + (t.total|0)
+              + " · ETA " + eta(t.eta_s) + " · " + (t.speed_s_per_step||0) + "s/step"
+              + (t.note ? " · " + t.note : "")) + '">🎓'
+        + '<b>' + esc(t.layer||"") + '</b>'
+        + '<b class="vr" style="color:#f0c674">' + esc(sv(t.version)) + '</b>'
+        + '<span class="trk"><i class="fil" style="width:' + pct(t.pct) + '%"></i></span>'
+        + '<b>' + Math.round(pct(t.pct)) + '%</b></span>');
+    } else if (d && d.last_training){
+      var lt = d.last_training;
+      var stg = (lt.stages || []).filter(function(x){ return (x.secs||0) > 0; }).map(function(x){
+                  return (x.stage||"") + (x.rc === 0 ? "" : "✗") + (x.art && x.art[0] ? ":" + x.art[0] : ""); });
+      out.push('<span class="zlast" title="'
+        + esc("上次训练 " + (lt.run||"") + " · " + (lt.name||"") + " · " + (lt.steps|0) + " 步 · 完成 "
+              + (lt.at||"") + (stg.length ? ("\n" + stg.join("\n")) : "")) + '">'
+        + '<i>上次训练</i><b>' + esc(lt.layers || lt.layer || "") + '</b>'
+        + '<b class="vr">' + esc(sv(lt.version)) + '</b>'
+        + '<b class="' + (lt.ok ? "zok" : "zbad") + '">' + (lt.ok ? "✓" : "✗") + '</b>'
+        + '<b>' + esc(lt.at || "") + '</b></span>');
+    }
+    var gs = ((d && d.assets) || []).filter(function(a){ return a && a.kind === "3DGS"; });
+    if (gs.length){
+      var a = gs[gs.length - 1];
+      out.push('<span class="zgs" title="' + esc((a.name||"") + " · " + (a.path||"")) + '">'
+        + '3DGS <b>' + esc(sv(a.version)) + '</b></span>');
+    }
+    var box = $("zs_models");
+    if (box){
+      var html = out.join("");
+      if (box.getAttribute("data-h") !== html){ box.innerHTML = html; box.setAttribute("data-h", html); }
+    }
+  }
+
+  function render(d){
+    root.classList.remove("zdim");
+    var hw = d.hw || {}, g = hw.gpu || {}, c = hw.cpu || {}, m = hw.mem || {}, k = hw.disk || {};
+    bar("gpu", g.util, "GPU " + (g.name||"") + " · 显存 " + (g.mem_used_mb||0) + "/" + (g.mem_total_mb||0)
+        + "MB · " + (g.temp_c==null?"—":g.temp_c) + "°C");
+    bar("cpu", c.util, "CPU " + (c.cores||"") + " 核 · load1 " + (c.load1==null?"—":c.load1));
+    var mp = (Number(m.total_gb) > 0) ? (Number(m.used_gb) / Number(m.total_gb) * 100) : 0;
+    bar("mem", mp, "内存 " + (m.used_gb||0) + "/" + (m.total_gb||0) + " GB");
+    bar("disk", k.pct, "磁盘 " + (k.used_gb||0) + "/" + (k.total_gb||0) + " GB");
+    renderModels(d);
+  }
+
+  var ok = false, dead = false;
+  function degrade(){                                    /* 静默降级: 只变灰, 不报错 */
+    if (dead) return;
+    dead = true;
+    root.classList.add("zdim");
+    if (!ok){ clearBars(); }
+    var box = $("zs_models");
+    if (box && !ok){
+      box.innerHTML = '<span class="zmd g_un"><i class="dot"></i><b class="ly">状态源离线</b></span>';
+      box.setAttribute("data-h", "off");
+    }
+  }
+
+  var busy = false;
+  function poll(){
+    if (busy || document.hidden) return;
+    busy = true;
+    var ac = null, to = null;
+    try { ac = new AbortController(); to = setTimeout(function(){ ac.abort(); }, 5000); } catch(e){}
+    fetch(U, {cache:"no-store", signal: ac ? ac.signal : undefined})
+      .then(function(r){ if (!r || !r.ok) throw new Error("http"); return r.json(); })
+      .then(function(d){ if (!d || !d.hw) throw new Error("bad"); dead = false; render(d); ok = true; })
+      .catch(function(){ degrade(); })                 /* 故意吞掉: 页面不许因它弹窗/报错 */
+      .then(function(){ if (to) clearTimeout(to); busy = false; });
+  }
+  poll();
+  setInterval(poll, 5000);
+})();
+</script>
+</body></html>
 
