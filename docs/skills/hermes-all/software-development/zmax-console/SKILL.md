@@ -181,6 +181,20 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > 再对 `pgrep -af studio.py` 的 cwd (`readlink /proc/<pid>/cwd`) —— 界面版本 = 那个 cwd 的代码版本。
 > 纪律: **改 GUI 代码攒成一批, 重启前先问老倪**; 确需重启走 `bash tools/studio_ctl.sh restart --force`
 > (起不到 300s 的实例会被硬闸拒, 退出码 3), 每次动作记 /tmp/studio_ctl.log 可追谁在重启。
+> 🔁 **老倪授权「你自己重启」时**(他有时就直接这么派), 从**非桌面 shell**手工拉起的正确姿势:
+> ① 优先 `bash tools/studio_ctl.sh restart --force`(有硬闸 + 日志);
+> ② 手工拉起**必须继承原进程的 DISPLAY/XAUTHORITY/WAYLAND_DISPLAY/XDG_RUNTIME_DIR** ——
+>    在无 DISPLAY 的 agent shell 里直接 `python studio.py &` ⇒ 窗口根本不出现(看起来像"重启了但没反应"):
+>    `PID=$(pgrep -f "tools/gui/studio.py"|head -1)` → `tr '\0' ' ' </proc/$PID/cmdline >/tmp/studio_cmd.txt` ·
+>    `readlink /proc/$PID/cwd` · `tr '\0' '\n' </proc/$PID/environ | grep -E '^(DISPLAY|XAUTHORITY|XDG_RUNTIME_DIR|WAYLAND_DISPLAY)='`
+>    → `kill -9 $PID`(**显式 PID**; 绝不 `pkill -f studio.py` —— 会连自己那条同名命令行一起杀)
+>    → `cd <原 cwd>` + `set -a; . <env文件>; set +a` + `exec $(cat /tmp/studio_cmd.txt)`
+>    (用 `exec` 承接, 父 shell 一退窗口跟着消失)。
+> ③ 验收三件(缺一不算重启成功): `pgrep -af "tools/gui/studio.py"` 有进程 ·
+>    `/tmp/studio_launch.log` 与 `/tmp/simulink_log.txt` 的 `Traceback` 计数 **0** ·
+>    `/tmp/simulink_log.txt` 出现 `已加载工作流: …flows/state_space_obs.json (N节点 M连线)`(N/M 要与真源一致),
+>    再 `DISPLAY=<原显示> xdotool search --name "Z-MAX"` 能找到窗口(证明不是后台僵尸)。
+> ④ 画布离屏加载要几十秒 ⇒ **重启后先等 60~90s 再判定**, 这期间点按钮什么都不会发生。
 > 🔌 另: 关机/kill 走 SIGTERM —— 老版本会 "QThread: Destroyed while thread is still running" → SIGABRT + core dump;
 > 现 studio.py main() 用 `signal.set_wakeup_fd` + 看门狗线程 + QTimer → win.close() → os._exit(0) 干净退
 > ⚠️ 这句只覆盖 kill/关机路径 —— **无信号时也会出现同一组签名**(实测日志里「收到信号」0 条, 仍 `QThread: Destroyed while thread is still running` + `Fatal Python error: Aborted`)

@@ -40,6 +40,40 @@ metadata:
    **逐个找空位**(上→更上→下→右→顶部→右缘)+ **深色底片**; 画面必须一眼可信(老倪会把画面当结果)。
 3. **别把"形状报错"当成"权重不对, 重下"**: 判据是**用 meta 设备按本机 config 起空模型, 与 safetensors 头部逐张量比形状**(去掉 `base_model_prefix` 如 `detector_model.` 再比)。实测 1468 个可比对张量形状不符 **0 处** ⇒ 权重是对的, 崩的是入参。
 
+## 微调通道 (框提示式) —— 4060 8GB 实测口径 (2026-10-01)
+仓库**没有任何 SAM3 训练脚本**; 训练内核 = `policies/sam3_seg/finetune.py` + `lora_inject.py`, 调用方 = `tools/sam3_finetune.py` (子命令 `masks`/`train`/`verify`/`eval`)。
+
+**显存账 (1008px, bf16, 单卡 4060 8GB)** —— 视觉塔是瓶颈, 先量再定:
+- 冻结视觉塔+文本塔, 只训 4 个头(geometry/detr_encoder/detr_decoder/mask_decoder = 31.43M): fwd+bwd 峰值 **2.98GB**。
+- LoRA 注**最后 N 个** ViT block (反向只留 LoRA block **之后**的激活): N=4→4.12GB, **N=8→4.91GB (推荐)**, N=16→6.51GB, N=32→**OOM**。
+  `Sam3ViTModel.supports_gradient_checkpointing = False` (没有原生梯度检查点), 别指望它省显存。
+- 训练时**必须先卸掉 8796 分割服务**: `sudo systemctl stop sam3-seg` (它常驻 2.3GB, 不卸就撞显存红线), 训完 `start` 回来 (服务是 `--lazy`, 起来不占显存, 健康检查 `loaded:false`)。
+
+**四个必踩的坑** (每个都能静默毁掉一轮):
+1. **注入前缀不能带前导点**: `named_modules()` 的名字是 `vision_encoder.backbone.layers.0.attention.q_proj`(无前导点),
+   用 `.vision_encoder.backbone.layers.` 去 `in` 匹配 ⇒ **命中 0 个且不报错** ⇒ 一个适配器都没注入, 日志照常"训练"。
+   判据: 注入后立刻断言 `n_inject > 0`, 并把数量打进日志。
+2. **注入在 `.to('cuda')` 之后做 ⇒ 新参数默认落 CPU** ⇒ 前向抛 cuda/cpu 混算。新参数必须显式 `device=base.weight.device`。
+3. **`input_boxes` 是 `[batch, n_box, 4]` 且归一化 `(cx,cy,w,h)`** (processor 自动做 xyxy→cxcywh): 自己拼张量少一个 batch 维 ⇒ `geometry_encoder` 里 `view(batch_size, num_boxes, hidden)` 报 `shape '[1, 4, 256]' invalid for input of size 256`。
+4. **forward 不返回 `loss`** (只有 pred_masks/pred_boxes/pred_logits/presence_logits) ⇒ 损失得自己搭。训练可直接吃 `vision_embeds=` (可把视觉塔拆出去), 但**必须给 text 或 box 之一**(两者都缺会 `ValueError`)。
+
+**输出口径**: `pred_masks` = `[B, 200, 288, 288]` (不是原图尺寸), `pred_boxes` = `[B,200,4]` 归一化 xyxy, `pred_logits`/`presence_logits` 走 text 点积 + presence token。
+
+**监督从哪来 (数据只有检测框、没有掩膜时)**:
+- **框提示能分出东西** —— 修正本文前面"概念常 0 实例"的印象: 那是**文本**概念的问题; **框提示**在真机帧上 58/58 全出掩膜
+  (与 GT 框 IoU 中位 0.62 / 最大 0.91), 一条都不用回退。所以"框提示式微调"在这台机器上是可落地的路线。
+- 掩膜目标 = 冻结基座 + **同一框提示**产出的掩膜 (教师伪标签, 落 PNG 288×288, 选与 GT 框 IoU 最高的那个 query,
+  不是"分数最高"的)。**报告里必须写作"教师伪标签", 不许说成人工掩膜标注。**
+- 真标注监督的那一路: 文本提示(类名英文) → 框, 用 Hungarian 匹配 200 个 query 到 GT 框, 监督 L1+GIoU+cls+presence。那一路是非退化的。
+- ⚠️ **退化的陷阱**: 提示框=目标框、学生也是同一模型输出 ⇒ 首步 mask BCE 就 0.005 (几乎零损失)。
+  要给出非退化信号, 训练时**扰动图像(光度)+ 抖动提示框**(目标仍是精确框下的教师掩膜) —— 就是"框不准也要分出来"。
+
+**评估口径的铁律**: 掩膜 IoU 若以**教师伪标签**为对照方, 那**基座自己是上界**(它=教师), 蒸馏只能逼近、不可能超过。
+只看这一个数会把"正常的逼近"误读成"LoRA 无效/变差"。要看真收益: ①抖动静默扫描 (抖动加大时谁衰减更慢) ②单看**用真标注监督的**那一路(框 IoU)。
+且 val 只有 5 帧/5 query 时, 同一配置换一个抖动种子, 基座 IoU 就在 0.696~0.762 之间跳 ⇒ 单格 Δ±0.05~0.09 全是噪声, 不许当结论。
+
+**已知死区 (登记, 别当故障)**: `mask_decoder` 有 6 个参数 `grad is None` —— `pixel_decoder.conv_layers.2.*` / `norms.2.*` (最深一级上采样被 instance_projection 绕过) 与 `semantic_projection.*` (semantic_seg 不进损失)。其余 4 个头逐模块都有非零梯度。
+
 ## 集成到场景叠加
 - 规格元素 `{"origin":"seg","kind":"mask","polys":[[[x,y],…]],"area_px":…,"conf":…,"c3d":{…}}`; 渲染走 `scene_overlay.draw_overlay` 的 `elif b.get("polys")` 分支(**插在 box3d 之后、xyxy 之前** —— 否则带 xyxy 的掩膜会被矩形分支抢走)。
 - **标签放轮廓外**: 不透明底片贴上去会盖掉填充与轮廓。大掩膜填充按面积减淡。

@@ -154,6 +154,26 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 - 取证口径: faulthandler 全线程栈 · 有没收到过信号(没信号也会出现同一签名, 别默认归因 kill/关机) · 谁把进程拉回来的(桌面图标的 `GIO_LAUNCHED_DESKTOP_FILE` / user unit 的 Restart 策略) ——
   清单见 zmax-console `references/gui-debug-and-crash-forensics.md`。dump 只给各线程**当前**状态, 不记录是哪个点击触发 ⇒ 不要凭"崩溃前点过什么"归因, 要归因就加崩溃记录器(faulthandler 全栈 + 最近 N 条界面操作落 `~/zmax_data/*_crash_*.log`)。
 
+### 15. 小尺寸自绘面板: 字体必须 setPixelSize (本机字体 DPI 放大 ~1.5 倍)
+- 本机 studio 是给 3200x2000/192DPI 屏适配的, **QFont(fam, 8)(点) 实际渲染高度 ≈16px, 宽度 ~1.4 倍**
+  ⇒ 按"8pt≈11px"设计的 420x68 小面板在真机上字全部溢出/叠字/被裁 (离屏和真机都这样, 不是截图缩放问题)。
+- 判据: 真机截图里量**文字行高** (白色像素行范围) 与设计值对不上 ⇒ 就是字体 DPI 缩放, 别去改布局。
+- 修法: 小面积控件的字体一律 `f = QFont(fam); f.setPixelSize(px)` (像素尺寸与 DPI 无关),
+  先用 `QFontMetrics(f).width("内存"/"100%"/"annot")` **量出真实宽度再定框宽**, 别估。
+- 教训: 面板类 UI 先做"量尺寸 → 定框 → 渲染 → 像素级量文字行高"闭环, 别按 pt 猜。
+
+### 16. 常驻角落面板挂载点: 包一层 central 布局, 别用 QStatusBar.addWidget
+- **不要用 `QStatusBar.addWidget`**: Qt 的 `showMessage()` 会**隐藏** addWidget 加的常规控件,
+  而 studio 到处在调 `showMessage(msg, 3000)` ⇒ 面板会不停闪没。`addPermanentWidget` 只能挂右侧。
+- 正解(studio 实测): `_build()` 里把 central 的 `QHBoxLayout` 包进一个 `QVBoxLayout`,
+  底部再 `addLayout` 一行 `[面板, addStretch(1)]` ⇒ 面板落在内容区左下角, 与侧栏/堆叠页
+  **零重叠**(off 屏断言 `panel.top() >= sidebar.bottom() and panel.top() >= stack.bottom()`),
+  也不吃 QStatusBar 的坑; 收起侧栏时面板还在。
+- 面板控件自身 `setFixedSize(420, 68)` + 独立文件 (`tools/gui/status_panel.py`),
+  `studio.py` 里只留 10 行挂载 + try/except 兜底(导入失败不影响控制台启动)。
+- 验收要**真机重启后看**: `kill -9 <显式PID>` → `bash tools/gui/launch_studio.sh`(自带防重复实例) →
+  `xdotool search --name "XSpace Studio"` 取几何 → `scrot` 全屏 → 按窗口几何裁左下角 → 放大 3~4 倍读字。
+
 ## 验证模式 (ad-hoc fresh 验证)
 - 环境: `QT_QPA_PLATFORM=offscreen` + 系统 python3（GUI 依赖 PyQt5/numpy/PIL/cv2 在系统 python，训练依赖在 .venv）
 - tempfile 脚本: `hermes-verify-<主题>-*.py` 写 /tmp → 运行 → 删除（不跑正式测试套件）
@@ -218,6 +238,7 @@ Z-MAX 有多个会话（CLI + 飞书 gateway）会改同一份本地代码，症
 - **盲点坐标点击不可靠**（找不到控件坐标，点导航/按钮常点空）——老倪要求"操作窗口按钮"时，优先走 GUI 内部触发（`.click()`/信号注入）或让用户点；xdotool 只用于清窗口/激活（`windowactivate`）
 
 ## GUI 行为原则
+- 小面板/密集控件: 字体用 `setPixelSize`(见 §15), 挂载点选 central 布局而非 QStatusBar(见 §16)
 - 打开视图**永远先显示历史数据**（视频/曲线），新 checkpoint 只提示不自动重生成（白屏根治）
 - 外部进程（非 GUI 启动的训练）状态监视: `pgrep -f lerobot_train` + 最新输出目录 ckpt 步数 + config steps → 显示 `训练中: <dir> · 步 N/M (P%)`；去重（状态变化才 append）；结束提示一次
 

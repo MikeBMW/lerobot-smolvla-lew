@@ -94,6 +94,16 @@ metadata:
 导致「📈 先验动力学预测器」长期不可执行)。每加节点/改关键字后跑 `levels.check()` 或
 `match_node(<画布节点名>)` 验证返回非 None。
 
+## 执行派发链本身会"静默死" (迁移后必查 runtime.py)
+- 2026-09-28 `node_logic.py` → 包 的迁移**漏搬两处依赖**: `runtime.py` 用了 `os.environ` 却没有 `import os`(NameError),
+  `_demo_node_output` 还引用着留在 `nodes/library.py` 的 `_YOLO_CACHE`(**悬空引用**)。
+- ⇒ **任何节点经文档化入口都跑不起来**, 而 GUI 单步外层是 `try/except` ⇒ 异常被**静默吞掉**。
+  症状与"接线没接好"**完全一样**(节点看得见、双击没反应) ⇒ 会把人骗去改画布(本次差点白改一版)。
+- 判据/修法: 用**真入口**跑一次, 别靠 GUI 点击 ——
+  `gui-venv311/bin/python -c "from lerobot.engineering import runtime; runtime.execute_node_logic(<节点>)"` 报 `NameError` 即命中;
+  修完**两条路径各验一次**(`engineering.runtime` 与 `tools/gui/node_logic.py` 兼容壳), 再重启控制台确认 `Traceback=0`。
+- 排查顺序: **"节点不执行"先查派发层(runtime) → 再查注册/关键字匹配 → 最后才怀疑画布接线**。
+
 ## 按钮/节点"点了没反应"的分层取证 (别猜, 证据链三级)
 1. **handler 跑了没有** —— GUI 日志**始终**落盘: `_log` 无条件写 `/tmp/simulink_log.txt`(与底部日志区是否展开无关);
    studio 的 stdout/stderr 在 `/tmp/studio_launch.log`。日志里出现该按钮自己的行 ⇒ 点击确实到达了代码。
@@ -187,17 +197,39 @@ metadata:
 ## 关键数字基线 (每次改画布前后都要对)
 | 指标 | 基线 | 怎么查 |
 |---|---|---|
-| 画布节点项 / 连线项 | 88 / 177 (2026-09-29 当基线; 迁移时是 87/172) | `verify_canvas_render.py` |
-| 节点数 / 连线数 (JSON) | 88 / 178 | 直接数 `state_space_obs.json` |
-| 档位审计 | R1 15 · R2 35 · R3 13 · R4 7 · R5 3 · 真缺口 0 · 无执行注册 0 | `canvas_level_audit.py` |
+| 画布节点项 / 连线项 | **89 / 181** (2026-10-01 基线; 此前 88/177 · 迁移时 87/172) | `verify_canvas_render.py` |
+| 节点数 / 连线数 (JSON) | **89 / 182** | 直接数 `state_space_obs.json` |
+| 档位审计 | R1 15 · R2 **36** · R3 13 · R4 7 · R5 3 · 真缺口 0 · 无执行注册 0 | `canvas_level_audit.py` |
 | 档位测试 | L2 275/275 · L3 94/94 · L4 178/178 | `xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py --level Lx` |
 
 加 L4 节点的落位判据: 别用"全域最大空档"硬套 —— 语义节点应在它的**上下游之间**的区间里取空档
 (如标定节点必须落在 `标定层(sscalib)` 与 `被标定引擎(ss_mani_eng)` 之间), 否则为凑空档会接出反向线被断言拦住。
 
+## 画布全图 PDF 导出 + 一条命令发布 (2026-10-01 起, 用户要"手机随时下载最新版全图")
+| 东西 | 位置 | 说明 |
+|---|---|---|
+| 渲图 (矢量, 不吃 GUI/截图) | `tools/canvas_pdf_export.py` | 读真源 JSON 直画: 封面/图例页 + 全图总览 1 页 + 分层详图 (3 行带组 × 自适应分列)。页脚**逐页**写"累计已画 节点 N/89 · 连线 M/182"自查 + 版本 + 生成时间 |
+| 发布/路由逻辑 | `src/lerobot/engineering/canvas_publish.py` | 真源 realpath · 版本号 `v<YYYYMMDD 真源 mtime>-<md5:8>` · 产物目录 `reports/canvas_pdf/` · `serve_route()` (8796 只读路由) · ECS 推/回读 |
+| 一条命令 | `tools/publish_canvas.py` | 渲图→算版本→推 8796→推 ECS; `--if-changed` 幂等; `--shots DIR` 出首屏/总览截图 |
+| 手机固定 URL | `https://datadrive.world/canvas_latest.pdf` (+ 留档 `canvas_<version>.pdf`) | 走 `ss3d_push.php` (token + 文件名白名单, 已加 `canvas_*.pdf`) |
+| 自动更新 | crontab `7 * * * * … publish_canvas.py --if-changed` | 真源 md5 或**渲染器指纹**变了才重渲重推 |
+
+布局 / 自查要点 (都实测过, 别走回头路):
+- **PDF 字体必须同时有 Latin + CJK**: `DroidSansFallbackFull.ttf` 只有 CJK ⇒ 版本号/机位/数字**整段消失**(截图里看着像"排版空了"), 用 `wqy-zenhei.ttc` (subfontIndex=0)。emoji 无字形 ⇒ 用 `sanitize_label()` 去掉, 否则黑框。
+- **页数不是靠"好看的固定比例": 列/行切点必须落在空白里**。行带组切点 = 相邻行带之间空档中点 (选 2 个使 3 组节点数均衡); 列切点 = 节点 x 空档中点, 列数与边界用"列宽 + 节点数"代价函数选 ⇒ 自动避免"某页只有 1 个节点"的废页, 且**不切断任何节点**。写死坐标的下场是画布一改版就切穿节点。
+- 连线走**正交折线**: 跨行带走两行带之间的走廊 (不穿节点行), 同带走带内下轨; 跨距 >8000px 弱化为细线+低透明度。画序: 行带底 → 连线 → 节点 (交叉被节点盖住)。
+- 自查口径: 页脚写"累计已画"(总览页一画完就是满值) + 每页另算窗口内数量; 收尾断言 `drawn_nodes/drawn_links == 真值`, 不通过就 `exit 3`, 发布脚本据此拒绝上传。
+- **发布后必须自己把产物拉回来验, 不采信子代理/发布脚本的自述**(它们报的 md5、状态码、页数可能只是自己想象的):
+  `curl -sI <公网 URL>`(200 + `application/pdf` + 字节数) → `curl -s <URL> | md5sum` 与**本地产物 md5 逐位比** →
+  再用**独立引擎**复算页数与页脚自查数(`pdfinfo` 看 Pages / `pdftotext … - | grep 页脚`), 不读导出器自己 print 的那行。
+- **`--if-changed` 不能只看画布 md5**: 改了布局/字体的"渲染器改动"不会被重推 ⇒ 把导出器+发布模块源码 md5 也当指纹比 (本项目曾因此漏推)。
+- 8796 是 stdlib `BaseHTTPRequestHandler`: 想让 `curl -I` 可用必须补 `do_HEAD`(= 转 `do_GET` 但**不写 body**); 否则 501。
+- ECS 白名单只加不改: `$ALLOW` 保留原两条, 新增 `$ALLOW_GLOB=['canvas_*.pdf']` + `fnmatch`; 上线前 `cp .bak_<ts>`, 改完远端 `php -l`。
+
 ## Pitfalls
 | 坑 | 症状 | 修法 |
 |---|---|---|
+| PDF 用只含 CJK 的字体 | 数字/英文/版本号整段不见 | 换 `wqy-zenhei.ttc` 等 Latin+CJK 字体 |
 | 只做语法校验就交付 | 语法过、控制台起不来 | 必须走 ②导入 ③渲染 ⑤运行 三层 |
 | 把"节点数对了"当成功 | 节点 88→87 但**连线 167→0** | 渲染级数字双看: node items **与** link items |
 | 端口字典格式 | 断言/渲染随机踩坑 | 统一归一为字符串列表 |
@@ -209,6 +241,7 @@ metadata:
 | 标定参数写盘顺手 `sync_calib(write=True)` | `calib.json` 其他域 (内参/几何/TCP) 被一起刷新成"当前源", 意外改变在役读值 | 只读写自己那一节 (读-改-写单键), 别整表重合并 |
 | 忘了重启控制台 | 用户看到旧拓扑 | 改完必重启 + 确认 `Traceback=0` |
 | 拿自报日志当副作用发生 | "页已打开"其实浏览器没起 | 查外部痕迹: 进程 lstart / 浏览器 History, 不信自报 |
+| **用自己的临时脚本判"孤岛/断线"** | 连线字段名猜错 ⇒ 误报 `ss_seg` "入度=0 出度=0", 差点"为改而改"去接一条**本来就存在**的线 | 判拓扑只用**工程自带**手段: `canvas_node_audit.py`(孤立/断头/悬空) + `match_node(节点名)` + 渲染级 link items; 自写脚本必须先用一条**已知存在**的连线做正例自检 |
 | 按钮反馈只写日志/节点小字 | 用户连报"点了没反应" | 反馈落在**他刚点的那个控件**(按钮文字)+ **节点边框状态色** + 下面终端日志(变化时才写); 画布上不铺字(见"长任务触发器") |
 | 把状态文字铺在画布上(横幅/节点进度行) | 用户嫌丑: 「这几个字太丑了…赶紧删掉」 | 文本只进下面终端(内容变化才写一行); 画布留边框状态色即可 |
 | 用"它其实在跑"回答"没反应" | 用户继续报没反应 | 先把功能启动做成看得见, 再解释; 见"长任务触发器"节 |
@@ -220,6 +253,9 @@ metadata:
 | 点击瞬间设的反馈被同函数后续分支回写 | 按钮文字永远不变(用户照旧报没反应) | 按钮文字交给轮询驱动, 或设完后 grep 本函数内该控件的所有写点 |
 | 气泡/浮层用场景坐标当屏幕坐标 | 气泡飘到窗口外、被盖住 | `mapToGlobal(mapFromScene(...))`; 内容用真实状态, 不写死"已启动" |
 | 进度写死分母 (n/7) | 实际 9 阶段 ⇒ 一开跑就显示 9/9, 像已跑完 | 分母从状态文件读 |
+| 手工拼命令重启控制台 | GUI 起不来 / 窗口不出现（缺 `XAUTHORITY`/`XDG_RUNTIME_DIR`/DBUS） | 用仓库启动器 `tools/gui/launch_studio.sh`（自带环境 + 防重复实例）；或从旧进程复用环境：`cat /proc/<pid>/cmdline` + `tr '\0' '\n' < /proc/<pid>/environ \| grep -E '^(DISPLAY\|XAUTHORITY\|XDG_RUNTIME_DIR)='` 后再启 |
+| 子代理起的控制台随它退出而死 | 交付验收时 GUI 是死的（用户那边"打不开"） | 常驻进程必须**脱离**启动（`setsid nohup … </dev/null &`，或 terminal `background=true, persist_on_release=true`）；父会话在子代理交付后**重验进程还在**，不在就自己重起 |
+| 用 `pgrep -f "tools/gui/studio.py"` 判活 | 会命中**自己的 shell 命令行**（命令串里就含这个模式）⇒ 假"在跑" | 用脚本自带的精确模式 `pgrep -f "gui-venv311/bin/python studio.py"`，或 `ps -eo pid,cmd \| grep "[s]tudio.py"` |
 
 ## 验证清单
 ```bash
