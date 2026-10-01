@@ -36,6 +36,10 @@ OUT = OUT_TAUGHT                 # main() 按 --store 覆盖
 def _store_path(store):
     return OUT_SPACE if str(store or "").strip().lower() == "space" else OUT_TAUGHT
 CONTAINER = os.environ.get("ZMAX_TAP_CONTAINER", "ss-remote-tap")
+# ⚡ 本地真值文件(rokae_tcp_sampler 写; 与 /robot/tcp_pose 同源, 5Hz)
+_TCP_DIR = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out")
+TCP_JSONL = os.path.join(_TCP_DIR, "tcp_direct_%s.jsonl" % time.strftime("%Y%m%d"))
+TCP_LATEST = os.path.join(_TCP_DIR, "latest.json")
 NUM = re.compile(r"-?\d+\.?\d*(?:e-?\d+)?")
 
 
@@ -52,6 +56,52 @@ def sample(n=6, timeout=8):
             rows.append(vals[:7])
         time.sleep(0.5)
     return rows
+
+
+def sample_fast(n=6, span_s=1.0):
+    """⚡ 本地直读真值文件采样(老倪 2026-10-01: 「局域网, 点完 500ms 内要有反应」)。
+
+    与执行器**同源**: rokae_tcp_sampler 订阅 /robot/tcp_pose 后写盘到
+    ~/zmax_data/rokae_sdk/tcp_out/tcp_direct_<日期>.jsonl(5Hz) + latest.json。
+    这里**不建任何连接**(旧路是 SSH 到 Orin 跑 6 次 `ros2 topic echo`, 一次 1~2s ⇒ 十几秒),
+    直接读 jsonl 末尾 ~span_s 秒的帧算均值/极差 ⇒ 整个记录 <100ms。
+
+    守据(不满足就抛异常 ⇒ 上层退回 SSH 慢路, 绝不猜):
+      · 最新帧龄 >2s          ⇒ 采样器卡死/容器陈旧, 不用;
+      · xyzw 全 0 或 pos≈0    ⇒ 会话陈旧坏值(历史踩过), 不用;
+      · 窗口内帧数 <4         ⇒ 数据不足, 不用。
+    """
+    rows = []
+    try:
+        with open(TCP_JSONL, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            _sz = f.tell()
+            f.seek(max(0, _sz - 65536))
+            _buf = f.read().decode("utf-8", "ignore")
+        for _ln in reversed([x for x in _buf.splitlines() if x.strip().startswith("{")]):
+            try:
+                d = json.loads(_ln)
+            except Exception:                                                 # noqa: BLE001
+                continue
+            _p = [float(d.get(k)) for k in ("x", "y", "z", "qx", "qy", "qz", "qw")]
+            if all(abs(v) < 1e-9 for v in _p):
+                continue                       # 全 0 = 坏值, 跳过
+            rows.append((float(d.get("ts") or 0), _p))
+            if len(rows) >= 60:
+                break
+    except Exception as _e:                                                   # noqa: BLE001
+        raise RuntimeError("本地真值文件不可读: %s" % str(_e)[:80])
+    if not rows:
+        raise RuntimeError("本地真值文件没有可用帧(全 0 或空)")
+    rows.sort(key=lambda x: x[0])
+    _t_last = rows[-1][0]
+    _age = time.time() - _t_last
+    if _age > 2.0:
+        raise RuntimeError("真值文件陈旧(最新帧 %.1fs 前) ⇒ 采样器可能卡死" % _age)
+    _win = [p for (t, p) in rows if _t_last - t <= max(0.2, float(span_s))]
+    if len(_win) < 4:
+        raise RuntimeError("本地窗口帧数不足(%d <4)" % len(_win))
+    return _win[:n] if n and len(_win) >= n else _win
 
 
 def parse_args(argv):
@@ -94,7 +144,15 @@ def main():
     if not name:
         print("用法: python3 tools/record_l2_point.py <点位名> [说明]")
         return 2
-    rows = sample(samples)
+    _t0 = time.time()
+    try:                                    # ⚡ 先走本地直读(毫秒级); 守据不满足才退回 SSH 慢路
+        rows = sample_fast(samples, 1.0)
+        _src = "本地真值文件直读(rokae_sdk/tcp_out, 与 /robot/tcp_pose 同源)"
+    except Exception as _e:                                                   # noqa: BLE001
+        print("⚡ 快路不可用(%s) ⇒ 退回 SSH 慢路(约 4~15s)" % str(_e)[:90])
+        rows = sample(samples)
+        _src = "/robot/tcp_pose (只读订阅, Docker tap)"
+    _ms = int((time.time() - _t0) * 1000)
     if len(rows) < 4:
         out = {"ok": False, "name": name, "msg": "采样不足 (%d 帧) —— 检查 tap 容器/tcp_pose 话题" % len(rows),
                "n_samples": len(rows)}
@@ -104,6 +162,7 @@ def main():
     mean = [sum(c) / len(c) for c in cols]
     spread = [max(c) - min(c) for c in cols]
     pos_max, quat_max = max(spread[:3]), max(spread[3:])
+    print("⚡ 采样 %d 帧 / 耗时 %d ms / 源: %s" % (len(rows), _ms, _src))
     print("采样 %d 帧: pos=(%.7f, %.7f, %.7f) m · quat(xyzw)=(%.7f, %.7f, %.7f, %.7f)"
           % (len(rows), mean[0], mean[1], mean[2], mean[3], mean[4], mean[5], mean[6]))
     print("极差: pos %.2e m · quat %.2e  (静止判据: pos 极差 ≤1e-4 m)" % (pos_max, quat_max))
@@ -135,7 +194,7 @@ def main():
         "quat": quat,
         "desc": desc or ("%s — 2026-09-30 现场记录" % name),
         "recorded_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "source": "/robot/tcp_pose (只读订阅, Docker tap)",
+        "source": _src,
         "n_samples": len(rows),
         "spread_pos_m": round(pos_max, 8),
         "spread_quat": round(quat_max, 8),
@@ -154,6 +213,7 @@ def main():
     else:
         print("(--dry: 未落盘)")
     out = {"ok": True, "name": name, "written": (not dry), "overwrote": bool(had),
+           "elapsed_ms": _ms, "source": _src, "samples_window_s": 1.0,
            "pos": entry["pos"], "quat": entry["quat"], "n_samples": len(rows),
            "spread_pos_m": entry["spread_pos_m"], "spread_quat": entry["spread_quat"],
            "recorded_at": entry["recorded_at"],
