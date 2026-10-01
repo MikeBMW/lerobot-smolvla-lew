@@ -28,24 +28,69 @@ SHARED = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
 DEFAULT_FRESH = os.path.join(SHARED, "cam_rs.png")
 
 
-def capture_frames(n: int, out_dir: str, src: str, interval: float = 0.12) -> list:
-    """从 Docker tap 落盘的真机帧里采 n 张**互不相同**的新鲜帧 (按 mtime 去重, 只认真帧)。"""
+def _fp(p: str, s: int = 16) -> bytes:
+    """内容指纹(缩放灰度横向梯度二值化) —— 按**内容**判同, 不靠 mtime/size。"""
+    import numpy as np
+    from PIL import Image
+    g = np.asarray(Image.open(p).convert("L").resize((s + 1, s)), dtype=np.float32)
+    return (g[:, 1:] > g[:, :-1]).tobytes()
+
+
+def frame_diversity(frames: list) -> dict:
+    """帧多样性: 两两平均绝对差(灰度级)分布 —— 用来判"这批帧是不是等于同一张图"。
+    2026-09-30 教训: 16 帧 mean 86.5→86.2 / 亮部 8.63→8.64 / 清晰 406→406 ⇒ 实为同一张静态图,
+    两边都 0/16 的对照**没有统计意义**。判据: 中位两两差 < 1.0 灰度级 ⇒ 判为无效评测集。"""
+    import itertools
+    import numpy as np
+    from PIL import Image
+    arrs = [np.asarray(Image.open(p).convert("L"), dtype=np.int16) for p in frames]
+    ds = [float(np.abs(a - b).mean()) for a, b in itertools.combinations(arrs, 2)]
+    ds.sort()
+    return {"n_pairs": len(ds), "min": round(ds[0], 3) if ds else None,
+            "median": round(ds[len(ds) // 2], 3) if ds else None,
+            "max": round(ds[-1], 3) if ds else None,
+            "enough": bool(ds and ds[len(ds) // 2] >= 1.0)}
+
+
+def capture_frames(n: int, out_dir: str, src: str, interval: float = 0.5,
+                   min_gap: float = 1.0, max_wait_s: float = 0.0) -> list:
+    """采 n 张**内容互不相同**的新鲜帧(落 out_dir, 永久目录, 不复用 /tmp)。
+
+    2026-09-30 踩坑: 原来按 (mtime,size) 去重 + interval 0.12s ⇒ 源头(Orin tap)以固定/微变 mtime
+    重写**同一张**图时, 会采到 16 张"看着不同、其实逐像素相同"的帧 ⇒ 对照评测无统计意义; 且默认
+    落 /tmp ⇒ 事后不可复现。⇒ 现在: ①按**内容指纹**去重 ②两次采帧至少间隔 min_gap 秒
+    ③新帧落盘时打印与上一帧的差异, 让人一眼看出是不是同一张。
+    """
     os.makedirs(out_dir, exist_ok=True)
-    got, last_sig = [], None
+    got, fps = [], set()
+    last_t = 0.0
     t0 = time.time()
-    while len(got) < n and time.time() - t0 < max(30.0, n * interval * 4):
+    budget = max_wait_s if max_wait_s > 0 else max(60.0, n * (min_gap + interval) * 2.5)
+    while len(got) < n and time.time() - t0 < budget:
+        if time.time() - last_t < min_gap:
+            time.sleep(0.05)
+            continue
         try:
-            st = os.stat(src)
-            sig = (st.st_mtime_ns, st.st_size)
+            os.stat(src)
         except OSError:
             time.sleep(interval)
             continue
-        if sig != last_sig:
-            last_sig = sig
-            p = os.path.join(out_dir, f"live_{len(got):03d}.png")
-            shutil.copyfile(src, p)
-            got.append(p)
-        time.sleep(interval)
+        p = os.path.join(out_dir, f"live_{len(got):03d}.png")
+        shutil.copyfile(src, p)
+        f = _fp(p)
+        if f in fps:                                  # 内容与已采帧相同 ⇒ 丢弃(不算一帧)
+            os.remove(p)
+            time.sleep(interval)
+            continue
+        if got:
+            import numpy as np
+            from PIL import Image
+            a = np.asarray(Image.open(got[-1]).convert("L"), dtype=np.int16)
+            b = np.asarray(Image.open(p).convert("L"), dtype=np.int16)
+            print(f"   采到 live_{len(got):03d} · 与上一帧差异 {float(np.abs(a - b).mean()):.2f} 灰度级", flush=True)
+        fps.add(f)
+        got.append(p)
+        last_t = time.time()
     return got
 
 
@@ -100,6 +145,9 @@ def main() -> int:
         "runs/detect/outputs/yolo_annot/annot_0918_0718/weights/best.pt",
     ])
     ap.add_argument("--frames", type=int, default=40)
+    ap.add_argument("--min-gap", type=float, default=1.0,
+                    help="两次采帧最小间隔秒(保证帧间真的变了; 2026-09-30 加)")
+    ap.add_argument("--max-wait", type=float, default=0.0, help="采帧总预算秒(0=自动)")
     ap.add_argument("--frames-dir", default="")
     ap.add_argument("--src", default=DEFAULT_FRESH)
     ap.add_argument("--imgsz", type=int, default=640)
@@ -110,16 +158,23 @@ def main() -> int:
     a = ap.parse_args()
 
     os.chdir(REPO)
-    fdir = a.frames_dir or f"/tmp/live_eval_{time.strftime('%m%d_%H%M')}"
+    # 2026-09-30: 默认落**永久**目录(原来 /tmp ⇒ 评测集事后不可复现, 无法复查那次 0/16)
+    fdir = a.frames_dir or os.path.join(
+        os.environ.get("ZMAX_DATA", "/home/ubuntu/zmax_data"), "eval_frames",
+        "live_" + time.strftime("%m%d_%H%M%S"))
     frames = sorted(glob.glob(os.path.join(fdir, "live_*.png")))
     if not frames:
         print(f"采帧: {a.frames} 张 → {fdir} (源 {a.src})")
-        frames = capture_frames(a.frames, fdir, a.src)
+        frames = capture_frames(a.frames, fdir, a.src, min_gap=a.min_gap, max_wait_s=a.max_wait)
     print(f"评测集: {len(frames)} 帧 (目录 {fdir})")
     if not frames:
         print("❌ 没采到帧 (真机帧文件不可用?)")
         return 2
-    res = {"frames_dir": fdir, "frames": len(frames), "ts": time.strftime("%F %T"), "results": []}
+    div = frame_diversity(frames)
+    print(f"帧多样性: 两两差 min {div['min']} / 中位 {div['median']} / max {div['max']} 灰度级"
+          f" ⇒ {'合格 ✓' if div['enough'] else '❌ 不足(这批帧约等于同一张图, 对照评测无效)'}")
+    res = {"frames_dir": fdir, "frames": len(frames), "ts": time.strftime("%F %T"),
+           "diversity": div, "results": []}
     for w in a.weights:
         if not os.path.isfile(w):
             print(f"  跳过 (不存在): {w}")
@@ -133,6 +188,10 @@ def main() -> int:
     if a.out:
         json.dump(res, open(a.out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         print(f"→ {a.out}")
+    if not div["enough"]:
+        print("❌ 判为**无效评测**: 帧多样性不足 ⇒ 不得把本次结果写成'持平/提升/回退'。"
+              "请拉开采帧间隔(--min-gap)或改用录制数据。")
+        return 3
     return 0
 
 

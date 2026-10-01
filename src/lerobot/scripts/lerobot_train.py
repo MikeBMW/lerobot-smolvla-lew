@@ -325,6 +325,77 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
         print(f"[lora-local] 可训参数 {_info['trainable_params']:,}/{_info['total_params']:,}"
               f" = {_info['params_pct']}% (基座冻结, 无 peft fp32 输入转换)")
 
+        # 🔒 梯度到齐闸 (2026-09-30 新增, 老倪「按建议来」) —— 针对自研 lora_inject 的**致命静默失败**:
+        #   B 零初始化 ⇒ 收不到梯度的适配器**永远保持 0** ⇒ 该模块行为一点没变, 而产物/日志看起来
+        #   完全正常(可训参数、loss 都在) ⇒ 极易被当成"LoRA 无效/没提升"。实测教训: L3 注入 256 层,
+        #   训完 **lm_expert(动作专家) 的 128 层 ΔW 精确为 0**(只有 text_model 那 128 层训到) ⇒
+        #   "零提升"的真因是**训偏了**。判据必须在**第一次 optimizer.step()** 时做(此刻 grad 还在)。
+        if os.environ.get("ZMAX_LORA_GRADGATE", "1") == "1" and "policy" in dir():
+            # ⚠️ 2026-10-01 踩坑: 第一版 patch `torch.optim.Optimizer.step` **根本没被调用** ——
+            #    trainer 走 `accelerator.optimizer_step`, accelerate 把 optimizer 包成
+            #    AcceleratedOptimizer **自带 step()** ⇒ 基类 patch 被遮蔽 ⇒ 闸门静默失效(日志里
+            #    只有"已武装"却没有校验行)。改成钩 **backward 结束之后**(框架无关, 此刻 grad 必就绪)。
+            _gate = {"done": False}
+            _orig_backward = torch.Tensor.backward
+
+            def _backward_with_gradgate(self, *a, **k):
+                _r = _orig_backward(self, *a, **k)
+                if not _gate["done"]:
+                    _gate["done"] = True
+                    _named = [(n, p) for n, p in policy.named_parameters()
+                              if (".lora_A" in n or ".lora_B" in n) and p.requires_grad]
+                    _none = [n for n, p in _named if p.grad is None]
+                    _zero = [n for n, p in _named if p.grad is not None and float(p.grad.abs().max()) == 0.0]
+                    _fam = {}
+                    for _n in _none + _zero:
+                        _f = "lm_expert(动作专家)" if ".lm_expert." in _n else (
+                            "text_model(语言塔)" if ".text_model." in _n else "other")
+                        _fam[_f] = _fam.get(_f, 0) + 1
+                    print(f"[lora-gradgate] 可训适配器 {len(_named)} 个 | 无梯度 {len(_none)}"
+                          f" | 零梯度 {len(_zero)} | 按模块族: {_fam}", flush=True)
+                # 🔎 取证: 到底哪些模块真拿到了梯度(不只是 LoRA) —— 选目标模块必须靠这个, 不许猜。
+                if os.environ.get("ZMAX_LORA_GRADGATE_REPORT", "1") == "1":
+                    _agg = {}
+                    for _n, _p in policy.named_parameters():
+                        if _p.grad is not None and float(_p.grad.abs().max()) > 0:
+                            _parts = _n.split(".")
+                            _key = ".".join(_parts[:4]) if len(_parts) >= 4 else _n
+                            _agg[_key] = _agg.get(_key, 0) + 1
+                    _top = sorted(_agg.items(), key=lambda kv: -kv[1])[:14]
+                    print(f"[lora-gradgate] 有非零梯度的参数分组(前14, 共{len(_agg)}组):", flush=True)
+                    for _k, _v in _top:
+                        print(f"    {_v:5d}  {_k}", flush=True)
+                    # 🎯 判据口径(2026-10-01 定): **只对决定行为的模块严格** ——
+                    #   action_model(动作头)/le_world_model(世界模型) 必须全部训到, 缺一个就停;
+                    #   其余模块(VLM 塔里 loss 路径没走到的注意力、未被调用的 projector)只告警:
+                    #   强求它们等于把"没走到≠坏"也判成失败, 会让真问题淹没在噪声里。
+                    #   ⚠️ 已知且**显式列出**的死区(不是掩盖, 是登记): 
+                    #     · le_world_model.projector —— LEW loss 路径不经过它;
+                    #     · action_model.model.timestep_encoder.* / *norm[12].linear —— **时间步条件链无梯度**,
+                    #       实测指向"时间步/adaLN 调制被 detach"(代码层待查), 会让动作头丢掉 t 条件 ⇒ 已开单。
+                    _DEAD = (".projector.", "timestep_encoder.", ".norm1.linear", ".norm2.linear")
+                    _must = [n for n in _none + _zero
+                             if (".action_model." in n or ".le_world_model." in n)
+                             and not any(d in n for d in _DEAD)]
+                    if _must:
+                        print(f"[lora-gradgate] ❌ 行为相关模块没训到的适配器(前3): {_must[:3]}", flush=True)
+                        print("[lora-gradgate] ❌ 就地停止: 这些层训了也不改变行为, 不许产出假提升/假持平产物",
+                              flush=True)
+                        raise RuntimeError(
+                            f"[lora-gradgate] 行为相关模块有 {len(_must)} 个 LoRA 适配器没收到非零梯度"
+                            f" (按族 {_fam}); 目标模块名命中 != 该模块在损失图里")
+                    print(f"[lora-gradgate] ✅ 行为相关模块(action_model/le_world_model)适配器全部训到", flush=True)
+                    if _none or _zero:
+                        print(f"[lora-gradgate] ⚠️ 另有 {len(_none) + len(_zero)} 个适配器零梯度/无梯度"
+                              f"(其中**时间步条件链**的项 = 代码层待查: 动作头缺 t 条件)"
+                              f"(loss 路径未走到, 无害但不产生产生行为变化): {(_none + _zero)[:3]}", flush=True)
+                return _r
+
+            torch.Tensor.backward = _backward_with_gradgate
+            print("[lora-gradgate] 已武装: 第一次 backward 后校验每条适配器都有非零梯度", flush=True)
+
+
+
     # Wait for all processes to finish model creation before continuing
     accelerator.wait_for_everyone()
 

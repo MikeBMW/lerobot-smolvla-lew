@@ -247,6 +247,11 @@ class SmolVLALewModel(nn.Module):
         batch_videos = [ex["video"] for ex in examples]
         instructions = [ex["lang"] for ex in examples]
         has_action = "action" in examples[0] and examples[0]["action"] is not None
+        if not has_action:
+            _e0 = examples[0]
+            print(f"[l3-debug] ⚠️ has_action=False | examples[0] 的键: {sorted(_e0.keys())}"
+                  f" | action={'缺' if 'action' not in _e0 else type(_e0['action']).__name__}"
+                  f" | training={getattr(self, 'training', None)}", flush=True)
         actions = [ex["action"] for ex in examples] if has_action else None
         has_state = "state" in examples[0] and examples[0]["state"] is not None
         state = [ex["state"] for ex in examples] if has_state else None
@@ -284,6 +289,13 @@ class SmolVLALewModel(nn.Module):
             b, seq_len, hidden_dim = multimodal_embeds.shape
 
         if not has_action:
+            # 🚨 2026-10-01 (老倪「按建议来」): 这里原来**静默返回 action_loss=0** ⇒ 动作头一整轮不训练,
+            #   而日志/产物毫无异常 —— L3 连续几轮"没提升"的真因就在这里(实测取证: 全模型只有 VLM
+            #   语言塔 128 个参数拿到梯度, action_model/predictor/专家全无梯度)。训练态必须报错。
+            if self.training:
+                raise RuntimeError(
+                    "L3 训练批里没有 action 字段 ⇒ 动作支路被跳过(action_loss=0), 动作头/专家永远不会训练。"
+                    " 数据集必须带 action(图像+state 不够); 见 tools/mk_smolvla_sim_cfg.py 的 dataset 段。")
             return {"action_loss": torch.tensor(0.0, device=multimodal_embeds.device), "lew_loss": lew_loss}
 
         with torch.autocast(device_type=device_type, dtype=torch.float32):
@@ -445,6 +457,13 @@ class SmolVLALewPolicy(PreTrainedPolicy):
         actions_list = None
         action_is_pad_list = None
         actions_tensor = batch.get(ACTION)
+        # 🚨 2026-10-01: 训练时必须真带 action, 否则下游静默把动作损失记 0(见 forward 的同名闸)
+        if actions_tensor is None:
+            print(f"[l3-debug] ⚠️ 批里没有动作字段 '{ACTION}' | training={getattr(self, 'training', None)}"
+                  f" | 本批字段: {sorted(batch.keys())[:14]}", flush=True)
+            if getattr(self, "training", False):
+                raise RuntimeError(
+                    f"训练批里没有动作字段 '{ACTION}' ⇒ 会让动作头静默不训练。本批实际字段: {sorted(batch.keys())}")
         if actions_tensor is not None:
             if actions_tensor.ndim == 2:
                 actions_tensor = actions_tensor.unsqueeze(1)

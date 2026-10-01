@@ -150,7 +150,9 @@ def build_stages(a) -> list:
         l3_env.update({"ZMAX_LORA_LOCAL": "1", "ZMAX_LORA_MOD": LORA_MOD,
                        "ZMAX_LORA_R": str(a.lora_r), "ZMAX_LORA_ALPHA": str(a.lora_r * 2),
                        "ZMAX_LORA_TARGETS": ",".join(l3_targets),
-                       "ZMAX_LORA_EXCLUDE": "vision_model",
+                       # lm_expert: smolvla_lew 的 forward **一次都不调用**它(实测无梯度=完全不在损失图里),
+                       #   挂上去只会白占 2.78M 参数并制造"注入 256 层"的假象 ⇒ 明确排除。
+                       "ZMAX_LORA_EXCLUDE": "vision_model,lm_expert",
                        "ZMAX_LORA_OUT": os.path.join(mroot, "lora_l3_init.pt")})
     post3 = []
     pre3 = [{"cmd": gen3, "cwd": ROOT, "env": l3_env,
@@ -263,9 +265,11 @@ def main() -> int:
     ap.add_argument("--l3-tag", default="", help="L3 输出目录/配置名后缀 (重试轮用, 避免覆盖旧产物)")
     ap.add_argument("--l3-batch", type=int, default=0,
                     help="L3 批大小 (0=自动: LoRA 4 / 非 LoRA 8)。8GB 卡与其它任务共存时用 2 抗 OOM")
-    ap.add_argument("--l3-targets", default="q_proj,k_proj,v_proj,o_proj",
-                    help="L3 LoRA 目标模块 (默认只挂语言注意力投影, 不挂视觉塔 —— 8GB 卡实测)"
-                         "all-linear 会 OOM")
+    ap.add_argument("--l3-targets", default="q_proj,k_proj,v_proj,o_proj,action_model,le_world_model",
+                    help="L3 LoRA 目标模块。⚠️ 2026-10-01 实测修正: 原来只有语言注意力投影 ⇒ "
+                         "**动作头 model.action_model 与世界模型 model.le_world_model 被冻结且无适配器** ⇒ "
+                         "实测全模型只有 VLM 语言塔 128 个参数拿到梯度、action_loss 支路等于没训 ⇒ "
+                         "'L3 一直没提升'的真因。视觉塔仍不挂(8GB 卡实测 OOM), 也排掉永不调用的 lm_expert。")
     ap.add_argument("--env-check", action="store_true")
     ap.add_argument("--gpu-wait", type=int, default=900, help="等 GPU 空闲的最长秒数")
     a = ap.parse_args()
