@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -37,6 +38,16 @@ import canvas_pdf_export as EXP                                               # 
 
 STATE = Path("/home/ubuntu/.zmax_canvas_publish_state.json")
 LOG = "/tmp/publish_canvas.log"
+
+
+def renderer_sig() -> str:
+    """渲染器指纹 (导出器 + 发布模块的源码 md5) —— 只比画布 md5 的话,
+    改了布局/字体这类"渲染器改动"永远不会重推手机 (实测踩到)。"""
+    h = hashlib.md5()
+    for f in (ROOT / "tools" / "canvas_pdf_export.py",
+              ROOT / "src" / "lerobot" / "engineering" / "canvas_publish.py"):
+        h.update(f.read_bytes())
+    return h.hexdigest()[:8]
 
 
 def read_state() -> dict:
@@ -98,10 +109,13 @@ def main() -> int:
     out = {"version": version, "md5": md5, "nodes": stats["nodes"], "links": stats["links"],
            "ts": time.time(), "if_changed": a.if_changed}
 
-    if a.if_changed and st.get("md5") == md5 and CP.LATEST_PDF.exists():
+    rsig = renderer_sig()
+    out["renderer"] = rsig
+    if (a.if_changed and st.get("md5") == md5 and st.get("renderer") == rsig
+            and CP.LATEST_PDF.exists()):
         out["skipped"] = True
-        out["reason"] = "真源 md5 未变 (%s@%s); 上次发布 %s" % (
-            md5[:8], CP.source_json().name, st.get("version"))
+        out["reason"] = "真源 md5 未变 (%s@%s) 且渲染器未变 (%s); 上次发布 %s" % (
+            md5[:8], CP.source_json().name, rsig, st.get("version"))
         say("[skip]", out["reason"])
         print(json.dumps(out, ensure_ascii=False))
         return 0
@@ -167,7 +181,7 @@ def main() -> int:
         say("[4/4] 截图 %d 张 → %s" % (len(sh), a.shots))
 
     if not a.no_local:
-        write_state({"md5": md5, "version": version, "ts": time.time(),
+        write_state({"md5": md5, "version": version, "ts": time.time(), "renderer": rsig,
                      "pdf": meta["pdf"], "bytes": meta["bytes"], "pages": meta["pages"],
                      "nodes": stats["nodes"], "links": stats["links"],
                      "ecs_ok": bool(out.get("ecs", {}).get("check_latest", {}).get("is_pdf"))})
